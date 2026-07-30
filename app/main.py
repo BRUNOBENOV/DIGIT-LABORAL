@@ -32,6 +32,7 @@ from .models import (
     CompanyRequest,
     Document,
     Employee,
+    EmployeeHistory,
     LaborArticle,
     LaborParameter,
     Payroll,
@@ -62,7 +63,7 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="Digit Laboral", version="0.11.0", lifespan=lifespan)
+app = FastAPI(title="Digit Laboral", version="0.12.0", lifespan=lifespan)
 app.add_middleware(
     SessionMiddleware,
     secret_key=settings.secret_key,
@@ -121,6 +122,43 @@ def company_allowed(db: Session, user: User, company_id: int) -> Company:
     if not company or company_id not in company_ids_for_user(db, user):
         raise HTTPException(404, "Empresa no encontrada.")
     return company
+
+
+def employee_allowed(db: Session, user: User, employee_id: int) -> Employee:
+    employee = db.get(Employee, employee_id)
+    if not employee or employee.company_id not in company_ids_for_user(db, user):
+        raise HTTPException(404, "Funcionario no encontrado.")
+    return employee
+
+
+def branch_allowed(db: Session, user: User, branch_id: int) -> Branch:
+    branch = db.get(Branch, branch_id)
+    if not branch or branch.company_id not in company_ids_for_user(db, user):
+        raise HTTPException(404, "Sucursal no encontrada.")
+    return branch
+
+
+def add_employee_history(
+    db: Session,
+    user: User,
+    employee: Employee,
+    event_type: str,
+    effective_date: date | None = None,
+    previous_value: str = "",
+    new_value: str = "",
+    detail: str = "",
+) -> None:
+    db.add(
+        EmployeeHistory(
+            employee_id=employee.id,
+            event_type=event_type,
+            effective_date=effective_date or date.today(),
+            previous_value=previous_value,
+            new_value=new_value,
+            detail=detail,
+            created_by=user.email,
+        )
+    )
 
 
 def write_audit(db: Session, user: User, action: str, entity: str, entity_id: str = "", detail: str = "") -> None:
@@ -347,7 +385,22 @@ def company_detail(request: Request, company_id: int, user: User = Depends(requi
     branches = list(db.scalars(select(Branch).where(Branch.company_id == company_id).order_by(Branch.name)))
     payrolls = list(db.scalars(select(Payroll).where(Payroll.company_id == company_id).order_by(Payroll.period.desc()).limit(6)))
     documents = list(db.scalars(select(Document).where(Document.company_id == company_id).order_by(Document.created_at.desc()).limit(8)))
-    return render(request, "company_detail.html", db, user, company=company, employees=employees, requests_list=requests_list, branches=branches, payrolls=payrolls, documents=documents)
+    company_users = list(db.scalars(select(User).where(User.company_id == company_id).order_by(User.full_name)))
+    active_employees = sum(1 for item in employees if item.status == "Activo")
+    return render(
+        request,
+        "company_detail.html",
+        db,
+        user,
+        company=company,
+        employees=employees,
+        active_employees=active_employees,
+        requests_list=requests_list,
+        branches=branches,
+        payrolls=payrolls,
+        documents=documents,
+        company_users=company_users,
+    )
 
 
 @app.post("/app/companies/{company_id}/edit")
@@ -414,6 +467,37 @@ def add_branch(
     return RedirectResponse(f"/app/companies/{company_id}", status_code=303)
 
 
+@app.post("/app/branches/{branch_id}/edit")
+def edit_branch(
+    branch_id: int,
+    name: Annotated[str, Form()],
+    city: Annotated[str, Form()] = "",
+    address: Annotated[str, Form()] = "",
+    user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
+    db: Session = Depends(get_db),
+):
+    branch = branch_allowed(db, user, branch_id)
+    branch.name = name.strip()
+    branch.city = city.strip()
+    branch.address = address.strip()
+    write_audit(db, user, "editar", "sucursal", str(branch.id), branch.name)
+    db.commit()
+    return RedirectResponse(f"/app/companies/{branch.company_id}", status_code=303)
+
+
+@app.post("/app/branches/{branch_id}/toggle")
+def toggle_branch(
+    branch_id: int,
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    branch = branch_allowed(db, user, branch_id)
+    branch.active = not branch.active
+    write_audit(db, user, "actualizar_estado", "sucursal", str(branch.id), "Activa" if branch.active else "Inactiva")
+    db.commit()
+    return RedirectResponse(f"/app/companies/{branch.company_id}", status_code=303)
+
+
 @app.get("/app/employees", response_class=HTMLResponse)
 def employees_page(request: Request, q: str = "", company_id: int | None = None, user: User = Depends(require_user), db: Session = Depends(get_db)):
     company_ids = company_ids_for_user(db, user)
@@ -474,37 +558,118 @@ def add_employee(
     except IntegrityError:
         db.rollback()
         return RedirectResponse("/app/employees?duplicate=1", status_code=303)
+    add_employee_history(
+        db, user, employee, "Alta", employee.admission_date, "", "Activo",
+        f"Ingreso a {employee.company.legal_name if employee.company else 'la empresa'} como {employee.position}.",
+    )
+    add_employee_history(db, user, employee, "Salario inicial", employee.admission_date, "", str(employee.base_salary), "Remuneración base registrada al alta.")
     write_audit(db, user, "crear", "funcionario", str(employee.id), employee.full_name)
     db.commit()
-    return RedirectResponse("/app/employees", status_code=303)
+    return RedirectResponse(f"/app/employees/{employee.id}", status_code=303)
+
+
+@app.get("/app/employees/{employee_id}", response_class=HTMLResponse)
+def employee_detail(
+    request: Request,
+    employee_id: int,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    employee = employee_allowed(db, user, employee_id)
+    branches = list(db.scalars(select(Branch).where(Branch.company_id == employee.company_id).order_by(Branch.name)))
+    history = list(db.scalars(select(EmployeeHistory).where(EmployeeHistory.employee_id == employee_id).order_by(EmployeeHistory.effective_date.desc(), EmployeeHistory.created_at.desc())))
+    payroll_lines = list(db.scalars(select(PayrollLine).where(PayrollLine.employee_id == employee_id).order_by(PayrollLine.id.desc()).limit(8)))
+    vacations = list(db.scalars(select(Vacation).where(Vacation.employee_id == employee_id).order_by(Vacation.period_year.desc()).limit(6)))
+    documents = list(db.scalars(select(Document).where(Document.employee_id == employee_id).order_by(Document.created_at.desc()).limit(8)))
+    minimum_salary = db.scalar(select(LaborParameter).where(LaborParameter.key == "minimum_monthly_salary_general", LaborParameter.active.is_(True)))
+    return render(
+        request,
+        "employee_detail.html",
+        db,
+        user,
+        employee=employee,
+        branches=branches,
+        history=history,
+        payroll_lines=payroll_lines,
+        vacations=vacations,
+        documents=documents,
+        minimum_salary=minimum_salary,
+    )
 
 
 @app.post("/app/employees/{employee_id}/edit")
 def edit_employee(
     employee_id: int,
     full_name: Annotated[str, Form()],
+    document_number: Annotated[str, Form()],
     position_name: Annotated[str, Form(alias="position")],
+    admission_date: Annotated[date, Form()],
     base_salary: Annotated[int, Form()],
+    branch_id: Annotated[int | None, Form()] = None,
+    birth_date: Annotated[date | None, Form()] = None,
+    contract_type: Annotated[str, Form()] = "Tiempo indefinido",
+    payment_frequency: Annotated[str, Form()] = "Mensual",
     email: Annotated[str, Form()] = "",
     phone: Annotated[str, Form()] = "",
     address: Annotated[str, Form()] = "",
     notes: Annotated[str, Form()] = "",
+    ips_contributor: Annotated[str | None, Form()] = None,
     user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
     db: Session = Depends(get_db),
 ):
-    employee = db.get(Employee, employee_id)
-    if not employee or employee.company_id not in company_ids_for_user(db, user):
-        raise HTTPException(404)
+    employee = employee_allowed(db, user, employee_id)
+    previous_salary = employee.base_salary
+    previous_position = employee.position
+    if branch_id:
+        branch = branch_allowed(db, user, branch_id)
+        if branch.company_id != employee.company_id:
+            raise HTTPException(400, "La sucursal no pertenece a la empresa del funcionario.")
     employee.full_name = full_name.strip()
+    employee.document_number = document_number.strip()
+    employee.birth_date = birth_date
     employee.position = position_name.strip()
+    employee.admission_date = admission_date
+    employee.contract_type = contract_type.strip()
+    employee.payment_frequency = payment_frequency.strip()
+    employee.branch_id = branch_id or None
     employee.base_salary = max(0, base_salary)
+    employee.ips_contributor = ips_contributor == "on"
     employee.email = email.strip()
     employee.phone = phone.strip()
     employee.address = address.strip()
     employee.notes = notes.strip()
+    if previous_salary != employee.base_salary:
+        add_employee_history(db, user, employee, "Cambio salarial", date.today(), str(previous_salary), str(employee.base_salary), "Actualización desde el expediente del funcionario.")
+    if previous_position != employee.position:
+        add_employee_history(db, user, employee, "Cambio de cargo", date.today(), previous_position, employee.position, "Actualización de datos laborales.")
     write_audit(db, user, "editar", "funcionario", str(employee.id), employee.full_name)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        return RedirectResponse(f"/app/employees/{employee_id}?duplicate=1", status_code=303)
+    return RedirectResponse(f"/app/employees/{employee_id}?saved=1", status_code=303)
+
+
+@app.post("/app/employees/{employee_id}/salary")
+def update_employee_salary(
+    employee_id: int,
+    new_salary: Annotated[int, Form()],
+    effective_date: Annotated[date, Form()],
+    reason: Annotated[str, Form()] = "",
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    employee = employee_allowed(db, user, employee_id)
+    previous_salary = employee.base_salary
+    employee.base_salary = max(0, new_salary)
+    add_employee_history(
+        db, user, employee, "Cambio salarial", effective_date, str(previous_salary), str(employee.base_salary),
+        reason.strip() or "Actualización de salario base.",
+    )
+    write_audit(db, user, "cambiar_salario", "funcionario", str(employee.id), f"{previous_salary} → {employee.base_salary}")
     db.commit()
-    return RedirectResponse("/app/employees", status_code=303)
+    return RedirectResponse(f"/app/employees/{employee_id}?salary=1", status_code=303)
 
 
 @app.post("/app/employees/{employee_id}/status")
@@ -515,14 +680,17 @@ def employee_status(
     user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
     db: Session = Depends(get_db),
 ):
-    employee = db.get(Employee, employee_id)
-    if not employee or employee.company_id not in company_ids_for_user(db, user):
-        raise HTTPException(404)
+    employee = employee_allowed(db, user, employee_id)
+    previous_status = employee.status
     employee.status = status_value
     employee.termination_date = termination_date if status_value != "Activo" else None
+    add_employee_history(
+        db, user, employee, "Cambio de estado", termination_date or date.today(), previous_status, status_value,
+        "Actualización del vínculo laboral.",
+    )
     write_audit(db, user, "actualizar_estado", "funcionario", str(employee.id), status_value)
     db.commit()
-    return RedirectResponse("/app/employees", status_code=303)
+    return RedirectResponse(f"/app/employees/{employee_id}?status=1", status_code=303)
 
 
 @app.get("/app/requests", response_class=HTMLResponse)

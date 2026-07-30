@@ -1,0 +1,12 @@
+ACTUALIZACIÓN DIGIT LABORAL V12
+
+1. Descomprimí el ZIP.
+2. En GitHub, abrí BRUNOBENOV/DIGIT-LABORAL.
+3. Elegí Add file > Upload files.
+4. Arrastrá el contenido de esta carpeta conservando las carpetas app y tests.
+5. Confirmá Commit changes.
+6. Render detectará el cambio y hará el despliegue automáticamente.
+7. Esperá a que digit-laboral-py-demo vuelva a mostrar Deployed.
+8. Abrí /app/employees y luego Abrir expediente.
+
+Esta actualización NO elimina empresas ni funcionarios existentes. PostgreSQL creará automáticamente la nueva tabla employee_history.

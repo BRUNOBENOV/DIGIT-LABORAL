@@ -131,6 +131,23 @@ class Employee(Base):
     company: Mapped[Company] = relationship(back_populates="employees")
     branch: Mapped[Optional[Branch]] = relationship()
     payroll_lines: Mapped[list["PayrollLine"]] = relationship(back_populates="employee")
+    history: Mapped[list["EmployeeHistory"]] = relationship(back_populates="employee", cascade="all, delete-orphan")
+
+
+class EmployeeHistory(Base):
+    __tablename__ = "employee_history"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), index=True)
+    event_type: Mapped[str] = mapped_column(String(60), index=True)
+    effective_date: Mapped[date] = mapped_column(Date, default=date.today)
+    previous_value: Mapped[str] = mapped_column(String(240), default="")
+    new_value: Mapped[str] = mapped_column(String(240), default="")
+    detail: Mapped[str] = mapped_column(Text, default="")
+    created_by: Mapped[str] = mapped_column(String(180), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    employee: Mapped[Employee] = relationship(back_populates="history")
 
 
 class CompanyRequest(Base):

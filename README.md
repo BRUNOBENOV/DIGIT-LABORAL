@@ -1,3 +1,17 @@
+# Digit Laboral v12
+
+Sistema de gestión laboral en la nube para estudios contables paraguayos.
+
+## Novedades de esta versión
+
+- Expediente individual de cada funcionario.
+- Historial permanente de altas, cambios salariales, cargos y estados.
+- Cambios salariales con fecha efectiva, motivo y usuario responsable.
+- Edición completa de datos personales y laborales.
+- Sucursales editables y activables/desactivables.
+- Usuarios empresariales visibles dentro del expediente de la empresa.
+- Compatible con la base PostgreSQL ya desplegada: la tabla histórica se crea automáticamente sin borrar datos existentes.
+
 # Digit Laboral
 
 Sistema de gestión laboral para estudios contables paraguayos, con empresas vinculadas, funcionarios, solicitudes, liquidaciones en borrador, vacaciones, aguinaldo, documentos, usuarios y biblioteca jurídica.
