@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block title %}Parámetros | Digit Laboral{% endblock %}
+{% block page_name %}Parámetros laborales{% endblock %}
+{% block content %}
+<div class="page-header"><div><span class="eyebrow">VALORES VIGENTES</span><h1>Parámetros laborales</h1><p>Referencias con fecha de vigencia y fuente institucional.</p></div></div>
+<div class="legal-warning"><b>Importante:</b> los valores generales pueden variar según actividad, profesión o régimen. Deben revisarse antes de emitir una liquidación definitiva.</div>
+<section class="parameter-grid">{% for item in parameters %}<article><span class="parameter-icon">◉</span><div><span class="eyebrow">VIGENTE DESDE {{ item.effective_from.strftime('%d/%m/%Y') }}</span><h3>{{ item.label }}</h3><b>{% if item.unit == "%" %}{{ item.value|float|round(2) }}%{% else %}{{ item.unit }} {{ item.value|int|gs }}{% endif %}</b><p>{{ item.notes }}</p><a href="{{ item.source_url }}" target="_blank" rel="noopener">Fuente: {{ item.source_name }} ↗</a></div></article>{% endfor %}</section>
+{% endblock %}

@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Código Laboral | Digit Laboral{% endblock %}
+{% block page_name %}Código Laboral{% endblock %}
+{% block content %}
+<div class="page-header"><div><span class="eyebrow">BIBLIOTECA JURÍDICA</span><h1>Código Laboral integrado</h1><p>Buscador de artículos, temas y referencias oficiales.</p></div></div>
+<div class="legal-warning"><b>Uso profesional responsable:</b> esta biblioteca contiene síntesis de consulta y enlaces oficiales. No reemplaza la revisión del texto legal consolidado ni el análisis del caso concreto.</div>
+<form method="get" class="legal-search"><input name="q" value="{{ q }}" placeholder="Ej.: vacaciones, salario, art. 62"><select name="category"><option value="">Todas las categorías</option>{% for item in categories %}<option value="{{ item }}" {{ 'selected' if category == item }}>{{ item }}</option>{% endfor %}</select><button class="btn primary" type="submit">Buscar</button></form>
+<section class="article-list">{% for article in articles %}<article><div class="article-number">Art.<b>{{ article.article_number }}</b></div><div><span class="eyebrow">{{ article.category }}</span><h3>{{ article.heading }}</h3><p>{{ article.body }}</p><div class="article-meta"><span>{{ article.law_number }}</span><span>{{ article.content_status }}</span>{% if article.amendment_note %}<span>{{ article.amendment_note }}</span>{% endif %}<a href="{{ article.source_url }}" target="_blank" rel="noopener">Consultar fuente oficial ↗</a></div></div></article>{% else %}<div class="empty-large"><h3>Sin resultados</h3><p>Probá con otro artículo o palabra.</p></div>{% endfor %}</section>
+{% endblock %}

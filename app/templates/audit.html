@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block title %}Auditoría | Digit Laboral{% endblock %}
+{% block page_name %}Auditoría{% endblock %}
+{% block content %}
+<div class="page-header"><div><span class="eyebrow">TRAZABILIDAD</span><h1>Registro de acciones</h1><p>Últimos 300 movimientos realizados dentro del estudio.</p></div></div>
+<section class="panel table-panel"><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Usuario</th><th>Acción</th><th>Entidad</th><th>ID</th><th>Detalle</th></tr></thead><tbody>{% for item in logs %}<tr><td>{{ item.created_at.strftime('%d/%m/%Y %H:%M') }}</td><td>{{ item.user_email }}</td><td><b>{{ item.action }}</b></td><td>{{ item.entity }}</td><td>{{ item.entity_id or '—' }}</td><td>{{ item.detail or '—' }}</td></tr>{% else %}<tr><td colspan="6" class="empty-state">No hay movimientos registrados.</td></tr>{% endfor %}</tbody></table></div></section>
+{% endblock %}

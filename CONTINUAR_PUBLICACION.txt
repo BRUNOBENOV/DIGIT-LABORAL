@@ -1,0 +1,22 @@
+PASO 1
+Descomprimir digit-laboral-online-v11.zip.
+
+PASO 2
+En GitHub > repositorio DIGIT-LABORAL > Add file > Upload files, arrastrar el contenido completo de esta carpeta. No subas el ZIP: subí las carpetas y archivos extraídos.
+
+PASO 3
+Presionar Commit changes.
+
+PASO 4
+Abrir el README del repositorio y presionar el botón Deploy to Render.
+
+PASO 5
+Crear o iniciar sesión en Render con GitHub. En los campos solicitados:
+- ADMIN_EMAIL: tu correo de acceso.
+- ADMIN_PASSWORD: una contraseña nueva que no uses en otras cuentas.
+
+PASO 6
+Presionar Deploy Blueprint y esperar a que el servicio y la base terminen de crearse.
+
+La dirección será parecida a:
+https://digit-laboral-py-demo.onrender.com
