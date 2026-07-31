@@ -1,0 +1,14 @@
+DIGIT LABORAL v13.1 — CORRECCIÓN DE SOLICITUDES
+
+Problema corregido:
+El formulario enviaba campos opcionales vacíos (funcionario, fechas, año y días) y FastAPI intentaba convertirlos directamente a enteros o fechas. Esto causaba una pantalla JSON con error 422.
+
+Instalación:
+1. En GitHub, abra el repositorio DIGIT-LABORAL.
+2. Add file > Upload files.
+3. Suba las carpetas app y tests de esta actualización, conservando su estructura.
+4. Confirme con Commit changes.
+5. En Render espere el despliegue automático. Si no se inicia, use Manual Deploy > Deploy latest commit.
+6. Cuando figure Deployed, abra /app/requests y actualice con Ctrl + F5.
+
+La actualización no modifica ni elimina datos de PostgreSQL.

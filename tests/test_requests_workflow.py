@@ -61,3 +61,29 @@ def test_salary_request_can_be_approved_and_applied():
         assert item.status == "Aplicada"
         assert workflow is not None and workflow.applied is True
         assert employee.base_salary == original_salary + 100000
+
+
+def test_request_form_accepts_blank_optional_fields():
+    email, password, company_id, _ = ensure_admin()
+    with TestClient(app) as client:
+        login = client.post("/login", data={"email": email, "password": password}, follow_redirects=False)
+        assert login.status_code == 303
+        response = client.post(
+            "/app/requests",
+            data={
+                "company_id": str(company_id),
+                "request_type": "Otra consulta",
+                "subject": "Consulta con campos opcionales vacíos",
+                "detail": "Comprueba que FastAPI no devuelva 422 cuando el navegador envía cadenas vacías.",
+                "priority": "Normal",
+                "employee_id": "",
+                "effective_date": "",
+                "start_date": "",
+                "end_date": "",
+                "period_year": "",
+                "entitled_days": "",
+            },
+            follow_redirects=False,
+        )
+        assert response.status_code == 303
+        assert response.headers["location"].startswith("/app/requests/")

@@ -245,6 +245,17 @@ def optional_float(value: str | float | None) -> float:
         return 0
 
 
+def optional_date(value: str | date | None) -> date | None:
+    if value is None or value == "":
+        return None
+    if isinstance(value, date):
+        return value
+    try:
+        return date.fromisoformat(str(value).strip())
+    except ValueError:
+        return None
+
+
 def recalculate_payroll(db: Session, payroll: Payroll) -> None:
     lines = list(db.scalars(select(PayrollLine).where(PayrollLine.payroll_id == payroll.id)))
     payroll.total_gross = sum(x.gross for x in lines)
@@ -772,11 +783,11 @@ def requests_page(
 async def add_request(
     request_type: Annotated[str, Form()],
     detail: Annotated[str, Form()],
-    company_id: Annotated[int | None, Form()] = None,
+    company_id: Annotated[str, Form()] = "",
     subject: Annotated[str, Form()] = "",
     priority: Annotated[str, Form()] = "Normal",
-    employee_id: Annotated[int | None, Form()] = None,
-    effective_date: Annotated[date | None, Form()] = None,
+    employee_id: Annotated[str, Form()] = "",
+    effective_date: Annotated[str, Form()] = "",
     period: Annotated[str, Form()] = "",
     full_name: Annotated[str, Form()] = "",
     document_number: Annotated[str, Form()] = "",
@@ -786,10 +797,10 @@ async def add_request(
     amount: Annotated[str, Form()] = "",
     quantity: Annotated[str, Form()] = "",
     movement_kind: Annotated[str, Form()] = "Bonificación",
-    start_date: Annotated[date | None, Form()] = None,
-    end_date: Annotated[date | None, Form()] = None,
-    period_year: Annotated[int | None, Form()] = None,
-    entitled_days: Annotated[int | None, Form()] = None,
+    start_date: Annotated[str, Form()] = "",
+    end_date: Annotated[str, Form()] = "",
+    period_year: Annotated[str, Form()] = "",
+    entitled_days: Annotated[str, Form()] = "",
     email: Annotated[str, Form()] = "",
     phone: Annotated[str, Form()] = "",
     ips_contributor: Annotated[str | None, Form()] = None,
@@ -797,18 +808,26 @@ async def add_request(
     user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ):
+    company_id_value = optional_int(company_id) or None
+    employee_id_value = optional_int(employee_id) or None
+    effective_date_value = optional_date(effective_date)
+    start_date_value = optional_date(start_date)
+    end_date_value = optional_date(end_date)
+    period_year_value = optional_int(period_year) or None
+    entitled_days_value = optional_int(entitled_days) or None
+
     if user.role == "empresa":
-        company_id = user.company_id
-    if not company_id:
+        company_id_value = user.company_id
+    if not company_id_value:
         raise HTTPException(400, "Debe seleccionar una empresa.")
-    company = company_allowed(db, user, company_id)
-    if employee_id:
-        employee = db.get(Employee, employee_id)
+    company = company_allowed(db, user, company_id_value)
+    if employee_id_value:
+        employee = db.get(Employee, employee_id_value)
         if not employee or employee.company_id != company.id:
             raise HTTPException(400, "Funcionario inválido para la empresa seleccionada.")
     payload = {
-        "employee_id": employee_id,
-        "effective_date": effective_date.isoformat() if effective_date else "",
+        "employee_id": employee_id_value,
+        "effective_date": effective_date_value.isoformat() if effective_date_value else "",
         "period": period.strip(),
         "full_name": full_name.strip(),
         "document_number": document_number.strip(),
@@ -818,10 +837,10 @@ async def add_request(
         "amount": optional_int(amount),
         "quantity": optional_float(quantity),
         "movement_kind": movement_kind.strip(),
-        "start_date": start_date.isoformat() if start_date else "",
-        "end_date": end_date.isoformat() if end_date else "",
-        "period_year": period_year,
-        "entitled_days": entitled_days,
+        "start_date": start_date_value.isoformat() if start_date_value else "",
+        "end_date": end_date_value.isoformat() if end_date_value else "",
+        "period_year": period_year_value,
+        "entitled_days": entitled_days_value,
         "email": email.strip().lower(),
         "phone": phone.strip(),
         "ips_contributor": ips_contributor == "on",
@@ -838,9 +857,9 @@ async def add_request(
     db.flush()
     workflow = RequestWorkflow(
         request_id=item.id,
-        employee_id=employee_id,
+        employee_id=employee_id_value,
         period=period.strip(),
-        effective_date=effective_date,
+        effective_date=effective_date_value,
         requested_by=user.email,
         payload_json=json.dumps(payload, ensure_ascii=False),
     )
