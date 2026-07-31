@@ -1,0 +1,10 @@
+DIGIT LABORAL — ACTUALIZACIÓN COMERCIAL V14
+
+1. Para ver la página de venta, abra index.html.
+2. Para recorrer la demostración, abra app-demo.html.
+3. El ZIP conserva las rutas exactas para subirlo encima del repositorio DIGIT-LABORAL.
+4. No elimina la base de datos ni modifica los modelos del sistema: actualiza la presentación comercial, el panel principal, el acceso y la solicitud de demostración.
+5. La publicación automática en GitHub Pages está preparada en .github/workflows/pages.yml.
+
+IMPORTANTE
+Los datos de la demostración son ficticios. Los cálculos y contenidos jurídicos requieren revisión profesional.

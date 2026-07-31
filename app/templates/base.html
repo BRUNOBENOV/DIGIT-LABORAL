@@ -3,9 +3,11 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#0f2f72">
+  <meta name="theme-color" content="#071a3d">
+  <meta name="description" content="Digit Laboral: gestión laboral en la nube para estudios contables paraguayos.">
   <title>{% block title %}Digit Laboral{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', path='app.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', path='premium.css') }}">
 </head>
 <body class="{% if user %}app-body{% else %}public-body{% endif %}">
 {% if user %}
@@ -15,7 +17,7 @@
       <span><strong>Digit Laboral</strong><small>Gestión laboral PY</small></span>
     </a>
     <div class="workspace-card">
-      <span>Espacio de trabajo</span>
+      <span>ESPACIO DE TRABAJO</span>
       <strong>{% if user.role == 'superadmin' %}Administración general{% elif studio %}{{ studio.name }}{% else %}Empresa vinculada{% endif %}</strong>
       <small>{{ user.role|replace('superadmin','Administrador general')|capitalize }}</small>
     </div>
@@ -40,14 +42,14 @@
       {% endif %}
     </nav>
     <div class="sidebar-bottom">
-      {% if studio %}<div class="plan-box"><span>Plan</span><strong>{{ studio.plan_name }}</strong><small>{{ studio.company_limit }} empresas incluidas</small></div>{% endif %}
+      {% if studio %}<div class="plan-box"><span>PLAN ACTUAL</span><strong>{{ studio.plan_name }}</strong><small>{{ studio.company_limit }} empresas incluidas</small></div>{% endif %}
       <form method="post" action="/logout"><button class="logout-btn" type="submit">Cerrar sesión</button></form>
     </div>
   </aside>
   <div class="app-shell">
     <header class="topbar">
       <button class="menu-toggle" type="button" data-menu>☰</button>
-      <div class="topbar-title"><strong>{% block page_name %}Panel{% endblock %}</strong><small>Digit Laboral</small></div>
+      <div class="topbar-title"><strong>{% block page_name %}Panel{% endblock %}</strong><small>Digit Laboral · Gestión laboral PY</small></div>
       <div class="top-actions">
         {% if user.role != 'superadmin' %}<a class="global-search" href="/app/labor-code"><span>⌕</span><span>Buscar en el Código Laboral</span></a>{% endif %}
         <div class="user-chip"><span class="avatar">{{ user.full_name[:2]|upper }}</span><span><b>{{ user.full_name }}</b><small>{{ user.email }}</small></span></div>
