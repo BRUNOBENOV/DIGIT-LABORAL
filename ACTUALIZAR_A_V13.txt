@@ -1,0 +1,29 @@
+DIGIT LABORAL V13 — SOLICITUDES Y NOVEDADES LABORALES
+
+1. Descomprimí digit-laboral-v13-actualizacion.zip.
+2. En GitHub, abrí BRUNOBENOV/DIGIT-LABORAL.
+3. Elegí Add file > Upload files.
+4. Arrastrá la carpeta app y la carpeta tests conservando sus nombres y estructura.
+5. Confirmá con Commit changes.
+6. En Render, abrí digit-laboral-py-demo.
+7. Si el despliegue no comienza automáticamente: Manual Deploy > Deploy latest commit.
+8. Esperá hasta que aparezca Deployed.
+9. En el navegador presioná Ctrl + F5.
+
+No borra empresas ni funcionarios existentes. Al iniciar, SQLAlchemy crea cuatro tablas nuevas:
+- request_workflows
+- request_events
+- request_attachments
+- payroll_novelties
+
+PRUEBA RECOMENDADA
+- Entrá en Solicitudes.
+- Creá una solicitud de Cambio salarial usando datos de prueba.
+- Abrí el expediente.
+- Marcala como Aprobada.
+- Presioná Aplicar al sistema.
+- Verificá el nuevo salario en el expediente del funcionario.
+
+IMPORTANTE
+- No cargues datos reales todavía en el entorno gratuito.
+- Los adjuntos dependen de FILES_ENABLED y del almacenamiento del servidor. En hosting temporal pueden perderse al reiniciarse el servicio.

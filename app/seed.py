@@ -7,7 +7,7 @@ from sqlalchemy import select
 
 from .auth import hash_password
 from .database import SessionLocal
-from .models import Branch, Company, CompanyRequest, Employee, LaborArticle, LaborParameter, Studio, User
+from .models import Branch, Company, CompanyRequest, Employee, LaborArticle, LaborParameter, RequestEvent, RequestWorkflow, Studio, User
 from .config import settings
 
 SOURCE_213 = "https://www.bacn.gov.py/leyes-paraguayas/2608/ley-n-213-establece-el-codigo-del-trabajo"
@@ -119,5 +119,11 @@ def seed_database() -> None:
         for key, label, value, unit, effective, source, notes in PARAMETERS:
             if db.scalar(select(LaborParameter.id).where(LaborParameter.key == key)) is None:
                 db.add(LaborParameter(key=key, label=label, value=value, unit=unit, effective_from=effective, source_url=source, notes=notes))
+
+        # Backfill the v13 workflow for requests created by earlier versions.
+        for request_item in db.scalars(select(CompanyRequest)):
+            if request_item.workflow is None:
+                db.add(RequestWorkflow(request_id=request_item.id, requested_by="Versión anterior", payload_json="{}"))
+                db.add(RequestEvent(request_id=request_item.id, event_type="Importación", status=request_item.status, note="Solicitud incorporada al nuevo flujo de seguimiento.", user_email="sistema"))
 
         db.commit()

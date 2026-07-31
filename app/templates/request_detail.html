@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Solicitud #{{ item.id }} | Digit Laboral{% endblock %}
+{% block page_name %}Solicitud #{{ item.id }}{% endblock %}
+{% block content %}
+<a class="back-link dark" href="/app/requests">← Volver a solicitudes</a>
+{% if created %}<div class="alert success">La solicitud fue enviada correctamente.</div>{% endif %}
+{% if applied %}<div class="alert success">La solicitud fue aplicada a los registros laborales.</div>{% endif %}
+{% if error %}<div class="alert">{% if error == 'approval' %}Primero debés aprobar la solicitud.{% elif error == 'applied' %}Esta solicitud ya fue aplicada.{% elif error == 'employee' %}Falta seleccionar un funcionario válido.{% elif error == 'duplicate' %}Ya existe un funcionario con esa cédula en la empresa.{% elif error == 'files' %}Los archivos no están habilitados en este entorno.{% else %}Faltan datos necesarios para aplicar esta solicitud.{% endif %}</div>{% endif %}
+
+<section class="request-detail-hero">
+  <div><span class="eyebrow">{{ item.company.legal_name }} · SOLICITUD #{{ item.id }}</span><h1>{{ item.subject or item.request_type }}</h1><p>{{ item.detail }}</p><div class="request-meta-line"><span>{{ item.request_type }}</span><span>Prioridad: <b>{{ item.priority }}</b></span><span>Creada: {{ item.created_at.strftime('%d/%m/%Y %H:%M') }}</span>{% if workflow and workflow.requested_by %}<span>Por: <b>{{ workflow.requested_by }}</b></span>{% endif %}</div></div>
+  <div class="request-hero-status"><span class="status-pill {{ item.status|lower|replace(' ', '-') }}">{{ item.status }}</span>{% if workflow and workflow.assigned_to %}<small>Responsable</small><b>{{ workflow.assigned_to }}</b>{% endif %}</div>
+</section>
+
+<div class="request-detail-layout">
+  <div class="request-detail-main">
+    <section class="panel"><div class="panel-heading"><div><span class="eyebrow">DATOS ESTRUCTURADOS</span><h2>Información de la novedad</h2></div></div>
+      <dl class="request-data-grid">
+        {% if workflow and workflow.employee %}<div><dt>Funcionario</dt><dd><a class="subtle-link" href="/app/employees/{{ workflow.employee.id }}">{{ workflow.employee.full_name }}</a></dd></div>{% endif %}
+        {% if workflow and workflow.effective_date %}<div><dt>Fecha efectiva</dt><dd>{{ workflow.effective_date|fecha }}</dd></div>{% endif %}
+        {% if workflow and workflow.period %}<div><dt>Periodo</dt><dd>{{ workflow.period }}</dd></div>{% endif %}
+        {% if payload.get('full_name') %}<div><dt>Nuevo funcionario</dt><dd>{{ payload.get('full_name') }}</dd></div>{% endif %}
+        {% if payload.get('document_number') %}<div><dt>Cédula</dt><dd>{{ payload.get('document_number') }}</dd></div>{% endif %}
+        {% if payload.get('position') %}<div><dt>Cargo inicial</dt><dd>{{ payload.get('position') }}</dd></div>{% endif %}
+        {% if payload.get('new_position') %}<div><dt>Nuevo cargo</dt><dd>{{ payload.get('new_position') }}</dd></div>{% endif %}
+        {% if payload.get('base_salary') %}<div><dt>Salario base</dt><dd>Gs. {{ payload.get('base_salary')|gs }}</dd></div>{% endif %}
+        {% if payload.get('amount') %}<div><dt>Monto</dt><dd>Gs. {{ payload.get('amount')|gs }}{% if payload.get('movement_kind') %} · {{ payload.get('movement_kind') }}{% endif %}</dd></div>{% endif %}
+        {% if payload.get('quantity') %}<div><dt>Cantidad</dt><dd>{{ payload.get('quantity') }}</dd></div>{% endif %}
+        {% if payload.get('start_date') %}<div><dt>Desde</dt><dd>{{ payload.get('start_date') }}</dd></div>{% endif %}
+        {% if payload.get('end_date') %}<div><dt>Hasta</dt><dd>{{ payload.get('end_date') }}</dd></div>{% endif %}
+        {% if payload.get('period_year') %}<div><dt>Año de vacaciones</dt><dd>{{ payload.get('period_year') }}</dd></div>{% endif %}
+        {% if payload.get('entitled_days') %}<div><dt>Días solicitados</dt><dd>{{ payload.get('entitled_days') }}</dd></div>{% endif %}
+        {% if payload.get('email') %}<div><dt>Correo</dt><dd>{{ payload.get('email') }}</dd></div>{% endif %}
+        {% if payload.get('phone') %}<div><dt>Teléfono</dt><dd>{{ payload.get('phone') }}</dd></div>{% endif %}
+      </dl>
+    </section>
+
+    <section class="panel"><div class="panel-heading"><div><span class="eyebrow">SEGUIMIENTO</span><h2>Historial de la solicitud</h2></div></div>
+      <div class="timeline">{% for event in item.events|reverse %}<article class="timeline-item"><span class="timeline-dot"></span><div><div class="timeline-head"><b>{{ event.event_type }} · {{ event.status }}</b><small>{{ event.created_at.strftime('%d/%m/%Y %H:%M') }}</small></div>{% if event.note %}<p>{{ event.note }}</p>{% endif %}<small>{{ event.user_email }}</small></div></article>{% else %}<p class="empty-state">Sin movimientos registrados.</p>{% endfor %}</div>
+    </section>
+  </div>
+
+  <aside class="request-detail-side">
+    {% if user.role != 'empresa' %}<section class="panel sticky-panel"><span class="eyebrow">GESTIÓN DEL ESTUDIO</span><h2>Revisar solicitud</h2>
+      <form method="post" action="/app/requests/{{ item.id }}/review" class="form-stack">
+        <label>Responsable<select name="assigned_to"><option value="">Sin asignar</option>{% for account in studio_users %}<option value="{{ account.full_name }}" {{ 'selected' if workflow and workflow.assigned_to == account.full_name }}>{{ account.full_name }} · {{ account.role }}</option>{% endfor %}</select></label>
+        <label>Estado<select name="status"><option {{ 'selected' if item.status == 'Pendiente' }}>Pendiente</option><option {{ 'selected' if item.status == 'En revisión' }}>En revisión</option><option {{ 'selected' if item.status == 'Requiere corrección' }}>Requiere corrección</option><option {{ 'selected' if item.status == 'Aprobada' }}>Aprobada</option><option {{ 'selected' if item.status == 'Rechazada' }}>Rechazada</option><option {{ 'selected' if item.status == 'Aplicada' }}>Aplicada</option></select></label>
+        <label>Respuesta a la empresa<textarea name="response" rows="4">{{ item.response }}</textarea></label>
+        <label>Corrección solicitada<textarea name="correction_note" rows="3">{{ workflow.correction_note if workflow else '' }}</textarea></label>
+        <button class="btn primary full" type="submit">Guardar revisión</button>
+      </form>
+      {% if item.status == 'Aprobada' and workflow and not workflow.applied %}<form method="post" action="/app/requests/{{ item.id }}/apply" class="apply-request-form" onsubmit="return confirm('¿Aplicar esta solicitud a los registros laborales? Esta acción modificará datos del sistema.');"><button class="btn apply full" type="submit">✓ Aplicar al sistema</button><small>Disponible para administradores y contadores.</small></form>{% elif workflow and workflow.applied %}<div class="applied-box">✓ Aplicada por {{ workflow.applied_by }}<small>{{ workflow.applied_at.strftime('%d/%m/%Y %H:%M') if workflow.applied_at else '' }}</small></div>{% endif %}
+    </section>{% else %}<section class="panel"><span class="eyebrow">RESPUESTA DEL ESTUDIO</span><h2>Seguimiento</h2>{% if item.response %}<div class="note-box">{{ item.response }}</div>{% else %}<p class="muted-copy">El estudio todavía no agregó una respuesta.</p>{% endif %}{% if workflow and workflow.correction_note %}<div class="correction-box"><b>Información a corregir</b><p>{{ workflow.correction_note }}</p></div>{% endif %}</section>{% endif %}
+
+    <section class="panel"><span class="eyebrow">DOCUMENTOS</span><h2>Adjuntos</h2><div class="attachment-list">{% for file in item.attachments %}<a href="/app/requests/{{ item.id }}/attachments/{{ file.id }}"><span>▤</span><div><b>{{ file.original_name }}</b><small>{{ file.created_at.strftime('%d/%m/%Y') }} · {{ file.uploaded_by }}</small></div></a>{% else %}<p class="muted-copy">No hay archivos adjuntos.</p>{% endfor %}</div>
+      {% if files_enabled %}<form method="post" action="/app/requests/{{ item.id }}/attachment" enctype="multipart/form-data" class="attachment-form"><input type="file" name="attachment" required><button class="btn ghost full" type="submit">Adjuntar archivo</button></form>{% endif %}
+    </section>
+  </aside>
+</div>
+{% endblock %}

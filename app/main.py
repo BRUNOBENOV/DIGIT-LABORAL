@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import io
+import json
 import os
 import re
 import secrets
@@ -37,6 +38,10 @@ from .models import (
     LaborParameter,
     Payroll,
     PayrollLine,
+    PayrollNovelty,
+    RequestAttachment,
+    RequestEvent,
+    RequestWorkflow,
     Studio,
     User,
     Vacation,
@@ -63,7 +68,7 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="Digit Laboral", version="0.12.0", lifespan=lifespan)
+app = FastAPI(title="Digit Laboral", version="0.13.0", lifespan=lifespan)
 app.add_middleware(
     SessionMiddleware,
     secret_key=settings.secret_key,
@@ -210,6 +215,34 @@ def safe_filename(name: str) -> str:
     base = Path(name).name
     cleaned = re.sub(r"[^A-Za-z0-9._-]", "_", base)
     return cleaned[:180] or "archivo"
+
+
+def request_payload(item: CompanyRequest) -> dict:
+    if not item.workflow or not item.workflow.payload_json:
+        return {}
+    try:
+        value = json.loads(item.workflow.payload_json)
+        return value if isinstance(value, dict) else {}
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return {}
+
+
+def optional_int(value: str | int | None) -> int:
+    if value is None or value == "":
+        return 0
+    try:
+        return max(0, int(str(value).replace(".", "").replace(",", "")))
+    except ValueError:
+        return 0
+
+
+def optional_float(value: str | float | None) -> float:
+    if value is None or value == "":
+        return 0
+    try:
+        return max(0, float(str(value).replace(",", ".")))
+    except ValueError:
+        return 0
 
 
 def recalculate_payroll(db: Session, payroll: Payroll) -> None:
@@ -694,50 +727,342 @@ def employee_status(
 
 
 @app.get("/app/requests", response_class=HTMLResponse)
-def requests_page(request: Request, user: User = Depends(require_user), db: Session = Depends(get_db)):
-    company_ids = company_ids_for_user(db, user)
-    items = list(db.scalars(select(CompanyRequest).where(CompanyRequest.company_id.in_(company_ids)).order_by(CompanyRequest.created_at.desc()))) if company_ids else []
-    companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name))) if company_ids else []
-    return render(request, "requests.html", db, user, items=items, companies=companies)
-
-
-@app.post("/app/requests")
-def add_request(
-    company_id: Annotated[int, Form()],
-    request_type: Annotated[str, Form()],
-    detail: Annotated[str, Form()],
-    subject: Annotated[str, Form()] = "",
-    priority: Annotated[str, Form()] = "Normal",
+def requests_page(
+    request: Request,
+    q: str = "",
+    status_filter: str = "",
+    type_filter: str = "",
+    company_filter: int | None = None,
     user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ):
-    company_allowed(db, user, company_id)
-    item = CompanyRequest(company_id=company_id, request_type=request_type.strip(), subject=subject.strip(), detail=detail.strip(), priority=priority, status="Pendiente")
+    company_ids = company_ids_for_user(db, user)
+    query = select(CompanyRequest).where(CompanyRequest.company_id.in_(company_ids)) if company_ids else select(CompanyRequest).where(CompanyRequest.id == -1)
+    if q.strip():
+        term = f"%{q.strip()}%"
+        query = query.where(or_(CompanyRequest.subject.ilike(term), CompanyRequest.detail.ilike(term), CompanyRequest.request_type.ilike(term)))
+    if status_filter.strip():
+        query = query.where(CompanyRequest.status == status_filter)
+    if type_filter.strip():
+        query = query.where(CompanyRequest.request_type == type_filter)
+    if company_filter and company_filter in company_ids:
+        query = query.where(CompanyRequest.company_id == company_filter)
+    items = list(db.scalars(query.order_by(CompanyRequest.created_at.desc())))
+    companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name))) if company_ids else []
+    employees = list(db.scalars(select(Employee).where(Employee.company_id.in_(company_ids), Employee.status == "Activo").order_by(Employee.full_name))) if company_ids else []
+    studio_users = list(db.scalars(select(User).where(User.studio_id == user.studio_id, User.role.in_(["administrador", "contador", "auxiliar"]), User.active.is_(True)).order_by(User.full_name))) if user.studio_id else []
+    statuses = ["Pendiente", "En revisión", "Requiere corrección", "Aprobada", "Rechazada", "Aplicada"]
+    request_types = [
+        "Alta de funcionario", "Baja de funcionario", "Cambio salarial", "Cambio de cargo",
+        "Vacaciones", "Ausencia o reposo", "Horas extra", "Bonificación o descuento",
+        "Documento laboral", "Otra consulta",
+    ]
+    counts = {name: 0 for name in statuses}
+    for value, total in db.execute(select(CompanyRequest.status, func.count(CompanyRequest.id)).where(CompanyRequest.company_id.in_(company_ids)).group_by(CompanyRequest.status)) if company_ids else []:
+        counts[value] = total
+    return render(
+        request, "requests.html", db, user, items=items, companies=companies, employees=employees,
+        studio_users=studio_users, statuses=statuses, request_types=request_types, counts=counts,
+        q=q, status_filter=status_filter, type_filter=type_filter, company_filter=company_filter,
+        files_enabled=settings.files_enabled,
+    )
+
+
+@app.post("/app/requests")
+async def add_request(
+    request_type: Annotated[str, Form()],
+    detail: Annotated[str, Form()],
+    company_id: Annotated[int | None, Form()] = None,
+    subject: Annotated[str, Form()] = "",
+    priority: Annotated[str, Form()] = "Normal",
+    employee_id: Annotated[int | None, Form()] = None,
+    effective_date: Annotated[date | None, Form()] = None,
+    period: Annotated[str, Form()] = "",
+    full_name: Annotated[str, Form()] = "",
+    document_number: Annotated[str, Form()] = "",
+    position: Annotated[str, Form()] = "",
+    new_position: Annotated[str, Form()] = "",
+    base_salary: Annotated[str, Form()] = "",
+    amount: Annotated[str, Form()] = "",
+    quantity: Annotated[str, Form()] = "",
+    movement_kind: Annotated[str, Form()] = "Bonificación",
+    start_date: Annotated[date | None, Form()] = None,
+    end_date: Annotated[date | None, Form()] = None,
+    period_year: Annotated[int | None, Form()] = None,
+    entitled_days: Annotated[int | None, Form()] = None,
+    email: Annotated[str, Form()] = "",
+    phone: Annotated[str, Form()] = "",
+    ips_contributor: Annotated[str | None, Form()] = None,
+    attachment: UploadFile | None = File(None),
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    if user.role == "empresa":
+        company_id = user.company_id
+    if not company_id:
+        raise HTTPException(400, "Debe seleccionar una empresa.")
+    company = company_allowed(db, user, company_id)
+    if employee_id:
+        employee = db.get(Employee, employee_id)
+        if not employee or employee.company_id != company.id:
+            raise HTTPException(400, "Funcionario inválido para la empresa seleccionada.")
+    payload = {
+        "employee_id": employee_id,
+        "effective_date": effective_date.isoformat() if effective_date else "",
+        "period": period.strip(),
+        "full_name": full_name.strip(),
+        "document_number": document_number.strip(),
+        "position": position.strip(),
+        "new_position": new_position.strip(),
+        "base_salary": optional_int(base_salary),
+        "amount": optional_int(amount),
+        "quantity": optional_float(quantity),
+        "movement_kind": movement_kind.strip(),
+        "start_date": start_date.isoformat() if start_date else "",
+        "end_date": end_date.isoformat() if end_date else "",
+        "period_year": period_year,
+        "entitled_days": entitled_days,
+        "email": email.strip().lower(),
+        "phone": phone.strip(),
+        "ips_contributor": ips_contributor == "on",
+    }
+    item = CompanyRequest(
+        company_id=company.id,
+        request_type=request_type.strip(),
+        subject=subject.strip() or request_type.strip(),
+        detail=detail.strip(),
+        priority=priority,
+        status="Pendiente",
+    )
     db.add(item)
     db.flush()
+    workflow = RequestWorkflow(
+        request_id=item.id,
+        employee_id=employee_id,
+        period=period.strip(),
+        effective_date=effective_date,
+        requested_by=user.email,
+        payload_json=json.dumps(payload, ensure_ascii=False),
+    )
+    db.add(workflow)
+    db.add(RequestEvent(request_id=item.id, event_type="Creación", status="Pendiente", note="Solicitud enviada al estudio contable.", user_email=user.email))
+    if attachment and attachment.filename:
+        if not settings.files_enabled:
+            raise HTTPException(409, "La carga de archivos no está habilitada en este entorno.")
+        if attachment.content_type not in ALLOWED_UPLOAD_TYPES:
+            raise HTTPException(400, "Formato no permitido.")
+        content = await attachment.read(MAX_UPLOAD_SIZE + 1)
+        if len(content) > MAX_UPLOAD_SIZE:
+            raise HTTPException(413, "El archivo supera 10 MB.")
+        original = safe_filename(attachment.filename)
+        stored = f"request_{item.id}_{uuid.uuid4().hex}_{original}"
+        (UPLOAD_DIR / stored).write_bytes(content)
+        db.add(RequestAttachment(request_id=item.id, stored_name=stored, original_name=original, content_type=attachment.content_type or "application/octet-stream", uploaded_by=user.email))
     write_audit(db, user, "crear", "solicitud", str(item.id), request_type)
     db.commit()
-    return RedirectResponse("/app/requests", status_code=303)
+    return RedirectResponse(f"/app/requests/{item.id}?created=1", status_code=303)
 
 
-@app.post("/app/requests/{request_id}/status")
-def request_status(
+@app.get("/app/requests/{request_id}", response_class=HTMLResponse)
+def request_detail(request: Request, request_id: int, user: User = Depends(require_user), db: Session = Depends(get_db)):
+    item = db.get(CompanyRequest, request_id)
+    if not item or item.company_id not in company_ids_for_user(db, user):
+        raise HTTPException(404)
+    workflow = item.workflow
+    payload = request_payload(item)
+    employees = list(db.scalars(select(Employee).where(Employee.company_id == item.company_id).order_by(Employee.full_name)))
+    studio_users = list(db.scalars(select(User).where(User.studio_id == user.studio_id, User.role.in_(["administrador", "contador", "auxiliar"]), User.active.is_(True)).order_by(User.full_name))) if user.studio_id else []
+    return render(
+        request, "request_detail.html", db, user, item=item, workflow=workflow, payload=payload,
+        employees=employees, studio_users=studio_users, files_enabled=settings.files_enabled,
+        created=request.query_params.get("created") == "1", applied=request.query_params.get("applied") == "1",
+        error=request.query_params.get("error", ""),
+    )
+
+
+@app.post("/app/requests/{request_id}/review")
+def request_review(
     request_id: int,
     status_value: Annotated[str, Form(alias="status")],
     response: Annotated[str, Form()] = "",
+    assigned_to: Annotated[str, Form()] = "",
+    correction_note: Annotated[str, Form()] = "",
     user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
     db: Session = Depends(get_db),
 ):
     item = db.get(CompanyRequest, request_id)
     if not item or item.company_id not in company_ids_for_user(db, user):
         raise HTTPException(404)
+    allowed_statuses = {"Pendiente", "En revisión", "Requiere corrección", "Aprobada", "Rechazada", "Aplicada"}
+    if status_value not in allowed_statuses:
+        raise HTTPException(400, "Estado inválido.")
+    workflow = item.workflow or RequestWorkflow(request_id=item.id, requested_by="")
+    if workflow.id is None:
+        db.add(workflow)
+    workflow.assigned_to = assigned_to.strip()
+    workflow.correction_note = correction_note.strip()
     item.status = status_value
     item.response = response.strip()
-    if status_value in {"Resuelta", "Rechazada"}:
+    if status_value in {"Rechazada", "Aplicada"}:
         item.resolved_at = datetime.utcnow()
+    elif status_value not in {"Rechazada", "Aplicada"}:
+        item.resolved_at = None
+    note = response.strip() or correction_note.strip() or f"Estado actualizado a {status_value}."
+    db.add(RequestEvent(request_id=item.id, event_type="Revisión", status=status_value, note=note, user_email=user.email))
     write_audit(db, user, "actualizar_estado", "solicitud", str(item.id), status_value)
     db.commit()
-    return RedirectResponse("/app/requests", status_code=303)
+    return RedirectResponse(f"/app/requests/{item.id}", status_code=303)
+
+
+@app.post("/app/requests/{request_id}/attachment")
+async def request_add_attachment(
+    request_id: int,
+    attachment: UploadFile = File(...),
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    item = db.get(CompanyRequest, request_id)
+    if not item or item.company_id not in company_ids_for_user(db, user):
+        raise HTTPException(404)
+    if not settings.files_enabled:
+        return RedirectResponse(f"/app/requests/{request_id}?error=files", status_code=303)
+    if attachment.content_type not in ALLOWED_UPLOAD_TYPES:
+        raise HTTPException(400, "Formato no permitido.")
+    content = await attachment.read(MAX_UPLOAD_SIZE + 1)
+    if len(content) > MAX_UPLOAD_SIZE:
+        raise HTTPException(413, "El archivo supera 10 MB.")
+    original = safe_filename(attachment.filename or "archivo")
+    stored = f"request_{item.id}_{uuid.uuid4().hex}_{original}"
+    (UPLOAD_DIR / stored).write_bytes(content)
+    db.add(RequestAttachment(request_id=item.id, stored_name=stored, original_name=original, content_type=attachment.content_type or "application/octet-stream", uploaded_by=user.email))
+    db.add(RequestEvent(request_id=item.id, event_type="Documento", status=item.status, note=f"Archivo adjunto: {original}", user_email=user.email))
+    write_audit(db, user, "subir", "adjunto_solicitud", str(item.id), original)
+    db.commit()
+    return RedirectResponse(f"/app/requests/{request_id}", status_code=303)
+
+
+@app.get("/app/requests/{request_id}/attachments/{attachment_id}")
+def request_download_attachment(request_id: int, attachment_id: int, user: User = Depends(require_user), db: Session = Depends(get_db)):
+    item = db.get(CompanyRequest, request_id)
+    attachment = db.get(RequestAttachment, attachment_id)
+    if not item or not attachment or attachment.request_id != item.id or item.company_id not in company_ids_for_user(db, user):
+        raise HTTPException(404)
+    path = UPLOAD_DIR / attachment.stored_name
+    if not path.exists():
+        raise HTTPException(404, "Archivo no disponible.")
+    write_audit(db, user, "descargar", "adjunto_solicitud", str(attachment.id), attachment.original_name)
+    db.commit()
+    return FileResponse(path, media_type=attachment.content_type, filename=attachment.original_name)
+
+
+@app.post("/app/requests/{request_id}/apply")
+def request_apply(
+    request_id: int,
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    item = db.get(CompanyRequest, request_id)
+    if not item or item.company_id not in company_ids_for_user(db, user):
+        raise HTTPException(404)
+    if item.status != "Aprobada":
+        return RedirectResponse(f"/app/requests/{item.id}?error=approval", status_code=303)
+    workflow = item.workflow
+    if not workflow or workflow.applied:
+        return RedirectResponse(f"/app/requests/{item.id}?error=applied", status_code=303)
+    payload = request_payload(item)
+    effective = workflow.effective_date or date.today()
+    employee = db.get(Employee, workflow.employee_id) if workflow.employee_id else None
+    if employee and employee.company_id != item.company_id:
+        raise HTTPException(400, "Funcionario inválido.")
+
+    if item.request_type == "Alta de funcionario":
+        if not payload.get("full_name") or not payload.get("document_number"):
+            return RedirectResponse(f"/app/requests/{item.id}?error=data", status_code=303)
+        employee = Employee(
+            company_id=item.company_id,
+            full_name=payload.get("full_name", "").strip(),
+            document_number=payload.get("document_number", "").strip(),
+            position=payload.get("position", "").strip(),
+            admission_date=effective,
+            base_salary=optional_int(payload.get("base_salary")),
+            ips_contributor=bool(payload.get("ips_contributor", True)),
+            email=payload.get("email", "").strip(),
+            phone=payload.get("phone", "").strip(),
+            status="Activo",
+        )
+        db.add(employee)
+        try:
+            db.flush()
+        except IntegrityError:
+            db.rollback()
+            return RedirectResponse(f"/app/requests/{item.id}?error=duplicate", status_code=303)
+        workflow.employee_id = employee.id
+        add_employee_history(db, user, employee, "Alta", effective, "", "Activo", f"Creado desde la solicitud #{item.id}.")
+    elif item.request_type == "Baja de funcionario":
+        if not employee:
+            return RedirectResponse(f"/app/requests/{item.id}?error=employee", status_code=303)
+        previous = employee.status
+        employee.status = "Inactivo"
+        employee.termination_date = effective
+        add_employee_history(db, user, employee, "Baja", effective, previous, "Inactivo", f"Aplicada desde la solicitud #{item.id}.")
+    elif item.request_type == "Cambio salarial":
+        if not employee or optional_int(payload.get("amount")) <= 0:
+            return RedirectResponse(f"/app/requests/{item.id}?error=data", status_code=303)
+        previous = employee.base_salary
+        employee.base_salary = optional_int(payload.get("amount"))
+        add_employee_history(db, user, employee, "Cambio salarial", effective, str(previous), str(employee.base_salary), f"Aplicado desde la solicitud #{item.id}.")
+    elif item.request_type == "Cambio de cargo":
+        if not employee or not payload.get("new_position"):
+            return RedirectResponse(f"/app/requests/{item.id}?error=data", status_code=303)
+        previous = employee.position
+        employee.position = payload.get("new_position", "").strip()
+        add_employee_history(db, user, employee, "Cambio de cargo", effective, previous, employee.position, f"Aplicado desde la solicitud #{item.id}.")
+    elif item.request_type == "Vacaciones":
+        if not employee:
+            return RedirectResponse(f"/app/requests/{item.id}?error=employee", status_code=303)
+        start = date.fromisoformat(payload["start_date"]) if payload.get("start_date") else None
+        end = date.fromisoformat(payload["end_date"]) if payload.get("end_date") else None
+        year = int(payload.get("period_year") or (start.year if start else effective.year))
+        days = int(payload.get("entitled_days") or payload.get("quantity") or 0)
+        db.add(Vacation(employee_id=employee.id, period_year=year, entitled_days=max(0, days), used_days=max(0, days), start_date=start, end_date=end, status="Aprobada", notes=f"Generado desde solicitud #{item.id}. {item.detail}"))
+    elif item.request_type in {"Ausencia o reposo", "Horas extra", "Bonificación o descuento"}:
+        if not employee:
+            return RedirectResponse(f"/app/requests/{item.id}?error=employee", status_code=303)
+        period = workflow.period or effective.strftime("%Y-%m")
+        amount = optional_int(payload.get("amount"))
+        movement = payload.get("movement_kind", "Bonificación")
+        income = amount if item.request_type == "Horas extra" or movement == "Bonificación" else 0
+        discount = amount if item.request_type == "Bonificación o descuento" and movement == "Descuento" else 0
+        start = date.fromisoformat(payload["start_date"]) if payload.get("start_date") else None
+        end = date.fromisoformat(payload["end_date"]) if payload.get("end_date") else None
+        db.add(PayrollNovelty(
+            company_id=item.company_id,
+            employee_id=employee.id,
+            request_id=item.id,
+            period=period,
+            novelty_type=item.request_type,
+            concept=item.subject,
+            quantity=optional_float(payload.get("quantity")),
+            income_amount=income,
+            discount_amount=discount,
+            date_from=start,
+            date_to=end,
+            status="Pendiente",
+            notes=item.detail,
+            created_by=user.email,
+        ))
+
+    workflow.applied = True
+    workflow.applied_at = datetime.utcnow()
+    workflow.applied_by = user.email
+    item.status = "Aplicada"
+    item.resolved_at = datetime.utcnow()
+    if not item.response:
+        item.response = "Solicitud aprobada y aplicada al registro laboral."
+    db.add(RequestEvent(request_id=item.id, event_type="Aplicación", status="Aplicada", note="La solicitud fue incorporada a los registros del sistema.", user_email=user.email))
+    write_audit(db, user, "aplicar", "solicitud", str(item.id), item.request_type)
+    db.commit()
+    return RedirectResponse(f"/app/requests/{item.id}?applied=1", status_code=303)
 
 
 @app.get("/app/payrolls", response_class=HTMLResponse)
