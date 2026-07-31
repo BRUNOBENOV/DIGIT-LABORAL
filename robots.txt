@@ -1,2 +1,3 @@
 User-agent: *
 Allow: /
+Sitemap: https://brunobenov.github.io/DIGIT-LABORAL/sitemap.xml

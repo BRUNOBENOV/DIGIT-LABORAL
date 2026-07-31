@@ -1,22 +1,19 @@
-DIGIT LABORAL — LEER PRIMERO
+DIGIT LABORAL — VERSIÓN 1.0 PREVIEW
 
-1) Para ver el diseño sin instalar nada:
-   Abrí el archivo preview.html con doble clic.
+WEB PÚBLICA:
+Abrí index.html.
 
-2) Para probar el sistema completo con base de datos:
-   - Instalá Python 3.11 o superior.
-   - Ejecutá run.bat.
-   - Abrí http://127.0.0.1:8000
-
-Acceso principal de demostración:
+SISTEMA DEMOSTRATIVO:
+Abrí login.html y utilizá:
 Correo: admin@digitlaboral.com.py
 Contraseña: demo123
 
-Administración general:
-Correo: sistema@digitlaboral.com.py
-Contraseña: Digit2026!
+PUBLICAR EN GITHUB PAGES:
+Leé SUBIR_A_GITHUB.md y utilizá el paquete digit-laboral-publicar-github-v12.zip.
+
+APLICACIÓN CON BASE DE DATOS:
+Ejecutá run.bat en Windows o ./run.sh en Linux/macOS.
+Luego abrí http://127.0.0.1:8000
 
 IMPORTANTE:
-No cargues datos reales antes de cambiar las contraseñas y completar la lista SECURITY_CHECKLIST.md.
-
-Para publicarlo en internet, leé DEPLOYMENT.md.
+La demostración pública solo admite datos ficticios. Antes de usar información real, completá SECURITY_CHECKLIST.md y desplegá el backend con PostgreSQL, HTTPS y copias de seguridad.

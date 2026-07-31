@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Optional
 
@@ -22,7 +22,7 @@ class Studio(Base):
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     payment_status: Mapped[str] = mapped_column(String(30), default="Activo")
     next_payment_at: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
 
     users: Mapped[list["User"]] = relationship(back_populates="studio")
     companies: Mapped[list["Company"]] = relationship(back_populates="studio", cascade="all, delete-orphan")
@@ -41,7 +41,7 @@ class User(Base):
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     must_change_password: Mapped[bool] = mapped_column(Boolean, default=True)
     last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
 
     studio: Mapped[Optional[Studio]] = relationship(back_populates="users")
     company: Mapped[Optional["Company"]] = relationship(back_populates="users")
@@ -58,7 +58,7 @@ class ActivationRequest(Base):
     estimated_companies: Mapped[int] = mapped_column(Integer, default=1)
     message: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[str] = mapped_column(String(30), default="Pendiente")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
 
 
 class Company(Base):
@@ -80,7 +80,7 @@ class Company(Base):
     responsible_name: Mapped[str] = mapped_column(String(160), default="Sin asignar")
     status: Mapped[str] = mapped_column(String(30), default="Activa")
     notes: Mapped[str] = mapped_column(Text, default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
 
     studio: Mapped[Studio] = relationship(back_populates="companies")
     branches: Mapped[list["Branch"]] = relationship(back_populates="company", cascade="all, delete-orphan")
@@ -126,7 +126,7 @@ class Employee(Base):
     status: Mapped[str] = mapped_column(String(30), default="Activo")
     termination_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     notes: Mapped[str] = mapped_column(Text, default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
 
     company: Mapped[Company] = relationship(back_populates="employees")
     branch: Mapped[Optional[Branch]] = relationship()
@@ -144,7 +144,7 @@ class CompanyRequest(Base):
     priority: Mapped[str] = mapped_column(String(30), default="Normal")
     status: Mapped[str] = mapped_column(String(30), default="Pendiente")
     response: Mapped[str] = mapped_column(Text, default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
     resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     company: Mapped[Company] = relationship(back_populates="requests")
@@ -165,7 +165,7 @@ class Payroll(Base):
     total_net: Mapped[int] = mapped_column(Integer, default=0)
     created_by: Mapped[str] = mapped_column(String(180), default="")
     reviewed_by: Mapped[str] = mapped_column(String(180), default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
     closed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     company: Mapped[Company] = relationship(back_populates="payrolls")
@@ -208,7 +208,7 @@ class Vacation(Base):
     end_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     status: Mapped[str] = mapped_column(String(30), default="Pendiente")
     notes: Mapped[str] = mapped_column(Text, default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
 
     employee: Mapped[Employee] = relationship()
 
@@ -224,7 +224,7 @@ class Aguinaldo(Base):
     calculated_amount: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[str] = mapped_column(String(30), default="Borrador")
     notes: Mapped[str] = mapped_column(Text, default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
 
     employee: Mapped[Employee] = relationship()
 
@@ -241,7 +241,7 @@ class Document(Base):
     original_name: Mapped[str] = mapped_column(String(260))
     content_type: Mapped[str] = mapped_column(String(100), default="application/octet-stream")
     uploaded_by: Mapped[str] = mapped_column(String(180), default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
 
     company: Mapped[Company] = relationship(back_populates="documents")
     employee: Mapped[Optional[Employee]] = relationship()
@@ -288,4 +288,4 @@ class AuditLog(Base):
     entity: Mapped[str] = mapped_column(String(80))
     entity_id: Mapped[str] = mapped_column(String(80), default="")
     detail: Mapped[str] = mapped_column(Text, default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))

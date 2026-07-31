@@ -1,0 +1,14 @@
+{
+  "name": "Digit Laboral",
+  "short_name": "Digit Laboral",
+  "description": "Gestión laboral para estudios contables paraguayos.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#071a3d",
+  "theme_color": "#071a3d",
+  "lang": "es-PY",
+  "icons": [
+    {"src":"app/static/victors-logo.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}
+  ]
+}

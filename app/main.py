@@ -7,7 +7,7 @@ import re
 import secrets
 import uuid
 from contextlib import asynccontextmanager
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Annotated
 
@@ -19,6 +19,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from starlette.middleware.sessions import SessionMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from .auth import hash_password, verify_password
 from .config import settings
@@ -62,7 +63,10 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="Digit Laboral", version="0.9.0", lifespan=lifespan)
+if settings.environment == "production" and settings.secret_key == "cambiar-esta-clave-en-produccion":
+    raise RuntimeError("DIGIT_SECRET_KEY debe configurarse con una clave segura en producción.")
+
+app = FastAPI(title="Digit Laboral", version="1.0.0-preview", lifespan=lifespan)
 app.add_middleware(
     SessionMiddleware,
     secret_key=settings.secret_key,
@@ -70,6 +74,23 @@ app.add_middleware(
     https_only=settings.secure_cookies,
     max_age=60 * 60 * 12,
 )
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(settings.allowed_hosts))
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; "
+        "script-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self'; frame-ancestors 'self'",
+    )
+    if settings.secure_cookies:
+        response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+    return response
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "app" / "static")), name="static")
 templates = Jinja2Templates(directory=str(BASE_DIR / "app" / "templates"))
 
@@ -238,7 +259,7 @@ def login_action(
         return render(request, "login.html", db, error="La cuenta todavía no está habilitada o su plan se encuentra suspendido.")
     request.session.clear()
     request.session["user_id"] = user.id
-    user.last_login_at = datetime.utcnow()
+    user.last_login_at = datetime.now(UTC)
     write_audit(db, user, "inicio_sesion", "usuario", str(user.id))
     db.commit()
     return RedirectResponse("/admin" if user.role == "superadmin" else "/app", status_code=303)
@@ -566,7 +587,7 @@ def request_status(
     item.status = status_value
     item.response = response.strip()
     if status_value in {"Resuelta", "Rechazada"}:
-        item.resolved_at = datetime.utcnow()
+        item.resolved_at = datetime.now(UTC)
     write_audit(db, user, "actualizar_estado", "solicitud", str(item.id), status_value)
     db.commit()
     return RedirectResponse("/app/requests", status_code=303)
@@ -676,7 +697,7 @@ def payroll_status(
         raise HTTPException(404)
     payroll.status = status_value
     if status_value == "Cerrada":
-        payroll.closed_at = datetime.utcnow()
+        payroll.closed_at = datetime.now(UTC)
         payroll.reviewed_by = user.email
     write_audit(db, user, "actualizar_estado", "liquidacion_mensual", str(payroll.id), status_value)
     db.commit()
@@ -960,4 +981,4 @@ def admin_activation_status(
 @app.get("/health")
 def health(db: Session = Depends(get_db)):
     db.scalar(select(func.count(User.id)))
-    return {"status": "ok", "app": settings.app_name, "environment": settings.environment, "version": "0.9.0"}
+    return {"status": "ok", "app": settings.app_name, "environment": settings.environment, "version": "1.0.0-preview"}
