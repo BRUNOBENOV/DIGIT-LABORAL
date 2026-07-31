@@ -1,0 +1,21 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: digit_laboral
+      POSTGRES_USER: digit
+      POSTGRES_PASSWORD: digit_local
+    volumes:
+      - digit_postgres:/var/lib/postgresql/data
+  web:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://digit:digit_local@db:5432/digit_laboral
+      DIGIT_SECRET_KEY: desarrollo-local-cambiar
+      SECURE_COOKIES: "false"
+    depends_on:
+      - db
+volumes:
+  digit_postgres:

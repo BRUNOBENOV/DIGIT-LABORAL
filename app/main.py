@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import csv
 import io
-import json
 import os
 import re
 import secrets
@@ -33,15 +32,10 @@ from .models import (
     CompanyRequest,
     Document,
     Employee,
-    EmployeeHistory,
     LaborArticle,
     LaborParameter,
     Payroll,
     PayrollLine,
-    PayrollNovelty,
-    RequestAttachment,
-    RequestEvent,
-    RequestWorkflow,
     Studio,
     User,
     Vacation,
@@ -68,7 +62,7 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="Digit Laboral", version="0.13.0", lifespan=lifespan)
+app = FastAPI(title="Digit Laboral", version="0.9.0", lifespan=lifespan)
 app.add_middleware(
     SessionMiddleware,
     secret_key=settings.secret_key,
@@ -129,43 +123,6 @@ def company_allowed(db: Session, user: User, company_id: int) -> Company:
     return company
 
 
-def employee_allowed(db: Session, user: User, employee_id: int) -> Employee:
-    employee = db.get(Employee, employee_id)
-    if not employee or employee.company_id not in company_ids_for_user(db, user):
-        raise HTTPException(404, "Funcionario no encontrado.")
-    return employee
-
-
-def branch_allowed(db: Session, user: User, branch_id: int) -> Branch:
-    branch = db.get(Branch, branch_id)
-    if not branch or branch.company_id not in company_ids_for_user(db, user):
-        raise HTTPException(404, "Sucursal no encontrada.")
-    return branch
-
-
-def add_employee_history(
-    db: Session,
-    user: User,
-    employee: Employee,
-    event_type: str,
-    effective_date: date | None = None,
-    previous_value: str = "",
-    new_value: str = "",
-    detail: str = "",
-) -> None:
-    db.add(
-        EmployeeHistory(
-            employee_id=employee.id,
-            event_type=event_type,
-            effective_date=effective_date or date.today(),
-            previous_value=previous_value,
-            new_value=new_value,
-            detail=detail,
-            created_by=user.email,
-        )
-    )
-
-
 def write_audit(db: Session, user: User, action: str, entity: str, entity_id: str = "", detail: str = "") -> None:
     db.add(
         AuditLog(
@@ -215,45 +172,6 @@ def safe_filename(name: str) -> str:
     base = Path(name).name
     cleaned = re.sub(r"[^A-Za-z0-9._-]", "_", base)
     return cleaned[:180] or "archivo"
-
-
-def request_payload(item: CompanyRequest) -> dict:
-    if not item.workflow or not item.workflow.payload_json:
-        return {}
-    try:
-        value = json.loads(item.workflow.payload_json)
-        return value if isinstance(value, dict) else {}
-    except (TypeError, ValueError, json.JSONDecodeError):
-        return {}
-
-
-def optional_int(value: str | int | None) -> int:
-    if value is None or value == "":
-        return 0
-    try:
-        return max(0, int(str(value).replace(".", "").replace(",", "")))
-    except ValueError:
-        return 0
-
-
-def optional_float(value: str | float | None) -> float:
-    if value is None or value == "":
-        return 0
-    try:
-        return max(0, float(str(value).replace(",", ".")))
-    except ValueError:
-        return 0
-
-
-def optional_date(value: str | date | None) -> date | None:
-    if value is None or value == "":
-        return None
-    if isinstance(value, date):
-        return value
-    try:
-        return date.fromisoformat(str(value).strip())
-    except ValueError:
-        return None
 
 
 def recalculate_payroll(db: Session, payroll: Payroll) -> None:
@@ -429,22 +347,7 @@ def company_detail(request: Request, company_id: int, user: User = Depends(requi
     branches = list(db.scalars(select(Branch).where(Branch.company_id == company_id).order_by(Branch.name)))
     payrolls = list(db.scalars(select(Payroll).where(Payroll.company_id == company_id).order_by(Payroll.period.desc()).limit(6)))
     documents = list(db.scalars(select(Document).where(Document.company_id == company_id).order_by(Document.created_at.desc()).limit(8)))
-    company_users = list(db.scalars(select(User).where(User.company_id == company_id).order_by(User.full_name)))
-    active_employees = sum(1 for item in employees if item.status == "Activo")
-    return render(
-        request,
-        "company_detail.html",
-        db,
-        user,
-        company=company,
-        employees=employees,
-        active_employees=active_employees,
-        requests_list=requests_list,
-        branches=branches,
-        payrolls=payrolls,
-        documents=documents,
-        company_users=company_users,
-    )
+    return render(request, "company_detail.html", db, user, company=company, employees=employees, requests_list=requests_list, branches=branches, payrolls=payrolls, documents=documents)
 
 
 @app.post("/app/companies/{company_id}/edit")
@@ -511,37 +414,6 @@ def add_branch(
     return RedirectResponse(f"/app/companies/{company_id}", status_code=303)
 
 
-@app.post("/app/branches/{branch_id}/edit")
-def edit_branch(
-    branch_id: int,
-    name: Annotated[str, Form()],
-    city: Annotated[str, Form()] = "",
-    address: Annotated[str, Form()] = "",
-    user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
-    db: Session = Depends(get_db),
-):
-    branch = branch_allowed(db, user, branch_id)
-    branch.name = name.strip()
-    branch.city = city.strip()
-    branch.address = address.strip()
-    write_audit(db, user, "editar", "sucursal", str(branch.id), branch.name)
-    db.commit()
-    return RedirectResponse(f"/app/companies/{branch.company_id}", status_code=303)
-
-
-@app.post("/app/branches/{branch_id}/toggle")
-def toggle_branch(
-    branch_id: int,
-    user: User = Depends(require_roles("administrador", "contador")),
-    db: Session = Depends(get_db),
-):
-    branch = branch_allowed(db, user, branch_id)
-    branch.active = not branch.active
-    write_audit(db, user, "actualizar_estado", "sucursal", str(branch.id), "Activa" if branch.active else "Inactiva")
-    db.commit()
-    return RedirectResponse(f"/app/companies/{branch.company_id}", status_code=303)
-
-
 @app.get("/app/employees", response_class=HTMLResponse)
 def employees_page(request: Request, q: str = "", company_id: int | None = None, user: User = Depends(require_user), db: Session = Depends(get_db)):
     company_ids = company_ids_for_user(db, user)
@@ -602,118 +474,37 @@ def add_employee(
     except IntegrityError:
         db.rollback()
         return RedirectResponse("/app/employees?duplicate=1", status_code=303)
-    add_employee_history(
-        db, user, employee, "Alta", employee.admission_date, "", "Activo",
-        f"Ingreso a {employee.company.legal_name if employee.company else 'la empresa'} como {employee.position}.",
-    )
-    add_employee_history(db, user, employee, "Salario inicial", employee.admission_date, "", str(employee.base_salary), "Remuneración base registrada al alta.")
     write_audit(db, user, "crear", "funcionario", str(employee.id), employee.full_name)
     db.commit()
-    return RedirectResponse(f"/app/employees/{employee.id}", status_code=303)
-
-
-@app.get("/app/employees/{employee_id}", response_class=HTMLResponse)
-def employee_detail(
-    request: Request,
-    employee_id: int,
-    user: User = Depends(require_user),
-    db: Session = Depends(get_db),
-):
-    employee = employee_allowed(db, user, employee_id)
-    branches = list(db.scalars(select(Branch).where(Branch.company_id == employee.company_id).order_by(Branch.name)))
-    history = list(db.scalars(select(EmployeeHistory).where(EmployeeHistory.employee_id == employee_id).order_by(EmployeeHistory.effective_date.desc(), EmployeeHistory.created_at.desc())))
-    payroll_lines = list(db.scalars(select(PayrollLine).where(PayrollLine.employee_id == employee_id).order_by(PayrollLine.id.desc()).limit(8)))
-    vacations = list(db.scalars(select(Vacation).where(Vacation.employee_id == employee_id).order_by(Vacation.period_year.desc()).limit(6)))
-    documents = list(db.scalars(select(Document).where(Document.employee_id == employee_id).order_by(Document.created_at.desc()).limit(8)))
-    minimum_salary = db.scalar(select(LaborParameter).where(LaborParameter.key == "minimum_monthly_salary_general", LaborParameter.active.is_(True)))
-    return render(
-        request,
-        "employee_detail.html",
-        db,
-        user,
-        employee=employee,
-        branches=branches,
-        history=history,
-        payroll_lines=payroll_lines,
-        vacations=vacations,
-        documents=documents,
-        minimum_salary=minimum_salary,
-    )
+    return RedirectResponse("/app/employees", status_code=303)
 
 
 @app.post("/app/employees/{employee_id}/edit")
 def edit_employee(
     employee_id: int,
     full_name: Annotated[str, Form()],
-    document_number: Annotated[str, Form()],
     position_name: Annotated[str, Form(alias="position")],
-    admission_date: Annotated[date, Form()],
     base_salary: Annotated[int, Form()],
-    branch_id: Annotated[int | None, Form()] = None,
-    birth_date: Annotated[date | None, Form()] = None,
-    contract_type: Annotated[str, Form()] = "Tiempo indefinido",
-    payment_frequency: Annotated[str, Form()] = "Mensual",
     email: Annotated[str, Form()] = "",
     phone: Annotated[str, Form()] = "",
     address: Annotated[str, Form()] = "",
     notes: Annotated[str, Form()] = "",
-    ips_contributor: Annotated[str | None, Form()] = None,
     user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
     db: Session = Depends(get_db),
 ):
-    employee = employee_allowed(db, user, employee_id)
-    previous_salary = employee.base_salary
-    previous_position = employee.position
-    if branch_id:
-        branch = branch_allowed(db, user, branch_id)
-        if branch.company_id != employee.company_id:
-            raise HTTPException(400, "La sucursal no pertenece a la empresa del funcionario.")
+    employee = db.get(Employee, employee_id)
+    if not employee or employee.company_id not in company_ids_for_user(db, user):
+        raise HTTPException(404)
     employee.full_name = full_name.strip()
-    employee.document_number = document_number.strip()
-    employee.birth_date = birth_date
     employee.position = position_name.strip()
-    employee.admission_date = admission_date
-    employee.contract_type = contract_type.strip()
-    employee.payment_frequency = payment_frequency.strip()
-    employee.branch_id = branch_id or None
     employee.base_salary = max(0, base_salary)
-    employee.ips_contributor = ips_contributor == "on"
     employee.email = email.strip()
     employee.phone = phone.strip()
     employee.address = address.strip()
     employee.notes = notes.strip()
-    if previous_salary != employee.base_salary:
-        add_employee_history(db, user, employee, "Cambio salarial", date.today(), str(previous_salary), str(employee.base_salary), "Actualización desde el expediente del funcionario.")
-    if previous_position != employee.position:
-        add_employee_history(db, user, employee, "Cambio de cargo", date.today(), previous_position, employee.position, "Actualización de datos laborales.")
     write_audit(db, user, "editar", "funcionario", str(employee.id), employee.full_name)
-    try:
-        db.commit()
-    except IntegrityError:
-        db.rollback()
-        return RedirectResponse(f"/app/employees/{employee_id}?duplicate=1", status_code=303)
-    return RedirectResponse(f"/app/employees/{employee_id}?saved=1", status_code=303)
-
-
-@app.post("/app/employees/{employee_id}/salary")
-def update_employee_salary(
-    employee_id: int,
-    new_salary: Annotated[int, Form()],
-    effective_date: Annotated[date, Form()],
-    reason: Annotated[str, Form()] = "",
-    user: User = Depends(require_roles("administrador", "contador")),
-    db: Session = Depends(get_db),
-):
-    employee = employee_allowed(db, user, employee_id)
-    previous_salary = employee.base_salary
-    employee.base_salary = max(0, new_salary)
-    add_employee_history(
-        db, user, employee, "Cambio salarial", effective_date, str(previous_salary), str(employee.base_salary),
-        reason.strip() or "Actualización de salario base.",
-    )
-    write_audit(db, user, "cambiar_salario", "funcionario", str(employee.id), f"{previous_salary} → {employee.base_salary}")
     db.commit()
-    return RedirectResponse(f"/app/employees/{employee_id}?salary=1", status_code=303)
+    return RedirectResponse("/app/employees", status_code=303)
 
 
 @app.post("/app/employees/{employee_id}/status")
@@ -724,364 +515,61 @@ def employee_status(
     user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
     db: Session = Depends(get_db),
 ):
-    employee = employee_allowed(db, user, employee_id)
-    previous_status = employee.status
+    employee = db.get(Employee, employee_id)
+    if not employee or employee.company_id not in company_ids_for_user(db, user):
+        raise HTTPException(404)
     employee.status = status_value
     employee.termination_date = termination_date if status_value != "Activo" else None
-    add_employee_history(
-        db, user, employee, "Cambio de estado", termination_date or date.today(), previous_status, status_value,
-        "Actualización del vínculo laboral.",
-    )
     write_audit(db, user, "actualizar_estado", "funcionario", str(employee.id), status_value)
     db.commit()
-    return RedirectResponse(f"/app/employees/{employee_id}?status=1", status_code=303)
+    return RedirectResponse("/app/employees", status_code=303)
 
 
 @app.get("/app/requests", response_class=HTMLResponse)
-def requests_page(
-    request: Request,
-    q: str = "",
-    status_filter: str = "",
-    type_filter: str = "",
-    company_filter: int | None = None,
-    user: User = Depends(require_user),
-    db: Session = Depends(get_db),
-):
+def requests_page(request: Request, user: User = Depends(require_user), db: Session = Depends(get_db)):
     company_ids = company_ids_for_user(db, user)
-    query = select(CompanyRequest).where(CompanyRequest.company_id.in_(company_ids)) if company_ids else select(CompanyRequest).where(CompanyRequest.id == -1)
-    if q.strip():
-        term = f"%{q.strip()}%"
-        query = query.where(or_(CompanyRequest.subject.ilike(term), CompanyRequest.detail.ilike(term), CompanyRequest.request_type.ilike(term)))
-    if status_filter.strip():
-        query = query.where(CompanyRequest.status == status_filter)
-    if type_filter.strip():
-        query = query.where(CompanyRequest.request_type == type_filter)
-    if company_filter and company_filter in company_ids:
-        query = query.where(CompanyRequest.company_id == company_filter)
-    items = list(db.scalars(query.order_by(CompanyRequest.created_at.desc())))
+    items = list(db.scalars(select(CompanyRequest).where(CompanyRequest.company_id.in_(company_ids)).order_by(CompanyRequest.created_at.desc()))) if company_ids else []
     companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name))) if company_ids else []
-    employees = list(db.scalars(select(Employee).where(Employee.company_id.in_(company_ids), Employee.status == "Activo").order_by(Employee.full_name))) if company_ids else []
-    studio_users = list(db.scalars(select(User).where(User.studio_id == user.studio_id, User.role.in_(["administrador", "contador", "auxiliar"]), User.active.is_(True)).order_by(User.full_name))) if user.studio_id else []
-    statuses = ["Pendiente", "En revisión", "Requiere corrección", "Aprobada", "Rechazada", "Aplicada"]
-    request_types = [
-        "Alta de funcionario", "Baja de funcionario", "Cambio salarial", "Cambio de cargo",
-        "Vacaciones", "Ausencia o reposo", "Horas extra", "Bonificación o descuento",
-        "Documento laboral", "Otra consulta",
-    ]
-    counts = {name: 0 for name in statuses}
-    for value, total in db.execute(select(CompanyRequest.status, func.count(CompanyRequest.id)).where(CompanyRequest.company_id.in_(company_ids)).group_by(CompanyRequest.status)) if company_ids else []:
-        counts[value] = total
-    return render(
-        request, "requests.html", db, user, items=items, companies=companies, employees=employees,
-        studio_users=studio_users, statuses=statuses, request_types=request_types, counts=counts,
-        q=q, status_filter=status_filter, type_filter=type_filter, company_filter=company_filter,
-        files_enabled=settings.files_enabled,
-    )
+    return render(request, "requests.html", db, user, items=items, companies=companies)
 
 
 @app.post("/app/requests")
-async def add_request(
+def add_request(
+    company_id: Annotated[int, Form()],
     request_type: Annotated[str, Form()],
     detail: Annotated[str, Form()],
-    company_id: Annotated[str, Form()] = "",
     subject: Annotated[str, Form()] = "",
     priority: Annotated[str, Form()] = "Normal",
-    employee_id: Annotated[str, Form()] = "",
-    effective_date: Annotated[str, Form()] = "",
-    period: Annotated[str, Form()] = "",
-    full_name: Annotated[str, Form()] = "",
-    document_number: Annotated[str, Form()] = "",
-    position: Annotated[str, Form()] = "",
-    new_position: Annotated[str, Form()] = "",
-    base_salary: Annotated[str, Form()] = "",
-    amount: Annotated[str, Form()] = "",
-    quantity: Annotated[str, Form()] = "",
-    movement_kind: Annotated[str, Form()] = "Bonificación",
-    start_date: Annotated[str, Form()] = "",
-    end_date: Annotated[str, Form()] = "",
-    period_year: Annotated[str, Form()] = "",
-    entitled_days: Annotated[str, Form()] = "",
-    email: Annotated[str, Form()] = "",
-    phone: Annotated[str, Form()] = "",
-    ips_contributor: Annotated[str | None, Form()] = None,
-    attachment: UploadFile | None = File(None),
     user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ):
-    company_id_value = optional_int(company_id) or None
-    employee_id_value = optional_int(employee_id) or None
-    effective_date_value = optional_date(effective_date)
-    start_date_value = optional_date(start_date)
-    end_date_value = optional_date(end_date)
-    period_year_value = optional_int(period_year) or None
-    entitled_days_value = optional_int(entitled_days) or None
-
-    if user.role == "empresa":
-        company_id_value = user.company_id
-    if not company_id_value:
-        raise HTTPException(400, "Debe seleccionar una empresa.")
-    company = company_allowed(db, user, company_id_value)
-    if employee_id_value:
-        employee = db.get(Employee, employee_id_value)
-        if not employee or employee.company_id != company.id:
-            raise HTTPException(400, "Funcionario inválido para la empresa seleccionada.")
-    payload = {
-        "employee_id": employee_id_value,
-        "effective_date": effective_date_value.isoformat() if effective_date_value else "",
-        "period": period.strip(),
-        "full_name": full_name.strip(),
-        "document_number": document_number.strip(),
-        "position": position.strip(),
-        "new_position": new_position.strip(),
-        "base_salary": optional_int(base_salary),
-        "amount": optional_int(amount),
-        "quantity": optional_float(quantity),
-        "movement_kind": movement_kind.strip(),
-        "start_date": start_date_value.isoformat() if start_date_value else "",
-        "end_date": end_date_value.isoformat() if end_date_value else "",
-        "period_year": period_year_value,
-        "entitled_days": entitled_days_value,
-        "email": email.strip().lower(),
-        "phone": phone.strip(),
-        "ips_contributor": ips_contributor == "on",
-    }
-    item = CompanyRequest(
-        company_id=company.id,
-        request_type=request_type.strip(),
-        subject=subject.strip() or request_type.strip(),
-        detail=detail.strip(),
-        priority=priority,
-        status="Pendiente",
-    )
+    company_allowed(db, user, company_id)
+    item = CompanyRequest(company_id=company_id, request_type=request_type.strip(), subject=subject.strip(), detail=detail.strip(), priority=priority, status="Pendiente")
     db.add(item)
     db.flush()
-    workflow = RequestWorkflow(
-        request_id=item.id,
-        employee_id=employee_id_value,
-        period=period.strip(),
-        effective_date=effective_date_value,
-        requested_by=user.email,
-        payload_json=json.dumps(payload, ensure_ascii=False),
-    )
-    db.add(workflow)
-    db.add(RequestEvent(request_id=item.id, event_type="Creación", status="Pendiente", note="Solicitud enviada al estudio contable.", user_email=user.email))
-    if attachment and attachment.filename:
-        if not settings.files_enabled:
-            raise HTTPException(409, "La carga de archivos no está habilitada en este entorno.")
-        if attachment.content_type not in ALLOWED_UPLOAD_TYPES:
-            raise HTTPException(400, "Formato no permitido.")
-        content = await attachment.read(MAX_UPLOAD_SIZE + 1)
-        if len(content) > MAX_UPLOAD_SIZE:
-            raise HTTPException(413, "El archivo supera 10 MB.")
-        original = safe_filename(attachment.filename)
-        stored = f"request_{item.id}_{uuid.uuid4().hex}_{original}"
-        (UPLOAD_DIR / stored).write_bytes(content)
-        db.add(RequestAttachment(request_id=item.id, stored_name=stored, original_name=original, content_type=attachment.content_type or "application/octet-stream", uploaded_by=user.email))
     write_audit(db, user, "crear", "solicitud", str(item.id), request_type)
     db.commit()
-    return RedirectResponse(f"/app/requests/{item.id}?created=1", status_code=303)
+    return RedirectResponse("/app/requests", status_code=303)
 
 
-@app.get("/app/requests/{request_id}", response_class=HTMLResponse)
-def request_detail(request: Request, request_id: int, user: User = Depends(require_user), db: Session = Depends(get_db)):
-    item = db.get(CompanyRequest, request_id)
-    if not item or item.company_id not in company_ids_for_user(db, user):
-        raise HTTPException(404)
-    workflow = item.workflow
-    payload = request_payload(item)
-    employees = list(db.scalars(select(Employee).where(Employee.company_id == item.company_id).order_by(Employee.full_name)))
-    studio_users = list(db.scalars(select(User).where(User.studio_id == user.studio_id, User.role.in_(["administrador", "contador", "auxiliar"]), User.active.is_(True)).order_by(User.full_name))) if user.studio_id else []
-    return render(
-        request, "request_detail.html", db, user, item=item, workflow=workflow, payload=payload,
-        employees=employees, studio_users=studio_users, files_enabled=settings.files_enabled,
-        created=request.query_params.get("created") == "1", applied=request.query_params.get("applied") == "1",
-        error=request.query_params.get("error", ""),
-    )
-
-
-@app.post("/app/requests/{request_id}/review")
-def request_review(
+@app.post("/app/requests/{request_id}/status")
+def request_status(
     request_id: int,
     status_value: Annotated[str, Form(alias="status")],
     response: Annotated[str, Form()] = "",
-    assigned_to: Annotated[str, Form()] = "",
-    correction_note: Annotated[str, Form()] = "",
     user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
     db: Session = Depends(get_db),
 ):
     item = db.get(CompanyRequest, request_id)
     if not item or item.company_id not in company_ids_for_user(db, user):
         raise HTTPException(404)
-    allowed_statuses = {"Pendiente", "En revisión", "Requiere corrección", "Aprobada", "Rechazada", "Aplicada"}
-    if status_value not in allowed_statuses:
-        raise HTTPException(400, "Estado inválido.")
-    workflow = item.workflow or RequestWorkflow(request_id=item.id, requested_by="")
-    if workflow.id is None:
-        db.add(workflow)
-    workflow.assigned_to = assigned_to.strip()
-    workflow.correction_note = correction_note.strip()
     item.status = status_value
     item.response = response.strip()
-    if status_value in {"Rechazada", "Aplicada"}:
+    if status_value in {"Resuelta", "Rechazada"}:
         item.resolved_at = datetime.utcnow()
-    elif status_value not in {"Rechazada", "Aplicada"}:
-        item.resolved_at = None
-    note = response.strip() or correction_note.strip() or f"Estado actualizado a {status_value}."
-    db.add(RequestEvent(request_id=item.id, event_type="Revisión", status=status_value, note=note, user_email=user.email))
     write_audit(db, user, "actualizar_estado", "solicitud", str(item.id), status_value)
     db.commit()
-    return RedirectResponse(f"/app/requests/{item.id}", status_code=303)
-
-
-@app.post("/app/requests/{request_id}/attachment")
-async def request_add_attachment(
-    request_id: int,
-    attachment: UploadFile = File(...),
-    user: User = Depends(require_user),
-    db: Session = Depends(get_db),
-):
-    item = db.get(CompanyRequest, request_id)
-    if not item or item.company_id not in company_ids_for_user(db, user):
-        raise HTTPException(404)
-    if not settings.files_enabled:
-        return RedirectResponse(f"/app/requests/{request_id}?error=files", status_code=303)
-    if attachment.content_type not in ALLOWED_UPLOAD_TYPES:
-        raise HTTPException(400, "Formato no permitido.")
-    content = await attachment.read(MAX_UPLOAD_SIZE + 1)
-    if len(content) > MAX_UPLOAD_SIZE:
-        raise HTTPException(413, "El archivo supera 10 MB.")
-    original = safe_filename(attachment.filename or "archivo")
-    stored = f"request_{item.id}_{uuid.uuid4().hex}_{original}"
-    (UPLOAD_DIR / stored).write_bytes(content)
-    db.add(RequestAttachment(request_id=item.id, stored_name=stored, original_name=original, content_type=attachment.content_type or "application/octet-stream", uploaded_by=user.email))
-    db.add(RequestEvent(request_id=item.id, event_type="Documento", status=item.status, note=f"Archivo adjunto: {original}", user_email=user.email))
-    write_audit(db, user, "subir", "adjunto_solicitud", str(item.id), original)
-    db.commit()
-    return RedirectResponse(f"/app/requests/{request_id}", status_code=303)
-
-
-@app.get("/app/requests/{request_id}/attachments/{attachment_id}")
-def request_download_attachment(request_id: int, attachment_id: int, user: User = Depends(require_user), db: Session = Depends(get_db)):
-    item = db.get(CompanyRequest, request_id)
-    attachment = db.get(RequestAttachment, attachment_id)
-    if not item or not attachment or attachment.request_id != item.id or item.company_id not in company_ids_for_user(db, user):
-        raise HTTPException(404)
-    path = UPLOAD_DIR / attachment.stored_name
-    if not path.exists():
-        raise HTTPException(404, "Archivo no disponible.")
-    write_audit(db, user, "descargar", "adjunto_solicitud", str(attachment.id), attachment.original_name)
-    db.commit()
-    return FileResponse(path, media_type=attachment.content_type, filename=attachment.original_name)
-
-
-@app.post("/app/requests/{request_id}/apply")
-def request_apply(
-    request_id: int,
-    user: User = Depends(require_roles("administrador", "contador")),
-    db: Session = Depends(get_db),
-):
-    item = db.get(CompanyRequest, request_id)
-    if not item or item.company_id not in company_ids_for_user(db, user):
-        raise HTTPException(404)
-    if item.status != "Aprobada":
-        return RedirectResponse(f"/app/requests/{item.id}?error=approval", status_code=303)
-    workflow = item.workflow
-    if not workflow or workflow.applied:
-        return RedirectResponse(f"/app/requests/{item.id}?error=applied", status_code=303)
-    payload = request_payload(item)
-    effective = workflow.effective_date or date.today()
-    employee = db.get(Employee, workflow.employee_id) if workflow.employee_id else None
-    if employee and employee.company_id != item.company_id:
-        raise HTTPException(400, "Funcionario inválido.")
-
-    if item.request_type == "Alta de funcionario":
-        if not payload.get("full_name") or not payload.get("document_number"):
-            return RedirectResponse(f"/app/requests/{item.id}?error=data", status_code=303)
-        employee = Employee(
-            company_id=item.company_id,
-            full_name=payload.get("full_name", "").strip(),
-            document_number=payload.get("document_number", "").strip(),
-            position=payload.get("position", "").strip(),
-            admission_date=effective,
-            base_salary=optional_int(payload.get("base_salary")),
-            ips_contributor=bool(payload.get("ips_contributor", True)),
-            email=payload.get("email", "").strip(),
-            phone=payload.get("phone", "").strip(),
-            status="Activo",
-        )
-        db.add(employee)
-        try:
-            db.flush()
-        except IntegrityError:
-            db.rollback()
-            return RedirectResponse(f"/app/requests/{item.id}?error=duplicate", status_code=303)
-        workflow.employee_id = employee.id
-        add_employee_history(db, user, employee, "Alta", effective, "", "Activo", f"Creado desde la solicitud #{item.id}.")
-    elif item.request_type == "Baja de funcionario":
-        if not employee:
-            return RedirectResponse(f"/app/requests/{item.id}?error=employee", status_code=303)
-        previous = employee.status
-        employee.status = "Inactivo"
-        employee.termination_date = effective
-        add_employee_history(db, user, employee, "Baja", effective, previous, "Inactivo", f"Aplicada desde la solicitud #{item.id}.")
-    elif item.request_type == "Cambio salarial":
-        if not employee or optional_int(payload.get("amount")) <= 0:
-            return RedirectResponse(f"/app/requests/{item.id}?error=data", status_code=303)
-        previous = employee.base_salary
-        employee.base_salary = optional_int(payload.get("amount"))
-        add_employee_history(db, user, employee, "Cambio salarial", effective, str(previous), str(employee.base_salary), f"Aplicado desde la solicitud #{item.id}.")
-    elif item.request_type == "Cambio de cargo":
-        if not employee or not payload.get("new_position"):
-            return RedirectResponse(f"/app/requests/{item.id}?error=data", status_code=303)
-        previous = employee.position
-        employee.position = payload.get("new_position", "").strip()
-        add_employee_history(db, user, employee, "Cambio de cargo", effective, previous, employee.position, f"Aplicado desde la solicitud #{item.id}.")
-    elif item.request_type == "Vacaciones":
-        if not employee:
-            return RedirectResponse(f"/app/requests/{item.id}?error=employee", status_code=303)
-        start = date.fromisoformat(payload["start_date"]) if payload.get("start_date") else None
-        end = date.fromisoformat(payload["end_date"]) if payload.get("end_date") else None
-        year = int(payload.get("period_year") or (start.year if start else effective.year))
-        days = int(payload.get("entitled_days") or payload.get("quantity") or 0)
-        db.add(Vacation(employee_id=employee.id, period_year=year, entitled_days=max(0, days), used_days=max(0, days), start_date=start, end_date=end, status="Aprobada", notes=f"Generado desde solicitud #{item.id}. {item.detail}"))
-    elif item.request_type in {"Ausencia o reposo", "Horas extra", "Bonificación o descuento"}:
-        if not employee:
-            return RedirectResponse(f"/app/requests/{item.id}?error=employee", status_code=303)
-        period = workflow.period or effective.strftime("%Y-%m")
-        amount = optional_int(payload.get("amount"))
-        movement = payload.get("movement_kind", "Bonificación")
-        income = amount if item.request_type == "Horas extra" or movement == "Bonificación" else 0
-        discount = amount if item.request_type == "Bonificación o descuento" and movement == "Descuento" else 0
-        start = date.fromisoformat(payload["start_date"]) if payload.get("start_date") else None
-        end = date.fromisoformat(payload["end_date"]) if payload.get("end_date") else None
-        db.add(PayrollNovelty(
-            company_id=item.company_id,
-            employee_id=employee.id,
-            request_id=item.id,
-            period=period,
-            novelty_type=item.request_type,
-            concept=item.subject,
-            quantity=optional_float(payload.get("quantity")),
-            income_amount=income,
-            discount_amount=discount,
-            date_from=start,
-            date_to=end,
-            status="Pendiente",
-            notes=item.detail,
-            created_by=user.email,
-        ))
-
-    workflow.applied = True
-    workflow.applied_at = datetime.utcnow()
-    workflow.applied_by = user.email
-    item.status = "Aplicada"
-    item.resolved_at = datetime.utcnow()
-    if not item.response:
-        item.response = "Solicitud aprobada y aplicada al registro laboral."
-    db.add(RequestEvent(request_id=item.id, event_type="Aplicación", status="Aplicada", note="La solicitud fue incorporada a los registros del sistema.", user_email=user.email))
-    write_audit(db, user, "aplicar", "solicitud", str(item.id), item.request_type)
-    db.commit()
-    return RedirectResponse(f"/app/requests/{item.id}?applied=1", status_code=303)
+    return RedirectResponse("/app/requests", status_code=303)
 
 
 @app.get("/app/payrolls", response_class=HTMLResponse)
@@ -1266,7 +754,7 @@ def documents_page(request: Request, user: User = Depends(require_user), db: Ses
     companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name))) if company_ids else []
     employees = list(db.scalars(select(Employee).where(Employee.company_id.in_(company_ids)).order_by(Employee.full_name))) if company_ids else []
     documents = list(db.scalars(select(Document).where(Document.company_id.in_(company_ids)).order_by(Document.created_at.desc()))) if company_ids else []
-    return render(request, "documents.html", db, user, companies=companies, employees=employees, documents=documents, files_enabled=settings.files_enabled, disabled=request.query_params.get("disabled") == "1")
+    return render(request, "documents.html", db, user, companies=companies, employees=employees, documents=documents)
 
 
 @app.post("/app/documents")
@@ -1279,8 +767,6 @@ async def upload_document(
     user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ):
-    if not settings.files_enabled:
-        return RedirectResponse("/app/documents?disabled=1", status_code=303)
     company_allowed(db, user, company_id)
     if file.content_type not in ALLOWED_UPLOAD_TYPES:
         raise HTTPException(400, "Formato no permitido.")
@@ -1474,4 +960,4 @@ def admin_activation_status(
 @app.get("/health")
 def health(db: Session = Depends(get_db)):
     db.scalar(select(func.count(User.id)))
-    return {"status": "ok", "app": settings.app_name, "environment": settings.environment, "version": "0.11.0"}
+    return {"status": "ok", "app": settings.app_name, "environment": settings.environment, "version": "0.9.0"}

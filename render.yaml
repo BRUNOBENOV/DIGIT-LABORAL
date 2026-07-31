@@ -1,37 +1,20 @@
 services:
   - type: web
-    name: digit-laboral-py-demo
+    name: digit-laboral-app
     runtime: docker
-    plan: free
-    region: virginia
+    plan: starter
     healthCheckPath: /health
-    autoDeploy: true
     envVars:
       - key: DATABASE_URL
         fromDatabase:
-          name: digit-laboral-db-demo
+          name: digit-laboral-db
           property: connectionString
       - key: DIGIT_SECRET_KEY
         generateValue: true
-      - key: APP_NAME
-        value: Digit Laboral
       - key: ENVIRONMENT
         value: production
       - key: SECURE_COOKIES
         value: "true"
-      - key: SEED_DEMO_DATA
-        value: "true"
-      - key: FILES_ENABLED
-        value: "false"
-      - key: ADMIN_EMAIL
-        sync: false
-      - key: ADMIN_PASSWORD
-        sync: false
-
 databases:
-  - name: digit-laboral-db-demo
-    plan: free
-    region: virginia
-    databaseName: digit_laboral
-    user: digit_laboral
-    postgresMajorVersion: "17"
+  - name: digit-laboral-db
+    plan: basic-256mb

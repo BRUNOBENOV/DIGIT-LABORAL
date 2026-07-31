@@ -131,23 +131,6 @@ class Employee(Base):
     company: Mapped[Company] = relationship(back_populates="employees")
     branch: Mapped[Optional[Branch]] = relationship()
     payroll_lines: Mapped[list["PayrollLine"]] = relationship(back_populates="employee")
-    history: Mapped[list["EmployeeHistory"]] = relationship(back_populates="employee", cascade="all, delete-orphan")
-
-
-class EmployeeHistory(Base):
-    __tablename__ = "employee_history"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), index=True)
-    event_type: Mapped[str] = mapped_column(String(60), index=True)
-    effective_date: Mapped[date] = mapped_column(Date, default=date.today)
-    previous_value: Mapped[str] = mapped_column(String(240), default="")
-    new_value: Mapped[str] = mapped_column(String(240), default="")
-    detail: Mapped[str] = mapped_column(Text, default="")
-    created_by: Mapped[str] = mapped_column(String(180), default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-
-    employee: Mapped[Employee] = relationship(back_populates="history")
 
 
 class CompanyRequest(Base):
@@ -165,85 +148,6 @@ class CompanyRequest(Base):
     resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     company: Mapped[Company] = relationship(back_populates="requests")
-    workflow: Mapped[Optional["RequestWorkflow"]] = relationship(back_populates="request", uselist=False, cascade="all, delete-orphan")
-    events: Mapped[list["RequestEvent"]] = relationship(back_populates="request", cascade="all, delete-orphan", order_by="RequestEvent.created_at")
-    attachments: Mapped[list["RequestAttachment"]] = relationship(back_populates="request", cascade="all, delete-orphan")
-
-
-class RequestWorkflow(Base):
-    __tablename__ = "request_workflows"
-    __table_args__ = (UniqueConstraint("request_id", name="uq_request_workflow_request"),)
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    request_id: Mapped[int] = mapped_column(ForeignKey("company_requests.id"), index=True)
-    employee_id: Mapped[Optional[int]] = mapped_column(ForeignKey("employees.id"), nullable=True, index=True)
-    period: Mapped[str] = mapped_column(String(7), default="")
-    effective_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
-    assigned_to: Mapped[str] = mapped_column(String(180), default="")
-    requested_by: Mapped[str] = mapped_column(String(180), default="")
-    correction_note: Mapped[str] = mapped_column(Text, default="")
-    payload_json: Mapped[str] = mapped_column(Text, default="{}")
-    applied: Mapped[bool] = mapped_column(Boolean, default=False)
-    applied_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    applied_by: Mapped[str] = mapped_column(String(180), default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-    request: Mapped[CompanyRequest] = relationship(back_populates="workflow")
-    employee: Mapped[Optional[Employee]] = relationship()
-
-
-class RequestEvent(Base):
-    __tablename__ = "request_events"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    request_id: Mapped[int] = mapped_column(ForeignKey("company_requests.id"), index=True)
-    event_type: Mapped[str] = mapped_column(String(80), default="Actualización")
-    status: Mapped[str] = mapped_column(String(40), default="")
-    note: Mapped[str] = mapped_column(Text, default="")
-    user_email: Mapped[str] = mapped_column(String(180), default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-
-    request: Mapped[CompanyRequest] = relationship(back_populates="events")
-
-
-class RequestAttachment(Base):
-    __tablename__ = "request_attachments"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    request_id: Mapped[int] = mapped_column(ForeignKey("company_requests.id"), index=True)
-    stored_name: Mapped[str] = mapped_column(String(260))
-    original_name: Mapped[str] = mapped_column(String(260))
-    content_type: Mapped[str] = mapped_column(String(100), default="application/octet-stream")
-    uploaded_by: Mapped[str] = mapped_column(String(180), default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-
-    request: Mapped[CompanyRequest] = relationship(back_populates="attachments")
-
-
-class PayrollNovelty(Base):
-    __tablename__ = "payroll_novelties"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
-    employee_id: Mapped[Optional[int]] = mapped_column(ForeignKey("employees.id"), nullable=True, index=True)
-    request_id: Mapped[Optional[int]] = mapped_column(ForeignKey("company_requests.id"), nullable=True, unique=True, index=True)
-    period: Mapped[str] = mapped_column(String(7), default="")
-    novelty_type: Mapped[str] = mapped_column(String(100))
-    concept: Mapped[str] = mapped_column(String(180), default="")
-    quantity: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
-    income_amount: Mapped[int] = mapped_column(Integer, default=0)
-    discount_amount: Mapped[int] = mapped_column(Integer, default=0)
-    date_from: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
-    date_to: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
-    status: Mapped[str] = mapped_column(String(30), default="Pendiente")
-    notes: Mapped[str] = mapped_column(Text, default="")
-    created_by: Mapped[str] = mapped_column(String(180), default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-
-    company: Mapped[Company] = relationship()
-    employee: Mapped[Optional[Employee]] = relationship()
-    request: Mapped[Optional[CompanyRequest]] = relationship()
 
 
 class Payroll(Base):

@@ -7,8 +7,7 @@ from sqlalchemy import select
 
 from .auth import hash_password
 from .database import SessionLocal
-from .models import Branch, Company, CompanyRequest, Employee, LaborArticle, LaborParameter, RequestEvent, RequestWorkflow, Studio, User
-from .config import settings
+from .models import Branch, Company, CompanyRequest, Employee, LaborArticle, LaborParameter, Studio, User
 
 SOURCE_213 = "https://www.bacn.gov.py/leyes-paraguayas/2608/ley-n-213-establece-el-codigo-del-trabajo"
 SOURCE_496 = "https://www.bacn.gov.py/leyes-paraguayas/2514/ley-n-496-modifica-amplia-y-deroga-articulos-de-la-ley-21393-codigo-del-trabajo"
@@ -41,41 +40,19 @@ PARAMETERS = [
 
 
 def seed_database() -> None:
-    """Create reference data and, when configured, a protected first admin account.
-
-    Passwords are read from environment variables and are never committed to the
-    public repository. Demo business records can be disabled with
-    ``SEED_DEMO_DATA=false``.
-    """
     with SessionLocal() as db:
-        if settings.system_admin_email and settings.system_admin_password:
-            if db.scalar(select(User.id).where(User.role == "superadmin")) is None:
-                db.add(
-                    User(
-                        full_name="Administrador General",
-                        email=settings.system_admin_email,
-                        password_hash=hash_password(settings.system_admin_password),
-                        role="superadmin",
-                        must_change_password=False,
-                    )
-                )
+        if db.scalar(select(User.id).where(User.role == "superadmin")) is None:
+            db.add(User(full_name="Administrador General", email="sistema@digitlaboral.com.py", password_hash=hash_password("Digit2026!"), role="superadmin", must_change_password=False))
 
-        studio = db.scalar(select(Studio).order_by(Studio.id).limit(1))
-        if studio is None and settings.seed_demo_data:
-            studio = Studio(
-                name="Victor's Contabilidad",
-                phone="0983 102 220",
-                plan_name="Profesional",
-                company_limit=15,
-                payment_status="Activo",
-            )
+        if db.scalar(select(Studio.id).limit(1)) is None:
+            studio = Studio(name="Victor's Contabilidad", phone="0983 102 220", plan_name="Profesional", company_limit=15, payment_status="Activo")
             db.add(studio)
             db.flush()
 
             companies = [
-                Company(studio_id=studio.id, legal_name="Comercial Paraná S.A.", trade_name="Comercial Paraná", ruc="80123456-7", city="Ciudad del Este", address="Av. Demo 123", phone="0981 555 100", email="administracion@parana.demo", legal_representative="María López", ips_employer_number="IPS-102", mtess_employer_number="MTESS-102", responsible_name="Equipo Laboral", status="Activa"),
+                Company(studio_id=studio.id, legal_name="Comercial Paraná S.A.", trade_name="Comercial Paraná", ruc="80123456-7", city="Ciudad del Este", address="Av. Demo 123", phone="0981 555 100", email="administracion@parana.demo", legal_representative="María López", ips_employer_number="IPS-102", mtess_employer_number="MTESS-102", responsible_name="Bruno Benítez", status="Activa"),
                 Company(studio_id=studio.id, legal_name="Servicios del Este S.R.L.", trade_name="Servicios del Este", ruc="80076543-2", city="Hernandarias", phone="0973 444 220", email="rrhh@servicios.demo", legal_representative="Juan González", ips_employer_number="IPS-245", responsible_name="Equipo Laboral", status="Pendiente"),
-                Company(studio_id=studio.id, legal_name="Distribuidora Central E.A.S.", trade_name="Distri Central", ruc="80111111-3", city="Minga Guazú", phone="0984 555 240", responsible_name="Equipo Laboral", status="Activa"),
+                Company(studio_id=studio.id, legal_name="Distribuidora Central E.A.S.", trade_name="Distri Central", ruc="80111111-3", city="Minga Guazú", phone="0984 555 240", responsible_name="Bruno Benítez", status="Activa"),
             ]
             db.add_all(companies)
             db.flush()
@@ -95,20 +72,12 @@ def seed_database() -> None:
                 CompanyRequest(company_id=companies[0].id, request_type="Alta de funcionario", subject="Ingreso de nuevo vendedor", detail="Solicitamos registrar a un nuevo vendedor desde el 1 de agosto.", priority="Alta", status="Pendiente"),
                 CompanyRequest(company_id=companies[1].id, request_type="Cambio salarial", subject="Propuesta de aumento", detail="Revisar aumento propuesto para la funcionaria administrativa.", status="En revisión"),
             ])
-
-        if studio and settings.admin_email and settings.admin_password:
-            existing_admin = db.scalar(select(User.id).where(User.email == settings.admin_email))
-            if existing_admin is None:
-                db.add(
-                    User(
-                        studio_id=studio.id,
-                        full_name="Administrador del estudio",
-                        email=settings.admin_email,
-                        password_hash=hash_password(settings.admin_password),
-                        role="administrador",
-                        must_change_password=False,
-                    )
-                )
+            db.add_all([
+                User(studio_id=studio.id, full_name="Administrador Digit Laboral", email="admin@digitlaboral.com.py", password_hash=hash_password("demo123"), role="administrador", must_change_password=False),
+                User(studio_id=studio.id, full_name="Contador Demo", email="contador@demo.py", password_hash=hash_password("demo123"), role="contador", must_change_password=False),
+                User(studio_id=studio.id, full_name="Auxiliar Demo", email="auxiliar@demo.py", password_hash=hash_password("demo123"), role="auxiliar", must_change_password=False),
+                User(studio_id=studio.id, company_id=companies[0].id, full_name="Empresa Demo", email="empresa@demo.py", password_hash=hash_password("demo123"), role="empresa", must_change_password=False),
+            ])
 
         if db.scalar(select(LaborArticle.id).limit(1)) is None:
             db.add_all([
@@ -119,11 +88,5 @@ def seed_database() -> None:
         for key, label, value, unit, effective, source, notes in PARAMETERS:
             if db.scalar(select(LaborParameter.id).where(LaborParameter.key == key)) is None:
                 db.add(LaborParameter(key=key, label=label, value=value, unit=unit, effective_from=effective, source_url=source, notes=notes))
-
-        # Backfill the v13 workflow for requests created by earlier versions.
-        for request_item in db.scalars(select(CompanyRequest)):
-            if request_item.workflow is None:
-                db.add(RequestWorkflow(request_id=request_item.id, requested_by="Versión anterior", payload_json="{}"))
-                db.add(RequestEvent(request_id=request_item.id, event_type="Importación", status=request_item.status, note="Solicitud incorporada al nuevo flujo de seguimiento.", user_email="sistema"))
 
         db.commit()
