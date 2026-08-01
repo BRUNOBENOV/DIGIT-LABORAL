@@ -2,7 +2,7 @@ services:
   - type: web
     name: digit-laboral-app
     runtime: docker
-    plan: starter
+    plan: free
     healthCheckPath: /health
     envVars:
       - key: DATABASE_URL
@@ -15,6 +15,8 @@ services:
         value: production
       - key: SECURE_COOKIES
         value: "true"
+      - key: ALLOWED_HOSTS
+        value: "*.onrender.com,localhost,127.0.0.1"
 databases:
   - name: digit-laboral-db
-    plan: basic-256mb
+    plan: free

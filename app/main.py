@@ -66,7 +66,7 @@ async def lifespan(_: FastAPI):
 if settings.environment == "production" and settings.secret_key == "cambiar-esta-clave-en-produccion":
     raise RuntimeError("DIGIT_SECRET_KEY debe configurarse con una clave segura en producción.")
 
-app = FastAPI(title="Digit Laboral", version="1.0.0-preview", lifespan=lifespan)
+app = FastAPI(title="Digit Laboral", version="1.1.0-preview", lifespan=lifespan)
 app.add_middleware(
     SessionMiddleware,
     secret_key=settings.secret_key,
@@ -981,4 +981,4 @@ def admin_activation_status(
 @app.get("/health")
 def health(db: Session = Depends(get_db)):
     db.scalar(select(func.count(User.id)))
-    return {"status": "ok", "app": settings.app_name, "environment": settings.environment, "version": "1.0.0-preview"}
+    return {"status": "ok", "app": settings.app_name, "environment": settings.environment, "version": "1.1.0-preview"}

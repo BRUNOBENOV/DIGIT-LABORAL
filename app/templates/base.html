@@ -3,58 +3,52 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#0f2f72">
+  <meta name="theme-color" content="#0a1f4f">
   <title>{% block title %}Digit Laboral{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', path='app.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', path='modern.css') }}">
 </head>
 <body class="{% if user %}app-body{% else %}public-body{% endif %}">
 {% if user %}
-  <aside class="sidebar" id="sidebar">
-    <a class="brand" href="{{ '/admin' if user.role == 'superadmin' else '/app' }}">
-      <span class="brand-mark">DL</span>
-      <span><strong>Digit Laboral</strong><small>Gestión laboral PY</small></span>
+  <header class="modern-topbar">
+    <a class="modern-brand" href="{{ '/admin' if user.role == 'superadmin' else '/app' }}">
+      <span class="modern-brand-mark">DL</span>
+      <span class="modern-brand-copy"><b>Digit Laboral</b><small>CONTROL LABORAL PY</small></span>
     </a>
-    <div class="workspace-card">
-      <span>Espacio de trabajo</span>
-      <strong>{% if user.role == 'superadmin' %}Administración general{% elif studio %}{{ studio.name }}{% else %}Empresa vinculada{% endif %}</strong>
-      <small>{{ user.role|replace('superadmin','Administrador general')|capitalize }}</small>
-    </div>
-    <nav class="side-nav">
+
+    <nav class="modern-nav" aria-label="Navegación principal">
       {% if user.role == 'superadmin' %}
-        <a class="{{ 'active' if active_path.startswith('/admin') else '' }}" href="/admin"><span>⌂</span>Administración</a>
+        <a class="{{ 'active' if active_path.startswith('/admin') else '' }}" href="/admin">Administración</a>
       {% else %}
-        <a class="{{ 'active' if active_path == '/app' else '' }}" href="/app"><span>⌂</span>Inicio</a>
-        <a class="{{ 'active' if active_path.startswith('/app/companies') else '' }}" href="/app/companies"><span>▦</span>Empresas</a>
-        <a class="{{ 'active' if active_path.startswith('/app/employees') else '' }}" href="/app/employees"><span>♙</span>Funcionarios</a>
-        <a class="{{ 'active' if active_path.startswith('/app/requests') else '' }}" href="/app/requests"><span>✉</span>Solicitudes</a>
-        <a class="{{ 'active' if active_path.startswith('/app/payrolls') else '' }}" href="/app/payrolls"><span>₲</span>Liquidaciones</a>
-        <a class="{{ 'active' if active_path.startswith('/app/vacations') else '' }}" href="/app/vacations"><span>☀</span>Vacaciones</a>
-        <a class="{{ 'active' if active_path.startswith('/app/aguinaldo') else '' }}" href="/app/aguinaldo"><span>✦</span>Aguinaldo</a>
-        <a class="{{ 'active' if active_path.startswith('/app/documents') else '' }}" href="/app/documents"><span>▤</span>Documentos</a>
-        <a class="{{ 'active' if active_path.startswith('/app/labor-code') else '' }}" href="/app/labor-code"><span>⚖</span>Código Laboral</a>
-        <a class="{{ 'active' if active_path.startswith('/app/parameters') else '' }}" href="/app/parameters"><span>◉</span>Parámetros</a>
-        {% if user.role == 'administrador' %}
-          <a class="{{ 'active' if active_path.startswith('/app/users') else '' }}" href="/app/users"><span>♟</span>Usuarios</a>
-          <a class="{{ 'active' if active_path.startswith('/app/audit') else '' }}" href="/app/audit"><span>≡</span>Auditoría</a>
-        {% endif %}
+        <a class="{{ 'active' if active_path == '/app' else '' }}" href="/app">Inicio</a>
+        <a class="{{ 'active' if active_path.startswith('/app/companies') or active_path.startswith('/app/employees') else '' }}" href="/app/companies">Mantenimientos</a>
+        <a class="{{ 'active' if active_path.startswith('/app/requests') else '' }}" href="/app/requests">Trámites</a>
+        <a class="{{ 'active' if active_path.startswith('/app/payrolls') or active_path.startswith('/app/vacations') or active_path.startswith('/app/aguinaldo') else '' }}" href="/app/payrolls">Cálculos</a>
+        <a class="{{ 'active' if active_path.startswith('/app/documents') else '' }}" href="/app/documents">Documentos</a>
+        <a class="{{ 'active' if active_path.startswith('/app/labor-code') else '' }}" href="/app/labor-code">Código Laboral</a>
+        {% if user.role == 'administrador' %}<a class="{{ 'active' if active_path.startswith('/app/users') or active_path.startswith('/app/audit') or active_path.startswith('/app/parameters') else '' }}" href="/app/users">Admin</a>{% endif %}
       {% endif %}
     </nav>
-    <div class="sidebar-bottom">
-      {% if studio %}<div class="plan-box"><span>Plan</span><strong>{{ studio.plan_name }}</strong><small>{{ studio.company_limit }} empresas incluidas</small></div>{% endif %}
-      <form method="post" action="/logout"><button class="logout-btn" type="submit">Cerrar sesión</button></form>
+
+    <div class="modern-actions">
+      {% if studio %}<a class="workspace-pill" href="/app/companies"><small>ESPACIO</small><b>{{ studio.name }}</b><span>⌄</span></a>{% endif %}
+      {% if user.role != 'superadmin' %}<a class="modern-search" href="/app/labor-code"><span>⌕</span><span>Buscar en el Código Laboral</span></a>{% endif %}
+      <div class="modern-user"><span class="avatar">{{ user.full_name[:2]|upper }}</span><span><b>{{ user.full_name }}</b><small>{{ user.role|replace('superadmin','Administrador general')|capitalize }}</small></span></div>
+      <form method="post" action="/logout"><button class="modern-logout" type="submit">Salir</button></form>
+      <button class="modern-menu" type="button" data-modern-menu aria-label="Abrir menú">☰</button>
     </div>
-  </aside>
-  <div class="app-shell">
-    <header class="topbar">
-      <button class="menu-toggle" type="button" data-menu>☰</button>
-      <div class="topbar-title"><strong>{% block page_name %}Panel{% endblock %}</strong><small>Digit Laboral</small></div>
-      <div class="top-actions">
-        {% if user.role != 'superadmin' %}<a class="global-search" href="/app/labor-code"><span>⌕</span><span>Buscar en el Código Laboral</span></a>{% endif %}
-        <div class="user-chip"><span class="avatar">{{ user.full_name[:2]|upper }}</span><span><b>{{ user.full_name }}</b><small>{{ user.email }}</small></span></div>
-      </div>
-    </header>
-    <main class="main-content">{% block content %}{% endblock %}</main>
-  </div>
+  </header>
+
+  <nav class="modern-mobile-nav" id="modernMobileNav" aria-label="Navegación móvil">
+    {% if user.role == 'superadmin' %}
+      <a href="/admin">Administración</a>
+    {% else %}
+      <a href="/app">Inicio</a><a href="/app/companies">Mantenimientos</a><a href="/app/requests">Trámites</a><a href="/app/payrolls">Cálculos</a><a href="/app/documents">Documentos</a><a href="/app/labor-code">Código Laboral</a><a href="/app/vacations">Vacaciones</a><a href="/app/aguinaldo">Aguinaldo</a>
+      {% if user.role == 'administrador' %}<a href="/app/users">Usuarios</a><a href="/app/audit">Auditoría</a><a href="/app/parameters">Parámetros</a>{% endif %}
+    {% endif %}
+  </nav>
+
+  <div class="app-shell"><main class="main-content">{% block content %}{% endblock %}</main></div>
 {% else %}
   {% block public_content %}{% endblock %}
 {% endif %}

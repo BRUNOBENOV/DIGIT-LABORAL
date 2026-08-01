@@ -1,2 +1,36 @@
 <!DOCTYPE html>
-<html lang="es-PY"><head><meta charset="utf-8"/><meta content="width=device-width,initial-scale=1" name="viewport"/><meta content="Acceso a Digit Laboral" name="description"/><title>Ingresar | Digit Laboral</title><link href="assets/styles.css" rel="stylesheet"/><meta content="#071a3d" name="theme-color"/><meta content="light dark" name="color-scheme"/><link href="manifest.webmanifest" rel="manifest"/><link href="app/static/victors-logo.png" rel="icon"/><link href="app/static/victors-logo.png" rel="apple-touch-icon"/><link href="assets/enhancements.css" rel="stylesheet"/></head><body class="login-page"><a class="skip-link" href="#loginMain">Saltar al contenido</a><main class="login-shell" id="loginMain"><section class="login-info"><a class="brand" href="index.html" style="color:#fff"><span class="brand-mark" style="background:#fff;color:#2157b7">DL</span><span class="brand-text">Digit Laboral<small style="color:#cad9f1">POR VICTOR'S CONTABILIDAD</small></span></a><h1>Control laboral desde cualquier lugar.</h1><p>Accedé al espacio privado de tu estudio contable, gestioná empresas y funcionarios, y mantené el seguimiento de cálculos, documentos y solicitudes.</p><ul><li>Información separada por estudio</li><li>Roles de administrador, contador, auxiliar y empresa</li><li>Acceso habilitado después de validar el pago</li><li>Registro de acciones importantes</li></ul></section><section class="login-card"><h2>Ingresar al sistema</h2><p>Usá tu correo habilitado por Digit Laboral.</p><form class="form-grid" id="loginForm"><div class="field"><label for="email">Correo electrónico</label><input autocomplete="email" id="email" name="email" placeholder="admin@digitlaboral.com.py" required="" type="email" value=""/></div><div class="field"><label for="password">Contraseña</label><div class="password-wrap"><input autocomplete="current-password" id="password" name="password" placeholder="Contraseña de demostración" required="" type="password" value=""/><button aria-label="Mostrar contraseña" class="password-toggle" id="togglePassword" type="button">Mostrar</button></div></div><button class="btn primary" type="submit">Ingresar</button><p aria-live="polite" class="form-error" id="loginError" role="alert"></p><button class="btn secondary" id="fillDemo" type="button">Completar acceso de demostración</button></form><div class="login-note"><b>Acceso de demostración:</b><br/>admin@digitlaboral.com.py · demo123<br/><br/>Esta página pública no valida credenciales reales. El backend productivo utiliza sesiones seguras y una base PostgreSQL.</div><a class="login-back" href="index.html">← Volver a la página principal</a></section></main><script src="assets/site.js"></script><script src="assets/login.js"></script></body></html>
+<html lang="es-PY">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Acceso seguro a Digit Laboral">
+  <title>Ingresar | Digit Laboral</title>
+  <link href="assets/styles.css" rel="stylesheet">
+  <link href="assets/enhancements.css" rel="stylesheet">
+  <meta name="theme-color" content="#071a3d">
+</head>
+<body class="login-page">
+  <a class="skip-link" href="#loginMain">Saltar al contenido</a>
+  <main class="login-shell" id="loginMain">
+    <section class="login-info">
+      <a class="brand" href="index.html" style="color:#fff"><span class="brand-mark" style="background:#fff;color:#2157b7">DL</span><span class="brand-text">Digit Laboral<small style="color:#cad9f1">POR VICTOR'S CONTABILIDAD</small></span></a>
+      <h1>Control laboral desde cualquier lugar.</h1>
+      <p>Esta pantalla conecta directamente con el sistema privado alojado en Render. Tus datos de acceso no se validan ni se guardan en GitHub Pages.</p>
+      <ul><li>Inicio de sesión en el servidor real</li><li>Datos almacenados en la base central</li><li>Roles y permisos por usuario</li><li>Sesiones protegidas mediante HTTPS</li></ul>
+    </section>
+    <section class="login-card">
+      <h2>Ingresar al sistema</h2>
+      <p>Usá el correo habilitado para tu estudio.</p>
+      <form class="form-grid" method="post" action="https://digit-laboral-py-demo.onrender.com/login">
+        <div class="field"><label for="email">Correo electrónico</label><input autocomplete="email" id="email" name="email" placeholder="nombre@estudio.com.py" required type="email"></div>
+        <div class="field"><label for="password">Contraseña</label><input autocomplete="current-password" id="password" name="password" placeholder="Tu contraseña" required type="password"></div>
+        <button class="btn primary" type="submit">Ingresar de forma segura</button>
+      </form>
+      <div class="login-note"><b>Sistema real:</b><br>Al presionar ingresar, serás enviado al servidor privado de Digit Laboral. La primera apertura puede tardar algunos segundos en el plan gratuito.</div>
+      <a class="btn secondary" href="app.html?demo=1" style="width:100%;margin-top:14px">Abrir demostración sin datos reales</a>
+      <a class="login-back" href="index.html">← Volver a la página principal</a>
+    </section>
+  </main>
+  <script src="assets/site.js"></script>
+</body>
+</html>
