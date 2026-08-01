@@ -30,7 +30,7 @@ def test_certificate_body_uses_snapshot_data():
         3_044_000,
         "Presentación ante entidad bancaria.",
     )
-    assert title == "Certificado de Trabajo A"
+    assert title == "Certificado de Trabajo"
     assert "Empresa Demo S.A." in body
     assert "Juan Pérez" in body
     assert "3.044.000" in body

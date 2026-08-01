@@ -1,16 +1,20 @@
 {% extends "base.html" %}
-{% block title %}Certificados | Digit Laboral{% endblock %}
+{% block title %}Documentos laborales | Digit Laboral{% endblock %}
 {% block content %}
 <div class="page-header certificates-header">
-  <div><span class="eyebrow">GENERACIÓN DE DOCUMENTOS</span><h1>Certificados y documentos laborales</h1><p>Seleccioná un modelo, completá los datos y revisá la vista previa antes de imprimir o guardar.</p></div>
+  <div>
+    <span class="eyebrow">GENERACIÓN DOCUMENTAL</span>
+    <h1>Documentos laborales</h1>
+    <p>Generá documentos con datos del legajo y descargalos en Word o PDF.</p>
+  </div>
   <a class="btn ghost" href="/app/documents">Abrir archivo digital</a>
 </div>
 
-{% if request.query_params.get('created') %}<div class="alert success">El borrador fue guardado correctamente.</div>{% endif %}
-<div class="legal-warning"><b>Revisión obligatoria:</b> los modelos son borradores administrativos. Contratos, preavisos, renuncias y despidos deben revisarse profesionalmente antes de su firma o entrega.</div>
+{% if request.query_params.get('created') %}<div class="alert success">El documento fue guardado correctamente.</div>{% endif %}
+<div class="legal-warning"><b>Control profesional:</b> los modelos administrativos se generan con los datos registrados. Antes de firmar o entregar contratos, preavisos, renuncias, despidos y liquidaciones, verificá fechas, causales, montos y normas aplicables.</div>
 
 {% if user.role == 'empresa' %}
-<section class="panel empty-certificate-state"><h2>Consulta de documentos</h2><p>Tu acceso permite consultar e imprimir los documentos ya generados por el estudio. Para solicitar uno nuevo, utilizá el módulo de Trámites.</p><a class="btn primary" href="/app/requests">Enviar solicitud</a></section>
+<section class="panel empty-certificate-state"><h2>Consulta de documentos</h2><p>Tu acceso permite consultar documentos generados por el estudio. Para solicitar uno nuevo, utilizá Trámites.</p><a class="btn primary" href="/app/requests">Enviar solicitud</a></section>
 {% elif companies and employees %}
 <form method="post" action="/app/certificates" class="certificate-workspace" id="certificateForm">
   <aside class="certificate-type-menu" aria-label="Tipos de documentos">
@@ -21,10 +25,14 @@
   </aside>
 
   <section class="certificate-form-card">
-    <h2 id="certificateFormTitle">{{ certificate_types.values()|list|first }}</h2>
+    <div class="document-form-heading">
+      <div><span class="eyebrow">MODELO SELECCIONADO</span><h2 id="certificateFormTitle">{{ certificate_types.values()|list|first }}</h2></div>
+      <span class="document-format-badge">DOCX + PDF</span>
+    </div>
+
     <label>Empresa
       <select name="company_id" id="certificateCompany" required>
-        {% for company in companies %}<option value="{{ company.id }}" data-name="{{ company.legal_name }}" data-city="{{ company.city }}">{{ company.legal_name }}</option>{% endfor %}
+        {% for company in companies %}<option value="{{ company.id }}" data-name="{{ company.legal_name }}" data-city="{{ company.city }}" data-ruc="{{ company.ruc }}" data-address="{{ company.address }}" data-representative="{{ company.legal_representative }}">{{ company.legal_name }}</option>{% endfor %}
       </select>
     </label>
     <label>Funcionario
@@ -32,23 +40,55 @@
         {% for employee in employees %}<option value="{{ employee.id }}" data-company="{{ employee.company_id }}" data-name="{{ employee.full_name }}" data-document="{{ employee.document_number }}" data-position="{{ employee.position }}" data-admission="{{ employee.admission_date.isoformat() }}" data-admission-text="{{ employee.admission_date|fecha_larga }}" data-salary="{{ employee.base_salary }}">{{ employee.full_name }} · {{ employee.company.legal_name }}</option>{% endfor %}
       </select>
     </label>
-    <label>Ciudad<input name="city" id="certificateCity" value="Ciudad del Este" required></label>
-    <label>Fecha de emisión<input name="issue_date" id="certificateIssueDate" type="date" value="{{ today.isoformat() }}" required></label>
-    <label>Cargo<input name="position" id="certificatePosition" required></label>
-    <label>Fecha de ingreso<input name="admission_date" id="certificateAdmission" type="date" required></label>
+    <div class="document-form-grid">
+      <label>Ciudad<input name="city" id="certificateCity" value="Ciudad del Este" required></label>
+      <label>Fecha de emisión<input name="issue_date" id="certificateIssueDate" type="date" value="{{ today.isoformat() }}" required></label>
+    </div>
+    <div class="document-form-grid">
+      <label>Cargo<input name="position" id="certificatePosition" required></label>
+      <label>Fecha de ingreso<input name="admission_date" id="certificateAdmission" type="date" required></label>
+    </div>
     <label>Salario mensual (Gs.)<input name="salary" id="certificateSalary" type="number" min="0" required></label>
-    <label>Observaciones<textarea name="observations" id="certificateObservations" rows="4" placeholder="Texto adicional, fechas o condiciones que deban quedar expresamente indicadas"></textarea></label>
-    <button class="btn primary full" type="button" id="refreshCertificatePreview">Actualizar vista previa</button>
-    <div class="certificate-actions">
-      <button class="btn ghost" type="submit" name="intent" value="save">Guardar borrador</button>
-      <button class="btn primary" type="submit" name="intent" value="print">Guardar e imprimir</button>
+
+    <fieldset class="document-specific-fields" id="documentSpecificFields">
+      <legend>Datos específicos del documento</legend>
+      <label class="specific-field" data-specific="all">Número interno / recibo<input name="document_number" id="certificateDocumentNumber" placeholder="Ej. 0017237"></label>
+      <div class="document-form-grid specific-field" data-specific="aguinaldo_anual aguinaldo_proporcional">
+        <label>Periodo desde<input name="period_start" id="certificatePeriodStart" type="date"></label>
+        <label>Periodo hasta<input name="period_end" id="certificatePeriodEnd" type="date"></label>
+      </div>
+      <label class="specific-field" data-specific="aguinaldo_anual aguinaldo_proporcional">Monto pagado (Gs.)<input name="amount" id="certificateAmount" type="number" min="0"></label>
+      <label class="specific-field" data-specific="notificacion_preaviso renuncia despido">Fecha efectiva<input name="effective_date" id="certificateEffectiveDate" type="date"></label>
+      <div class="document-form-grid specific-field" data-specific="permiso_paternidad solicitud_vacacion usufructo_vacaciones">
+        <label>Desde<input name="leave_start" id="certificateLeaveStart" type="date"></label>
+        <label>Hasta<input name="leave_end" id="certificateLeaveEnd" type="date"></label>
+      </div>
+      <div class="document-form-grid specific-field" data-specific="constancia">
+        <label>Nacionalidad<input name="nationality" id="certificateNationality" value="paraguaya"></label>
+        <label>Estado civil (opcional)<input name="civil_status" id="certificateCivilStatus"></label>
+      </div>
+      <label class="specific-field" data-specific="permiso_paternidad renuncia solicitud_vacacion">Destinatario<input name="recipient" id="certificateRecipient" value="Encargado/a de Recursos Humanos"></label>
+    </fieldset>
+
+    <label>Observaciones<textarea name="observations" id="certificateObservations" rows="4" placeholder="Texto adicional, fechas, condiciones o aclaraciones"></textarea></label>
+    <button class="btn ghost full" type="button" id="refreshCertificatePreview">Actualizar vista previa</button>
+    <div class="certificate-actions four-actions">
+      <button class="btn ghost" type="submit" name="intent" value="save">Guardar</button>
+      <button class="btn ghost" type="submit" name="intent" value="print">Imprimir</button>
+      <button class="btn word-button" type="submit" name="intent" value="docx">Descargar Word</button>
+      <button class="btn pdf-button" type="submit" name="intent" value="pdf">Descargar PDF</button>
     </div>
   </section>
 
   <section class="certificate-preview-shell" aria-label="Vista previa del documento">
     <article class="certificate-sheet" id="certificatePreview">
+      <header class="preview-letterhead">
+        <span class="preview-mark">DL</span>
+        <div><b id="certificatePreviewHeaderCompany">Empresa</b><small id="certificatePreviewHeaderDetails">RUC · Dirección</small></div>
+      </header>
       <p class="certificate-date" id="certificatePreviewDate">Ciudad del Este</p>
-      <h2 id="certificatePreviewTitle">CERTIFICADO DE TRABAJO A</h2>
+      <h2 id="certificatePreviewTitle">CERTIFICADO DE TRABAJO</h2>
+      <p class="preview-document-number" id="certificatePreviewNumber"></p>
       <div class="certificate-body" id="certificatePreviewBody"></div>
       <div class="certificate-signature"><span></span><b>Firma autorizada</b><small id="certificatePreviewCompany">Empresa</small></div>
       <p class="certificate-draft-note">BORRADOR · REVISAR ANTES DE FIRMAR</p>
@@ -56,13 +96,17 @@
   </section>
 </form>
 {% else %}
-<section class="panel empty-certificate-state"><h2>Primero registrá una empresa y un funcionario</h2><p>Los modelos necesitan datos del legajo para generar la vista previa.</p><a class="btn primary" href="/app/companies">Ir a Mantenimientos</a></section>
+<section class="panel empty-certificate-state"><h2>Primero registrá una empresa y un funcionario</h2><p>Los modelos necesitan datos del legajo.</p><a class="btn primary" href="/app/companies">Ir a Mantenimientos</a></section>
 {% endif %}
 
 <section class="panel generated-documents-panel">
   <div class="panel-head"><div><span>HISTORIAL</span><h2>Documentos generados recientemente</h2></div><a href="/app/documents">Ver archivos subidos</a></div>
-  <div class="table-wrap"><table><thead><tr><th>Documento</th><th>Empresa</th><th>Funcionario</th><th>Fecha</th><th>Creado por</th><th></th></tr></thead><tbody>
-  {% for item in generated %}<tr><td><b>{{ item.title }}</b><small class="table-sub">{{ item.status }}</small></td><td>{{ item.company_name_snapshot }}</td><td>{{ item.employee_name_snapshot or '—' }}</td><td>{{ item.issue_date|fecha }}</td><td>{{ item.created_by }}</td><td><a class="card-link" href="/app/certificates/{{ item.id }}/print">Abrir / imprimir</a></td></tr>{% else %}<tr><td colspan="6" class="empty-state">Todavía no se generaron documentos.</td></tr>{% endfor %}
+  <div class="table-wrap"><table><thead><tr><th>Documento</th><th>Empresa</th><th>Funcionario</th><th>Fecha</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>
+  {% for item in generated %}<tr>
+    <td><b>{{ item.title }}</b><small class="table-sub">{{ item.created_by }}</small></td>
+    <td>{{ item.company_name_snapshot }}</td><td>{{ item.employee_name_snapshot or '—' }}</td><td>{{ item.issue_date|fecha }}</td><td><span class="status-pill borrador">{{ item.status }}</span></td>
+    <td><div class="document-row-actions"><a href="/app/certificates/{{ item.id }}/print">Imprimir</a><a href="/app/certificates/{{ item.id }}/download.docx">Word</a><a href="/app/certificates/{{ item.id }}/download.pdf">PDF</a></div></td>
+  </tr>{% else %}<tr><td colspan="6" class="empty-state">Todavía no se generaron documentos.</td></tr>{% endfor %}
   </tbody></table></div>
 </section>
 {% endblock %}
