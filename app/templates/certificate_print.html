@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{{ certificate.title }} | Digit Laboral</title>
+  <style>
+    *{box-sizing:border-box}body{margin:0;background:#e9eef5;color:#111;font-family:Georgia,"Times New Roman",serif}.print-toolbar{position:sticky;top:0;display:flex;justify-content:center;gap:10px;padding:12px;background:#0a1f4f;z-index:10}.print-toolbar a,.print-toolbar button{border:0;border-radius:9px;padding:10px 15px;background:#fff;color:#0a1f4f;font:700 14px system-ui;cursor:pointer;text-decoration:none}.paper{width:210mm;min-height:297mm;margin:18px auto;background:#fff;padding:24mm 24mm 22mm;box-shadow:0 18px 55px rgba(10,31,79,.18);position:relative}.date{text-align:right;font-size:12pt;margin:0 0 18mm}.paper h1{text-align:center;font-size:15pt;letter-spacing:.08em;margin:0 0 15mm;text-transform:uppercase}.body{white-space:pre-line;text-align:justify;font-size:12pt;line-height:1.65}.signature{width:80mm;margin:34mm auto 0;text-align:center}.signature:before{content:"";display:block;border-top:1px solid #222;margin-bottom:5px}.signature b,.signature span{display:block}.draft{position:absolute;left:0;right:0;bottom:9mm;text-align:center;font:700 8pt system-ui;color:#a1a7b0;letter-spacing:.1em}.meta{font:10pt system-ui;color:#5e6877;margin-top:14mm;border-top:1px solid #ddd;padding-top:6mm}@media print{body{background:#fff}.print-toolbar{display:none}.paper{margin:0;box-shadow:none;width:210mm;min-height:297mm}.meta{display:none}}@media(max-width:900px){.paper{width:calc(100% - 20px);min-height:calc((100vw - 20px)*1.414);padding:9vw}.date,.body{font-size:11pt}}
+  </style>
+</head>
+<body>
+  <div class="print-toolbar"><a href="/app/certificates">← Volver</a><button type="button" onclick="window.print()">Imprimir / Guardar PDF</button></div>
+  <main class="paper">
+    <p class="date">{{ certificate.city }}, {{ certificate.issue_date|fecha_larga }}</p>
+    <h1>{{ certificate.title }}</h1>
+    <div class="body">{{ certificate.body }}</div>
+    <div class="signature"><b>Firma autorizada</b><span>{{ certificate.company_name_snapshot }}</span></div>
+    <p class="meta">Generado por {{ certificate.created_by }} el {{ certificate.created_at|fecha }}. Documento en estado: {{ certificate.status }}.</p>
+    <p class="draft">BORRADOR · REVISAR ANTES DE FIRMAR</p>
+  </main>
+</body>
+</html>

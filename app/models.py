@@ -89,6 +89,7 @@ class Company(Base):
     users: Mapped[list[User]] = relationship(back_populates="company")
     payrolls: Mapped[list["Payroll"]] = relationship(back_populates="company", cascade="all, delete-orphan")
     documents: Mapped[list["Document"]] = relationship(back_populates="company", cascade="all, delete-orphan")
+    generated_certificates: Mapped[list["GeneratedCertificate"]] = relationship(back_populates="company", cascade="all, delete-orphan")
 
 
 class Branch(Base):
@@ -131,6 +132,7 @@ class Employee(Base):
     company: Mapped[Company] = relationship(back_populates="employees")
     branch: Mapped[Optional[Branch]] = relationship()
     payroll_lines: Mapped[list["PayrollLine"]] = relationship(back_populates="employee")
+    generated_certificates: Mapped[list["GeneratedCertificate"]] = relationship(back_populates="employee")
 
 
 class CompanyRequest(Base):
@@ -245,6 +247,32 @@ class Document(Base):
 
     company: Mapped[Company] = relationship(back_populates="documents")
     employee: Mapped[Optional[Employee]] = relationship()
+
+
+class GeneratedCertificate(Base):
+    __tablename__ = "generated_certificates"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    employee_id: Mapped[Optional[int]] = mapped_column(ForeignKey("employees.id"), nullable=True, index=True)
+    document_type: Mapped[str] = mapped_column(String(80), index=True)
+    title: Mapped[str] = mapped_column(String(200))
+    city: Mapped[str] = mapped_column(String(120), default="Ciudad del Este")
+    issue_date: Mapped[date] = mapped_column(Date, default=date.today)
+    company_name_snapshot: Mapped[str] = mapped_column(String(220))
+    employee_name_snapshot: Mapped[str] = mapped_column(String(220), default="")
+    employee_document_snapshot: Mapped[str] = mapped_column(String(60), default="")
+    position_snapshot: Mapped[str] = mapped_column(String(160), default="")
+    admission_date_snapshot: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    salary_snapshot: Mapped[int] = mapped_column(Integer, default=0)
+    observations: Mapped[str] = mapped_column(Text, default="")
+    body: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(30), default="Borrador")
+    created_by: Mapped[str] = mapped_column(String(180), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+
+    company: Mapped[Company] = relationship(back_populates="generated_certificates")
+    employee: Mapped[Optional[Employee]] = relationship(back_populates="generated_certificates")
 
 
 class LaborArticle(Base):

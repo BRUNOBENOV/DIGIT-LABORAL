@@ -33,6 +33,7 @@ from .models import (
     CompanyRequest,
     Document,
     Employee,
+    GeneratedCertificate,
     LaborArticle,
     LaborParameter,
     Payroll,
@@ -66,7 +67,7 @@ async def lifespan(_: FastAPI):
 if settings.environment == "production" and settings.secret_key == "cambiar-esta-clave-en-produccion":
     raise RuntimeError("DIGIT_SECRET_KEY debe configurarse con una clave segura en producción.")
 
-app = FastAPI(title="Digit Laboral", version="1.1.0-preview", lifespan=lifespan)
+app = FastAPI(title="Digit Laboral", version="1.2.0-preview", lifespan=lifespan)
 app.add_middleware(
     SessionMiddleware,
     secret_key=settings.secret_key,
@@ -182,6 +183,102 @@ def format_date(value: date | datetime | None) -> str:
 
 templates.env.filters["gs"] = format_gs
 templates.env.filters["fecha"] = format_date
+
+MONTHS_ES = (
+    "enero", "febrero", "marzo", "abril", "mayo", "junio",
+    "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+)
+
+
+def format_date_long_es(value: date | datetime | None) -> str:
+    if not value:
+        return "—"
+    return f"{value.day} de {MONTHS_ES[value.month - 1]} de {value.year}"
+
+
+templates.env.filters["fecha_larga"] = format_date_long_es
+
+CERTIFICATE_TYPES = {
+    "certificado_trabajo_a": "Certificado de Trabajo A",
+    "certificado_trabajo_b": "Certificado de Trabajo B",
+    "constancia": "Constancia",
+    "contrato_trabajo": "Contrato de Trabajo",
+    "ficha_empleado": "Ficha de Empleado",
+    "solicitud_vacacion": "Solicitud de Vacación",
+    "usufructo_vacaciones": "Usufructo de Vacaciones",
+    "notificacion_preaviso": "Notificación de Pre-aviso",
+    "renuncia": "Renuncia",
+    "despido": "Despido",
+}
+
+
+def build_certificate_body(
+    document_type: str,
+    company_name: str,
+    employee_name: str,
+    employee_document: str,
+    position: str,
+    admission_date: date | None,
+    salary: int,
+    observations: str,
+) -> tuple[str, str]:
+    title = CERTIFICATE_TYPES[document_type]
+    admission = format_date_long_es(admission_date)
+    salary_text = f"Gs. {format_gs(salary)}" if salary else "el monto registrado en su legajo"
+    identity = f"{employee_name}, con C.I. N.º {employee_document}" if employee_document else employee_name
+    role = position or "el cargo registrado en su legajo"
+    extra = observations.strip()
+
+    bodies = {
+        "certificado_trabajo_a": (
+            f"Por medio de la presente, {company_name} certifica que el/la señor/a {identity} presta servicios "
+            f"en la empresa en el cargo de {role}, desde el {admission}, percibiendo actualmente un salario mensual de {salary_text}.\n\n"
+            "Se expide el presente certificado a solicitud de la persona interesada, para los fines que estime convenientes."
+        ),
+        "certificado_trabajo_b": (
+            f"Se certifica que {identity} integra el plantel de {company_name}, desempeñándose como {role} desde el {admission}. "
+            f"La remuneración mensual registrada es de {salary_text}.\n\n"
+            "La presente constancia se emite a pedido de la persona interesada."
+        ),
+        "constancia": (
+            f"Por la presente se deja constancia de que {identity} mantiene una relación laboral registrada con {company_name}, "
+            f"en el cargo de {role}, con fecha de ingreso {admission}."
+        ),
+        "contrato_trabajo": (
+            f"BORRADOR PARA REVISIÓN PROFESIONAL.\n\nEntre {company_name}, en carácter de empleador, y {identity}, en carácter de trabajador/a, "
+            f"se prepara el presente borrador de contrato para el cargo de {role}, con inicio previsto o registrado el {admission} "
+            f"y remuneración mensual de {salary_text}.\n\nLas condiciones de jornada, funciones, lugar de trabajo, descansos, beneficios, duración y terminación "
+            "deberán completarse y revisarse antes de la firma."
+        ),
+        "ficha_empleado": (
+            f"EMPRESA: {company_name}\nFUNCIONARIO/A: {employee_name}\nCÉDULA: {employee_document or '—'}\nCARGO: {role}\n"
+            f"FECHA DE INGRESO: {admission}\nSALARIO REGISTRADO: {salary_text}"
+        ),
+        "solicitud_vacacion": (
+            f"Yo, {identity}, solicito a {company_name} el usufructo de mis vacaciones correspondientes al periodo que será indicado y aprobado por la empresa. "
+            "Declaro que las fechas definitivas quedarán sujetas a coordinación y constancia escrita."
+        ),
+        "usufructo_vacaciones": (
+            f"{company_name} deja constancia de que {identity}, quien se desempeña como {role}, usufructará o ha usufructuado "
+            "el periodo de vacaciones indicado en las observaciones de este documento."
+        ),
+        "notificacion_preaviso": (
+            f"BORRADOR PARA REVISIÓN PROFESIONAL.\n\nPor medio de la presente, {company_name} comunica a {identity} una notificación de preaviso. "
+            "Las fechas, plazo, causa y efectos deberán verificarse y consignarse expresamente antes de su entrega."
+        ),
+        "renuncia": (
+            f"BORRADOR PARA REVISIÓN PROFESIONAL.\n\nYo, {identity}, comunico a {company_name} mi decisión de dar por terminada la relación laboral. "
+            "La fecha de efectividad, entrega de funciones y demás extremos deberán completarse antes de la firma."
+        ),
+        "despido": (
+            f"BORRADOR PARA REVISIÓN PROFESIONAL.\n\nPor medio de la presente, {company_name} comunica a {identity} la terminación de la relación laboral. "
+            "La causa, fecha efectiva, liquidación, preaviso y documentación respaldatoria deberán revisarse y detallarse antes de su entrega."
+        ),
+    }
+    body = bodies[document_type]
+    if extra:
+        body += f"\n\nObservaciones: {extra}"
+    return title, body
 
 
 def get_parameter(db: Session, key: str, default: float = 0) -> float:
@@ -593,6 +690,121 @@ def request_status(
     return RedirectResponse("/app/requests", status_code=303)
 
 
+@app.get("/app/calculations", response_class=HTMLResponse)
+def calculations_page(request: Request, user: User = Depends(require_user), db: Session = Depends(get_db)):
+    company_ids = company_ids_for_user(db, user)
+    employees = list(
+        db.scalars(
+            select(Employee)
+            .where(Employee.company_id.in_(company_ids), Employee.status == "Activo")
+            .order_by(Employee.full_name)
+        )
+    ) if company_ids else []
+    return render(
+        request,
+        "calculations.html",
+        db,
+        user,
+        employees=employees,
+        ips_rate=get_parameter(db, "ips_employee_rate_general", 9),
+        minimum_salary=get_parameter(db, "minimum_monthly_salary_general", 0),
+        hourly_reference=get_parameter(db, "minimum_hourly_wage_general", 0),
+    )
+
+
+@app.get("/app/certificates", response_class=HTMLResponse)
+def certificates_page(request: Request, user: User = Depends(require_user), db: Session = Depends(get_db)):
+    company_ids = company_ids_for_user(db, user)
+    companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name))) if company_ids else []
+    employees = list(db.scalars(select(Employee).where(Employee.company_id.in_(company_ids)).order_by(Employee.full_name))) if company_ids else []
+    generated = list(
+        db.scalars(
+            select(GeneratedCertificate)
+            .where(GeneratedCertificate.company_id.in_(company_ids))
+            .order_by(GeneratedCertificate.created_at.desc())
+            .limit(20)
+        )
+    ) if company_ids else []
+    return render(
+        request,
+        "certificates.html",
+        db,
+        user,
+        companies=companies,
+        employees=employees,
+        generated=generated,
+        certificate_types=CERTIFICATE_TYPES,
+    )
+
+
+@app.post("/app/certificates")
+def create_certificate(
+    company_id: Annotated[int, Form()],
+    employee_id: Annotated[int, Form()],
+    document_type: Annotated[str, Form()],
+    city: Annotated[str, Form()] = "Ciudad del Este",
+    issue_date: Annotated[date, Form()] = date.today(),
+    position: Annotated[str, Form()] = "",
+    admission_date: Annotated[date | None, Form()] = None,
+    salary: Annotated[int, Form()] = 0,
+    observations: Annotated[str, Form()] = "",
+    intent: Annotated[str, Form()] = "save",
+    user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
+    db: Session = Depends(get_db),
+):
+    if document_type not in CERTIFICATE_TYPES:
+        raise HTTPException(400, "Tipo de documento inválido.")
+    company = company_allowed(db, user, company_id)
+    employee = db.get(Employee, employee_id)
+    if not employee or employee.company_id != company.id:
+        raise HTTPException(400, "El funcionario no pertenece a la empresa seleccionada.")
+    position_value = position.strip() or employee.position
+    admission_value = admission_date or employee.admission_date
+    salary_value = max(0, salary or employee.base_salary)
+    title, body = build_certificate_body(
+        document_type,
+        company.legal_name,
+        employee.full_name,
+        employee.document_number,
+        position_value,
+        admission_value,
+        salary_value,
+        observations,
+    )
+    item = GeneratedCertificate(
+        company_id=company.id,
+        employee_id=employee.id,
+        document_type=document_type,
+        title=title,
+        city=city.strip() or company.city or "Ciudad del Este",
+        issue_date=issue_date,
+        company_name_snapshot=company.legal_name,
+        employee_name_snapshot=employee.full_name,
+        employee_document_snapshot=employee.document_number,
+        position_snapshot=position_value,
+        admission_date_snapshot=admission_value,
+        salary_snapshot=salary_value,
+        observations=observations.strip(),
+        body=body,
+        created_by=user.email,
+    )
+    db.add(item)
+    db.flush()
+    write_audit(db, user, "generar", "certificado", str(item.id), title)
+    db.commit()
+    if intent == "print":
+        return RedirectResponse(f"/app/certificates/{item.id}/print", status_code=303)
+    return RedirectResponse(f"/app/certificates?created={item.id}", status_code=303)
+
+
+@app.get("/app/certificates/{certificate_id}/print", response_class=HTMLResponse)
+def print_certificate(certificate_id: int, request: Request, user: User = Depends(require_user), db: Session = Depends(get_db)):
+    item = db.get(GeneratedCertificate, certificate_id)
+    if not item or item.company_id not in company_ids_for_user(db, user):
+        raise HTTPException(404)
+    return render(request, "certificate_print.html", db, user, certificate=item)
+
+
 @app.get("/app/payrolls", response_class=HTMLResponse)
 def payrolls_page(request: Request, user: User = Depends(require_user), db: Session = Depends(get_db)):
     company_ids = company_ids_for_user(db, user)
@@ -981,4 +1193,4 @@ def admin_activation_status(
 @app.get("/health")
 def health(db: Session = Depends(get_db)):
     db.scalar(select(func.count(User.id)))
-    return {"status": "ok", "app": settings.app_name, "environment": settings.environment, "version": "1.1.0-preview"}
+    return {"status": "ok", "app": settings.app_name, "environment": settings.environment, "version": "1.2.0-preview"}

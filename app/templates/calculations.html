@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Cálculos | Digit Laboral{% endblock %}
+{% block content %}
+<div class="page-header calculations-header">
+  <div><span class="eyebrow">HERRAMIENTAS LABORALES</span><h1>Cálculo</h1><p>Simulaciones rápidas y accesos a los procesos que quedan registrados en la base de datos.</p></div>
+  <a class="btn primary" href="/app/payrolls">Abrir liquidaciones mensuales</a>
+</div>
+
+<section class="calculation-tiles" aria-label="Módulos de cálculo">
+  <button type="button" class="calculation-tile active" data-calculation-tool="salary"><i>₲</i><h3>Salario</h3><p>Haberes, IPS, descuentos y neto.</p></button>
+  <a class="calculation-tile" href="/app/payrolls"><i>▤</i><h3>Liquidación</h3><p>Liquidación mensual o final en borrador.</p></a>
+  <button type="button" class="calculation-tile" data-calculation-tool="hours"><i>◷</i><h3>Carga de Hora</h3><p>Valor hora y recargos configurables.</p></button>
+  <button type="button" class="calculation-tile" data-calculation-tool="aguinaldo"><i>★</i><h3>Aguinaldo</h3><p>Total computable dividido entre doce.</p></button>
+  <button type="button" class="calculation-tile" data-calculation-tool="notice"><i>!</i><h3>Pre-aviso</h3><p>Estimación con días ingresados manualmente.</p></button>
+  <button type="button" class="calculation-tile" data-calculation-tool="vacation"><i>☀</i><h3>Vacaciones</h3><p>Días y remuneración estimada.</p></button>
+  <a class="calculation-tile" href="/app/payrolls"><i>↗</i><h3>Anticipo</h3><p>Adelantos y descuentos en liquidación.</p></a>
+  <a class="calculation-tile" href="/app/payrolls"><i>✦</i><h3>Novedades</h3><p>Comisiones, premios y descuentos.</p></a>
+  <a class="calculation-tile" href="/app/certificates"><i>✉</i><h3>Telegrama Colacionado</h3><p>Borradores y comunicaciones formales.</p></a>
+  <a class="calculation-tile" href="/app/employees"><i>↺</i><h3>Histórico Funcionario</h3><p>Legajo, salario y movimientos registrados.</p></a>
+</section>
+
+<section class="calculator-workbench" id="calculatorWorkbench" data-ips-rate="{{ ips_rate }}" data-minimum-salary="{{ minimum_salary|int }}" data-hourly-reference="{{ hourly_reference|int }}">
+  <article class="calculator-panel active" data-calculator-panel="salary">
+    <div class="calculator-copy"><span class="eyebrow">SIMULACIÓN RÁPIDA</span><h2>Salario mensual</h2><p>Calculá un neto orientativo sin guardar una liquidación.</p></div>
+    <div class="calculator-form-grid">
+      <label>Salario bruto (Gs.)<input id="calcSalaryGross" type="number" min="0" value="{{ minimum_salary|int }}"></label>
+      <label>Otros ingresos (Gs.)<input id="calcSalaryIncome" type="number" min="0" value="0"></label>
+      <label>Otros descuentos (Gs.)<input id="calcSalaryDiscount" type="number" min="0" value="0"></label>
+      <label class="check-field"><input id="calcSalaryIps" type="checkbox" checked> Aplicar IPS trabajador ({{ ips_rate|round(2) }}%)</label>
+    </div>
+    <div class="calculator-result-grid">
+      <div><small>BRUTO COMPUTABLE</small><b id="calcSalaryGrossResult">Gs. 0</b></div>
+      <div><small>IPS TRABAJADOR</small><b id="calcSalaryIpsResult">Gs. 0</b></div>
+      <div class="primary-result"><small>NETO ESTIMADO</small><b id="calcSalaryNetResult">Gs. 0</b></div>
+    </div>
+  </article>
+
+  <article class="calculator-panel" data-calculator-panel="hours">
+    <div class="calculator-copy"><span class="eyebrow">PARÁMETROS MANUALES</span><h2>Valor de hora</h2><p>La cantidad mensual de horas y el multiplicador deben definirse según el régimen aplicable.</p></div>
+    <div class="calculator-form-grid">
+      <label>Salario mensual (Gs.)<input id="calcHoursSalary" type="number" min="0" value="{{ minimum_salary|int }}"></label>
+      <label>Horas mensuales de referencia<input id="calcHoursMonthly" type="number" min="1" value="240"></label>
+      <label>Horas a calcular<input id="calcHoursQuantity" type="number" min="0" step="0.5" value="1"></label>
+      <label>Multiplicador<input id="calcHoursMultiplier" type="number" min="0" step="0.01" value="1"></label>
+    </div>
+    <div class="calculator-result-grid two-results">
+      <div><small>VALOR HORA BASE</small><b id="calcHoursBaseResult">Gs. 0</b></div>
+      <div class="primary-result"><small>TOTAL ESTIMADO</small><b id="calcHoursTotalResult">Gs. 0</b></div>
+    </div>
+  </article>
+
+  <article class="calculator-panel" data-calculator-panel="aguinaldo">
+    <div class="calculator-copy"><span class="eyebrow">REMUNERACIÓN ANUAL</span><h2>Aguinaldo</h2><p>Ingresá el total de remuneraciones computables ya revisadas.</p></div>
+    <div class="calculator-form-grid single-row">
+      <label>Total computable del año (Gs.)<input id="calcAguinaldoTotal" type="number" min="0" value="0"></label>
+    </div>
+    <div class="calculator-result-grid one-result"><div class="primary-result"><small>AGUINALDO ESTIMADO</small><b id="calcAguinaldoResult">Gs. 0</b></div></div>
+    <a class="btn ghost" href="/app/aguinaldo">Guardar cálculo en el sistema</a>
+  </article>
+
+  <article class="calculator-panel" data-calculator-panel="vacation">
+    <div class="calculator-copy"><span class="eyebrow">DÍAS MANUALES</span><h2>Remuneración de vacaciones</h2><p>El sistema no determina automáticamente el derecho; calculá sobre los días previamente verificados.</p></div>
+    <div class="calculator-form-grid">
+      <label>Salario mensual (Gs.)<input id="calcVacationSalary" type="number" min="0" value="{{ minimum_salary|int }}"></label>
+      <label>Días a remunerar<input id="calcVacationDays" type="number" min="0" value="0"></label>
+    </div>
+    <div class="calculator-result-grid two-results"><div><small>VALOR DIARIO</small><b id="calcVacationDailyResult">Gs. 0</b></div><div class="primary-result"><small>TOTAL ESTIMADO</small><b id="calcVacationResult">Gs. 0</b></div></div>
+    <a class="btn ghost" href="/app/vacations">Registrar periodo de vacaciones</a>
+  </article>
+
+  <article class="calculator-panel" data-calculator-panel="notice">
+    <div class="calculator-copy"><span class="eyebrow">PLAZO PREVIAMENTE REVISADO</span><h2>Estimación de preaviso</h2><p>Ingresá manualmente la cantidad de días que corresponda después de revisar antigüedad y forma de terminación.</p></div>
+    <div class="calculator-form-grid">
+      <label>Salario mensual (Gs.)<input id="calcNoticeSalary" type="number" min="0" value="{{ minimum_salary|int }}"></label>
+      <label>Días de preaviso<input id="calcNoticeDays" type="number" min="0" value="0"></label>
+    </div>
+    <div class="calculator-result-grid two-results"><div><small>VALOR DIARIO</small><b id="calcNoticeDailyResult">Gs. 0</b></div><div class="primary-result"><small>TOTAL ESTIMADO</small><b id="calcNoticeResult">Gs. 0</b></div></div>
+    <a class="btn ghost" href="/app/certificates">Preparar notificación</a>
+  </article>
+</section>
+
+<div class="legal-warning calculations-warning"><b>Control profesional obligatorio:</b> estas simulaciones no determinan por sí solas derechos, días, conceptos computables ni regímenes especiales. Para registrar operaciones definitivas utilizá los módulos de liquidaciones, vacaciones y aguinaldo.</div>
+{% endblock %}

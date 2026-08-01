@@ -19,8 +19,8 @@
     <div class="quick-grid">
       <a class="quick-link" href="/app/companies"><span class="quick-icon">＋</span><div><b>Nueva empresa</b><small>Alta y datos principales</small></div></a>
       <a class="quick-link" href="/app/employees"><span class="quick-icon">♙</span><div><b>Nuevo funcionario</b><small>Registro laboral</small></div></a>
-      <a class="quick-link" href="/app/payrolls"><span class="quick-icon">₲</span><div><b>Calcular liquidación</b><small>Haberes y descuentos</small></div></a>
-      <a class="quick-link" href="/app/documents"><span class="quick-icon">▤</span><div><b>Emitir documento</b><small>Archivo y seguimiento</small></div></a>
+      <a class="quick-link" href="/app/calculations"><span class="quick-icon">₲</span><div><b>Calcular salario</b><small>Simulación inmediata</small></div></a>
+      <a class="quick-link" href="/app/certificates"><span class="quick-icon">▤</span><div><b>Emitir documento</b><small>Vista previa e impresión</small></div></a>
     </div>
   </article>
   <article class="system-panel">
@@ -29,7 +29,7 @@
       <div class="status-row"><span>Base de datos</span><b>Conectada</b></div>
       <div class="status-row"><span>Sesión</span><b>Protegida</b></div>
       <div class="status-row"><span>Rol activo</span><b>{{ user.role|replace('superadmin','Administrador general')|capitalize }}</b></div>
-      <div class="status-row"><span>Versión</span><b>1.1 Preview</b></div>
+      <div class="status-row"><span>Versión</span><b>1.2 Preview</b></div>
     </div>
   </article>
 </section>
@@ -37,9 +37,9 @@
 <div class="section-label">MÓDULOS DEL SISTEMA</div>
 <section class="dashboard-modules">
   <a href="/app/companies"><i class="blue">⚙</i><span class="module-number">1</span><h3>Mantenimientos</h3><p>Empresas, funcionarios, sucursales y datos maestros.</p><div class="tag-row"><span>Empresa</span><span>Empleado</span><span>Sección</span></div><b>→</b></a>
-  <a href="/app/payrolls"><i class="green">₲</i><span class="module-number">2</span><h3>Cálculo</h3><p>Liquidaciones, salarios, vacaciones y aguinaldo.</p><div class="tag-row"><span>Liquidación</span><span>Vacaciones</span><span>Aguinaldo</span></div><b>→</b></a>
+  <a href="/app/calculations"><i class="green">₲</i><span class="module-number">2</span><h3>Cálculo</h3><p>Liquidaciones, salarios, vacaciones y aguinaldo.</p><div class="tag-row"><span>Liquidación</span><span>Vacaciones</span><span>Aguinaldo</span></div><b>→</b></a>
   <a href="/app/payrolls"><i class="orange">▥</i><span class="module-number">3</span><h3>Informes</h3><p>Planillas, listados y reportes de gestión laboral.</p><div class="tag-row"><span>Planillas</span><span>Resumen</span></div><b>→</b></a>
-  <a href="/app/documents"><i class="violet">▤</i><span class="module-number">4</span><h3>Certificados</h3><p>Documentos, constancias, contratos y archivos.</p><div class="tag-row"><span>PDF</span><span>Constancias</span><span>Contratos</span></div><b>→</b></a>
+  <a href="/app/certificates"><i class="violet">▤</i><span class="module-number">4</span><h3>Certificados</h3><p>Documentos, constancias, contratos y archivos.</p><div class="tag-row"><span>PDF</span><span>Constancias</span><span>Contratos</span></div><b>→</b></a>
   <a href="/app/parameters"><i class="gray">🔧</i><span class="module-number">5</span><h3>Utilitarios</h3><p>Parámetros, usuarios, auditoría y configuración.</p><div class="tag-row"><span>Parámetros</span><span>Auditoría</span></div><b>→</b></a>
   <a href="/app/requests"><i class="blue">✉</i><span class="module-number">6</span><h3>Trámites</h3><p>Altas, bajas, vacaciones y cambios enviados por empresas.</p><div class="tag-row"><span>Solicitudes</span><span>Seguimiento</span></div><b>→</b></a>
 </section>
