@@ -7,6 +7,7 @@
   <title>{% block title %}Digit Laboral{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', path='app.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', path='modern.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', path='v17.css') }}">
 </head>
 <body class="{% if user %}app-body{% else %}public-body{% endif %}">
 {% if user %}
@@ -55,5 +56,6 @@
   {% block public_content %}{% endblock %}
 {% endif %}
 <script src="{{ url_for('static', path='app.js') }}"></script>
+<script src="{{ url_for('static', path='v17.js') }}"></script>
 </body>
 </html>

@@ -1,4 +1,4 @@
-# Digit Laboral — versión 1.4 Preview
+# Digit Laboral — versión 1.5 Preview
 
 Plataforma de gestión laboral para estudios contables paraguayos, presentada por Victor's Contabilidad.
 
@@ -15,7 +15,7 @@ La demostración pública guarda datos ficticios únicamente en el navegador. No
 
 La carpeta `app/` contiene el backend FastAPI con PostgreSQL, autenticación, sesiones, separación por estudio, roles, empresas, funcionarios, solicitudes, liquidaciones, vacaciones, aguinaldo, documentos, cálculos, informes, auditoría y administración.
 
-### Automatización de la versión 1.4
+### Automatización de la versión 1.5
 
 - Logo y membrete configurable por cada empresa.
 - Portal para que la empresa vinculada cargue o actualice su propio logo.
@@ -71,3 +71,10 @@ Correo: `admin@digitlaboral.com.py`
 Contraseña: `demo123`
 
 Cambiá las credenciales de demostración antes de ingresar información real.
+
+## Novedades v1.5
+
+- Corrección del cargador de logo y membrete por empresa.
+- Vista previa y validación de imágenes antes de guardar.
+- Código del Trabajo completo, sincronizable y ordenado por Libro, Título, Capítulo y Artículo.
+- Filtros de vigencia, modificaciones y derogaciones, con trazabilidad a fuentes jurídicas.

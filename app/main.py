@@ -3,10 +3,12 @@ from __future__ import annotations
 import csv
 import io
 import json
+import math
 import os
 import re
 import secrets
 import uuid
+from collections import OrderedDict
 from contextlib import asynccontextmanager
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -61,6 +63,12 @@ from .models import (
 )
 from .report_export import build_employee_report_pdf
 from .seed import seed_database
+from .labor_code_sync import (
+    SOURCE_REGISTRY,
+    article_sort_key,
+    normalize_search,
+    sync_labor_code,
+)
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 UPLOAD_DIR = BASE_DIR / "data" / "uploads"
@@ -85,7 +93,7 @@ async def lifespan(_: FastAPI):
 if settings.environment == "production" and settings.secret_key == "cambiar-esta-clave-en-produccion":
     raise RuntimeError("DIGIT_SECRET_KEY debe configurarse con una clave segura en producción.")
 
-app = FastAPI(title="Digit Laboral", version="1.4.0-preview", lifespan=lifespan)
+app = FastAPI(title="Digit Laboral", version="1.5.0-preview", lifespan=lifespan)
 app.add_middleware(
     SessionMiddleware,
     secret_key=settings.secret_key,
@@ -1762,17 +1770,124 @@ def toggle_user(user_id: int, user: User = Depends(require_roles("administrador"
     return RedirectResponse("/app/users", status_code=303)
 
 
+
+
+def _labor_hierarchy(article: LaborArticle) -> dict[str, str]:
+    codes = (article.category or "").split("|")
+    names = (article.heading or "").split("|")
+    codes += [""] * (3 - len(codes))
+    names += [""] * (3 - len(names))
+    return {
+        "book_code": codes[0], "title_code": codes[1], "chapter_code": codes[2],
+        "book_name": names[0], "title_name": names[1], "chapter_name": names[2],
+    }
+
+
+def _labor_article_view(article: LaborArticle) -> dict:
+    hierarchy = _labor_hierarchy(article)
+    status_norm = normalize_search(article.content_status)
+    return {
+        "id": article.id, "number": article.article_number, "body": article.body,
+        "law_number": article.law_number, "content_status": article.content_status,
+        "amendment_note": article.amendment_note, "source_name": article.source_name,
+        "source_url": article.source_url, "reviewed_at": article.reviewed_at,
+        "is_repealed": "derogad" in status_norm,
+        "is_modified": "modific" in status_norm or "derogacion parcial" in status_norm,
+        "heading": hierarchy["chapter_name"] or hierarchy["title_name"] or hierarchy["book_name"],
+        **hierarchy,
+    }
+
+
+def _labor_outline(items: list[dict]) -> list[dict]:
+    books: OrderedDict[str, dict] = OrderedDict()
+    for item in items:
+        book = books.setdefault(item["book_code"] or "SIN LIBRO", {
+            "code": item["book_code"], "name": item["book_name"] or "Disposiciones sin clasificación",
+            "count": 0, "titles": OrderedDict(),
+        })
+        book["count"] += 1
+        title = book["titles"].setdefault(item["title_code"] or "SIN TITULO", {
+            "code": item["title_code"], "name": item["title_name"] or "Sin título",
+            "count": 0, "chapters": OrderedDict(),
+        })
+        title["count"] += 1
+        chapter = title["chapters"].setdefault(item["chapter_code"] or "SIN CAPITULO", {
+            "code": item["chapter_code"], "name": item["chapter_name"] or "Sin capítulo", "count": 0,
+        })
+        chapter["count"] += 1
+    result = []
+    for book in books.values():
+        book["titles"] = [{**title, "chapters": list(title["chapters"].values())} for title in book["titles"].values()]
+        result.append(book)
+    return result
+
+
 @app.get("/app/labor-code", response_class=HTMLResponse)
-def labor_code_page(request: Request, q: str = "", category: str = "", user: User = Depends(require_user), db: Session = Depends(get_db)):
-    query = select(LaborArticle)
-    if q.strip():
-        term = f"%{q.strip()}%"
-        query = query.where(or_(LaborArticle.article_number.ilike(term), LaborArticle.heading.ilike(term), LaborArticle.body.ilike(term)))
-    if category.strip():
-        query = query.where(LaborArticle.category == category)
-    articles = list(db.scalars(query.order_by(LaborArticle.category, LaborArticle.article_number)))
-    categories = list(db.scalars(select(LaborArticle.category).distinct().order_by(LaborArticle.category)))
-    return render(request, "labor_code.html", db, user, articles=articles, categories=categories, q=q, category=category)
+def labor_code_page(
+    request: Request, q: str = "", book: str = "", title: str = "", chapter: str = "",
+    status_filter: str = "", article: str = "", page: int = 1,
+    user: User = Depends(require_user), db: Session = Depends(get_db),
+):
+    sync_error = request.query_params.get("sync_error", "")
+    count = db.scalar(select(func.count(LaborArticle.id))) or 0
+    if count < 400:
+        try:
+            sync_labor_code(db, force=True)
+        except Exception:
+            db.rollback()
+            sync_error = "No se pudo sincronizar ahora. Se conservó la biblioteca anterior."
+
+    records = list(db.scalars(select(LaborArticle)))
+    records.sort(key=lambda item: article_sort_key(item.article_number))
+    all_items = [_labor_article_view(item) for item in records]
+    outline = _labor_outline(all_items)
+    books = list(OrderedDict((item["book_code"], item["book_name"]) for item in all_items if item["book_code"]).items())
+    titles = list(OrderedDict((item["title_code"], item["title_name"]) for item in all_items if item["title_code"] and (not book or item["book_code"] == book)).items())
+    chapters = list(OrderedDict((item["chapter_code"], item["chapter_name"]) for item in all_items if item["chapter_code"] and (not book or item["book_code"] == book) and (not title or item["title_code"] == title)).items())
+    query_norm = normalize_search(q)
+    article_norm = normalize_search(article).replace("articulo", "").replace("art.", "").strip()
+    filtered = []
+    for item in all_items:
+        if book and item["book_code"] != book: continue
+        if title and item["title_code"] != title: continue
+        if chapter and item["chapter_code"] != chapter: continue
+        if status_filter == "vigente" and item["is_repealed"]: continue
+        if status_filter == "modificado" and not item["is_modified"]: continue
+        if status_filter == "derogado" and not item["is_repealed"]: continue
+        searchable = " ".join(str(item.get(key, "")) for key in ("number","body","heading","book_name","title_name","chapter_name","content_status","amendment_note","law_number"))
+        if query_norm and query_norm not in normalize_search(searchable): continue
+        if article_norm and article_norm != normalize_search(item["number"]): continue
+        filtered.append(item)
+    per_page = 20
+    total = len(filtered)
+    pages = max(1, math.ceil(total / per_page))
+    page = min(max(1, page), pages)
+    visible = filtered[(page-1)*per_page:page*per_page]
+    stats = {
+        "total": len(all_items), "modified": sum(item["is_modified"] for item in all_items),
+        "repealed": sum(item["is_repealed"] for item in all_items), "books": len(outline),
+        "reviewed_at": max((item["reviewed_at"] for item in all_items if item["reviewed_at"]), default=None),
+    }
+    return render(request, "labor_code_v17.html", db, user, articles=visible, outline=outline, books=books, titles=titles, chapters=chapters, q=q, selected_book=book, selected_title=title, selected_chapter=chapter, status_filter=status_filter, article_query=article, page=page, pages=pages, total=total, stats=stats, source_registry=SOURCE_REGISTRY, sync_error=sync_error, synced=request.query_params.get("synced") == "1", version="1.5.0-preview")
+
+
+@app.post("/app/labor-code/sync")
+def labor_code_sync_action(
+    confirm: Annotated[str, Form()] = "",
+    user: User = Depends(require_user), db: Session = Depends(get_db),
+):
+    if user.role not in {"administrador", "contador", "superadmin"}:
+        raise HTTPException(403, "No tiene permiso para actualizar la biblioteca jurídica.")
+    if confirm != "sync":
+        raise HTTPException(400, "Confirmación inválida.")
+    try:
+        result = sync_labor_code(db, force=True)
+        write_audit(db, user, "sincronizar", "codigo_laboral", "Ley 213/1993", f"{result.article_count} artículos; {result.modified_count} modificados; {result.repealed_count} derogados")
+        db.commit()
+        return RedirectResponse("/app/labor-code?synced=1", status_code=303)
+    except Exception:
+        db.rollback()
+        return RedirectResponse("/app/labor-code?sync_error=1", status_code=303)
 
 
 @app.get("/app/parameters", response_class=HTMLResponse)
@@ -1875,4 +1990,4 @@ def admin_activation_status(
 @app.get("/health")
 def health(db: Session = Depends(get_db)):
     db.scalar(select(func.count(User.id)))
-    return {"status": "ok", "app": settings.app_name, "environment": settings.environment, "version": "1.4.0-preview"}
+    return {"status": "ok", "app": settings.app_name, "environment": settings.environment, "version": "1.5.0-preview"}
