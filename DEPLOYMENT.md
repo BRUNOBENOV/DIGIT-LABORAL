@@ -44,3 +44,38 @@ El contenedor ejecuta Uvicorn y expone `/health`. Un despliegue correcto debe re
 ## Dominio
 
 Mientras no se conecte el dominio definitivo, utilizá la URL vigente mostrada en el panel del servicio de Render. Al conectar un dominio propio, añadilo también a `ALLOWED_HOSTS` y actualizá `PUBLIC_URL`.
+
+## Variables agregadas en v1.9
+
+```text
+MAX_IMPORT_ROWS=2000
+LOGIN_MAX_ATTEMPTS=5
+LOGIN_LOCK_MINUTES=15
+PASSWORD_RESET_MINUTES=30
+RLS_ENABLED=true
+SMTP_HOST=
+SMTP_PORT=587
+SMTP_USERNAME=
+SMTP_PASSWORD=
+SMTP_FROM_EMAIL=
+SMTP_FROM_NAME=Digit Laboral
+SMTP_USE_TLS=true
+```
+
+La recuperación de contraseña y los recordatorios por correo permanecerán desactivados hasta configurar SMTP.
+
+## Datos persistentes
+
+Además de PostgreSQL, deben conservarse:
+
+```text
+data/uploads/
+```
+
+En un servicio sin disco persistente, los documentos y adjuntos pueden desaparecer al redesplegar. Para producción utilizá un disco persistente o almacenamiento de objetos privado.
+
+## Respaldo
+
+- Exportación funcional por estudio: `/app/export/studio.zip`.
+- Respaldo técnico: `python scripts/backup_database.py`.
+- Instrucciones de restauración: `scripts/restore_notes.md`.

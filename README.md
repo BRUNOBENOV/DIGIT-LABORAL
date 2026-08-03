@@ -78,3 +78,13 @@ Cambiá las credenciales de demostración antes de ingresar información real.
 - Vista previa y validación de imágenes antes de guardar.
 - Código del Trabajo completo, sincronizable y ordenado por Libro, Título, Capítulo y Artículo.
 - Filtros de vigencia, modificaciones y derogaciones, con trazabilidad a fuentes jurídicas.
+
+## Versión 1.9 Preview
+
+La versión 1.9 incorpora importación masiva de funcionarios, expediente digital, historial salarial, agenda laboral, flujo avanzado de trámites, seguridad 2FA, recuperación de contraseña, exportación completa por estudio, respaldo técnico, pagos y políticas RLS preparadas.
+
+Documentación principal:
+- `RELEASE_NOTES_V19.md`
+- `ACTUALIZAR_V19.md`
+- `PRODUCTION_READINESS.md`
+- `PILOT_CHECKLIST.md`
