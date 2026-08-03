@@ -124,7 +124,10 @@ if (certificateForm) {
     aguinaldo_proporcional: 'Liquidación de Aguinaldo Proporcional', permiso_paternidad: 'Solicitud de Permiso por Paternidad',
     contrato_trabajo: 'Contrato de Trabajo', ficha_empleado: 'Ficha de Empleado',
     solicitud_vacacion: 'Solicitud de Vacaciones', usufructo_vacaciones: 'Constancia de Usufructo de Vacaciones',
-    notificacion_preaviso: 'Notificación de Preaviso', renuncia: 'Nota de Renuncia', despido: 'Comunicación de Despido'
+    notificacion_preaviso: 'Notificación de Preaviso', renuncia: 'Nota de Renuncia', despido: 'Comunicación de Despido',
+    permiso_laboral: 'Solicitud de Permiso Laboral', amonestacion: 'Amonestación Escrita',
+    cambio_salarial: 'Comunicación de Cambio Salarial', alta_funcionario: 'Constancia de Alta de Funcionario',
+    baja_funcionario: 'Constancia de Baja de Funcionario', recibo_salario: 'Recibo de Salario', liquidacion_final: 'Liquidación Final'
   };
 
   const filterEmployees = () => {
@@ -184,7 +187,14 @@ if (certificateForm) {
       usufructo_vacaciones: `${company} deja constancia de que ${identity}, quien se desempeña como ${role}, usufructará o ha usufructuado sus vacaciones desde el ${shortDate(leaveStartInput?.value)} hasta el ${shortDate(leaveEndInput?.value)}.`,
       notificacion_preaviso: `Señor/a\n${employee}\nC.I. N.º ${documentNumber}\nPresente\n\nPor medio de la presente, ${company} le comunica el preaviso de terminación de la relación laboral, con fecha efectiva ${longDate(effectiveDateInput?.value)}.\n\nDurante el período de preaviso podrá optar, sin disminución salarial, por una licencia diaria de dos horas, un día por semana o el uso continuado del tiempo correspondiente para buscar un nuevo empleo, conforme al artículo 89 del Código del Trabajo.`,
       renuncia: `Señor/a\n${recipient}\n${company}\n\nRef.: Comunicación de renuncia\n\nYo, ${identity}, comunico mi decisión de dar por terminada la relación laboral con fecha efectiva ${longDate(effectiveDateInput?.value)}. Solicito se practique la liquidación final y se expida la constancia de trabajo correspondiente.`,
-      despido: `BORRADOR PARA REVISIÓN PROFESIONAL.\n\nPor medio de la presente, ${company} comunica a ${identity} la terminación de la relación laboral con fecha efectiva ${longDate(effectiveDateInput?.value)}. La causa, liquidación y documentación respaldatoria deben revisarse antes de su entrega.`
+      despido: `BORRADOR PARA REVISIÓN PROFESIONAL.\n\nPor medio de la presente, ${company} comunica a ${identity} la terminación de la relación laboral con fecha efectiva ${longDate(effectiveDateInput?.value)}. La causa, liquidación y documentación respaldatoria deben revisarse antes de su entrega.`,
+      permiso_laboral: `Señor/a\n${recipient}\n${company}\n\nRef.: Solicitud de permiso laboral\n\nYo, ${identity}, solicito permiso laboral desde el ${shortDate(leaveStartInput?.value)} hasta el ${shortDate(leaveEndInput?.value)}. La autorización y modalidad de compensación quedan sujetas a la decisión de la empresa.`,
+      amonestacion: `BORRADOR PARA REVISIÓN PROFESIONAL.\n\n${company} comunica a ${identity} una amonestación escrita relacionada con los hechos detallados en las observaciones. La empresa deberá verificar antecedentes, proporcionalidad y derecho de defensa antes de la entrega.`,
+      cambio_salarial: `${company} comunica a ${identity} que, a partir del ${longDate(effectiveDateInput?.value)}, la remuneración mensual registrada será de ${amount}.`,
+      alta_funcionario: `${company} deja constancia del alta laboral de ${identity}, para desempeñarse como ${role}, con fecha de ingreso ${admission} y remuneración registrada de ${salary}.`,
+      baja_funcionario: `${company} deja constancia de la baja laboral de ${identity}, con fecha efectiva ${longDate(effectiveDateInput?.value)}.`,
+      recibo_salario: `${company} deja constancia del pago a ${identity} de la suma de ${amount}, en concepto de salario y rubros detallados para el periodo indicado.`,
+      liquidacion_final: `BORRADOR PARA REVISIÓN PROFESIONAL.\n\nSe prepara la liquidación final de ${identity}, con fecha de terminación ${longDate(effectiveDateInput?.value)} y total referencial de ${amount}. Los rubros deben verificarse antes de la firma.`
     };
     const extra = observationsInput.value.trim();
     return `${bodies[type] || ''}${extra ? `\n\nObservaciones: ${extra}` : ''}`;

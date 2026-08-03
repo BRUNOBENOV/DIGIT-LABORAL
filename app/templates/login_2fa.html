@@ -1,0 +1,5 @@
+{% extends "base.html" %}
+{% block title %}Verificación en dos pasos | Digit Laboral{% endblock %}
+{% block public_content %}
+<main class="auth-simple-page"><section class="auth-simple-card"><a class="public-logo" href="/"><span class="brand-mark">DL</span><span><b>Digit Laboral</b><small>Gestión laboral PY</small></span></a><span class="eyebrow">SEGUNDO FACTOR</span><h1>Verificá tu identidad</h1><p>Ingresá el código de seis dígitos de tu aplicación autenticadora para <b>{{ pending_email }}</b>.</p>{% if error %}<div class="alert danger">{{ error }}</div>{% endif %}<form method="post" action="/login/2fa" class="login-form"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label>Código de seguridad<input class="totp-input" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="8" required autofocus placeholder="000000"></label><button class="btn primary full" type="submit">Verificar y entrar</button></form><a class="back-link" href="/login">← Volver al ingreso</a></section></main>
+{% endblock %}

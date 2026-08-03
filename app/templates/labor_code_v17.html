@@ -11,7 +11,7 @@
   <div class="legal-v17-hero-actions">
     <span class="version-chip">{{ version }}</span>
     {% if user.role in ['administrador','contador','superadmin'] %}
-    <form method="post" action="/app/labor-code/sync" onsubmit="return confirm('¿Actualizar la biblioteca desde las fuentes jurídicas configuradas?');">
+    <form method="post" action="/app/labor-code/sync" onsubmit="return confirm('¿Actualizar la biblioteca desde las fuentes jurídicas configuradas?');"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <input type="hidden" name="confirm" value="sync">
       <button class="btn light-button" type="submit">↻ Actualizar fuentes</button>
     </form>

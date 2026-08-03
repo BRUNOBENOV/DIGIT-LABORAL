@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import hmac
 import io
 import json
 import math
@@ -8,12 +9,13 @@ import os
 import re
 import secrets
 import uuid
+import zipfile
 from collections import OrderedDict
 from contextlib import asynccontextmanager
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Annotated
-from urllib.parse import quote
+from urllib.parse import parse_qs, quote
 
 from PIL import Image, ImageChops, ImageOps
 
@@ -30,7 +32,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from .ai_service import generate_assistance
 from .auth import hash_password, verify_password
 from .config import settings
-from .database import Base, SessionLocal, engine
+from .database import Base, SessionLocal, apply_session_tenant_context, engine
 from .document_export import (
     DOCUMENT_LABELS,
     build_document_body,
@@ -54,16 +56,27 @@ from .models import (
     CalculationRecord,
     Document,
     Employee,
+    EmployeeEvent,
     GeneratedCertificate,
     LaborArticle,
+    LaborDeadline,
     LaborParameter,
     Payroll,
     PayrollLine,
+    PasswordResetToken,
+    RequestAttachment,
+    RequestComment,
+    RequestWorkflow,
+    SalaryHistory,
+    SecurityEvent,
     Studio,
+    StudioPayment,
     User,
+    UserSecurity,
     Vacation,
 )
 from .report_export import build_employee_report_pdf
+from .backup_service import build_studio_export
 from .seed import seed_database
 from .labor_code_sync import (
     SOURCE_REGISTRY,
@@ -71,10 +84,34 @@ from .labor_code_sync import (
     normalize_search,
     sync_labor_code,
 )
+from .import_service import (
+    ImportPreview,
+    build_employee_template,
+    load_preview,
+    parse_employee_import,
+    save_preview,
+)
+from .tenant_security import apply_postgres_rls
+from .security_service import (
+    build_totp_qr_svg,
+    build_totp_secret,
+    create_password_reset,
+    get_or_create_security,
+    is_locked,
+    password_strength_error,
+    record_failed_login,
+    reset_login_failures,
+    send_deadline_summary,
+    send_password_reset_email,
+    validate_password_reset,
+    verify_totp,
+)
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 UPLOAD_DIR = BASE_DIR / "data" / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+IMPORT_DIR = BASE_DIR / "data" / "imports"
+IMPORT_DIR.mkdir(parents=True, exist_ok=True)
 ALLOWED_UPLOAD_TYPES = {
     "application/pdf",
     "image/png",
@@ -119,13 +156,76 @@ def smart_normalize_logo(content: bytes) -> tuple[bytes, str]:
 async def lifespan(_: FastAPI):
     Base.metadata.create_all(engine)
     seed_database()
+    if settings.rls_enabled:
+        apply_postgres_rls(engine)
     yield
 
 
 if settings.environment == "production" and settings.secret_key == "cambiar-esta-clave-en-produccion":
     raise RuntimeError("DIGIT_SECRET_KEY debe configurarse con una clave segura en producción.")
 
-app = FastAPI(title="Digit Laboral", version="1.6.0-preview", lifespan=lifespan)
+class CSRFMiddleware:
+    """Double-submit style session token validation for authenticated form posts."""
+
+    def __init__(self, app):  # noqa: ANN001
+        self.app = app
+
+    async def __call__(self, scope, receive, send):  # noqa: ANN001
+        if scope.get("type") != "http" or not settings.csrf_enabled:
+            await self.app(scope, receive, send)
+            return
+        method = scope.get("method", "GET").upper()
+        path = scope.get("path", "")
+        protected = method in {"POST", "PUT", "PATCH", "DELETE"} and (
+            path.startswith("/app") or path.startswith("/admin")
+        )
+        session = scope.get("session") or {}
+        expected = session.get("csrf_token", "")
+        if not protected:
+            await self.app(scope, receive, send)
+            return
+
+        body_parts: list[bytes] = []
+        more = True
+        while more:
+            message = await receive()
+            if message.get("type") != "http.request":
+                continue
+            body_parts.append(message.get("body", b""))
+            more = message.get("more_body", False)
+        body = b"".join(body_parts)
+        headers = {key.decode("latin1").lower(): value.decode("latin1") for key, value in scope.get("headers", [])}
+        supplied = headers.get("x-csrf-token", "")
+        content_type = headers.get("content-type", "")
+        if not supplied and content_type.startswith("application/x-www-form-urlencoded"):
+            parsed = parse_qs(body.decode("utf-8", errors="replace"))
+            supplied = (parsed.get("csrf_token") or [""])[0]
+        elif not supplied and content_type.startswith("multipart/form-data"):
+            match = re.search(
+                rb'name="csrf_token"\r?\n(?:[^\r\n]*\r?\n)*\r?\n([^\r\n]+)',
+                body,
+            )
+            if match:
+                supplied = match.group(1).decode("utf-8", errors="replace")
+        if not expected or not supplied or not hmac.compare_digest(str(expected), str(supplied)):
+            response = Response("Solicitud rechazada por protección CSRF.", status_code=403)
+            await response(scope, receive, send)
+            return
+
+        sent = False
+
+        async def replay_receive():
+            nonlocal sent
+            if sent:
+                return {"type": "http.request", "body": b"", "more_body": False}
+            sent = True
+            return {"type": "http.request", "body": body, "more_body": False}
+
+        await self.app(scope, replay_receive, send)
+
+
+app = FastAPI(title="Digit Laboral", version="1.9.0-preview", lifespan=lifespan)
+app.add_middleware(CSRFMiddleware)
 app.add_middleware(
     SessionMiddleware,
     secret_key=settings.secret_key,
@@ -166,7 +266,19 @@ def current_user(request: Request, db: Session) -> User | None:
     user_id = request.session.get("user_id")
     if not user_id:
         return None
-    return db.get(User, int(user_id))
+    user = db.get(User, int(user_id))
+    if not user:
+        request.session.clear()
+        return None
+    security = get_or_create_security(db, user)
+    session_version = int(request.session.get("security_version", 0) or 0)
+    if session_version != security.session_version:
+        request.session.clear()
+        return None
+    db.info["studio_id"] = user.studio_id
+    db.info["is_superadmin"] = user.role == "superadmin"
+    apply_session_tenant_context(db)
+    return user
 
 
 def require_user(request: Request, db: Session = Depends(get_db)) -> User:
@@ -216,12 +328,64 @@ def write_audit(db: Session, user: User, action: str, entity: str, entity_id: st
     )
 
 
+def client_ip(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+    return (forwarded or (request.client.host if request.client else ""))[:80]
+
+
+def write_security_event(
+    db: Session, request: Request, event_type: str, success: bool,
+    *, user: User | None = None, email: str = "", detail: str = "",
+) -> None:
+    db.add(
+        SecurityEvent(
+            studio_id=user.studio_id if user else None,
+            user_id=user.id if user else None,
+            email=(user.email if user else email).strip().lower()[:180],
+            event_type=event_type[:80],
+            success=success,
+            ip_address=client_ip(request),
+            user_agent=request.headers.get("user-agent", "")[:300],
+            detail=detail[:1000],
+        )
+    )
+
+
+def establish_session(request: Request, user: User, security: UserSecurity) -> None:
+    request.session.clear()
+    request.session["user_id"] = user.id
+    request.session["security_version"] = security.session_version
+
+
+def add_employee_event(
+    db: Session, employee: Employee, user: User, event_type: str, title: str,
+    detail: str = "", effective_date: date | None = None, amount: int | None = None,
+) -> EmployeeEvent:
+    event = EmployeeEvent(
+        employee_id=employee.id,
+        event_type=event_type,
+        title=title,
+        detail=detail,
+        effective_date=effective_date or date.today(),
+        amount=amount,
+        created_by=user.email,
+    )
+    db.add(event)
+    return event
+
+
 def render(request: Request, template: str, db: Session, user: User | None = None, **context):
+    csrf_token = request.session.get("csrf_token")
+    if not csrf_token:
+        csrf_token = secrets.token_urlsafe(32)
+        request.session["csrf_token"] = csrf_token
     data = {
         "request": request,
+        "csrf_token": csrf_token,
         "user": user,
         "active_path": request.url.path,
         "today": date.today(),
+        "environment": settings.environment,
         **context,
     }
     if user and user.studio_id:
@@ -495,17 +659,152 @@ def login_action(
     password: Annotated[str, Form()],
     db: Session = Depends(get_db),
 ):
-    user = db.scalar(select(User).where(func.lower(User.email) == email.strip().lower()))
+    normalized_email = email.strip().lower()
+    user = db.scalar(select(User).where(func.lower(User.email) == normalized_email))
+    security = get_or_create_security(db, user) if user else None
+    if security and is_locked(security):
+        write_security_event(db, request, "inicio_sesion_bloqueado", False, user=user, detail="Cuenta temporalmente bloqueada")
+        db.commit()
+        return render(request, "login.html", db, error="Demasiados intentos. La cuenta está bloqueada temporalmente.")
     if not user or not verify_password(password, user.password_hash) or not user.active:
+        if security:
+            record_failed_login(security)
+        write_security_event(db, request, "inicio_sesion", False, user=user, email=normalized_email, detail="Credenciales inválidas o cuenta inactiva")
+        db.commit()
         return render(request, "login.html", db, error="Correo o contraseña incorrectos.")
     if user.role != "superadmin" and user.studio and (not user.studio.active or user.studio.payment_status != "Activo"):
+        write_security_event(db, request, "inicio_sesion", False, user=user, detail="Estudio suspendido o pago no activo")
+        db.commit()
         return render(request, "login.html", db, error="La cuenta todavía no está habilitada o su plan se encuentra suspendido.")
-    request.session.clear()
-    request.session["user_id"] = user.id
+    reset_login_failures(security)
+    if security.totp_enabled:
+        request.session.clear()
+        request.session["pending_2fa_user_id"] = user.id
+        request.session["pending_2fa_at"] = datetime.now(UTC).isoformat()
+        db.commit()
+        return RedirectResponse("/login/2fa", status_code=303)
+    establish_session(request, user, security)
     user.last_login_at = datetime.now(UTC)
     write_audit(db, user, "inicio_sesion", "usuario", str(user.id))
+    write_security_event(db, request, "inicio_sesion", True, user=user)
     db.commit()
     return RedirectResponse("/admin" if user.role == "superadmin" else "/app", status_code=303)
+
+
+@app.get("/login/2fa", response_class=HTMLResponse)
+def login_2fa_page(request: Request, db: Session = Depends(get_db)):
+    pending_id = request.session.get("pending_2fa_user_id")
+    if not pending_id:
+        return RedirectResponse("/login", status_code=303)
+    user = db.get(User, int(pending_id))
+    if not user:
+        request.session.clear()
+        return RedirectResponse("/login", status_code=303)
+    return render(request, "login_2fa.html", db, pending_email=user.email, error=None)
+
+
+@app.post("/login/2fa")
+def login_2fa_action(
+    request: Request,
+    code: Annotated[str, Form()],
+    db: Session = Depends(get_db),
+):
+    pending_id = request.session.get("pending_2fa_user_id")
+    pending_at = request.session.get("pending_2fa_at", "")
+    if not pending_id:
+        return RedirectResponse("/login", status_code=303)
+    try:
+        requested_at = datetime.fromisoformat(pending_at)
+        if requested_at.tzinfo is None:
+            requested_at = requested_at.replace(tzinfo=UTC)
+    except ValueError:
+        requested_at = datetime.now(UTC) - timedelta(hours=1)
+    if requested_at < datetime.now(UTC) - timedelta(minutes=10):
+        request.session.clear()
+        return RedirectResponse("/login?expired=1", status_code=303)
+    user = db.get(User, int(pending_id))
+    if not user:
+        request.session.clear()
+        return RedirectResponse("/login", status_code=303)
+    security = get_or_create_security(db, user)
+    if not verify_totp(security.totp_secret, code):
+        write_security_event(db, request, "segundo_factor", False, user=user, detail="Código TOTP inválido")
+        db.commit()
+        return render(request, "login_2fa.html", db, pending_email=user.email, error="El código no es válido.")
+    establish_session(request, user, security)
+    user.last_login_at = datetime.now(UTC)
+    write_audit(db, user, "inicio_sesion_2fa", "usuario", str(user.id))
+    write_security_event(db, request, "segundo_factor", True, user=user)
+    db.commit()
+    return RedirectResponse("/admin" if user.role == "superadmin" else "/app", status_code=303)
+
+
+@app.get("/forgot-password", response_class=HTMLResponse)
+def forgot_password_page(request: Request, db: Session = Depends(get_db)):
+    return render(request, "forgot_password.html", db, sent=False, debug_url=None)
+
+
+@app.post("/forgot-password", response_class=HTMLResponse)
+def forgot_password_action(
+    request: Request,
+    email: Annotated[str, Form()],
+    db: Session = Depends(get_db),
+):
+    normalized = email.strip().lower()
+    user = db.scalar(select(User).where(func.lower(User.email) == normalized, User.active.is_(True)))
+    debug_url = None
+    if user:
+        _, raw_token = create_password_reset(db, user, client_ip(request))
+        reset_url = f"{settings.public_url.rstrip('/')}/reset-password/{raw_token}"
+        sent = False
+        try:
+            sent = send_password_reset_email(user.email, reset_url)
+        except Exception:
+            sent = False
+        if settings.environment != "production" and not sent:
+            debug_url = reset_url
+        write_security_event(db, request, "solicitud_restablecimiento", True, user=user, detail="Correo enviado" if sent else "SMTP no configurado")
+    else:
+        write_security_event(db, request, "solicitud_restablecimiento", False, email=normalized, detail="Correo no registrado")
+    db.commit()
+    return render(request, "forgot_password.html", db, sent=True, debug_url=debug_url)
+
+
+@app.get("/reset-password/{token}", response_class=HTMLResponse)
+def reset_password_page(token: str, request: Request, db: Session = Depends(get_db)):
+    item = validate_password_reset(db, token)
+    return render(request, "reset_password.html", db, token=token, valid=bool(item), error=None)
+
+
+@app.post("/reset-password/{token}", response_class=HTMLResponse)
+def reset_password_action(
+    token: str,
+    request: Request,
+    password: Annotated[str, Form()],
+    password_confirm: Annotated[str, Form()],
+    db: Session = Depends(get_db),
+):
+    item = validate_password_reset(db, token)
+    if not item:
+        return render(request, "reset_password.html", db, token=token, valid=False, error="El enlace no es válido o ya venció.")
+    if password != password_confirm:
+        return render(request, "reset_password.html", db, token=token, valid=True, error="Las contraseñas no coinciden.")
+    strength_error = password_strength_error(password)
+    if strength_error:
+        return render(request, "reset_password.html", db, token=token, valid=True, error=strength_error)
+    user = db.get(User, item.user_id)
+    if not user:
+        return render(request, "reset_password.html", db, token=token, valid=False, error="Cuenta no encontrada.")
+    user.password_hash = hash_password(password)
+    user.must_change_password = False
+    item.used_at = datetime.now(UTC)
+    security = get_or_create_security(db, user)
+    security.session_version += 1
+    security.password_changed_at = datetime.now(UTC)
+    reset_login_failures(security)
+    write_security_event(db, request, "restablecimiento_contrasena", True, user=user)
+    db.commit()
+    return RedirectResponse("/login?reset=1", status_code=303)
 
 
 @app.post("/logout")
@@ -521,7 +820,7 @@ def dashboard(request: Request, user: User = Depends(require_user), db: Session 
     company_ids = company_ids_for_user(db, user)
     companies_count = len(company_ids)
     employee_count = db.scalar(select(func.count(Employee.id)).where(Employee.company_id.in_(company_ids), Employee.status == "Activo")) if company_ids else 0
-    pending_count = db.scalar(select(func.count(CompanyRequest.id)).where(CompanyRequest.company_id.in_(company_ids), CompanyRequest.status.in_(["Pendiente", "En revisión"]))) if company_ids else 0
+    pending_count = db.scalar(select(func.count(CompanyRequest.id)).where(CompanyRequest.company_id.in_(company_ids), CompanyRequest.status.in_(["Pendiente", "En revisión", "Falta información", "Procesando"]))) if company_ids else 0
     payroll_count = db.scalar(select(func.count(Payroll.id)).where(Payroll.company_id.in_(company_ids), Payroll.status == "Borrador")) if company_ids else 0
     companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids)).order_by(Company.created_at.desc()).limit(5))) if company_ids else []
     recent_requests = list(db.scalars(select(CompanyRequest).where(CompanyRequest.company_id.in_(company_ids)).order_by(CompanyRequest.created_at.desc()).limit(5))) if company_ids else []
@@ -547,6 +846,15 @@ def dashboard(request: Request, user: User = Depends(require_user), db: Session 
         )
     ) if company_ids else []
     automation_alerts = []
+    upcoming_deadlines = list(db.scalars(select(LaborDeadline).where(
+        LaborDeadline.company_id.in_(company_ids), LaborDeadline.status == "Pendiente",
+        LaborDeadline.due_date <= date.today() + timedelta(days=7),
+    ).order_by(LaborDeadline.due_date))) if company_ids else []
+    overdue_deadlines = [item for item in upcoming_deadlines if item.due_date < date.today()]
+    if overdue_deadlines:
+        automation_alerts.append({"level": "danger", "title": "Vencimientos atrasados", "detail": f"{len(overdue_deadlines)} tareas superaron su fecha límite.", "href": "/app/calendar"})
+    elif upcoming_deadlines:
+        automation_alerts.append({"level": "warning", "title": "Agenda de los próximos días", "detail": f"{len(upcoming_deadlines)} tareas vencen dentro de 7 días.", "href": "/app/calendar"})
     if pending_count:
         automation_alerts.append({"level": "warning", "title": "Solicitudes pendientes", "detail": f"{pending_count} solicitudes necesitan seguimiento.", "href": "/app/requests"})
     if missing_logo_count:
@@ -825,6 +1133,181 @@ def employees_page(request: Request, q: str = "", company_id: int | None = None,
     return render(request, "employees.html", db, user, employees=employees, companies=companies, branches=branches, q=q, selected_company=company_id, minimum_salary=minimum_salary)
 
 
+@app.get("/app/employees/{employee_id}", response_class=HTMLResponse)
+def employee_detail_page(
+    employee_id: int,
+    request: Request,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    employee = db.get(Employee, employee_id)
+    if not employee or employee.company_id not in company_ids_for_user(db, user):
+        raise HTTPException(404, "Funcionario no encontrado.")
+    events = list(db.scalars(select(EmployeeEvent).where(EmployeeEvent.employee_id == employee.id).order_by(EmployeeEvent.effective_date.desc(), EmployeeEvent.created_at.desc())))
+    salaries = list(db.scalars(select(SalaryHistory).where(SalaryHistory.employee_id == employee.id).order_by(SalaryHistory.effective_from.desc(), SalaryHistory.created_at.desc())))
+    documents = list(db.scalars(select(Document).where(Document.employee_id == employee.id).order_by(Document.created_at.desc())))
+    certificates = list(db.scalars(select(GeneratedCertificate).where(GeneratedCertificate.employee_id == employee.id).order_by(GeneratedCertificate.created_at.desc())))
+    calculations = list(db.scalars(select(CalculationRecord).where(CalculationRecord.employee_id == employee.id).order_by(CalculationRecord.created_at.desc()).limit(30)))
+    vacations = list(db.scalars(select(Vacation).where(Vacation.employee_id == employee.id).order_by(Vacation.period_year.desc())))
+    payroll_lines = list(db.scalars(select(PayrollLine).where(PayrollLine.employee_id == employee.id).order_by(PayrollLine.id.desc()).limit(24)))
+    deadlines = list(db.scalars(select(LaborDeadline).where(LaborDeadline.employee_id == employee.id).order_by(LaborDeadline.due_date)))
+    return render(
+        request, "employee_detail.html", db, user, employee=employee, events=events, salaries=salaries,
+        documents=documents, certificates=certificates, calculations=calculations, vacations=vacations,
+        payroll_lines=payroll_lines, deadlines=deadlines,
+    )
+
+
+@app.post("/app/employees/{employee_id}/events")
+def add_employee_event_action(
+    employee_id: int,
+    event_type: Annotated[str, Form()],
+    title: Annotated[str, Form()],
+    effective_date: Annotated[date, Form()],
+    detail: Annotated[str, Form()] = "",
+    amount: Annotated[int | None, Form()] = None,
+    user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
+    db: Session = Depends(get_db),
+):
+    employee = db.get(Employee, employee_id)
+    if not employee or employee.company_id not in company_ids_for_user(db, user):
+        raise HTTPException(404)
+    add_employee_event(db, employee, user, event_type.strip(), title.strip(), detail.strip(), effective_date, amount)
+    write_audit(db, user, "crear", "evento_funcionario", str(employee.id), title.strip())
+    db.commit()
+    return RedirectResponse(f"/app/employees/{employee.id}#timeline", status_code=303)
+
+
+@app.get("/app/import/employees/template.xlsx")
+def employee_import_template(user: User = Depends(require_user)):
+    data = build_employee_template()
+    return Response(
+        content=data,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=plantilla_funcionarios_digit_laboral.xlsx"},
+    )
+
+
+@app.post("/app/import/employees/preview")
+async def employee_import_preview(
+    company_id: Annotated[int, Form()],
+    file: UploadFile = File(),
+    user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
+    db: Session = Depends(get_db),
+):
+    company = company_allowed(db, user, company_id)
+    content = await file.read(8 * 1024 * 1024 + 1)
+    if len(content) > 8 * 1024 * 1024:
+        raise HTTPException(413, "El archivo supera el máximo permitido de 8 MB.")
+    try:
+        rows = parse_employee_import(content, file.filename or "archivo.xlsx", settings.max_import_rows)
+    except ValueError as exc:
+        return RedirectResponse(f"/app/employees?import_error={quote(str(exc))}", status_code=303)
+    token = uuid.uuid4().hex
+    preview = ImportPreview(
+        company_id=company.id, studio_id=user.studio_id or 0, user_id=user.id,
+        created_at=datetime.now(UTC).isoformat(), filename=file.filename or "archivo", rows=rows,
+    )
+    save_preview(IMPORT_DIR, token, preview)
+    write_audit(db, user, "previsualizar", "importacion_funcionarios", token, f"{company.legal_name}: {len(rows)} filas")
+    db.commit()
+    return RedirectResponse(f"/app/import/employees/{token}", status_code=303)
+
+
+@app.get("/app/import/employees/{token}", response_class=HTMLResponse)
+def employee_import_preview_page(
+    token: str, request: Request, user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
+    db: Session = Depends(get_db),
+):
+    try:
+        preview = load_preview(IMPORT_DIR, token)
+    except (ValueError, FileNotFoundError) as exc:
+        return RedirectResponse(f"/app/employees?import_error={quote(str(exc))}", status_code=303)
+    if preview.user_id != user.id or preview.studio_id != (user.studio_id or 0):
+        raise HTTPException(403)
+    company = company_allowed(db, user, preview.company_id)
+    existing_documents = set(db.scalars(select(Employee.document_number).where(Employee.company_id == company.id)))
+    duplicate_count = sum(row.data.get("document_number") in existing_documents for row in preview.rows if row.valid)
+    return render(
+        request, "employee_import_preview.html", db, user, token=token, preview=preview, company=company,
+        duplicate_count=duplicate_count, existing_documents=existing_documents,
+    )
+
+
+@app.post("/app/import/employees/{token}/confirm")
+def employee_import_confirm(
+    token: str,
+    duplicate_action: Annotated[str, Form()] = "skip",
+    user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
+    db: Session = Depends(get_db),
+):
+    try:
+        preview = load_preview(IMPORT_DIR, token)
+    except (ValueError, FileNotFoundError) as exc:
+        return RedirectResponse(f"/app/employees?import_error={quote(str(exc))}", status_code=303)
+    if preview.user_id != user.id or preview.studio_id != (user.studio_id or 0):
+        raise HTTPException(403)
+    company = company_allowed(db, user, preview.company_id)
+    created = updated = skipped = 0
+    for row in preview.rows:
+        if not row.valid:
+            skipped += 1
+            continue
+        data = row.data
+        employee = db.scalar(
+            select(Employee).where(
+                Employee.company_id == company.id,
+                Employee.document_number == data["document_number"],
+            )
+        )
+        if employee and duplicate_action != "update":
+            skipped += 1
+            continue
+        admission = date.fromisoformat(data["admission_date"])
+        birth = date.fromisoformat(data["birth_date"]) if data.get("birth_date") else None
+        if employee:
+            old_salary = employee.base_salary
+            employee.full_name = data["full_name"]
+            employee.position = data["position"]
+            employee.admission_date = admission
+            employee.birth_date = birth
+            employee.contract_type = data["contract_type"]
+            employee.payment_frequency = data["payment_frequency"]
+            employee.base_salary = data["base_salary"]
+            employee.ips_contributor = data["ips_contributor"]
+            employee.email = data["email"]
+            employee.phone = data["phone"]
+            employee.address = data["address"]
+            employee.notes = data["notes"]
+            if old_salary != employee.base_salary:
+                db.add(SalaryHistory(
+                    employee_id=employee.id, previous_salary=old_salary, new_salary=employee.base_salary,
+                    effective_from=date.today(), reason="Actualización por importación", created_by=user.email,
+                ))
+            add_employee_event(db, employee, user, "Importación", "Datos actualizados por importación", f"Archivo: {preview.filename}")
+            updated += 1
+        else:
+            employee = Employee(
+                company_id=company.id, full_name=data["full_name"], document_number=data["document_number"],
+                birth_date=birth, position=data["position"], admission_date=admission,
+                contract_type=data["contract_type"], payment_frequency=data["payment_frequency"],
+                base_salary=data["base_salary"], ips_contributor=data["ips_contributor"],
+                email=data["email"], phone=data["phone"], address=data["address"], notes=data["notes"],
+            )
+            db.add(employee)
+            db.flush()
+            add_employee_event(db, employee, user, "Alta", "Funcionario importado", f"Archivo: {preview.filename}", admission, employee.base_salary)
+            db.add(SalaryHistory(
+                employee_id=employee.id, previous_salary=0, new_salary=employee.base_salary,
+                effective_from=admission, reason="Salario inicial importado", created_by=user.email,
+            ))
+            created += 1
+    write_audit(db, user, "confirmar", "importacion_funcionarios", token, f"{company.legal_name}: {created} creados, {updated} actualizados, {skipped} omitidos")
+    db.commit()
+    (IMPORT_DIR / f"{token}.json").unlink(missing_ok=True)
+    return RedirectResponse(f"/app/employees?imported={created}&updated={updated}&skipped={skipped}&company_id={company.id}", status_code=303)
+
+
 @app.post("/app/employees")
 def add_employee(
     company_id: Annotated[int, Form()],
@@ -869,9 +1352,14 @@ def add_employee(
     except IntegrityError:
         db.rollback()
         return RedirectResponse("/app/employees?duplicate=1", status_code=303)
+    add_employee_event(db, employee, user, "Alta", "Alta de funcionario", f"Cargo: {employee.position}", employee.admission_date, employee.base_salary)
+    db.add(SalaryHistory(
+        employee_id=employee.id, previous_salary=0, new_salary=employee.base_salary,
+        effective_from=employee.admission_date, reason="Salario inicial", created_by=user.email,
+    ))
     write_audit(db, user, "crear", "funcionario", str(employee.id), employee.full_name)
     db.commit()
-    return RedirectResponse("/app/employees", status_code=303)
+    return RedirectResponse(f"/app/employees/{employee.id}", status_code=303)
 
 
 @app.post("/app/employees/{employee_id}/edit")
@@ -890,6 +1378,7 @@ def edit_employee(
     employee = db.get(Employee, employee_id)
     if not employee or employee.company_id not in company_ids_for_user(db, user):
         raise HTTPException(404)
+    previous_salary = employee.base_salary
     employee.full_name = full_name.strip()
     employee.position = position_name.strip()
     employee.base_salary = max(0, base_salary)
@@ -897,9 +1386,21 @@ def edit_employee(
     employee.phone = phone.strip()
     employee.address = address.strip()
     employee.notes = notes.strip()
+    if previous_salary != employee.base_salary:
+        db.add(SalaryHistory(
+            employee_id=employee.id, previous_salary=previous_salary, new_salary=employee.base_salary,
+            effective_from=date.today(), reason="Actualización desde expediente", created_by=user.email,
+        ))
+        add_employee_event(
+            db, employee, user, "Cambio salarial", "Actualización salarial",
+            f"De Gs. {format_gs(previous_salary)} a Gs. {format_gs(employee.base_salary)}",
+            date.today(), employee.base_salary,
+        )
+    else:
+        add_employee_event(db, employee, user, "Actualización", "Datos del funcionario actualizados")
     write_audit(db, user, "editar", "funcionario", str(employee.id), employee.full_name)
     db.commit()
-    return RedirectResponse("/app/employees", status_code=303)
+    return RedirectResponse(f"/app/employees/{employee.id}", status_code=303)
 
 
 @app.post("/app/employees/{employee_id}/status")
@@ -915,9 +1416,147 @@ def employee_status(
         raise HTTPException(404)
     employee.status = status_value
     employee.termination_date = termination_date if status_value != "Activo" else None
+    effective = employee.termination_date or date.today()
+    add_employee_event(db, employee, user, "Estado", f"Estado actualizado a {status_value}", "", effective)
     write_audit(db, user, "actualizar_estado", "funcionario", str(employee.id), status_value)
     db.commit()
-    return RedirectResponse("/app/employees", status_code=303)
+    return RedirectResponse(f"/app/employees/{employee.id}", status_code=303)
+
+
+@app.get("/app/calendar", response_class=HTMLResponse)
+def calendar_page(
+    request: Request, company_id: int | None = None, employee_id: int | None = None,
+    status_filter: str = "", user: User = Depends(require_user), db: Session = Depends(get_db),
+):
+    company_ids = company_ids_for_user(db, user)
+    companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name))) if company_ids else []
+    employees_query = select(Employee).where(Employee.company_id.in_(company_ids)) if company_ids else select(Employee).where(False)
+    if company_id and company_id in company_ids:
+        employees_query = employees_query.where(Employee.company_id == company_id)
+    employees = list(db.scalars(employees_query.order_by(Employee.full_name)))
+    query = select(LaborDeadline).where(LaborDeadline.company_id.in_(company_ids)) if company_ids else select(LaborDeadline).where(False)
+    if company_id and company_id in company_ids:
+        query = query.where(LaborDeadline.company_id == company_id)
+    if employee_id:
+        query = query.where(LaborDeadline.employee_id == employee_id)
+    if status_filter:
+        query = query.where(LaborDeadline.status == status_filter)
+    deadlines = list(db.scalars(query.order_by(LaborDeadline.due_date, LaborDeadline.priority)))
+    today_value = date.today()
+    horizon = today_value + timedelta(days=60)
+    automatic_alerts: list[dict] = []
+    for employee in employees:
+        anniversary = employee.admission_date.replace(year=today_value.year)
+        if anniversary < today_value:
+            anniversary = anniversary.replace(year=today_value.year + 1)
+        if anniversary <= horizon:
+            automatic_alerts.append({
+                "date": anniversary, "type": "Aniversario laboral", "title": employee.full_name,
+                "detail": f"Ingreso: {format_date(employee.admission_date)} · {employee.company.legal_name}",
+                "employee_id": employee.id,
+            })
+    vacation_query = select(Vacation).join(Employee).where(Employee.company_id.in_(company_ids), Vacation.start_date.is_not(None)) if company_ids else select(Vacation).where(False)
+    for vacation in db.scalars(vacation_query):
+        if vacation.start_date and today_value <= vacation.start_date <= horizon:
+            automatic_alerts.append({
+                "date": vacation.start_date, "type": "Vacaciones", "title": vacation.employee.full_name,
+                "detail": f"Periodo {vacation.period_year} · {vacation.status}", "employee_id": vacation.employee_id,
+            })
+    automatic_alerts.sort(key=lambda item: item["date"])
+    overdue_count = sum(item.status == "Pendiente" and item.due_date < today_value for item in deadlines)
+    upcoming_count = sum(item.status == "Pendiente" and today_value <= item.due_date <= today_value + timedelta(days=7) for item in deadlines)
+    return render(
+        request, "calendar.html", db, user, companies=companies, employees=employees, deadlines=deadlines,
+        automatic_alerts=automatic_alerts, selected_company=company_id, selected_employee=employee_id,
+        status_filter=status_filter, overdue_count=overdue_count, upcoming_count=upcoming_count,
+    )
+
+
+@app.post("/app/calendar")
+def create_deadline(
+    company_id: Annotated[int, Form()], title: Annotated[str, Form()], due_date: Annotated[date, Form()],
+    deadline_type: Annotated[str, Form()] = "General", priority: Annotated[str, Form()] = "Normal",
+    employee_id: Annotated[int | None, Form()] = None, notes: Annotated[str, Form()] = "",
+    user: User = Depends(require_roles("administrador", "contador", "auxiliar")), db: Session = Depends(get_db),
+):
+    company = company_allowed(db, user, company_id)
+    employee = db.get(Employee, employee_id) if employee_id else None
+    if employee and employee.company_id != company.id:
+        raise HTTPException(400, "El funcionario no pertenece a la empresa seleccionada.")
+    item = LaborDeadline(
+        company_id=company.id, employee_id=employee.id if employee else None, title=title.strip(),
+        deadline_type=deadline_type.strip(), due_date=due_date, priority=priority, notes=notes.strip(),
+        created_by=user.email,
+    )
+    db.add(item)
+    db.flush()
+    if employee:
+        add_employee_event(db, employee, user, "Agenda", f"Vencimiento creado: {item.title}", item.notes, item.due_date)
+    write_audit(db, user, "crear", "vencimiento", str(item.id), f"{company.legal_name}: {item.title}")
+    db.commit()
+    return RedirectResponse("/app/calendar", status_code=303)
+
+
+@app.post("/app/calendar/{deadline_id}/status")
+def deadline_status(
+    deadline_id: int, status_value: Annotated[str, Form(alias="status")],
+    user: User = Depends(require_roles("administrador", "contador", "auxiliar")), db: Session = Depends(get_db),
+):
+    item = db.get(LaborDeadline, deadline_id)
+    if not item or item.company_id not in company_ids_for_user(db, user):
+        raise HTTPException(404)
+    item.status = status_value
+    write_audit(db, user, "actualizar_estado", "vencimiento", str(item.id), status_value)
+    db.commit()
+    return RedirectResponse("/app/calendar", status_code=303)
+
+
+@app.post("/app/calendar/send-reminders")
+def send_calendar_reminders(
+    user: User = Depends(require_roles("administrador")), db: Session = Depends(get_db),
+):
+    studio = db.get(Studio, user.studio_id)
+    company_ids = company_ids_for_user(db, user)
+    horizon = date.today() + timedelta(days=7)
+    deadlines = list(db.scalars(select(LaborDeadline).where(
+        LaborDeadline.company_id.in_(company_ids), LaborDeadline.status == "Pendiente",
+        LaborDeadline.due_date <= horizon,
+    ).order_by(LaborDeadline.due_date))) if company_ids else []
+    recipients = list(db.scalars(select(User).where(
+        User.studio_id == user.studio_id, User.active.is_(True), User.role.in_(["administrador", "contador"]),
+    )))
+    payload = [{
+        "date": format_date(item.due_date), "title": item.title, "company": item.company.legal_name,
+        "status": "Vencido" if item.due_date < date.today() else "Próximo",
+    } for item in deadlines]
+    sent = 0
+    for recipient in recipients:
+        try:
+            if send_deadline_summary(recipient.email, studio.name if studio else "el estudio", payload):
+                sent += 1
+        except Exception:
+            continue
+    write_audit(db, user, "enviar", "recordatorios_agenda", str(user.studio_id), f"{sent} correos; {len(deadlines)} vencimientos")
+    db.commit()
+    return RedirectResponse(f"/app/calendar?reminders={sent}", status_code=303)
+
+
+@app.get("/app/calendar.ics")
+def calendar_ics(user: User = Depends(require_user), db: Session = Depends(get_db)):
+    company_ids = company_ids_for_user(db, user)
+    items = list(db.scalars(select(LaborDeadline).where(LaborDeadline.company_id.in_(company_ids), LaborDeadline.status == "Pendiente").order_by(LaborDeadline.due_date))) if company_ids else []
+    lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Digit Laboral//Agenda Laboral//ES"]
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    for item in items:
+        lines.extend([
+            "BEGIN:VEVENT", f"UID:deadline-{item.id}@digitlaboral", f"DTSTAMP:{stamp}",
+            f"DTSTART;VALUE=DATE:{item.due_date.strftime('%Y%m%d')}",
+            f"SUMMARY:{item.title.replace(',', '\\,')}",
+            f"DESCRIPTION:{(item.notes or item.deadline_type).replace(chr(10), ' ').replace(',', '\\,')}",
+            "END:VEVENT",
+        ])
+    lines.append("END:VCALENDAR")
+    return Response("\r\n".join(lines) + "\r\n", media_type="text/calendar", headers={"Content-Disposition": "attachment; filename=agenda_digit_laboral.ics"})
 
 
 @app.get("/app/requests", response_class=HTMLResponse)
@@ -925,7 +1564,15 @@ def requests_page(request: Request, user: User = Depends(require_user), db: Sess
     company_ids = company_ids_for_user(db, user)
     items = list(db.scalars(select(CompanyRequest).where(CompanyRequest.company_id.in_(company_ids)).order_by(CompanyRequest.created_at.desc()))) if company_ids else []
     companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name))) if company_ids else []
-    return render(request, "requests.html", db, user, items=items, companies=companies)
+    request_ids = [item.id for item in items]
+    workflows = list(db.scalars(select(RequestWorkflow).where(RequestWorkflow.request_id.in_(request_ids)))) if request_ids else []
+    workflow_by_request = {item.request_id: item for item in workflows}
+    pending = sum(item.status not in {"Resuelta", "Rechazada"} for item in items)
+    overdue = sum(
+        workflow.due_date and workflow.due_date < date.today() and next((item.status for item in items if item.id == workflow.request_id), "") not in {"Resuelta", "Rechazada"}
+        for workflow in workflows
+    )
+    return render(request, "requests.html", db, user, items=items, companies=companies, workflow_by_request=workflow_by_request, pending=pending, overdue=overdue)
 
 
 @app.post("/app/requests")
@@ -947,24 +1594,127 @@ def add_request(
     return RedirectResponse("/app/requests", status_code=303)
 
 
+@app.get("/app/requests/{request_id}", response_class=HTMLResponse)
+def request_detail_page(
+    request_id: int, request: Request, user: User = Depends(require_user), db: Session = Depends(get_db),
+):
+    item = db.get(CompanyRequest, request_id)
+    if not item or item.company_id not in company_ids_for_user(db, user):
+        raise HTTPException(404, "Solicitud no encontrada.")
+    workflow = db.scalar(select(RequestWorkflow).where(RequestWorkflow.request_id == item.id))
+    comments_query = select(RequestComment).where(RequestComment.request_id == item.id)
+    if user.role == "empresa":
+        comments_query = comments_query.where(RequestComment.visibility == "Empresa")
+    comments = list(db.scalars(comments_query.order_by(RequestComment.created_at)))
+    attachments = list(db.scalars(select(RequestAttachment).where(RequestAttachment.request_id == item.id).order_by(RequestAttachment.created_at.desc())))
+    users = list(db.scalars(select(User).where(User.studio_id == user.studio_id, User.active.is_(True), User.role != "empresa").order_by(User.full_name))) if user.studio_id else []
+    return render(request, "request_detail.html", db, user, item=item, workflow=workflow, comments=comments, attachments=attachments, users=users)
+
+
+@app.post("/app/requests/{request_id}/comments")
+def add_request_comment(
+    request_id: int, body: Annotated[str, Form()], visibility: Annotated[str, Form()] = "Empresa",
+    user: User = Depends(require_user), db: Session = Depends(get_db),
+):
+    item = db.get(CompanyRequest, request_id)
+    if not item or item.company_id not in company_ids_for_user(db, user):
+        raise HTTPException(404)
+    safe_visibility = "Empresa" if user.role == "empresa" else ("Interno" if visibility == "Interno" else "Empresa")
+    comment = RequestComment(
+        request_id=item.id, user_id=user.id, author_name=user.full_name, visibility=safe_visibility, body=body.strip(),
+    )
+    db.add(comment)
+    write_audit(db, user, "comentar", "solicitud", str(item.id), safe_visibility)
+    db.commit()
+    return RedirectResponse(f"/app/requests/{item.id}#conversation", status_code=303)
+
+
+@app.post("/app/requests/{request_id}/attachments")
+async def add_request_attachment(
+    request_id: int, file: UploadFile = File(), user: User = Depends(require_user), db: Session = Depends(get_db),
+):
+    item = db.get(CompanyRequest, request_id)
+    if not item or item.company_id not in company_ids_for_user(db, user):
+        raise HTTPException(404)
+    content = await file.read(MAX_UPLOAD_SIZE + 1)
+    if len(content) > MAX_UPLOAD_SIZE:
+        raise HTTPException(413, "El archivo supera el máximo permitido de 10 MB.")
+    content_type = (file.content_type or "application/octet-stream").lower()
+    if content_type not in ALLOWED_UPLOAD_TYPES:
+        raise HTTPException(415, "Tipo de archivo no permitido.")
+    folder = UPLOAD_DIR / "requests" / str(item.id)
+    folder.mkdir(parents=True, exist_ok=True)
+    stored_name = f"{uuid.uuid4().hex}_{safe_filename(file.filename or 'archivo')}"
+    (folder / stored_name).write_bytes(content)
+    attachment = RequestAttachment(
+        request_id=item.id, stored_name=stored_name, original_name=safe_filename(file.filename or "archivo"),
+        content_type=content_type, uploaded_by=user.email,
+    )
+    db.add(attachment)
+    write_audit(db, user, "adjuntar", "solicitud", str(item.id), attachment.original_name)
+    db.commit()
+    return RedirectResponse(f"/app/requests/{item.id}#attachments", status_code=303)
+
+
+@app.get("/app/requests/{request_id}/attachments/{attachment_id}/download")
+def download_request_attachment(
+    request_id: int, attachment_id: int, user: User = Depends(require_user), db: Session = Depends(get_db),
+):
+    item = db.get(CompanyRequest, request_id)
+    attachment = db.get(RequestAttachment, attachment_id)
+    if not item or item.company_id not in company_ids_for_user(db, user) or not attachment or attachment.request_id != item.id:
+        raise HTTPException(404)
+    path = UPLOAD_DIR / "requests" / str(item.id) / attachment.stored_name
+    if not path.exists():
+        raise HTTPException(404, "Archivo no encontrado.")
+    write_audit(db, user, "descargar", "adjunto_solicitud", str(attachment.id), attachment.original_name)
+    db.commit()
+    return FileResponse(path, media_type=attachment.content_type, filename=attachment.original_name)
+
+
 @app.post("/app/requests/{request_id}/status")
 def request_status(
     request_id: int,
     status_value: Annotated[str, Form(alias="status")],
     response: Annotated[str, Form()] = "",
+    assigned_user_id: Annotated[int | None, Form()] = None,
+    due_date: Annotated[date | None, Form()] = None,
+    internal_notes: Annotated[str, Form()] = "",
     user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
     db: Session = Depends(get_db),
 ):
     item = db.get(CompanyRequest, request_id)
     if not item or item.company_id not in company_ids_for_user(db, user):
         raise HTTPException(404)
+    valid_statuses = {"Pendiente", "En revisión", "Falta información", "Procesando", "Resuelta", "Rechazada"}
+    if status_value not in valid_statuses:
+        raise HTTPException(400, "Estado inválido.")
     item.status = status_value
     item.response = response.strip()
     if status_value in {"Resuelta", "Rechazada"}:
         item.resolved_at = datetime.now(UTC)
+    else:
+        item.resolved_at = None
+    workflow = db.scalar(select(RequestWorkflow).where(RequestWorkflow.request_id == item.id))
+    if not workflow:
+        workflow = RequestWorkflow(request_id=item.id)
+        db.add(workflow)
+    if assigned_user_id:
+        assigned = db.get(User, assigned_user_id)
+        if not assigned or assigned.studio_id != user.studio_id or assigned.role == "empresa":
+            raise HTTPException(400, "Responsable inválido.")
+        workflow.assigned_user_id = assigned.id
+    else:
+        workflow.assigned_user_id = None
+    workflow.due_date = due_date
+    workflow.internal_notes = internal_notes.strip()
+    if response.strip():
+        db.add(RequestComment(
+            request_id=item.id, user_id=user.id, author_name=user.full_name, visibility="Empresa", body=response.strip(),
+        ))
     write_audit(db, user, "actualizar_estado", "solicitud", str(item.id), status_value)
     db.commit()
-    return RedirectResponse("/app/requests", status_code=303)
+    return RedirectResponse(f"/app/requests/{item.id}", status_code=303)
 
 
 @app.get("/app/calculations", response_class=HTMLResponse)
@@ -1762,11 +2512,111 @@ def download_document(document_id: int, user: User = Depends(require_user), db: 
     return FileResponse(path, media_type=document.content_type, filename=document.original_name)
 
 
+@app.get("/app/security", response_class=HTMLResponse)
+def security_page(request: Request, user: User = Depends(require_user), db: Session = Depends(get_db)):
+    security = get_or_create_security(db, user)
+    pending_secret = request.session.get("pending_totp_secret", "")
+    recent_events = list(db.scalars(select(SecurityEvent).where(SecurityEvent.user_id == user.id).order_by(SecurityEvent.created_at.desc()).limit(25)))
+    db.commit()
+    return render(request, "security.html", db, user, security=security, pending_secret=pending_secret, recent_events=recent_events)
+
+
+@app.post("/app/security/2fa/start")
+def security_2fa_start(request: Request, user: User = Depends(require_user), db: Session = Depends(get_db)):
+    security = get_or_create_security(db, user)
+    if security.totp_enabled:
+        return RedirectResponse("/app/security?already=1", status_code=303)
+    request.session["pending_totp_secret"] = build_totp_secret()
+    return RedirectResponse("/app/security?setup=1", status_code=303)
+
+
+@app.get("/app/security/2fa/qr")
+def security_2fa_qr(request: Request, user: User = Depends(require_user)):
+    secret = request.session.get("pending_totp_secret", "")
+    if not secret:
+        raise HTTPException(404)
+    return Response(build_totp_qr_svg(user, secret), media_type="image/svg+xml", headers={"Cache-Control": "no-store"})
+
+
+@app.post("/app/security/2fa/confirm")
+def security_2fa_confirm(
+    request: Request, code: Annotated[str, Form()], user: User = Depends(require_user), db: Session = Depends(get_db),
+):
+    secret = request.session.get("pending_totp_secret", "")
+    if not secret or not verify_totp(secret, code):
+        return RedirectResponse("/app/security?invalid_code=1", status_code=303)
+    security = get_or_create_security(db, user)
+    security.totp_secret = secret
+    security.totp_enabled = True
+    security.session_version += 1
+    request.session["security_version"] = security.session_version
+    request.session.pop("pending_totp_secret", None)
+    write_audit(db, user, "activar", "doble_factor", str(user.id))
+    write_security_event(db, request, "activar_2fa", True, user=user)
+    db.commit()
+    return RedirectResponse("/app/security?enabled=1", status_code=303)
+
+
+@app.post("/app/security/2fa/disable")
+def security_2fa_disable(
+    request: Request, password: Annotated[str, Form()], code: Annotated[str, Form()],
+    user: User = Depends(require_user), db: Session = Depends(get_db),
+):
+    security = get_or_create_security(db, user)
+    if not verify_password(password, user.password_hash) or not verify_totp(security.totp_secret, code):
+        return RedirectResponse("/app/security?disable_error=1", status_code=303)
+    security.totp_enabled = False
+    security.totp_secret = ""
+    security.session_version += 1
+    request.session["security_version"] = security.session_version
+    write_audit(db, user, "desactivar", "doble_factor", str(user.id))
+    write_security_event(db, request, "desactivar_2fa", True, user=user)
+    db.commit()
+    return RedirectResponse("/app/security?disabled=1", status_code=303)
+
+
+@app.post("/app/security/password")
+def security_change_password(
+    request: Request, current_password: Annotated[str, Form()], new_password: Annotated[str, Form()],
+    new_password_confirm: Annotated[str, Form()], user: User = Depends(require_user), db: Session = Depends(get_db),
+):
+    if not verify_password(current_password, user.password_hash):
+        return RedirectResponse("/app/security?password_error=current", status_code=303)
+    if new_password != new_password_confirm:
+        return RedirectResponse("/app/security?password_error=match", status_code=303)
+    error = password_strength_error(new_password)
+    if error:
+        return RedirectResponse(f"/app/security?password_error={quote(error)}", status_code=303)
+    user.password_hash = hash_password(new_password)
+    user.must_change_password = False
+    security = get_or_create_security(db, user)
+    security.password_changed_at = datetime.now(UTC)
+    security.session_version += 1
+    request.session["security_version"] = security.session_version
+    write_audit(db, user, "cambiar", "contrasena", str(user.id))
+    write_security_event(db, request, "cambio_contrasena", True, user=user)
+    db.commit()
+    return RedirectResponse("/app/security?password_changed=1", status_code=303)
+
+
+@app.post("/app/security/logout-all")
+def security_logout_all(request: Request, user: User = Depends(require_user), db: Session = Depends(get_db)):
+    security = get_or_create_security(db, user)
+    security.session_version += 1
+    write_audit(db, user, "cerrar", "todas_sesiones", str(user.id))
+    write_security_event(db, request, "cerrar_todas_sesiones", True, user=user)
+    db.commit()
+    request.session.clear()
+    return RedirectResponse("/login?logged_out_all=1", status_code=303)
+
+
 @app.get("/app/users", response_class=HTMLResponse)
 def users_page(request: Request, user: User = Depends(require_roles("administrador")), db: Session = Depends(get_db)):
     users = list(db.scalars(select(User).where(User.studio_id == user.studio_id).order_by(User.full_name)))
     companies = list(db.scalars(select(Company).where(Company.studio_id == user.studio_id).order_by(Company.legal_name)))
-    return render(request, "users.html", db, user, users=users, companies=companies)
+    securities = list(db.scalars(select(UserSecurity).where(UserSecurity.user_id.in_([item.id for item in users])))) if users else []
+    security_by_user = {item.user_id: item for item in securities}
+    return render(request, "users.html", db, user, users=users, companies=companies, security_by_user=security_by_user)
 
 
 @app.post("/app/users")
@@ -1779,6 +2629,9 @@ def create_user(
     user: User = Depends(require_roles("administrador")),
     db: Session = Depends(get_db),
 ):
+    strength_error = password_strength_error(password)
+    if strength_error:
+        return RedirectResponse(f"/app/users?password_error={quote(strength_error)}", status_code=303)
     if role not in {"administrador", "contador", "auxiliar", "empresa"}:
         raise HTTPException(400)
     if role == "empresa" and not company_id:
@@ -1792,6 +2645,7 @@ def create_user(
     except IntegrityError:
         db.rollback()
         return RedirectResponse("/app/users?duplicate=1", status_code=303)
+    get_or_create_security(db, item)
     write_audit(db, user, "crear", "usuario", str(item.id), item.email)
     db.commit()
     return RedirectResponse("/app/users", status_code=303)
@@ -1804,10 +2658,36 @@ def toggle_user(user_id: int, user: User = Depends(require_roles("administrador"
         raise HTTPException(400)
     item.active = not item.active
     write_audit(db, user, "activar" if item.active else "desactivar", "usuario", str(item.id), item.email)
+    security = get_or_create_security(db, item)
+    security.session_version += 1
     db.commit()
     return RedirectResponse("/app/users", status_code=303)
 
 
+@app.post("/app/users/{user_id}/logout-all")
+def admin_logout_user_sessions(user_id: int, user: User = Depends(require_roles("administrador")), db: Session = Depends(get_db)):
+    item = db.get(User, user_id)
+    if not item or item.studio_id != user.studio_id:
+        raise HTTPException(404)
+    security = get_or_create_security(db, item)
+    security.session_version += 1
+    write_audit(db, user, "cerrar", "sesiones_usuario", str(item.id), item.email)
+    db.commit()
+    return RedirectResponse("/app/users?logout_all=1", status_code=303)
+
+
+@app.post("/app/users/{user_id}/reset-2fa")
+def admin_reset_user_2fa(user_id: int, user: User = Depends(require_roles("administrador")), db: Session = Depends(get_db)):
+    item = db.get(User, user_id)
+    if not item or item.studio_id != user.studio_id:
+        raise HTTPException(404)
+    security = get_or_create_security(db, item)
+    security.totp_enabled = False
+    security.totp_secret = ""
+    security.session_version += 1
+    write_audit(db, user, "restablecer", "doble_factor", str(item.id), item.email)
+    db.commit()
+    return RedirectResponse("/app/users?reset_2fa=1", status_code=303)
 
 
 def _labor_hierarchy(article: LaborArticle) -> dict[str, str]:
@@ -1959,6 +2839,23 @@ def audit_page(request: Request, user: User = Depends(require_roles("administrad
     return render(request, "audit.html", db, user, logs=logs)
 
 
+@app.get("/app/export/studio.zip")
+def export_studio_backup(
+    user: User = Depends(require_roles("administrador")), db: Session = Depends(get_db),
+):
+    studio = db.get(Studio, user.studio_id)
+    if not studio:
+        raise HTTPException(404)
+    payload = build_studio_export(db, studio, UPLOAD_DIR)
+    filename = safe_download_name(f"Respaldo completo {studio.name} {date.today().isoformat()}", "", "zip")
+    write_audit(db, user, "exportar", "respaldo_estudio", str(studio.id), filename)
+    db.commit()
+    return StreamingResponse(
+        io.BytesIO(payload), media_type="application/zip",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
+    )
+
+
 @app.get("/app/export/employees.csv")
 def export_employees(user: User = Depends(require_user), db: Session = Depends(get_db)):
     company_ids = company_ids_for_user(db, user)
@@ -1978,7 +2875,9 @@ def admin_dashboard(request: Request, user: User = Depends(require_roles("supera
     requests_list = list(db.scalars(select(ActivationRequest).order_by(ActivationRequest.created_at.desc())))
     total_companies = db.scalar(select(func.count(Company.id))) or 0
     total_users = db.scalar(select(func.count(User.id))) or 0
-    return render(request, "admin.html", db, user, studios=studios, requests_list=requests_list, total_companies=total_companies, total_users=total_users)
+    payments = list(db.scalars(select(StudioPayment).order_by(StudioPayment.payment_date.desc(), StudioPayment.id.desc()).limit(100)))
+    monthly_revenue = sum(item.amount for item in payments if item.payment_date.year == date.today().year and item.payment_date.month == date.today().month and item.status == "Confirmado")
+    return render(request, "admin.html", db, user, studios=studios, requests_list=requests_list, total_companies=total_companies, total_users=total_users, payments=payments, monthly_revenue=monthly_revenue)
 
 
 @app.post("/admin/studios")
@@ -1993,6 +2892,9 @@ def admin_create_studio(
     user: User = Depends(require_roles("superadmin")),
     db: Session = Depends(get_db),
 ):
+    strength_error = password_strength_error(temporary_password)
+    if strength_error:
+        return RedirectResponse(f"/admin?password_error={quote(strength_error)}", status_code=303)
     studio = Studio(name=name.strip(), phone=phone.strip(), plan_name=plan_name, company_limit=max(1, company_limit), payment_status="Activo")
     db.add(studio)
     try:
@@ -2000,6 +2902,7 @@ def admin_create_studio(
         owner = User(studio_id=studio.id, full_name=owner_name.strip(), email=owner_email.strip().lower(), password_hash=hash_password(temporary_password), role="administrador", must_change_password=True)
         db.add(owner)
         db.flush()
+        get_or_create_security(db, owner)
     except IntegrityError:
         db.rollback()
         return RedirectResponse("/admin?duplicate=1", status_code=303)
@@ -2028,6 +2931,30 @@ def admin_studio_status(
     return RedirectResponse("/admin", status_code=303)
 
 
+@app.post("/admin/studios/{studio_id}/payments")
+def admin_add_payment(
+    studio_id: int, amount: Annotated[int, Form()], period: Annotated[str, Form()],
+    payment_date: Annotated[date, Form()], method: Annotated[str, Form()] = "Transferencia",
+    reference: Annotated[str, Form()] = "", status_value: Annotated[str, Form(alias="status")] = "Confirmado",
+    notes: Annotated[str, Form()] = "", user: User = Depends(require_roles("superadmin")),
+    db: Session = Depends(get_db),
+):
+    studio = db.get(Studio, studio_id)
+    if not studio:
+        raise HTTPException(404)
+    item = StudioPayment(
+        studio_id=studio.id, amount=max(0, amount), period=period.strip(), payment_date=payment_date,
+        method=method.strip(), reference=reference.strip(), status=status_value, notes=notes.strip(),
+    )
+    db.add(item)
+    if status_value == "Confirmado":
+        studio.payment_status = "Activo"
+        studio.active = True
+    write_audit(db, user, "registrar", "pago_estudio", str(studio.id), f"Gs. {format_gs(item.amount)} · {item.period}")
+    db.commit()
+    return RedirectResponse("/admin?payment=1", status_code=303)
+
+
 @app.post("/admin/activation/{request_id}/status")
 def admin_activation_status(
     request_id: int,
@@ -2047,4 +2974,4 @@ def admin_activation_status(
 @app.get("/health")
 def health(db: Session = Depends(get_db)):
     db.scalar(select(func.count(User.id)))
-    return {"status": "ok", "app": settings.app_name, "environment": settings.environment, "version": "1.5.0-preview"}
+    return {"status": "ok", "app": settings.app_name, "environment": settings.environment, "version": "1.9.0-preview"}

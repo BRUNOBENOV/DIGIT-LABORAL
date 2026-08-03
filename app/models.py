@@ -388,3 +388,162 @@ class AuditLog(Base):
     entity_id: Mapped[str] = mapped_column(String(80), default="")
     detail: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+
+
+class EmployeeEvent(Base):
+    __tablename__ = "employee_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), index=True)
+    event_type: Mapped[str] = mapped_column(String(60), index=True, default="General")
+    title: Mapped[str] = mapped_column(String(180))
+    detail: Mapped[str] = mapped_column(Text, default="")
+    effective_date: Mapped[date] = mapped_column(Date, default=date.today, index=True)
+    amount: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    created_by: Mapped[str] = mapped_column(String(180), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+
+    employee: Mapped[Employee] = relationship()
+
+
+class SalaryHistory(Base):
+    __tablename__ = "salary_history"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), index=True)
+    previous_salary: Mapped[int] = mapped_column(Integer, default=0)
+    new_salary: Mapped[int] = mapped_column(Integer, default=0)
+    effective_from: Mapped[date] = mapped_column(Date, default=date.today, index=True)
+    reason: Mapped[str] = mapped_column(String(240), default="Actualización salarial")
+    created_by: Mapped[str] = mapped_column(String(180), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+
+    employee: Mapped[Employee] = relationship()
+
+
+class LaborDeadline(Base):
+    __tablename__ = "labor_deadlines"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    employee_id: Mapped[Optional[int]] = mapped_column(ForeignKey("employees.id"), nullable=True, index=True)
+    title: Mapped[str] = mapped_column(String(200))
+    deadline_type: Mapped[str] = mapped_column(String(80), default="General", index=True)
+    due_date: Mapped[date] = mapped_column(Date, index=True)
+    priority: Mapped[str] = mapped_column(String(30), default="Normal")
+    status: Mapped[str] = mapped_column(String(30), default="Pendiente", index=True)
+    notes: Mapped[str] = mapped_column(Text, default="")
+    created_by: Mapped[str] = mapped_column(String(180), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+
+    company: Mapped[Company] = relationship()
+    employee: Mapped[Optional[Employee]] = relationship()
+
+
+class RequestWorkflow(Base):
+    __tablename__ = "request_workflows"
+    __table_args__ = (UniqueConstraint("request_id", name="uq_request_workflow_request"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    request_id: Mapped[int] = mapped_column(ForeignKey("company_requests.id"), index=True)
+    assigned_user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    due_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True, index=True)
+    internal_notes: Mapped[str] = mapped_column(Text, default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
+
+    request: Mapped[CompanyRequest] = relationship()
+    assigned_user: Mapped[Optional[User]] = relationship()
+
+
+class RequestComment(Base):
+    __tablename__ = "request_comments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    request_id: Mapped[int] = mapped_column(ForeignKey("company_requests.id"), index=True)
+    user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    author_name: Mapped[str] = mapped_column(String(180), default="")
+    visibility: Mapped[str] = mapped_column(String(30), default="Empresa")
+    body: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+
+    request: Mapped[CompanyRequest] = relationship()
+    user: Mapped[Optional[User]] = relationship()
+
+
+class RequestAttachment(Base):
+    __tablename__ = "request_attachments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    request_id: Mapped[int] = mapped_column(ForeignKey("company_requests.id"), index=True)
+    stored_name: Mapped[str] = mapped_column(String(260))
+    original_name: Mapped[str] = mapped_column(String(260))
+    content_type: Mapped[str] = mapped_column(String(100), default="application/octet-stream")
+    uploaded_by: Mapped[str] = mapped_column(String(180), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+
+    request: Mapped[CompanyRequest] = relationship()
+
+
+class UserSecurity(Base):
+    __tablename__ = "user_security"
+    __table_args__ = (UniqueConstraint("user_id", name="uq_user_security_user"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    failed_attempts: Mapped[int] = mapped_column(Integer, default=0)
+    locked_until: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    totp_secret: Mapped[str] = mapped_column(String(120), default="")
+    totp_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    session_version: Mapped[int] = mapped_column(Integer, default=1)
+    password_changed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
+
+    user: Mapped[User] = relationship()
+
+
+class PasswordResetToken(Base):
+    __tablename__ = "password_reset_tokens"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    token_hash: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    used_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    requested_ip: Mapped[str] = mapped_column(String(80), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+
+    user: Mapped[User] = relationship()
+
+
+class SecurityEvent(Base):
+    __tablename__ = "security_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    studio_id: Mapped[Optional[int]] = mapped_column(ForeignKey("studios.id"), nullable=True, index=True)
+    user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    email: Mapped[str] = mapped_column(String(180), default="", index=True)
+    event_type: Mapped[str] = mapped_column(String(80), index=True)
+    success: Mapped[bool] = mapped_column(Boolean, default=False)
+    ip_address: Mapped[str] = mapped_column(String(80), default="")
+    user_agent: Mapped[str] = mapped_column(String(300), default="")
+    detail: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC), index=True)
+
+    user: Mapped[Optional[User]] = relationship()
+
+
+class StudioPayment(Base):
+    __tablename__ = "studio_payments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    studio_id: Mapped[int] = mapped_column(ForeignKey("studios.id"), index=True)
+    amount: Mapped[int] = mapped_column(Integer, default=0)
+    period: Mapped[str] = mapped_column(String(20), default="")
+    payment_date: Mapped[date] = mapped_column(Date, default=date.today, index=True)
+    method: Mapped[str] = mapped_column(String(60), default="Transferencia")
+    reference: Mapped[str] = mapped_column(String(120), default="")
+    status: Mapped[str] = mapped_column(String(30), default="Confirmado")
+    notes: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+
+    studio: Mapped[Studio] = relationship()

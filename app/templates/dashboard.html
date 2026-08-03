@@ -20,7 +20,7 @@
       <a class="quick-link" href="/app/companies"><span class="quick-icon">＋</span><div><b>Nueva empresa</b><small>Alta y datos principales</small></div></a>
       <a class="quick-link" href="/app/employees"><span class="quick-icon">♙</span><div><b>Nuevo funcionario</b><small>Registro laboral</small></div></a>
       <a class="quick-link" href="/app/calculations"><span class="quick-icon">₲</span><div><b>Calcular salario</b><small>Simulación inmediata</small></div></a>
-      <a class="quick-link" href="/app/certificates"><span class="quick-icon">▤</span><div><b>Emitir documento</b><small>Vista previa e impresión</small></div></a>
+      <a class="quick-link" href="/app/certificates"><span class="quick-icon">▤</span><div><b>Emitir documento</b><small>Vista previa e impresión</small></div></a>{% if user.role == 'administrador' %}<a class="quick-link" href="/app/export/studio.zip"><span class="quick-icon">⇩</span><div><b>Respaldo completo</b><small>Datos y archivos del estudio</small></div></a>{% endif %}
     </div>
   </article>
   <article class="system-panel">
@@ -29,7 +29,7 @@
       <div class="status-row"><span>Base de datos</span><b>Conectada</b></div>
       <div class="status-row"><span>Sesión</span><b>Protegida</b></div>
       <div class="status-row"><span>Rol activo</span><b>{{ user.role|replace('superadmin','Administrador general')|capitalize }}</b></div>
-      <div class="status-row"><span>Versión</span><b>1.4 Preview</b></div>
+      <div class="status-row"><span>Versión</span><b>1.9 Preview</b></div>
     </div>
   </article>
 </section>
@@ -42,7 +42,7 @@
   <a href="/app/certificates"><i class="violet">▤</i><span class="module-number">4</span><h3>Certificados</h3><p>Documentos, constancias, contratos y archivos.</p><div class="tag-row"><span>PDF</span><span>Constancias</span><span>Contratos</span></div><b>→</b></a>
   <a href="/app/parameters"><i class="gray">🔧</i><span class="module-number">5</span><h3>Utilitarios</h3><p>Parámetros, usuarios, auditoría y configuración.</p><div class="tag-row"><span>Parámetros</span><span>Auditoría</span></div><b>→</b></a>
   <a href="/app/requests"><i class="blue">✉</i><span class="module-number">6</span><h3>Trámites</h3><p>Altas, bajas, vacaciones y cambios enviados por empresas.</p><div class="tag-row"><span>Solicitudes</span><span>Seguimiento</span></div><b>→</b></a>
-  <a href="/app/ai"><i class="violet">AI</i><span class="module-number">7</span><h3>Asistente IA</h3><p>Control de datos, borradores y recomendaciones con revisión humana.</p><div class="tag-row"><span>Alertas</span><span>Borradores</span><span>Control</span></div><b>→</b></a>
+  <a href="/app/ai"><i class="violet">AI</i><span class="module-number">7</span><h3>Asistente IA</h3><p>Control de datos, borradores y recomendaciones con revisión humana.</p><div class="tag-row"><span>Alertas</span><span>Borradores</span><span>Control</span></div><b>→</b></a><a href="/app/calendar"><i class="orange">◷</i><span class="module-number">8</span><h3>Agenda laboral</h3><p>Vencimientos, vacaciones, aniversarios y tareas críticas.</p><div class="tag-row"><span>Alertas</span><span>Calendario</span></div><b>→</b></a>
 </section>
 
 {% if automation_alerts %}

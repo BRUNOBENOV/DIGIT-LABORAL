@@ -13,7 +13,7 @@
 <section class="panel empty-certificate-state"><h2>Consulta de documentos</h2><p>Tu acceso permite consultar documentos generados por el estudio. Para solicitar uno nuevo, utilizá Trámites.</p><a class="btn primary" href="/app/requests">Enviar solicitud</a></section>
 {% elif companies and employees %}
 {% set initial_type = selected_document_type or certificate_types.keys()|list|first %}
-<form method="post" action="/app/certificates" class="certificate-workspace" id="certificateForm">
+<form method="post" action="/app/certificates" class="certificate-workspace" id="certificateForm"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <input type="hidden" name="calculation_id" value="{{ selected_calculation.id if selected_calculation else '' }}">
   <aside class="certificate-type-menu" aria-label="Tipos de documentos">
     {% for key, label in certificate_types.items() %}<button type="button" class="certificate-type-button {{ 'active' if key == initial_type }}" data-certificate-type="{{ key }}">{{ label }}</button>{% endfor %}
@@ -30,12 +30,12 @@
 
     <fieldset class="document-specific-fields" id="documentSpecificFields"><legend>Datos específicos del documento</legend>
       <label class="specific-field" data-specific="all">Número interno<input name="document_number" id="certificateDocumentNumber" placeholder="Se asignará automáticamente"></label>
-      <div class="document-form-grid specific-field" data-specific="aguinaldo_anual aguinaldo_proporcional"><label>Periodo desde<input name="period_start" id="certificatePeriodStart" type="date" value="{{ calculation_inputs.get('period_start','') }}"></label><label>Periodo hasta<input name="period_end" id="certificatePeriodEnd" type="date" value="{{ calculation_inputs.get('period_end','') }}"></label></div>
-      <label class="specific-field" data-specific="aguinaldo_anual aguinaldo_proporcional">Monto pagado (Gs.)<input name="amount" id="certificateAmount" type="number" min="0" value="{{ selected_calculation.amount if selected_calculation else 0 }}"></label>
-      <label class="specific-field" data-specific="notificacion_preaviso renuncia despido">Fecha efectiva<input name="effective_date" id="certificateEffectiveDate" type="date"></label>
-      <div class="document-form-grid specific-field" data-specific="permiso_paternidad solicitud_vacacion usufructo_vacaciones"><label>Desde<input name="leave_start" id="certificateLeaveStart" type="date"></label><label>Hasta<input name="leave_end" id="certificateLeaveEnd" type="date"></label></div>
+      <div class="document-form-grid specific-field" data-specific="aguinaldo_anual aguinaldo_proporcional recibo_salario liquidacion_final"><label>Periodo desde<input name="period_start" id="certificatePeriodStart" type="date" value="{{ calculation_inputs.get('period_start','') }}"></label><label>Periodo hasta<input name="period_end" id="certificatePeriodEnd" type="date" value="{{ calculation_inputs.get('period_end','') }}"></label></div>
+      <label class="specific-field" data-specific="aguinaldo_anual aguinaldo_proporcional recibo_salario liquidacion_final cambio_salarial">Monto relacionado (Gs.)<input name="amount" id="certificateAmount" type="number" min="0" value="{{ selected_calculation.amount if selected_calculation else 0 }}"></label>
+      <label class="specific-field" data-specific="notificacion_preaviso renuncia despido cambio_salarial baja_funcionario liquidacion_final">Fecha efectiva<input name="effective_date" id="certificateEffectiveDate" type="date"></label>
+      <div class="document-form-grid specific-field" data-specific="permiso_paternidad permiso_laboral solicitud_vacacion usufructo_vacaciones"><label>Desde<input name="leave_start" id="certificateLeaveStart" type="date"></label><label>Hasta<input name="leave_end" id="certificateLeaveEnd" type="date"></label></div>
       <div class="document-form-grid specific-field" data-specific="constancia"><label>Nacionalidad<input name="nationality" id="certificateNationality" value="paraguaya"></label><label>Estado civil (opcional)<input name="civil_status" id="certificateCivilStatus"></label></div>
-      <label class="specific-field" data-specific="permiso_paternidad renuncia solicitud_vacacion">Destinatario<input name="recipient" id="certificateRecipient" value="Encargado/a de Recursos Humanos"></label>
+      <label class="specific-field" data-specific="permiso_paternidad permiso_laboral renuncia solicitud_vacacion amonestacion">Destinatario<input name="recipient" id="certificateRecipient" value="Encargado/a de Recursos Humanos"></label>
     </fieldset>
     <label>Observaciones<textarea name="observations" id="certificateObservations" rows="4" placeholder="Texto adicional, fechas, condiciones o aclaraciones">{% if selected_calculation %}Cálculo N.º {{ selected_calculation.id }} vinculado: {{ selected_calculation.calculation_type|capitalize }}, monto estimado Gs. {{ selected_calculation.amount|gs }}.{% endif %}</textarea></label>
     <div class="document-auto-note"><b>Automatización activa</b><span>El sistema asignará numeración, membrete, firma, datos del funcionario y relación con el cálculo.</span></div>

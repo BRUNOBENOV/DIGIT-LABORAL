@@ -6,8 +6,9 @@ from decimal import Decimal
 from sqlalchemy import select
 
 from .auth import hash_password
+from .config import settings
 from .database import SessionLocal
-from .models import Branch, Company, CompanyRequest, Employee, LaborArticle, LaborParameter, Studio, User
+from .models import Branch, Company, CompanyRequest, Employee, LaborArticle, LaborParameter, Studio, User, UserSecurity
 
 SOURCE_213 = "https://www.bacn.gov.py/leyes-paraguayas/2608/ley-n-213-establece-el-codigo-del-trabajo"
 SOURCE_496 = "https://www.bacn.gov.py/leyes-paraguayas/2514/ley-n-496-modifica-amplia-y-deroga-articulos-de-la-ley-21393-codigo-del-trabajo"
@@ -41,10 +42,38 @@ PARAMETERS = [
 
 def seed_database() -> None:
     with SessionLocal() as db:
+        db.info["is_superadmin"] = True
+        db.info["studio_id"] = None
+        production = settings.environment.lower() == "production"
         if db.scalar(select(User.id).where(User.role == "superadmin")) is None:
-            db.add(User(full_name="Administrador General", email="sistema@digitlaboral.com.py", password_hash=hash_password("Digit2026!"), role="superadmin", must_change_password=False))
+            if production:
+                email = settings.initial_admin_email.strip().lower()
+                password = settings.initial_admin_password
+                if not email or not password or len(password) < 12:
+                    raise RuntimeError(
+                        "En producción deben configurarse INITIAL_ADMIN_EMAIL e "
+                        "INITIAL_ADMIN_PASSWORD con una contraseña de al menos 12 caracteres."
+                    )
+                superadmin = User(
+                    full_name=settings.initial_admin_name.strip() or "Administrador General",
+                    email=email,
+                    password_hash=hash_password(password),
+                    role="superadmin",
+                    must_change_password=True,
+                )
+            else:
+                superadmin = User(
+                    full_name="Administrador General",
+                    email="sistema@digitlaboral.com.py",
+                    password_hash=hash_password("Digit2026!"),
+                    role="superadmin",
+                    must_change_password=False,
+                )
+            db.add(superadmin)
+            db.flush()
+            db.add(UserSecurity(user_id=superadmin.id))
 
-        if db.scalar(select(Studio.id).limit(1)) is None:
+        if not production and db.scalar(select(Studio.id).limit(1)) is None:
             studio = Studio(name="Victor's Contabilidad", phone="0983 102 220", plan_name="Profesional", company_limit=15, payment_status="Activo")
             db.add(studio)
             db.flush()

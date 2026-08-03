@@ -4,7 +4,7 @@
 <div class="page-header"><div><span class="eyebrow">ASISTENCIA CONTROLADA</span><h1>Asistente IA</h1><p>Revisa datos, detecta faltantes y propone próximos pasos. Nunca modifica registros ni aprueba documentos por sí solo.</p></div><span class="ai-provider-badge">{{ 'IA externa disponible · ' + ai_model if ai_external_available else 'Motor interno disponible' }}</span></div>
 <div class="legal-warning"><b>Privacidad y revisión:</b> la IA externa solo se utiliza cuando marcás el consentimiento. Se envían únicamente los datos estructurados seleccionados, no archivos adjuntos. Toda respuesta es orientativa y requiere revisión humana.</div>
 <section class="ai-layout">
-  <form method="post" action="/app/ai" class="panel ai-form-panel">
+  <form method="post" action="/app/ai" class="panel ai-form-panel"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <span class="eyebrow-label">NUEVA REVISIÓN</span><h2>¿Qué necesitás analizar?</h2>
     <label>Tipo de ayuda<select name="purpose"><option value="control">Control de expediente</option><option value="calculo">Revisión de cálculo</option><option value="documento">Preparación de documento</option><option value="informe">Resumen para informe</option></select></label>
     <label>Empresa<select name="company_id" id="aiCompany"><option value="">Sin empresa específica</option>{% for company in companies %}<option value="{{ company.id }}" {{ 'selected' if selected_company and selected_company.id == company.id }}>{{ company.legal_name }}</option>{% endfor %}</select></label>

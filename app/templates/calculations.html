@@ -32,7 +32,7 @@
   {% set default_company = selected_company or (companies[0].id if companies else '') %}
   {% set default_employee = selected_employee or (employees[0].id if employees else '') %}
 
-  <form method="post" action="/app/calculations" class="calculator-panel active" data-calculator-panel="salary">
+  <form method="post" action="/app/calculations" class="calculator-panel active" data-calculator-panel="salary"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <input type="hidden" name="calculation_type" value="salary"><input type="hidden" name="company_id" value="{{ default_company }}" data-sync-company><input type="hidden" name="employee_id" value="{{ default_employee }}" data-sync-employee>
     <div class="calculator-copy"><span class="eyebrow">SALARIO MENSUAL</span><h2>Neto estimado</h2><p>El resultado se guarda como registro enlazable.</p></div>
     <div class="calculator-form-grid"><label>Periodo<input name="reference_period" type="month" value="{{ today.strftime('%Y-%m') }}"></label><label>Salario bruto (Gs.)<input name="gross" id="calcSalaryGross" type="number" min="0" value="{{ minimum_salary|int }}"></label><label>Otros ingresos<input name="other_income" id="calcSalaryIncome" type="number" min="0" value="0"></label><label>Otros descuentos<input name="other_discount" id="calcSalaryDiscount" type="number" min="0" value="0"></label><label class="check-field"><input name="apply_ips" id="calcSalaryIps" type="checkbox" checked> Aplicar IPS trabajador ({{ ips_rate|round(2) }}%)</label></div>
@@ -40,7 +40,7 @@
     <label>Observaciones<input name="notes" placeholder="Conceptos revisados, incidencia o referencia"></label>{% if user.role != 'empresa' %}<button class="btn primary" type="submit">Guardar cálculo</button>{% endif %}
   </form>
 
-  <form method="post" action="/app/calculations" class="calculator-panel" data-calculator-panel="hours">
+  <form method="post" action="/app/calculations" class="calculator-panel" data-calculator-panel="hours"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <input type="hidden" name="calculation_type" value="hours"><input type="hidden" name="company_id" value="{{ default_company }}" data-sync-company><input type="hidden" name="employee_id" value="{{ default_employee }}" data-sync-employee>
     <div class="calculator-copy"><span class="eyebrow">HORAS</span><h2>Valor de hora</h2><p>La referencia mensual y el multiplicador deben revisarse según el régimen.</p></div>
     <div class="calculator-form-grid"><label>Periodo<input name="reference_period" type="month" value="{{ today.strftime('%Y-%m') }}"></label><label>Salario mensual<input name="salary" id="calcHoursSalary" type="number" min="0" value="{{ minimum_salary|int }}"></label><label>Horas mensuales<input name="monthly_hours" id="calcHoursMonthly" type="number" min="1" value="240"></label><label>Horas a calcular<input name="hours_quantity" id="calcHoursQuantity" type="number" min="0" step="0.5" value="1"></label><label>Multiplicador<input name="multiplier" id="calcHoursMultiplier" type="number" min="0" step="0.01" value="1"></label></div>
@@ -48,7 +48,7 @@
     <label>Observaciones<input name="notes" placeholder="Tipo de hora o recargo utilizado"></label>{% if user.role != 'empresa' %}<button class="btn primary" type="submit">Guardar cálculo</button>{% endif %}
   </form>
 
-  <form method="post" action="/app/calculations" class="calculator-panel" data-calculator-panel="aguinaldo">
+  <form method="post" action="/app/calculations" class="calculator-panel" data-calculator-panel="aguinaldo"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <input type="hidden" name="calculation_type" value="aguinaldo"><input type="hidden" name="company_id" value="{{ default_company }}" data-sync-company><input type="hidden" name="employee_id" value="{{ default_employee }}" data-sync-employee>
     <div class="calculator-copy"><span class="eyebrow">REMUNERACIÓN ANUAL</span><h2>Aguinaldo</h2><p>Ingresá el total computable previamente revisado.</p></div>
     <div class="calculator-form-grid"><label>Año<input name="reference_period" type="number" min="2000" max="2100" value="{{ today.year }}"></label><label>Total computable del año<input name="total_remunerations" id="calcAguinaldoTotal" type="number" min="0" value="0"></label></div>
@@ -56,7 +56,7 @@
     <label>Observaciones<input name="notes" placeholder="Origen de las remuneraciones computables"></label>{% if user.role != 'empresa' %}<button class="btn primary" type="submit">Guardar y usar en recibo</button>{% endif %}
   </form>
 
-  <form method="post" action="/app/calculations" class="calculator-panel" data-calculator-panel="vacation">
+  <form method="post" action="/app/calculations" class="calculator-panel" data-calculator-panel="vacation"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <input type="hidden" name="calculation_type" value="vacation"><input type="hidden" name="company_id" value="{{ default_company }}" data-sync-company><input type="hidden" name="employee_id" value="{{ default_employee }}" data-sync-employee>
     <div class="calculator-copy"><span class="eyebrow">VACACIONES</span><h2>Remuneración estimada</h2><p>Los días deben estar previamente verificados.</p></div>
     <div class="calculator-form-grid"><label>Periodo<input name="reference_period" value="{{ today.year }}"></label><label>Salario mensual<input name="salary" id="calcVacationSalary" type="number" min="0" value="{{ minimum_salary|int }}"></label><label>Días a remunerar<input name="days" id="calcVacationDays" type="number" min="0" step="0.5" value="0"></label></div>
@@ -64,7 +64,7 @@
     <label>Observaciones<input name="notes" placeholder="Periodo, saldo o condición"></label>{% if user.role != 'empresa' %}<button class="btn primary" type="submit">Guardar y usar en documento</button>{% endif %}
   </form>
 
-  <form method="post" action="/app/calculations" class="calculator-panel" data-calculator-panel="notice">
+  <form method="post" action="/app/calculations" class="calculator-panel" data-calculator-panel="notice"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <input type="hidden" name="calculation_type" value="notice"><input type="hidden" name="company_id" value="{{ default_company }}" data-sync-company><input type="hidden" name="employee_id" value="{{ default_employee }}" data-sync-employee>
     <div class="calculator-copy"><span class="eyebrow">PREAVISO</span><h2>Estimación económica</h2><p>Ingresá los días después de revisar antigüedad y forma de terminación.</p></div>
     <div class="calculator-form-grid"><label>Referencia<input name="reference_period" value="{{ today.strftime('%Y-%m') }}"></label><label>Salario mensual<input name="salary" id="calcNoticeSalary" type="number" min="0" value="{{ minimum_salary|int }}"></label><label>Días de preaviso<input name="days" id="calcNoticeDays" type="number" min="0" step="1" value="0"></label></div>
@@ -75,6 +75,6 @@
 
 <section class="panel calculation-history">
   <div class="panel-head"><div><span>HISTORIAL CONECTADO</span><h2>Cálculos guardados</h2></div><a href="/app/reports{% if selected_company %}?company_id={{ selected_company }}{% endif %}">Abrir informe</a></div>
-  <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Empresa / funcionario</th><th>Tipo</th><th>Periodo</th><th>Monto</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>{% for item in recent_calculations %}<tr><td>{{ item.created_at|fecha }}</td><td><b>{{ item.employee.full_name if item.employee else item.company.legal_name }}</b><small class="table-sub">{{ item.company.legal_name }}</small></td><td>{{ calculation_labels.get(item.calculation_type, item.calculation_type) }}</td><td>{{ item.reference_period or '—' }}</td><td>Gs. {{ item.amount|gs }}</td><td><span class="status-pill {{ item.status|lower }}">{{ item.status }}</span></td><td><div class="document-row-actions"><a href="/app/calculations/{{ item.id }}/certificate">Usar en documento</a>{% if user.role in ['administrador','contador'] %}<form method="post" action="/app/calculations/{{ item.id }}/status"><select name="status" onchange="this.form.submit()"><option {{ 'selected' if item.status == 'Revisar' }}>Revisar</option><option {{ 'selected' if item.status == 'Aprobado' }}>Aprobado</option><option {{ 'selected' if item.status == 'Anulado' }}>Anulado</option></select></form>{% endif %}</div></td></tr>{% else %}<tr><td colspan="7" class="empty-state">No hay cálculos guardados con estos filtros.</td></tr>{% endfor %}</tbody></table></div>
+  <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Empresa / funcionario</th><th>Tipo</th><th>Periodo</th><th>Monto</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>{% for item in recent_calculations %}<tr><td>{{ item.created_at|fecha }}</td><td><b>{{ item.employee.full_name if item.employee else item.company.legal_name }}</b><small class="table-sub">{{ item.company.legal_name }}</small></td><td>{{ calculation_labels.get(item.calculation_type, item.calculation_type) }}</td><td>{{ item.reference_period or '—' }}</td><td>Gs. {{ item.amount|gs }}</td><td><span class="status-pill {{ item.status|lower }}">{{ item.status }}</span></td><td><div class="document-row-actions"><a href="/app/calculations/{{ item.id }}/certificate">Usar en documento</a>{% if user.role in ['administrador','contador'] %}<form method="post" action="/app/calculations/{{ item.id }}/status"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><select name="status" onchange="this.form.submit()"><option {{ 'selected' if item.status == 'Revisar' }}>Revisar</option><option {{ 'selected' if item.status == 'Aprobado' }}>Aprobado</option><option {{ 'selected' if item.status == 'Anulado' }}>Anulado</option></select></form>{% endif %}</div></td></tr>{% else %}<tr><td colspan="7" class="empty-state">No hay cálculos guardados con estos filtros.</td></tr>{% endfor %}</tbody></table></div>
 </section>
 {% endblock %}

@@ -63,6 +63,13 @@ DOCUMENT_LABELS: dict[str, str] = {
     "notificacion_preaviso": "Notificación de Preaviso",
     "renuncia": "Nota de Renuncia",
     "despido": "Comunicación de Despido",
+    "permiso_laboral": "Solicitud de Permiso Laboral",
+    "amonestacion": "Amonestación Escrita",
+    "cambio_salarial": "Comunicación de Cambio Salarial",
+    "alta_funcionario": "Constancia de Alta de Funcionario",
+    "baja_funcionario": "Constancia de Baja de Funcionario",
+    "recibo_salario": "Recibo de Salario",
+    "liquidacion_final": "Liquidación Final",
 }
 
 SPECIAL_NUMBERS = {
@@ -335,6 +342,34 @@ def build_document_body(
         "despido": (
             f"BORRADOR PARA REVISIÓN PROFESIONAL.\n\nPor medio de la presente, {company_name} comunica a {identity} la terminación de la relación laboral "
             f"con fecha efectiva {format_date_long_es(effective_date)}. La causa, liquidación, preaviso y documentación respaldatoria deben revisarse y detallarse antes de su entrega."
+        ),
+        "permiso_laboral": (
+            f"Señor/a\n{recipient}\n{company_name}\n\nRef.: Solicitud de permiso laboral\n\n"
+            f"Yo, {identity}, solicito permiso laboral desde el {format_date_short(leave_start)} hasta el {format_date_short(leave_end)}. "
+            "La autorización, modalidad de compensación y documentación respaldatoria quedarán sujetas a la decisión de la empresa."
+        ),
+        "amonestacion": (
+            f"BORRADOR PARA REVISIÓN PROFESIONAL.\n\n{company_name} comunica a {identity} una amonestación escrita relacionada con los hechos que deberán detallarse en las observaciones. "
+            "La empresa deberá verificar antecedentes, proporcionalidad, derecho de defensa y reglamentos internos antes de la entrega."
+        ),
+        "cambio_salarial": (
+            f"{company_name} comunica a {identity} que, a partir del {format_date_long_es(effective_date)}, la remuneración mensual registrada será de "
+            f"Gs. {format_gs(amount)} ({guaranies_in_words(amount)}). Las demás condiciones laborales permanecen vigentes salvo comunicación escrita en contrario."
+        ),
+        "alta_funcionario": (
+            f"{company_name} deja constancia del alta laboral de {identity}, para desempeñarse como {role}, con fecha de ingreso {admission} y remuneración registrada de {salary_display}."
+        ),
+        "baja_funcionario": (
+            f"{company_name} deja constancia de la baja laboral de {identity}, con fecha efectiva {format_date_long_es(effective_date)}. "
+            "La causa y los conceptos de la liquidación deberán constar en la documentación complementaria correspondiente."
+        ),
+        "recibo_salario": (
+            f"{company_name} deja constancia del pago a {identity} de la suma de Gs. {format_gs(amount)} ({guaranies_in_words(amount)}), "
+            "en concepto de salario y demás rubros detallados en el periodo indicado. La firma acredita la recepción del importe, sin renuncia a derechos legalmente reconocidos."
+        ),
+        "liquidacion_final": (
+            f"BORRADOR PARA REVISIÓN PROFESIONAL.\n\nSe prepara la liquidación final de {identity}, con fecha de terminación {format_date_long_es(effective_date)} "
+            f"y total referencial de Gs. {format_gs(amount)} ({guaranies_in_words(amount)}). Los rubros, descuentos, preaviso, vacaciones, aguinaldo e indemnizaciones deben verificarse antes de su firma."
         ),
     }
     body = bodies[document_type]
