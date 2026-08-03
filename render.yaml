@@ -7,7 +7,7 @@ services:
     envVars:
       - key: DATABASE_URL
         fromDatabase:
-          name: digit-laboral-db
+          name: digit-laboral-db-demo
           property: connectionString
       - key: DIGIT_SECRET_KEY
         generateValue: true
@@ -58,5 +58,5 @@ services:
       - key: SMTP_FROM_NAME
         value: "Digit Laboral"
 databases:
-  - name: digit-laboral-db
+  - name: digit-laboral-db-demo
     plan: free
