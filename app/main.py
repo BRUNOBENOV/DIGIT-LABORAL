@@ -15,6 +15,8 @@ from pathlib import Path
 from typing import Annotated
 from urllib.parse import quote
 
+from PIL import Image, ImageChops, ImageOps
+
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -83,6 +85,36 @@ ALLOWED_UPLOAD_TYPES = {
 MAX_UPLOAD_SIZE = 10 * 1024 * 1024
 
 
+def _trim_logo_margins(image: Image.Image) -> Image.Image:
+    rgba = image.convert("RGBA")
+    alpha_bbox = rgba.getchannel("A").getbbox()
+    if alpha_bbox:
+        rgba = rgba.crop(alpha_bbox)
+    white_bg = Image.new("RGBA", rgba.size, (255, 255, 255, 255))
+    diff = ImageChops.difference(rgba, white_bg)
+    bbox = diff.getbbox()
+    if bbox:
+        candidate = rgba.crop(bbox)
+        if candidate.width >= max(40, rgba.width // 5) and candidate.height >= max(40, rgba.height // 5):
+            rgba = candidate
+    return rgba
+
+
+def smart_normalize_logo(content: bytes) -> tuple[bytes, str]:
+    with Image.open(io.BytesIO(content)) as opened:
+        image = ImageOps.exif_transpose(opened).convert("RGBA")
+    image = _trim_logo_margins(image)
+    target_box = (980, 280)
+    canvas_size = (1100, 360)
+    contained = ImageOps.contain(image, target_box, method=Image.Resampling.LANCZOS)
+    canvas = Image.new("RGBA", canvas_size, (255, 255, 255, 0))
+    offset = ((canvas.width - contained.width) // 2, (canvas.height - contained.height) // 2)
+    canvas.paste(contained, offset, contained)
+    output = io.BytesIO()
+    canvas.save(output, format="PNG", optimize=True)
+    return output.getvalue(), "image/png"
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     Base.metadata.create_all(engine)
@@ -93,7 +125,7 @@ async def lifespan(_: FastAPI):
 if settings.environment == "production" and settings.secret_key == "cambiar-esta-clave-en-produccion":
     raise RuntimeError("DIGIT_SECRET_KEY debe configurarse con una clave segura en producción.")
 
-app = FastAPI(title="Digit Laboral", version="1.5.0-preview", lifespan=lifespan)
+app = FastAPI(title="Digit Laboral", version="1.6.0-preview", lifespan=lifespan)
 app.add_middleware(
     SessionMiddleware,
     secret_key=settings.secret_key,
@@ -682,9 +714,15 @@ async def update_company_branding(
         is_jpeg = content.startswith(b"\xff\xd8\xff")
         if content_type not in {"image/png", "image/jpeg"} or not (is_png or is_jpeg):
             raise HTTPException(415, "El logo debe ser PNG o JPG válido.")
-        branding.logo_bytes = content
-        branding.logo_content_type = "image/png" if is_png else "image/jpeg"
-        branding.logo_filename = safe_filename(logo.filename)
+        try:
+            optimized_bytes, optimized_type = smart_normalize_logo(content)
+        except Exception as exc:
+            raise HTTPException(400, f"No se pudo procesar el logo: {exc}") from exc
+        branding.logo_bytes = optimized_bytes
+        branding.logo_content_type = optimized_type
+        clean_name = safe_filename(logo.filename)
+        base_name = clean_name.rsplit('.', 1)[0] if '.' in clean_name else clean_name
+        branding.logo_filename = f"{base_name or 'logo'}-normalizado.png"
     branding.updated_at = datetime.now(UTC)
     write_audit(db, user, "actualizar", "identidad_visual", str(company.id), company.legal_name)
     db.commit()
@@ -1801,20 +1839,25 @@ def _labor_article_view(article: LaborArticle) -> dict:
 def _labor_outline(items: list[dict]) -> list[dict]:
     books: OrderedDict[str, dict] = OrderedDict()
     for item in items:
+        number = item["number"]
         book = books.setdefault(item["book_code"] or "SIN LIBRO", {
             "code": item["book_code"], "name": item["book_name"] or "Disposiciones sin clasificación",
-            "count": 0, "titles": OrderedDict(),
+            "count": 0, "titles": OrderedDict(), "start_number": number, "end_number": number,
         })
         book["count"] += 1
+        book["end_number"] = number
         title = book["titles"].setdefault(item["title_code"] or "SIN TITULO", {
             "code": item["title_code"], "name": item["title_name"] or "Sin título",
-            "count": 0, "chapters": OrderedDict(),
+            "count": 0, "chapters": OrderedDict(), "start_number": number, "end_number": number,
         })
         title["count"] += 1
+        title["end_number"] = number
         chapter = title["chapters"].setdefault(item["chapter_code"] or "SIN CAPITULO", {
             "code": item["chapter_code"], "name": item["chapter_name"] or "Sin capítulo", "count": 0,
+            "start_number": number, "end_number": number,
         })
         chapter["count"] += 1
+        chapter["end_number"] = number
     result = []
     for book in books.values():
         book["titles"] = [{**title, "chapters": list(title["chapters"].values())} for title in book["titles"].values()]
@@ -1868,7 +1911,21 @@ def labor_code_page(
         "repealed": sum(item["is_repealed"] for item in all_items), "books": len(outline),
         "reviewed_at": max((item["reviewed_at"] for item in all_items if item["reviewed_at"]), default=None),
     }
-    return render(request, "labor_code_v17.html", db, user, articles=visible, outline=outline, books=books, titles=titles, chapters=chapters, q=q, selected_book=book, selected_title=title, selected_chapter=chapter, status_filter=status_filter, article_query=article, page=page, pages=pages, total=total, stats=stats, source_registry=SOURCE_REGISTRY, sync_error=sync_error, synced=request.query_params.get("synced") == "1", version="1.5.0-preview")
+    current_scope = (visible or filtered or all_items)
+    current_context = None
+    if current_scope:
+        first_item = current_scope[0]
+        current_context = {
+            "book_code": first_item.get("book_code", ""),
+            "book_name": first_item.get("book_name", ""),
+            "title_code": first_item.get("title_code", ""),
+            "title_name": first_item.get("title_name", ""),
+            "chapter_code": first_item.get("chapter_code", ""),
+            "chapter_name": first_item.get("chapter_name", ""),
+            "start_number": current_scope[0].get("number", ""),
+            "end_number": current_scope[-1].get("number", ""),
+        }
+    return render(request, "labor_code_v17.html", db, user, articles=visible, outline=outline, books=books, titles=titles, chapters=chapters, q=q, selected_book=book, selected_title=title, selected_chapter=chapter, status_filter=status_filter, article_query=article, page=page, pages=pages, total=total, stats=stats, source_registry=SOURCE_REGISTRY, sync_error=sync_error, synced=request.query_params.get("synced") == "1", version="1.6.0-preview", current_context=current_context)
 
 
 @app.post("/app/labor-code/sync")
