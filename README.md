@@ -1,22 +1,34 @@
-# Digit Laboral — versión 1.3 Preview
+# Digit Laboral — versión 1.4 Preview
 
 Plataforma de gestión laboral para estudios contables paraguayos, presentada por Victor's Contabilidad.
 
 ## Vista pública y demostración
 
-- `index.html`: sitio comercial, beneficios, módulos, planes y preguntas frecuentes.
-- `login.html`: acceso controlado a la demostración.
-- `app.html`: sistema navegable con Mantenimientos, Cálculo, Informes, Certificados, Utilitarios, Trámites, Código Laboral, Consulta IA y Administración.
-- `privacidad.html` y `terminos.html`: textos específicos para la demostración pública.
-- `manifest.webmanifest` y `sw.js`: instalación como aplicación web y funcionamiento básico sin conexión.
+- `index.html`: sitio comercial, beneficios, módulos y planes.
+- `login.html`: acceso a la demostración pública.
+- `app.html`: demostración navegable sin datos reales.
+- `privacidad.html` y `terminos.html`: información legal de la demostración.
 
-La demostración usa datos ficticios y guarda cambios en el navegador. Incluye respaldo y restauración JSON, exportación CSV, tema claro/oscuro, diseño responsive, aviso de conexión y accesibilidad mejorada.
+La demostración pública guarda datos ficticios únicamente en el navegador. No debe utilizarse para información real de clientes.
 
 ## Aplicación productiva
 
-La carpeta `app/` contiene un backend FastAPI con autenticación, sesiones, separación por estudio, roles, empresas, sucursales, funcionarios, solicitudes, liquidaciones, vacaciones, aguinaldo, certificados generados, documentos, parámetros laborales, auditoría y soporte PostgreSQL.
+La carpeta `app/` contiene el backend FastAPI con PostgreSQL, autenticación, sesiones, separación por estudio, roles, empresas, funcionarios, solicitudes, liquidaciones, vacaciones, aguinaldo, documentos, cálculos, informes, auditoría y administración.
 
-La versión 1.3 Preview incorpora exportación real a Word y PDF, modelos laborales mejorados, membretes por empresa, numeración documental y auditoría de descargas. Mantiene el centro de Cálculos, el generador de documentos conectado a la base de datos, autenticación, permisos, seguridad y soporte PostgreSQL.
+### Automatización de la versión 1.4
+
+- Logo y membrete configurable por cada empresa.
+- Portal para que la empresa vinculada cargue o actualice su propio logo.
+- Colores, firma autorizada, pie de página y prefijo documental por empresa.
+- Cálculos guardados y vinculados con certificados, informes y expedientes.
+- Numeración automática de documentos.
+- Exportación Word y PDF con el membrete correspondiente.
+- Informes integrales del funcionario y exportación CSV.
+- Alertas de datos incompletos, empresas sin logo y cálculos pendientes de revisión.
+- Asistente de IA con motor interno y conexión opcional a OpenAI.
+- Registro de auditoría para cálculos, documentos, informes y consultas de IA.
+
+La IA no aprueba liquidaciones ni toma decisiones jurídicas. Señala datos faltantes, inconsistencias y próximos pasos; la emisión definitiva requiere revisión humana y profesional.
 
 ## Ejecutar localmente
 
@@ -34,15 +46,28 @@ run.bat
 
 Después abrí `http://127.0.0.1:8000`.
 
+## Configuración de IA
+
+El sistema funciona sin una clave externa mediante el motor interno. Para activar la asistencia de OpenAI, configurá en Render:
+
+```text
+AI_ENABLED=true
+OPENAI_API_KEY=<clave secreta>
+OPENAI_MODEL=gpt-5-mini
+AI_STORE_RESPONSES=false
+```
+
+Nunca subas la clave a GitHub ni a archivos `.env` públicos.
+
 ## Publicación
 
-- Para actualizar GitHub Pages, leé `SUBIR_A_GITHUB.md`.
-- Para desplegar el backend con PostgreSQL, leé `DEPLOYMENT.md`.
+- Para actualizar el repositorio y Render, leé `ACTUALIZAR_V16.md`.
+- Para desplegar desde cero, leé `DEPLOYMENT.md`.
 - Antes de usar datos reales, completá `SECURITY_CHECKLIST.md`.
 
-## Demostración
+## Credenciales demostrativas
 
 Correo: `admin@digitlaboral.com.py`  
 Contraseña: `demo123`
 
-No uses esas credenciales en producción.
+Cambiá las credenciales de demostración antes de ingresar información real.

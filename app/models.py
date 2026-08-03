@@ -4,7 +4,7 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Optional
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, LargeBinary, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -26,6 +26,7 @@ class Studio(Base):
 
     users: Mapped[list["User"]] = relationship(back_populates="studio")
     companies: Mapped[list["Company"]] = relationship(back_populates="studio", cascade="all, delete-orphan")
+    ai_interactions: Mapped[list["AIInteraction"]] = relationship(back_populates="studio", cascade="all, delete-orphan")
 
 
 class User(Base):
@@ -90,6 +91,9 @@ class Company(Base):
     payrolls: Mapped[list["Payroll"]] = relationship(back_populates="company", cascade="all, delete-orphan")
     documents: Mapped[list["Document"]] = relationship(back_populates="company", cascade="all, delete-orphan")
     generated_certificates: Mapped[list["GeneratedCertificate"]] = relationship(back_populates="company", cascade="all, delete-orphan")
+    branding: Mapped[Optional["CompanyBranding"]] = relationship(back_populates="company", cascade="all, delete-orphan", uselist=False)
+    calculations: Mapped[list["CalculationRecord"]] = relationship(back_populates="company", cascade="all, delete-orphan")
+    ai_interactions: Mapped[list["AIInteraction"]] = relationship(back_populates="company", cascade="all, delete-orphan")
 
 
 class Branch(Base):
@@ -133,6 +137,8 @@ class Employee(Base):
     branch: Mapped[Optional[Branch]] = relationship()
     payroll_lines: Mapped[list["PayrollLine"]] = relationship(back_populates="employee")
     generated_certificates: Mapped[list["GeneratedCertificate"]] = relationship(back_populates="employee")
+    calculations: Mapped[list["CalculationRecord"]] = relationship(back_populates="employee")
+    ai_interactions: Mapped[list["AIInteraction"]] = relationship(back_populates="employee")
 
 
 class CompanyRequest(Base):
@@ -273,6 +279,71 @@ class GeneratedCertificate(Base):
 
     company: Mapped[Company] = relationship(back_populates="generated_certificates")
     employee: Mapped[Optional[Employee]] = relationship(back_populates="generated_certificates")
+
+
+class CompanyBranding(Base):
+    __tablename__ = "company_branding"
+    __table_args__ = (UniqueConstraint("company_id", name="uq_company_branding_company"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    logo_bytes: Mapped[Optional[bytes]] = mapped_column(LargeBinary, nullable=True)
+    logo_content_type: Mapped[str] = mapped_column(String(80), default="")
+    logo_filename: Mapped[str] = mapped_column(String(180), default="")
+    primary_color: Mapped[str] = mapped_column(String(20), default="#173B86")
+    secondary_color: Mapped[str] = mapped_column(String(20), default="#0B1F48")
+    document_footer: Mapped[str] = mapped_column(String(240), default="Generado por Digit Laboral")
+    signature_name: Mapped[str] = mapped_column(String(180), default="")
+    signature_title: Mapped[str] = mapped_column(String(140), default="Representante legal")
+    document_prefix: Mapped[str] = mapped_column(String(30), default="DL")
+    show_ruc: Mapped[bool] = mapped_column(Boolean, default=True)
+    show_contact: Mapped[bool] = mapped_column(Boolean, default=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
+
+    company: Mapped[Company] = relationship(back_populates="branding")
+
+
+class CalculationRecord(Base):
+    __tablename__ = "calculation_records"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    employee_id: Mapped[Optional[int]] = mapped_column(ForeignKey("employees.id"), nullable=True, index=True)
+    calculation_type: Mapped[str] = mapped_column(String(60), index=True)
+    reference_period: Mapped[str] = mapped_column(String(20), default="")
+    input_json: Mapped[str] = mapped_column(Text, default="{}")
+    result_json: Mapped[str] = mapped_column(Text, default="{}")
+    amount: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(30), default="Borrador")
+    source: Mapped[str] = mapped_column(String(60), default="Calculadora")
+    notes: Mapped[str] = mapped_column(Text, default="")
+    created_by: Mapped[str] = mapped_column(String(180), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+
+    company: Mapped[Company] = relationship(back_populates="calculations")
+    employee: Mapped[Optional[Employee]] = relationship(back_populates="calculations")
+
+
+class AIInteraction(Base):
+    __tablename__ = "ai_interactions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    studio_id: Mapped[Optional[int]] = mapped_column(ForeignKey("studios.id"), nullable=True, index=True)
+    company_id: Mapped[Optional[int]] = mapped_column(ForeignKey("companies.id"), nullable=True, index=True)
+    employee_id: Mapped[Optional[int]] = mapped_column(ForeignKey("employees.id"), nullable=True, index=True)
+    purpose: Mapped[str] = mapped_column(String(80), index=True)
+    user_instruction: Mapped[str] = mapped_column(Text, default="")
+    context_summary: Mapped[str] = mapped_column(Text, default="")
+    response_text: Mapped[str] = mapped_column(Text, default="")
+    provider: Mapped[str] = mapped_column(String(60), default="Reglas internas")
+    model_name: Mapped[str] = mapped_column(String(120), default="")
+    status: Mapped[str] = mapped_column(String(30), default="Completado")
+    created_by: Mapped[str] = mapped_column(String(180), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+
+    studio: Mapped[Optional[Studio]] = relationship(back_populates="ai_interactions")
+    company: Mapped[Optional[Company]] = relationship(back_populates="ai_interactions")
+    employee: Mapped[Optional[Employee]] = relationship(back_populates="ai_interactions")
 
 
 class LaborArticle(Base):

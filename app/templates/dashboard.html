@@ -29,7 +29,7 @@
       <div class="status-row"><span>Base de datos</span><b>Conectada</b></div>
       <div class="status-row"><span>Sesión</span><b>Protegida</b></div>
       <div class="status-row"><span>Rol activo</span><b>{{ user.role|replace('superadmin','Administrador general')|capitalize }}</b></div>
-      <div class="status-row"><span>Versión</span><b>1.2 Preview</b></div>
+      <div class="status-row"><span>Versión</span><b>1.4 Preview</b></div>
     </div>
   </article>
 </section>
@@ -38,15 +38,28 @@
 <section class="dashboard-modules">
   <a href="/app/companies"><i class="blue">⚙</i><span class="module-number">1</span><h3>Mantenimientos</h3><p>Empresas, funcionarios, sucursales y datos maestros.</p><div class="tag-row"><span>Empresa</span><span>Empleado</span><span>Sección</span></div><b>→</b></a>
   <a href="/app/calculations"><i class="green">₲</i><span class="module-number">2</span><h3>Cálculo</h3><p>Liquidaciones, salarios, vacaciones y aguinaldo.</p><div class="tag-row"><span>Liquidación</span><span>Vacaciones</span><span>Aguinaldo</span></div><b>→</b></a>
-  <a href="/app/payrolls"><i class="orange">▥</i><span class="module-number">3</span><h3>Informes</h3><p>Planillas, listados y reportes de gestión laboral.</p><div class="tag-row"><span>Planillas</span><span>Resumen</span></div><b>→</b></a>
+  <a href="/app/reports"><i class="orange">▥</i><span class="module-number">3</span><h3>Informes</h3><p>Planillas, listados y reportes de gestión laboral.</p><div class="tag-row"><span>Planillas</span><span>Resumen</span></div><b>→</b></a>
   <a href="/app/certificates"><i class="violet">▤</i><span class="module-number">4</span><h3>Certificados</h3><p>Documentos, constancias, contratos y archivos.</p><div class="tag-row"><span>PDF</span><span>Constancias</span><span>Contratos</span></div><b>→</b></a>
   <a href="/app/parameters"><i class="gray">🔧</i><span class="module-number">5</span><h3>Utilitarios</h3><p>Parámetros, usuarios, auditoría y configuración.</p><div class="tag-row"><span>Parámetros</span><span>Auditoría</span></div><b>→</b></a>
   <a href="/app/requests"><i class="blue">✉</i><span class="module-number">6</span><h3>Trámites</h3><p>Altas, bajas, vacaciones y cambios enviados por empresas.</p><div class="tag-row"><span>Solicitudes</span><span>Seguimiento</span></div><b>→</b></a>
+  <a href="/app/ai"><i class="violet">AI</i><span class="module-number">7</span><h3>Asistente IA</h3><p>Control de datos, borradores y recomendaciones con revisión humana.</p><div class="tag-row"><span>Alertas</span><span>Borradores</span><span>Control</span></div><b>→</b></a>
 </section>
+
+{% if automation_alerts %}
+<section class="automation-center panel">
+  <div class="panel-head"><div><span>AUTOMATIZACIÓN</span><h2>Acciones recomendadas</h2></div><a href="/app/ai">Analizar con IA</a></div>
+  <div class="automation-alert-grid">
+    {% for alert in automation_alerts %}<a href="{{ alert.href }}" class="automation-alert {{ alert.level }}"><b>{{ alert.title }}</b><span>{{ alert.detail }}</span><em>Resolver →</em></a>{% endfor %}
+  </div>
+</section>
+{% endif %}
 
 <section class="two-columns">
   <article class="panel"><div class="panel-head"><div><span>EMPRESAS</span><h2>Actividad reciente</h2></div><a href="/app/companies">Ver todas</a></div><div class="compact-list">{% for company in companies %}<a href="/app/companies/{{ company.id }}"><span class="company-avatar">{{ company.legal_name[:2]|upper }}</span><div><b>{{ company.legal_name }}</b><small>{{ company.city }} · {{ company.employees|length }} funcionarios</small></div><span class="status-pill {{ company.status|lower }}">{{ company.status }}</span></a>{% else %}<p class="empty-state">No hay empresas registradas.</p>{% endfor %}</div></article>
   <article class="panel"><div class="panel-head"><div><span>SOLICITUDES</span><h2>Últimos movimientos</h2></div><a href="/app/requests">Gestionar</a></div><div class="compact-list">{% for item in recent_requests %}<div><span class="request-icon">✉</span><div><b>{{ item.subject or item.request_type }}</b><small>{{ item.company.legal_name }}</small></div><span class="status-pill {{ item.status|lower|replace(' ', '-') }}">{{ item.status }}</span></div>{% else %}<p class="empty-state">No hay solicitudes.</p>{% endfor %}</div></article>
 </section>
+{% if recent_calculations %}
+<section class="panel recent-calculations-panel"><div class="panel-head"><div><span>CÁLCULOS CONECTADOS</span><h2>Últimos resultados guardados</h2></div><a href="/app/calculations">Ver todos</a></div><div class="compact-list">{% for item in recent_calculations %}<a href="/app/calculations/{{ item.id }}/certificate"><span class="request-icon">₲</span><div><b>{{ item.calculation_type|capitalize }} · Gs. {{ item.amount|gs }}</b><small>{{ item.employee.full_name if item.employee else item.company.legal_name }} · {{ item.reference_period or 'Sin periodo' }}</small></div><span class="status-pill {{ item.status|lower }}">{{ item.status }}</span></a>{% endfor %}</div></section>
+{% endif %}
 {% if minimum_salary %}<div class="legal-note"><b>Referencia cargada:</b> salario mínimo mensual general de Gs. {{ minimum_salary.value|int|gs }}, vigente desde {{ minimum_salary.effective_from|fecha }}. Las alertas y cálculos deben revisarse según actividad, régimen y caso concreto.</div>{% endif %}
 {% endblock %}

@@ -17,6 +17,16 @@ services:
         value: "true"
       - key: ALLOWED_HOSTS
         value: "*.onrender.com,localhost,127.0.0.1"
+      - key: AI_ENABLED
+        value: "true"
+      - key: OPENAI_MODEL
+        value: "gpt-5-mini"
+      - key: AI_STORE_RESPONSES
+        value: "false"
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: MAX_LOGO_SIZE
+        value: "2097152"
 databases:
   - name: digit-laboral-db
     plan: free

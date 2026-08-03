@@ -1,32 +1,18 @@
-# Actualizar la web pública en GitHub Pages
+# Subir Digit Laboral a GitHub
 
-La carpeta preparada para subir es `publicar-en-github/` o el archivo `digit-laboral-publicar-github-v12.zip`.
+## Actualizar el sistema completo
 
-## Método sencillo
+1. Descargá `digit-laboral-v16-actualizacion.zip`.
+2. Descomprimilo en tu computadora.
+3. Entrá al repositorio `BRUNOBENOV/DIGIT-LABORAL`.
+4. Elegí **Add file → Upload files**.
+5. Arrastrá todos los archivos y carpetas descomprimidos.
+6. Confirmá que las rutas `app/`, `tests/` y los archivos de raíz se mantengan.
+7. Escribí un mensaje como `Actualizar Digit Laboral a v1.4`.
+8. Presioná **Commit changes**.
 
-1. Abrí el repositorio `BRUNOBENOV/DIGIT-LABORAL`.
-2. Presioná **Add file → Upload files**.
-3. Descomprimí `digit-laboral-publicar-github-v12.zip` en tu computadora.
-4. Arrastrá **todo el contenido interno** de la carpeta descomprimida al repositorio. No subas una carpeta contenedora adicional.
-5. Marcá **Commit directly to the main branch** y confirmá.
-6. Esperá de uno a cinco minutos y abrí:
-   `https://brunobenov.github.io/DIGIT-LABORAL/`
+Render debería iniciar un despliegue automático. No subas `.env`, claves API, contraseñas, bases SQLite ni copias con datos reales.
 
-## Archivos que deben quedar en la raíz
+## GitHub Pages
 
-- `index.html`
-- `login.html`
-- `app.html`
-- `privacidad.html`
-- `terminos.html`
-- `404.html`
-- `manifest.webmanifest`
-- `sw.js`
-- `robots.txt`
-- `sitemap.xml`
-- carpeta `assets/`
-- carpeta `app/static/` con el logo
-
-## Importante
-
-La web de GitHub Pages es una demostración estática. No debe utilizarse para almacenar datos reales. La aplicación productiva con autenticación y PostgreSQL se publica en un servidor distinto.
+Los archivos públicos de la raíz continúan mostrando la página comercial y la demostración. El sistema real se ejecuta en Render con FastAPI y PostgreSQL.

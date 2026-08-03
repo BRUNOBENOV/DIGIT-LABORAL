@@ -28,6 +28,26 @@ const formatGs = value => `Gs. ${Math.round(Number(value || 0)).toLocaleString('
 const calculatorWorkbench = document.querySelector('#calculatorWorkbench');
 if (calculatorWorkbench) {
   const panels = [...document.querySelectorAll('[data-calculator-panel]')];
+  const companyFilter = document.querySelector('#calculationCompanyFilter');
+  const employeeFilter = document.querySelector('#calculationEmployeeFilter');
+  const syncCalculationContext = () => {
+    document.querySelectorAll('[data-sync-company]').forEach(input => { input.value = companyFilter?.value || input.value; });
+    document.querySelectorAll('[data-sync-employee]').forEach(input => { input.value = employeeFilter?.value || ''; });
+  };
+  companyFilter?.addEventListener('change', () => {
+    const companyId = companyFilter.value;
+    let first = null;
+    [...(employeeFilter?.options || [])].forEach(option => {
+      if (!option.value) return;
+      const visible = !companyId || option.dataset.company === companyId;
+      option.hidden = !visible; option.disabled = !visible;
+      if (visible && !first) first = option;
+    });
+    if (employeeFilter && employeeFilter.selectedOptions[0]?.disabled) employeeFilter.value = first?.value || '';
+    syncCalculationContext();
+  });
+  employeeFilter?.addEventListener('change', syncCalculationContext);
+  syncCalculationContext();
   const toolButtons = [...document.querySelectorAll('[data-calculation-tool]')];
   toolButtons.forEach(button => button.addEventListener('click', () => {
     const tool = button.dataset.calculationTool;
@@ -179,7 +199,21 @@ if (certificateForm) {
     document.querySelector('#certificatePreviewCompany').textContent = company;
     document.querySelector('#certificatePreviewHeaderCompany').textContent = company;
     document.querySelector('#certificatePreviewHeaderDetails').textContent = [companyOption?.dataset.ruc ? `RUC ${companyOption.dataset.ruc}` : '', companyOption?.dataset.address || ''].filter(Boolean).join(' · ');
-    document.querySelector('#certificatePreviewNumber').textContent = documentNumberInput?.value ? `Documento N.º ${documentNumberInput.value}` : '';
+    document.querySelector('#certificatePreviewNumber').textContent = documentNumberInput?.value ? `Documento N.º ${documentNumberInput.value}` : 'Numeración automática';
+    const logo = document.querySelector('#certificatePreviewLogo');
+    const mark = document.querySelector('#certificatePreviewMark');
+    if (logo && mark) {
+      const logoUrl = companyOption?.dataset.logoUrl || '';
+      logo.src = logoUrl;
+      logo.classList.toggle('hidden', !logoUrl);
+      mark.classList.toggle('hidden', Boolean(logoUrl));
+    }
+    const letterhead = document.querySelector('#certificatePreviewLetterhead');
+    if (letterhead && companyOption?.dataset.primary) letterhead.style.borderColor = companyOption.dataset.primary;
+    const signature = document.querySelector('#certificatePreviewSignature');
+    const signatureTitle = document.querySelector('#certificatePreviewSignatureTitle');
+    if (signature) signature.textContent = companyOption?.dataset.signature || 'Firma autorizada';
+    if (signatureTitle) signatureTitle.textContent = companyOption?.dataset.signatureTitle || 'Representante legal';
     typeTitle.textContent = title;
   }
 
@@ -198,4 +232,22 @@ if (certificateForm) {
   document.querySelector('#refreshCertificatePreview')?.addEventListener('click', updatePreview);
   updateSpecificFields();
   filterEmployees();
+}
+
+
+// Filtro del asistente IA
+const aiCompany = document.querySelector('#aiCompany');
+const aiEmployee = document.querySelector('#aiEmployee');
+if (aiCompany && aiEmployee) {
+  const filterAIEmployees = () => {
+    const companyId = aiCompany.value;
+    [...aiEmployee.options].forEach(option => {
+      if (!option.value) return;
+      const visible = !companyId || option.dataset.company === companyId;
+      option.hidden = !visible; option.disabled = !visible;
+    });
+    if (aiEmployee.selectedOptions[0]?.disabled) aiEmployee.value = '';
+  };
+  aiCompany.addEventListener('change', filterAIEmployees);
+  filterAIEmployees();
 }

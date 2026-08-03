@@ -22,6 +22,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import (
+    Image,
     KeepTogether,
     PageBreak,
     Paragraph,
@@ -122,6 +123,12 @@ class ExportData:
     company_phone: str = ""
     company_email: str = ""
     legal_representative: str = ""
+    signature_title: str = "Representante legal"
+    logo_bytes: bytes | None = None
+    logo_content_type: str = ""
+    primary_color: str = "#173B86"
+    secondary_color: str = "#0B1F48"
+    document_footer: str = "Generado por Digit Laboral"
     employee_name: str = ""
     employee_document: str = ""
     position: str = ""
@@ -338,6 +345,7 @@ def build_document_body(
 
 def export_data_from_certificate(certificate: Any) -> ExportData:
     company = certificate.company
+    branding = getattr(company, "branding", None)
     metadata = decode_metadata(certificate.observations)
     return ExportData(
         document_type=certificate.document_type,
@@ -349,7 +357,13 @@ def export_data_from_certificate(certificate: Any) -> ExportData:
         company_address=getattr(company, "address", "") or "",
         company_phone=getattr(company, "phone", "") or "",
         company_email=getattr(company, "email", "") or "",
-        legal_representative=getattr(company, "legal_representative", "") or getattr(company, "responsible_name", "") or "",
+        legal_representative=(getattr(branding, "signature_name", "") if branding else "") or getattr(company, "legal_representative", "") or getattr(company, "responsible_name", "") or "",
+        signature_title=(getattr(branding, "signature_title", "") if branding else "") or "Representante legal",
+        logo_bytes=getattr(branding, "logo_bytes", None) if branding else None,
+        logo_content_type=getattr(branding, "logo_content_type", "") if branding else "",
+        primary_color=getattr(branding, "primary_color", "#173B86") if branding else "#173B86",
+        secondary_color=getattr(branding, "secondary_color", "#0B1F48") if branding else "#0B1F48",
+        document_footer=getattr(branding, "document_footer", "Generado por Digit Laboral") if branding else "Generado por Digit Laboral",
         employee_name=certificate.employee_name_snapshot,
         employee_document=certificate.employee_document_snapshot,
         position=certificate.position_snapshot,
@@ -403,21 +417,31 @@ def _docx_header(document: Document, data: ExportData) -> None:
     left.width = Cm(2.1)
     right.width = Cm(14.7)
     left.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
-    _set_cell_shading(left, "173B86")
-    _set_cell_margins(left, top=160, start=100, bottom=160, end=100)
+    _set_cell_margins(left, top=100, start=80, bottom=100, end=80)
     p = left.paragraphs[0]
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    r = p.add_run("DL")
-    r.bold = True
-    r.font.size = Pt(18)
-    r.font.color.rgb = RGBColor(255, 255, 255)
+    if data.logo_bytes:
+        try:
+            p.add_run().add_picture(io.BytesIO(data.logo_bytes), width=Cm(1.9))
+        except Exception:
+            _set_cell_shading(left, data.primary_color.lstrip("#") or "173B86")
+            r = p.add_run("DL")
+            r.bold = True
+            r.font.size = Pt(18)
+            r.font.color.rgb = RGBColor(255, 255, 255)
+    else:
+        _set_cell_shading(left, data.primary_color.lstrip("#") or "173B86")
+        r = p.add_run("DL")
+        r.bold = True
+        r.font.size = Pt(18)
+        r.font.color.rgb = RGBColor(255, 255, 255)
 
     p = right.paragraphs[0]
     p.paragraph_format.space_after = Pt(2)
     r = p.add_run(data.company_name.upper())
     r.bold = True
     r.font.size = Pt(16)
-    r.font.color.rgb = RGBColor(23, 59, 134)
+    r.font.color.rgb = RGBColor.from_string(data.primary_color.lstrip("#") or "173B86")
     details = []
     if data.company_ruc:
         details.append(f"RUC {data.company_ruc}")
@@ -439,7 +463,7 @@ def _docx_header(document: Document, data: ExportData) -> None:
     border.paragraph_format.space_before = Pt(2)
     border.paragraph_format.space_after = Pt(12)
     run = border.add_run("━" * 82)
-    run.font.color.rgb = RGBColor(23, 59, 134)
+    run.font.color.rgb = RGBColor.from_string(data.primary_color.lstrip("#") or "173B86")
     run.font.size = Pt(6)
 
 
@@ -463,6 +487,7 @@ def _add_signature_table_docx(document: Document, data: ExportData) -> None:
                     p.add_run(f"\nC.I. N.º {data.employee_document}").font.size = Pt(8.5)
             if idx == 1 and data.legal_representative:
                 p.add_run(f"\n{data.legal_representative}").font.size = Pt(8.5)
+                p.add_run(f"\n{data.signature_title}").font.size = Pt(8)
         if data.document_type == "notificacion_preaviso":
             p = document.add_paragraph("Fecha de recepción: ____/____/________")
             p.paragraph_format.space_before = Pt(14)
@@ -485,6 +510,8 @@ def _add_signature_table_docx(document: Document, data: ExportData) -> None:
         p.add_run("_______________________________\n")
         r = p.add_run(data.legal_representative or "Firma autorizada")
         r.bold = True
+        if data.signature_title:
+            p.add_run(f"\n{data.signature_title}")
         p.add_run(f"\n{data.company_name}")
 
 
@@ -516,7 +543,7 @@ def build_docx_bytes(data: ExportData) -> bytes:
     run = title.add_run(data.title.upper())
     run.bold = True
     run.font.size = Pt(15)
-    run.font.color.rgb = RGBColor(11, 31, 72)
+    run.font.color.rgb = RGBColor.from_string(data.secondary_color.lstrip("#") or "0B1F48")
 
     meta = data.metadata or {}
     document_number = str(meta.get("document_number") or "").strip()
@@ -547,7 +574,7 @@ def build_docx_bytes(data: ExportData) -> bytes:
     fp = footer.paragraphs[0]
     fp.alignment = WD_ALIGN_PARAGRAPH.CENTER
     fr = fp.add_run(
-        f"Generado por Digit Laboral · {format_date_short(data.created_at or datetime.now())} · Estado: {data.status}"
+        f"{data.document_footer} · {format_date_short(data.created_at or datetime.now())} · Estado: {data.status}"
     )
     fr.font.size = Pt(7.5)
     fr.font.color.rgb = RGBColor(120, 130, 145)
@@ -574,7 +601,7 @@ def _pdf_footer(canvas, doc, data: ExportData) -> None:
     canvas.drawCentredString(
         width / 2,
         10 * mm,
-        f"Generado por Digit Laboral · {format_date_short(data.created_at or datetime.now())} · Estado: {data.status} · Página {doc.page}",
+        f"{data.document_footer} · {format_date_short(data.created_at or datetime.now())} · Estado: {data.status} · Página {doc.page}",
     )
     canvas.restoreState()
 
@@ -598,7 +625,7 @@ def build_pdf_bytes(data: ExportData) -> bytes:
         fontName="Helvetica-Bold",
         fontSize=15,
         leading=17,
-        textColor=colors.HexColor("#173B86"),
+        textColor=colors.HexColor(data.primary_color),
         spaceAfter=2,
     )
     detail_style = ParagraphStyle(
@@ -617,7 +644,7 @@ def build_pdf_bytes(data: ExportData) -> bytes:
         fontSize=14,
         leading=17,
         alignment=TA_CENTER,
-        textColor=colors.HexColor("#0B1F48"),
+        textColor=colors.HexColor(data.secondary_color),
         spaceAfter=16,
     )
     body_style = ParagraphStyle(
@@ -651,25 +678,28 @@ def build_pdf_bytes(data: ExportData) -> bytes:
         details.append(f"Tel. {escape(data.company_phone)}")
     if data.company_email:
         details.append(escape(data.company_email))
+    logo_cell: Any
+    if data.logo_bytes:
+        try:
+            logo_cell = Image(io.BytesIO(data.logo_bytes), width=16 * mm, height=16 * mm, kind="proportional")
+        except Exception:
+            logo_cell = Paragraph("<b>DL</b>", ParagraphStyle("DL", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=18, textColor=colors.white, alignment=TA_CENTER))
+    else:
+        logo_cell = Paragraph("<b>DL</b>", ParagraphStyle("DL", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=18, textColor=colors.white, alignment=TA_CENTER))
     header = Table(
-        [
-            [
-                Paragraph("<b>DL</b>", ParagraphStyle("DL", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=18, textColor=colors.white, alignment=TA_CENTER)),
-                [Paragraph(escape(data.company_name.upper()), company_style), Paragraph(" · ".join(details), detail_style) if details else ""],
-            ]
-        ],
-        colWidths=[18 * mm, 152 * mm],
+        [[logo_cell, [Paragraph(escape(data.company_name.upper()), company_style), Paragraph(" · ".join(details), detail_style) if details else ""]]],
+        colWidths=[20 * mm, 150 * mm],
     )
     header.setStyle(
         TableStyle(
             [
-                ("BACKGROUND", (0, 0), (0, 0), colors.HexColor("#173B86")),
+                ("BACKGROUND", (0, 0), (0, 0), colors.HexColor(data.primary_color)),
                 ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
                 ("LEFTPADDING", (0, 0), (-1, -1), 8),
                 ("RIGHTPADDING", (0, 0), (-1, -1), 8),
                 ("TOPPADDING", (0, 0), (-1, -1), 8),
                 ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
-                ("LINEBELOW", (0, 0), (-1, -1), 1.3, colors.HexColor("#173B86")),
+                ("LINEBELOW", (0, 0), (-1, -1), 1.3, colors.HexColor(data.primary_color)),
             ]
         )
     )
@@ -695,6 +725,8 @@ def build_pdf_bytes(data: ExportData) -> bytes:
         right = "______________________________<br/><b>Firma del empleador/a</b>"
         if data.legal_representative:
             right += f"<br/>{escape(data.legal_representative)}"
+        if data.signature_title:
+            right += f"<br/>{escape(data.signature_title)}"
         signatures = Table(
             [[Paragraph(left, ParagraphStyle("SigL", parent=small_style, alignment=TA_CENTER)), Paragraph(right, ParagraphStyle("SigR", parent=small_style, alignment=TA_CENTER))]],
             colWidths=[83 * mm, 83 * mm],
@@ -714,7 +746,10 @@ def build_pdf_bytes(data: ExportData) -> bytes:
         story.append(Paragraph("RECIBIDO: ____________________    FECHA: ____/____/________", small_style))
     else:
         sig = "______________________________<br/>"
-        sig += f"<b>{escape(data.legal_representative or 'Firma autorizada')}</b><br/>{escape(data.company_name)}"
+        sig += f"<b>{escape(data.legal_representative or 'Firma autorizada')}</b>"
+        if data.signature_title:
+            sig += f"<br/>{escape(data.signature_title)}"
+        sig += f"<br/>{escape(data.company_name)}"
         story.append(Paragraph(sig, ParagraphStyle("EmployerSig", parent=small_style, alignment=TA_CENTER)))
 
     if data.status.lower() == "borrador":

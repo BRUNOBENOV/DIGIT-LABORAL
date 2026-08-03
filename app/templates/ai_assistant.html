@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Asistente IA | Digit Laboral{% endblock %}
+{% block content %}
+<div class="page-header"><div><span class="eyebrow">ASISTENCIA CONTROLADA</span><h1>Asistente IA</h1><p>Revisa datos, detecta faltantes y propone próximos pasos. Nunca modifica registros ni aprueba documentos por sí solo.</p></div><span class="ai-provider-badge">{{ 'IA externa disponible · ' + ai_model if ai_external_available else 'Motor interno disponible' }}</span></div>
+<div class="legal-warning"><b>Privacidad y revisión:</b> la IA externa solo se utiliza cuando marcás el consentimiento. Se envían únicamente los datos estructurados seleccionados, no archivos adjuntos. Toda respuesta es orientativa y requiere revisión humana.</div>
+<section class="ai-layout">
+  <form method="post" action="/app/ai" class="panel ai-form-panel">
+    <span class="eyebrow-label">NUEVA REVISIÓN</span><h2>¿Qué necesitás analizar?</h2>
+    <label>Tipo de ayuda<select name="purpose"><option value="control">Control de expediente</option><option value="calculo">Revisión de cálculo</option><option value="documento">Preparación de documento</option><option value="informe">Resumen para informe</option></select></label>
+    <label>Empresa<select name="company_id" id="aiCompany"><option value="">Sin empresa específica</option>{% for company in companies %}<option value="{{ company.id }}" {{ 'selected' if selected_company and selected_company.id == company.id }}>{{ company.legal_name }}</option>{% endfor %}</select></label>
+    <label>Funcionario<select name="employee_id" id="aiEmployee"><option value="">Sin funcionario específico</option>{% for employee in employees %}<option value="{{ employee.id }}" data-company="{{ employee.company_id }}" {{ 'selected' if selected_employee and selected_employee.id == employee.id }}>{{ employee.full_name }} · {{ employee.company.legal_name }}</option>{% endfor %}</select></label>
+    <label>Instrucción<textarea name="instruction" rows="6" placeholder="Ej.: revisá si faltan datos para emitir un certificado de trabajo y explicá qué debo verificar."></textarea></label>
+    {% if ai_external_available %}<label class="consent-box"><input type="checkbox" name="external_consent"><span><b>Autorizar IA externa para esta consulta</b><small>Se enviará solo el contexto visible seleccionado. La respuesta no se guarda en OpenAI cuando AI_STORE_RESPONSES=false.</small></span></label>{% endif %}
+    <button class="btn primary full" type="submit">Analizar expediente</button>
+  </form>
+  <section class="panel ai-result-panel">
+    <div class="panel-head"><div><span>RESULTADO</span><h2>Recomendaciones</h2></div>{% if latest %}<span class="status-pill activa">{{ latest.provider }}</span>{% endif %}</div>
+    {% if latest %}<div class="ai-answer">{{ latest.response_text }}</div><div class="ai-result-meta"><span>Modelo: {{ latest.model_name or 'Interno' }}</span><span>{{ latest.created_at|fecha }}</span><span>Creado por {{ latest.created_by }}</span></div>{% else %}<div class="ai-empty"><span>AI</span><h3>Seleccioná un contexto</h3><p>El resultado mostrará datos faltantes, alertas y próximos pasos recomendados.</p></div>{% endif %}
+  </section>
+</section>
+<section class="panel"><div class="panel-head"><div><span>HISTORIAL</span><h2>Consultas recientes</h2></div></div><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Propósito</th><th>Empresa</th><th>Funcionario</th><th>Proveedor</th><th>Creado por</th></tr></thead><tbody>{% for item in interactions %}<tr><td>{{ item.created_at|fecha }}</td><td>{{ item.purpose|capitalize }}</td><td>{{ item.company.legal_name if item.company else 'General' }}</td><td>{{ item.employee.full_name if item.employee else '—' }}</td><td>{{ item.provider }}{% if item.model_name %}<small class="table-sub">{{ item.model_name }}</small>{% endif %}</td><td>{{ item.created_by }}</td></tr>{% else %}<tr><td colspan="6" class="empty-state">Todavía no hay consultas de IA.</td></tr>{% endfor %}</tbody></table></div></section>
+{% endblock %}

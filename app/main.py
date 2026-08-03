@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import io
+import json
 import os
 import re
 import secrets
@@ -13,7 +14,7 @@ from typing import Annotated
 from urllib.parse import quote
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile, status
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, or_, select
@@ -22,6 +23,7 @@ from sqlalchemy.orm import Session
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+from .ai_service import generate_assistance
 from .auth import hash_password, verify_password
 from .config import settings
 from .database import Base, SessionLocal, engine
@@ -38,11 +40,14 @@ from .document_export import (
 )
 from .models import (
     ActivationRequest,
+    AIInteraction,
     Aguinaldo,
     AuditLog,
     Branch,
     Company,
+    CompanyBranding,
     CompanyRequest,
+    CalculationRecord,
     Document,
     Employee,
     GeneratedCertificate,
@@ -54,6 +59,7 @@ from .models import (
     User,
     Vacation,
 )
+from .report_export import build_employee_report_pdf
 from .seed import seed_database
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -79,7 +85,7 @@ async def lifespan(_: FastAPI):
 if settings.environment == "production" and settings.secret_key == "cambiar-esta-clave-en-produccion":
     raise RuntimeError("DIGIT_SECRET_KEY debe configurarse con una clave segura en producción.")
 
-app = FastAPI(title="Digit Laboral", version="1.3.0-preview", lifespan=lifespan)
+app = FastAPI(title="Digit Laboral", version="1.4.0-preview", lifespan=lifespan)
 app.add_middleware(
     SessionMiddleware,
     secret_key=settings.secret_key,
@@ -244,6 +250,162 @@ def recalculate_payroll(db: Session, payroll: Payroll) -> None:
     payroll.total_net = sum(x.net for x in lines)
 
 
+def json_dict(raw: str | None) -> dict:
+    try:
+        value = json.loads(raw or "{}")
+        return value if isinstance(value, dict) else {}
+    except (json.JSONDecodeError, TypeError):
+        return {}
+
+
+def get_or_create_branding(db: Session, company: Company) -> CompanyBranding:
+    branding = db.scalar(select(CompanyBranding).where(CompanyBranding.company_id == company.id))
+    if branding:
+        return branding
+    branding = CompanyBranding(
+        company_id=company.id,
+        signature_name=company.legal_representative or company.responsible_name or "",
+        document_prefix=re.sub(r"[^A-Za-z0-9]", "", (company.trade_name or company.legal_name)[:3]).upper() or "DL",
+    )
+    db.add(branding)
+    db.flush()
+    return branding
+
+
+def company_completeness(company: Company, branding: CompanyBranding | None) -> tuple[int, list[str]]:
+    fields = {
+        "RUC": company.ruc,
+        "dirección": company.address,
+        "teléfono": company.phone,
+        "correo": company.email,
+        "representante legal": company.legal_representative,
+        "número patronal IPS": company.ips_employer_number,
+        "registro MTESS": company.mtess_employer_number,
+        "logo": bool(branding and branding.logo_bytes),
+        "firma autorizada": bool(branding and branding.signature_name),
+    }
+    missing = [label for label, value in fields.items() if not value]
+    score = round((len(fields) - len(missing)) * 100 / len(fields))
+    return score, missing
+
+
+def calculate_values(
+    *,
+    calculation_type: str,
+    ips_rate: float,
+    gross: int = 0,
+    other_income: int = 0,
+    other_discount: int = 0,
+    apply_ips: bool = True,
+    salary: int = 0,
+    monthly_hours: float = 240,
+    hours_quantity: float = 0,
+    multiplier: float = 1,
+    total_remunerations: int = 0,
+    days: float = 0,
+) -> tuple[dict, dict, int]:
+    inputs = {
+        "gross": max(0, int(gross or 0)),
+        "other_income": max(0, int(other_income or 0)),
+        "other_discount": max(0, int(other_discount or 0)),
+        "apply_ips": bool(apply_ips),
+        "salary": max(0, int(salary or 0)),
+        "monthly_hours": max(1, float(monthly_hours or 240)),
+        "hours_quantity": max(0, float(hours_quantity or 0)),
+        "multiplier": max(0, float(multiplier or 1)),
+        "total_remunerations": max(0, int(total_remunerations or 0)),
+        "days": max(0, float(days or 0)),
+    }
+    if calculation_type == "salary":
+        computable = inputs["gross"] + inputs["other_income"]
+        ips = round(computable * ips_rate / 100) if inputs["apply_ips"] else 0
+        discounts = ips + inputs["other_discount"]
+        amount = max(0, computable - discounts)
+        results = {"gross_computable": computable, "ips_employee": ips, "discounts": discounts, "net": amount}
+    elif calculation_type == "hours":
+        base = inputs["salary"] / inputs["monthly_hours"]
+        amount = round(base * inputs["hours_quantity"] * inputs["multiplier"])
+        results = {"hour_value": round(base), "total": amount}
+    elif calculation_type == "aguinaldo":
+        amount = round(inputs["total_remunerations"] / 12)
+        results = {"total_remunerations": inputs["total_remunerations"], "aguinaldo": amount}
+    elif calculation_type in {"vacation", "notice"}:
+        daily = inputs["salary"] / 30
+        amount = round(daily * inputs["days"])
+        results = {"daily_value": round(daily), "days": inputs["days"], "total": amount}
+    else:
+        raise HTTPException(400, "Tipo de cálculo inválido.")
+    return inputs, results, amount
+
+
+def calculation_label(value: str) -> str:
+    return {
+        "salary": "Salario neto",
+        "hours": "Horas",
+        "aguinaldo": "Aguinaldo",
+        "vacation": "Vacaciones",
+        "notice": "Preaviso",
+    }.get(value, value.capitalize())
+
+
+def next_document_number(db: Session, company: Company, document_type: str, branding: CompanyBranding | None) -> str:
+    year = date.today().year
+    prefix = (branding.document_prefix if branding else "DL") or "DL"
+    count = db.scalar(
+        select(func.count(GeneratedCertificate.id)).where(
+            GeneratedCertificate.company_id == company.id,
+            GeneratedCertificate.document_type == document_type,
+            func.extract("year", GeneratedCertificate.created_at) == year,
+        )
+    ) or 0
+    code = re.sub(r"[^A-Za-z0-9]", "", document_type[:4]).upper()
+    return f"{prefix}-{code}-{year}-{count + 1:05d}"
+
+
+def build_ai_context(db: Session, company: Company | None, employee: Employee | None) -> dict:
+    calculations: list[dict] = []
+    if employee:
+        items = list(
+            db.scalars(
+                select(CalculationRecord)
+                .where(CalculationRecord.employee_id == employee.id)
+                .order_by(CalculationRecord.created_at.desc())
+                .limit(5)
+            )
+        )
+        calculations = [
+            {
+                "id": item.id,
+                "type": item.calculation_type,
+                "period": item.reference_period,
+                "amount": item.amount,
+                "status": item.status,
+                "results": json_dict(item.result_json),
+            }
+            for item in items
+        ]
+    return {
+        "company": {
+            "legal_name": company.legal_name if company else "",
+            "ruc": company.ruc if company else "",
+            "address": company.address if company else "",
+            "legal_representative": company.legal_representative if company else "",
+            "ips_employer_number": company.ips_employer_number if company else "",
+            "mtess_employer_number": company.mtess_employer_number if company else "",
+        },
+        "employee": {
+            "full_name": employee.full_name if employee else "",
+            "document_number": employee.document_number if employee else "",
+            "position": employee.position if employee else "",
+            "admission_date": employee.admission_date.isoformat() if employee and employee.admission_date else "",
+            "base_salary": employee.base_salary if employee else 0,
+            "contract_type": employee.contract_type if employee else "",
+            "ips_contributor": employee.ips_contributor if employee else False,
+        },
+        "calculations": calculations,
+    }
+
+
 @app.get("/", response_class=HTMLResponse)
 def landing(request: Request, db: Session = Depends(get_db)):
     if current_user(request, db):
@@ -327,6 +489,32 @@ def dashboard(request: Request, user: User = Depends(require_user), db: Session 
     low_salary_count = 0
     if company_ids and minimum_salary:
         low_salary_count = db.scalar(select(func.count(Employee.id)).where(Employee.company_id.in_(company_ids), Employee.status == "Activo", Employee.base_salary < int(minimum_salary.value))) or 0
+    branding_items = list(db.scalars(select(CompanyBranding).where(CompanyBranding.company_id.in_(company_ids)))) if company_ids else []
+    branded_ids = {item.company_id for item in branding_items if item.logo_bytes}
+    missing_logo_count = len([company_id for company_id in company_ids if company_id not in branded_ids])
+    incomplete_company_count = 0
+    for company in list(db.scalars(select(Company).where(Company.id.in_(company_ids)))) if company_ids else []:
+        branding = next((item for item in branding_items if item.company_id == company.id), None)
+        score, _ = company_completeness(company, branding)
+        if score < 80:
+            incomplete_company_count += 1
+    recent_calculations = list(
+        db.scalars(
+            select(CalculationRecord)
+            .where(CalculationRecord.company_id.in_(company_ids))
+            .order_by(CalculationRecord.created_at.desc())
+            .limit(5)
+        )
+    ) if company_ids else []
+    automation_alerts = []
+    if pending_count:
+        automation_alerts.append({"level": "warning", "title": "Solicitudes pendientes", "detail": f"{pending_count} solicitudes necesitan seguimiento.", "href": "/app/requests"})
+    if missing_logo_count:
+        automation_alerts.append({"level": "info", "title": "Identidad visual incompleta", "detail": f"{missing_logo_count} empresas todavía no cargaron su logo.", "href": "/app/companies"})
+    if incomplete_company_count:
+        automation_alerts.append({"level": "warning", "title": "Expedientes incompletos", "detail": f"{incomplete_company_count} empresas tienen menos del 80% de datos completos.", "href": "/app/companies"})
+    if low_salary_count:
+        automation_alerts.append({"level": "danger", "title": "Salarios para revisar", "detail": f"{low_salary_count} funcionarios están por debajo del parámetro general cargado.", "href": "/app/employees"})
     return render(
         request,
         "dashboard.html",
@@ -340,6 +528,10 @@ def dashboard(request: Request, user: User = Depends(require_user), db: Session 
         recent_requests=recent_requests,
         minimum_salary=minimum_salary,
         low_salary_count=low_salary_count,
+        missing_logo_count=missing_logo_count,
+        incomplete_company_count=incomplete_company_count,
+        recent_calculations=recent_calculations,
+        automation_alerts=automation_alerts,
     )
 
 
@@ -396,6 +588,7 @@ def add_company(
         db.rollback()
         return RedirectResponse("/app/companies?duplicate=1", status_code=303)
     db.add(Branch(company_id=company.id, name="Casa central", city=company.city, address=company.address))
+    get_or_create_branding(db, company)
     write_audit(db, user, "crear", "empresa", str(company.id), company.legal_name)
     db.commit()
     return RedirectResponse(f"/app/companies/{company.id}", status_code=303)
@@ -409,7 +602,101 @@ def company_detail(request: Request, company_id: int, user: User = Depends(requi
     branches = list(db.scalars(select(Branch).where(Branch.company_id == company_id).order_by(Branch.name)))
     payrolls = list(db.scalars(select(Payroll).where(Payroll.company_id == company_id).order_by(Payroll.period.desc()).limit(6)))
     documents = list(db.scalars(select(Document).where(Document.company_id == company_id).order_by(Document.created_at.desc()).limit(8)))
-    return render(request, "company_detail.html", db, user, company=company, employees=employees, requests_list=requests_list, branches=branches, payrolls=payrolls, documents=documents)
+    branding = get_or_create_branding(db, company)
+    completeness_score, missing_fields = company_completeness(company, branding)
+    calculations = list(db.scalars(select(CalculationRecord).where(CalculationRecord.company_id == company_id).order_by(CalculationRecord.created_at.desc()).limit(6)))
+    certificates_count = db.scalar(select(func.count(GeneratedCertificate.id)).where(GeneratedCertificate.company_id == company_id)) or 0
+    db.commit()
+    return render(
+        request,
+        "company_detail.html",
+        db,
+        user,
+        company=company,
+        employees=employees,
+        requests_list=requests_list,
+        branches=branches,
+        payrolls=payrolls,
+        documents=documents,
+        branding=branding,
+        completeness_score=completeness_score,
+        missing_fields=missing_fields,
+        calculations=calculations,
+        certificates_count=certificates_count,
+    )
+
+
+@app.get("/app/companies/{company_id}/logo")
+def company_logo(company_id: int, user: User = Depends(require_user), db: Session = Depends(get_db)):
+    company = company_allowed(db, user, company_id)
+    branding = db.scalar(select(CompanyBranding).where(CompanyBranding.company_id == company.id))
+    if not branding or not branding.logo_bytes:
+        raise HTTPException(404, "Logo no encontrado.")
+    return Response(
+        content=branding.logo_bytes,
+        media_type=branding.logo_content_type or "image/png",
+        headers={"Cache-Control": "private, max-age=3600"},
+    )
+
+
+@app.post("/app/companies/{company_id}/branding")
+async def update_company_branding(
+    company_id: int,
+    primary_color: Annotated[str, Form()] = "#173B86",
+    secondary_color: Annotated[str, Form()] = "#0B1F48",
+    document_footer: Annotated[str, Form()] = "Generado por Digit Laboral",
+    signature_name: Annotated[str, Form()] = "",
+    signature_title: Annotated[str, Form()] = "Representante legal",
+    document_prefix: Annotated[str, Form()] = "DL",
+    show_ruc: Annotated[str | None, Form()] = None,
+    show_contact: Annotated[str | None, Form()] = None,
+    logo: UploadFile | None = File(default=None),
+    user: User = Depends(require_roles("administrador", "contador", "empresa")),
+    db: Session = Depends(get_db),
+):
+    company = company_allowed(db, user, company_id)
+    branding = get_or_create_branding(db, company)
+    color_pattern = re.compile(r"^#[0-9A-Fa-f]{6}$")
+    branding.primary_color = primary_color if color_pattern.fullmatch(primary_color) else "#173B86"
+    branding.secondary_color = secondary_color if color_pattern.fullmatch(secondary_color) else "#0B1F48"
+    branding.document_footer = document_footer.strip()[:240] or "Generado por Digit Laboral"
+    branding.signature_name = signature_name.strip()[:180]
+    branding.signature_title = signature_title.strip()[:140] or "Representante legal"
+    branding.document_prefix = re.sub(r"[^A-Za-z0-9]", "", document_prefix.upper())[:12] or "DL"
+    branding.show_ruc = show_ruc == "on"
+    branding.show_contact = show_contact == "on"
+    if logo and logo.filename:
+        content = await logo.read(settings.max_logo_size + 1)
+        if len(content) > settings.max_logo_size:
+            raise HTTPException(413, "El logo supera el máximo permitido de 2 MB.")
+        content_type = (logo.content_type or "").lower()
+        is_png = content.startswith(b"\x89PNG\r\n\x1a\n")
+        is_jpeg = content.startswith(b"\xff\xd8\xff")
+        if content_type not in {"image/png", "image/jpeg"} or not (is_png or is_jpeg):
+            raise HTTPException(415, "El logo debe ser PNG o JPG válido.")
+        branding.logo_bytes = content
+        branding.logo_content_type = "image/png" if is_png else "image/jpeg"
+        branding.logo_filename = safe_filename(logo.filename)
+    branding.updated_at = datetime.now(UTC)
+    write_audit(db, user, "actualizar", "identidad_visual", str(company.id), company.legal_name)
+    db.commit()
+    return RedirectResponse(f"/app/companies/{company.id}?branding=1", status_code=303)
+
+
+@app.post("/app/companies/{company_id}/branding/delete-logo")
+def delete_company_logo(
+    company_id: int,
+    user: User = Depends(require_roles("administrador", "contador", "empresa")),
+    db: Session = Depends(get_db),
+):
+    company = company_allowed(db, user, company_id)
+    branding = get_or_create_branding(db, company)
+    branding.logo_bytes = None
+    branding.logo_content_type = ""
+    branding.logo_filename = ""
+    write_audit(db, user, "eliminar", "logo_empresa", str(company.id), company.legal_name)
+    db.commit()
+    return RedirectResponse(f"/app/companies/{company.id}?logo_deleted=1", status_code=303)
 
 
 @app.post("/app/companies/{company_id}/edit")
@@ -635,29 +922,153 @@ def request_status(
 
 
 @app.get("/app/calculations", response_class=HTMLResponse)
-def calculations_page(request: Request, user: User = Depends(require_user), db: Session = Depends(get_db)):
+def calculations_page(
+    request: Request,
+    company_id: int | None = None,
+    employee_id: int | None = None,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
     company_ids = company_ids_for_user(db, user)
-    employees = list(
-        db.scalars(
-            select(Employee)
-            .where(Employee.company_id.in_(company_ids), Employee.status == "Activo")
-            .order_by(Employee.full_name)
-        )
-    ) if company_ids else []
+    companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name))) if company_ids else []
+    employees_query = select(Employee).where(Employee.company_id.in_(company_ids), Employee.status == "Activo") if company_ids else select(Employee).where(False)
+    if company_id and company_id in company_ids:
+        employees_query = employees_query.where(Employee.company_id == company_id)
+    employees = list(db.scalars(employees_query.order_by(Employee.full_name)))
+    recent_query = select(CalculationRecord).where(CalculationRecord.company_id.in_(company_ids)) if company_ids else select(CalculationRecord).where(False)
+    if company_id and company_id in company_ids:
+        recent_query = recent_query.where(CalculationRecord.company_id == company_id)
+    if employee_id:
+        recent_query = recent_query.where(CalculationRecord.employee_id == employee_id)
+    recent_calculations = list(db.scalars(recent_query.order_by(CalculationRecord.created_at.desc()).limit(30)))
     return render(
         request,
         "calculations.html",
         db,
         user,
+        companies=companies,
         employees=employees,
+        recent_calculations=recent_calculations,
+        selected_company=company_id,
+        selected_employee=employee_id,
         ips_rate=get_parameter(db, "ips_employee_rate_general", 9),
         minimum_salary=get_parameter(db, "minimum_monthly_salary_general", 0),
         hourly_reference=get_parameter(db, "minimum_hourly_wage_general", 0),
+        calculation_labels={key: calculation_label(key) for key in ("salary", "hours", "aguinaldo", "vacation", "notice")},
     )
 
 
+@app.post("/app/calculations")
+def save_calculation(
+    calculation_type: Annotated[str, Form()],
+    company_id: Annotated[int, Form()],
+    employee_id: Annotated[int | None, Form()] = None,
+    reference_period: Annotated[str, Form()] = "",
+    gross: Annotated[int, Form()] = 0,
+    other_income: Annotated[int, Form()] = 0,
+    other_discount: Annotated[int, Form()] = 0,
+    apply_ips: Annotated[str | None, Form()] = None,
+    salary: Annotated[int, Form()] = 0,
+    monthly_hours: Annotated[float, Form()] = 240,
+    hours_quantity: Annotated[float, Form()] = 0,
+    multiplier: Annotated[float, Form()] = 1,
+    total_remunerations: Annotated[int, Form()] = 0,
+    days: Annotated[float, Form()] = 0,
+    notes: Annotated[str, Form()] = "",
+    user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
+    db: Session = Depends(get_db),
+):
+    company = company_allowed(db, user, company_id)
+    employee = db.get(Employee, employee_id) if employee_id else None
+    if employee and employee.company_id != company.id:
+        raise HTTPException(400, "El funcionario no pertenece a la empresa seleccionada.")
+    if employee:
+        salary = salary or employee.base_salary
+        gross = gross or employee.base_salary
+    inputs, results, amount = calculate_values(
+        calculation_type=calculation_type,
+        ips_rate=get_parameter(db, "ips_employee_rate_general", 9),
+        gross=gross,
+        other_income=other_income,
+        other_discount=other_discount,
+        apply_ips=apply_ips == "on",
+        salary=salary,
+        monthly_hours=monthly_hours,
+        hours_quantity=hours_quantity,
+        multiplier=multiplier,
+        total_remunerations=total_remunerations,
+        days=days,
+    )
+    item = CalculationRecord(
+        company_id=company.id,
+        employee_id=employee.id if employee else None,
+        calculation_type=calculation_type,
+        reference_period=reference_period.strip()[:20],
+        input_json=json.dumps(inputs, ensure_ascii=False, separators=(",", ":")),
+        result_json=json.dumps(results, ensure_ascii=False, separators=(",", ":")),
+        amount=amount,
+        status="Revisar",
+        source="Cálculo automático",
+        notes=notes.strip(),
+        created_by=user.email,
+    )
+    db.add(item)
+    db.flush()
+    write_audit(db, user, "guardar", "calculo", str(item.id), f"{calculation_label(calculation_type)} · Gs. {format_gs(amount)}")
+    db.commit()
+    return RedirectResponse(f"/app/calculations?saved={item.id}&company_id={company.id}" + (f"&employee_id={employee.id}" if employee else ""), status_code=303)
+
+
+@app.post("/app/calculations/{calculation_id}/status")
+def calculation_status(
+    calculation_id: int,
+    status_value: Annotated[str, Form(alias="status")],
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    item = db.get(CalculationRecord, calculation_id)
+    if not item or item.company_id not in company_ids_for_user(db, user):
+        raise HTTPException(404)
+    if status_value not in {"Revisar", "Aprobado", "Anulado"}:
+        raise HTTPException(400, "Estado inválido.")
+    item.status = status_value
+    write_audit(db, user, "actualizar_estado", "calculo", str(item.id), status_value)
+    db.commit()
+    return RedirectResponse("/app/calculations", status_code=303)
+
+
+@app.get("/app/calculations/{calculation_id}/certificate")
+def calculation_to_certificate(
+    calculation_id: int,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    item = db.get(CalculationRecord, calculation_id)
+    if not item or item.company_id not in company_ids_for_user(db, user):
+        raise HTTPException(404)
+    document_type = {
+        "aguinaldo": "aguinaldo_anual",
+        "vacation": "usufructo_vacaciones",
+        "notice": "notificacion_preaviso",
+        "salary": "certificado_trabajo_a",
+        "hours": "constancia",
+    }.get(item.calculation_type, "certificado_trabajo_a")
+    query = f"calculation_id={item.id}&company_id={item.company_id}&document_type={document_type}"
+    if item.employee_id:
+        query += f"&employee_id={item.employee_id}"
+    return RedirectResponse(f"/app/certificates?{query}", status_code=303)
+
+
 @app.get("/app/certificates", response_class=HTMLResponse)
-def certificates_page(request: Request, user: User = Depends(require_user), db: Session = Depends(get_db)):
+def certificates_page(
+    request: Request,
+    calculation_id: int | None = None,
+    company_id: int | None = None,
+    employee_id: int | None = None,
+    document_type: str = "",
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
     company_ids = company_ids_for_user(db, user)
     companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name))) if company_ids else []
     employees = list(db.scalars(select(Employee).where(Employee.company_id.in_(company_ids)).order_by(Employee.full_name))) if company_ids else []
@@ -666,9 +1077,24 @@ def certificates_page(request: Request, user: User = Depends(require_user), db: 
             select(GeneratedCertificate)
             .where(GeneratedCertificate.company_id.in_(company_ids))
             .order_by(GeneratedCertificate.created_at.desc())
-            .limit(20)
+            .limit(30)
         )
     ) if company_ids else []
+    selected_calculation = db.get(CalculationRecord, calculation_id) if calculation_id else None
+    if selected_calculation and selected_calculation.company_id not in company_ids:
+        raise HTTPException(404)
+    if selected_calculation:
+        company_id = selected_calculation.company_id
+        employee_id = selected_calculation.employee_id
+    selected_company = db.get(Company, company_id) if company_id in company_ids else None
+    selected_employee = db.get(Employee, employee_id) if employee_id else None
+    if selected_employee and selected_company and selected_employee.company_id != selected_company.id:
+        selected_employee = None
+    calculation_inputs = json_dict(selected_calculation.input_json) if selected_calculation else {}
+    calculation_results = json_dict(selected_calculation.result_json) if selected_calculation else {}
+    branding = get_or_create_branding(db, selected_company) if selected_company else None
+    if selected_company:
+        db.commit()
     return render(
         request,
         "certificates.html",
@@ -678,6 +1104,13 @@ def certificates_page(request: Request, user: User = Depends(require_user), db: 
         employees=employees,
         generated=generated,
         certificate_types=CERTIFICATE_TYPES,
+        selected_calculation=selected_calculation,
+        selected_company=selected_company,
+        selected_employee=selected_employee,
+        selected_document_type=document_type if document_type in CERTIFICATE_TYPES else "",
+        calculation_inputs=calculation_inputs,
+        calculation_results=calculation_results,
+        branding=branding,
     )
 
 
@@ -702,6 +1135,7 @@ def create_certificate(
     nationality: Annotated[str, Form()] = "paraguaya",
     civil_status: Annotated[str, Form()] = "",
     recipient: Annotated[str, Form()] = "Encargado/a de Recursos Humanos",
+    calculation_id: Annotated[int | None, Form()] = None,
     intent: Annotated[str, Form()] = "save",
     user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
     db: Session = Depends(get_db),
@@ -713,12 +1147,51 @@ def create_certificate(
     if not employee or employee.company_id != company.id:
         raise HTTPException(400, "El funcionario no pertenece a la empresa seleccionada.")
 
+    calculation = db.get(CalculationRecord, calculation_id) if calculation_id else None
+    if calculation and (calculation.company_id != company.id or calculation.company_id not in company_ids_for_user(db, user)):
+        raise HTTPException(400, "El cálculo vinculado no corresponde a la empresa seleccionada.")
+    if calculation and calculation.employee_id and calculation.employee_id != employee.id:
+        raise HTTPException(400, "El cálculo vinculado corresponde a otro funcionario.")
+    calc_inputs = json_dict(calculation.input_json) if calculation else {}
+    calc_results = json_dict(calculation.result_json) if calculation else {}
     position_value = position.strip() or employee.position
     admission_value = admission_date or employee.admission_date
     salary_value = max(0, salary or employee.base_salary)
+    if calculation:
+        if document_type in {"aguinaldo_anual", "aguinaldo_proporcional", "usufructo_vacaciones", "notificacion_preaviso"}:
+            amount = amount or calculation.amount
+        if document_type.startswith("aguinaldo") and not period_start:
+            year = int(calculation.reference_period[:4]) if calculation.reference_period[:4].isdigit() else issue_date.year
+            period_start, period_end = date(year, 1, 1), date(year, 12, 31)
+        if document_type in {"solicitud_vacacion", "usufructo_vacaciones"} and not observations:
+            observations = f"Cálculo vinculado N.º {calculation.id}: {calc_results.get('days', calc_inputs.get('days', 0))} días, total estimado Gs. {format_gs(calculation.amount)}."
+        if document_type == "notificacion_preaviso" and not observations:
+            observations = f"Cálculo vinculado N.º {calculation.id}: {calc_results.get('days', calc_inputs.get('days', 0))} días, total estimado Gs. {format_gs(calculation.amount)}."
+    if not calculation and document_type in {"aguinaldo_anual", "aguinaldo_proporcional"}:
+        latest_aguinaldo = db.scalar(
+            select(Aguinaldo).where(Aguinaldo.employee_id == employee.id).order_by(Aguinaldo.year.desc(), Aguinaldo.created_at.desc())
+        )
+        if latest_aguinaldo:
+            amount = amount or latest_aguinaldo.calculated_amount
+            period_start = period_start or date(latest_aguinaldo.year, 1, 1)
+            period_end = period_end or date(latest_aguinaldo.year, 12, 31)
+            observations = observations or f"Importe tomado del registro de aguinaldo {latest_aguinaldo.year}, estado {latest_aguinaldo.status}."
+    if not calculation and document_type in {"solicitud_vacacion", "usufructo_vacaciones"}:
+        latest_vacation = db.scalar(
+            select(Vacation).where(Vacation.employee_id == employee.id).order_by(Vacation.created_at.desc())
+        )
+        if latest_vacation:
+            leave_start = leave_start or latest_vacation.start_date
+            leave_end = leave_end or latest_vacation.end_date
+            if not observations:
+                observations = f"Periodo {latest_vacation.period_year}: {latest_vacation.used_days} de {latest_vacation.entitled_days} días registrados, estado {latest_vacation.status}."
+    if document_type in {"aguinaldo_anual", "aguinaldo_proporcional"} and amount <= 0:
+        raise HTTPException(400, "El recibo de aguinaldo requiere un cálculo o importe registrado.")
+    branding = get_or_create_branding(db, company)
+    document_number_value = document_number.strip() or next_document_number(db, company, document_type, branding)
     metadata = {
         "notes": observations.strip(),
-        "document_number": document_number.strip(),
+        "document_number": document_number_value,
         "period_start": period_start.isoformat() if period_start else "",
         "period_end": period_end.isoformat() if period_end else "",
         "amount": max(0, amount or salary_value),
@@ -728,6 +1201,9 @@ def create_certificate(
         "nationality": nationality.strip(),
         "civil_status": civil_status.strip(),
         "recipient": recipient.strip(),
+        "calculation_id": calculation.id if calculation else None,
+        "calculation_type": calculation.calculation_type if calculation else "",
+        "calculation_results": calc_results,
     }
     title, body = build_document_body(
         document_type,
@@ -756,7 +1232,7 @@ def create_certificate(
         salary_snapshot=salary_value,
         observations=encode_metadata(**metadata),
         body=body,
-        status="Borrador",
+        status="Emitido" if intent in {"print", "docx", "pdf"} else "Borrador",
         created_by=user.email,
     )
     db.add(item)
@@ -812,6 +1288,203 @@ def download_certificate_pdf(certificate_id: int, user: User = Depends(require_u
         media_type="application/pdf",
         headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
     )
+
+
+@app.get("/app/reports", response_class=HTMLResponse)
+def reports_page(
+    request: Request,
+    company_id: int | None = None,
+    employee_id: int | None = None,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    company_ids = company_ids_for_user(db, user)
+    companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name))) if company_ids else []
+    if company_id not in company_ids:
+        company_id = company_ids[0] if company_ids else None
+    employees = list(db.scalars(select(Employee).where(Employee.company_id == company_id).order_by(Employee.full_name))) if company_id else []
+    if employee_id and employee_id not in {item.id for item in employees}:
+        employee_id = None
+    calculations_query = select(CalculationRecord).where(CalculationRecord.company_id == company_id) if company_id else select(CalculationRecord).where(False)
+    certificates_query = select(GeneratedCertificate).where(GeneratedCertificate.company_id == company_id) if company_id else select(GeneratedCertificate).where(False)
+    if employee_id:
+        calculations_query = calculations_query.where(CalculationRecord.employee_id == employee_id)
+        certificates_query = certificates_query.where(GeneratedCertificate.employee_id == employee_id)
+    calculations = list(db.scalars(calculations_query.order_by(CalculationRecord.created_at.desc()).limit(50)))
+    certificates = list(db.scalars(certificates_query.order_by(GeneratedCertificate.created_at.desc()).limit(50)))
+    payrolls = list(db.scalars(select(Payroll).where(Payroll.company_id == company_id).order_by(Payroll.period.desc()).limit(24))) if company_id else []
+    return render(
+        request,
+        "reports.html",
+        db,
+        user,
+        companies=companies,
+        employees=employees,
+        selected_company=company_id,
+        selected_employee=employee_id,
+        calculations=calculations,
+        certificates=certificates,
+        payrolls=payrolls,
+        calculation_labels={key: calculation_label(key) for key in ("salary", "hours", "aguinaldo", "vacation", "notice")},
+    )
+
+
+@app.get("/app/reports/export.csv")
+def reports_export_csv(
+    company_id: int,
+    employee_id: int | None = None,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    company = company_allowed(db, user, company_id)
+    query = select(CalculationRecord).where(CalculationRecord.company_id == company.id)
+    if employee_id:
+        employee = db.get(Employee, employee_id)
+        if not employee or employee.company_id != company.id:
+            raise HTTPException(404)
+        query = query.where(CalculationRecord.employee_id == employee.id)
+    items = list(db.scalars(query.order_by(CalculationRecord.created_at.desc())))
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Fecha", "Empresa", "Funcionario", "Tipo", "Periodo", "Monto", "Estado", "Origen", "Creado por"])
+    for item in items:
+        writer.writerow([
+            item.created_at.strftime("%d/%m/%Y %H:%M"),
+            company.legal_name,
+            item.employee.full_name if item.employee else "",
+            calculation_label(item.calculation_type),
+            item.reference_period,
+            item.amount,
+            item.status,
+            item.source,
+            item.created_by,
+        ])
+    filename = safe_download_name(f"Informe de cálculos {company.legal_name}", "", "csv")
+    return StreamingResponse(
+        iter(["\ufeff" + output.getvalue()]),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
+    )
+
+
+@app.get("/app/reports/employees/{employee_id}.pdf")
+def employee_integral_report(
+    employee_id: int,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    employee = db.get(Employee, employee_id)
+    if not employee or employee.company_id not in company_ids_for_user(db, user):
+        raise HTTPException(404)
+    company = employee.company
+    calculations = list(db.scalars(select(CalculationRecord).where(CalculationRecord.employee_id == employee.id).order_by(CalculationRecord.created_at.desc())))
+    certificates = list(db.scalars(select(GeneratedCertificate).where(GeneratedCertificate.employee_id == employee.id).order_by(GeneratedCertificate.created_at.desc())))
+    vacations = list(db.scalars(select(Vacation).where(Vacation.employee_id == employee.id).order_by(Vacation.period_year.desc())))
+    aguinaldos = list(db.scalars(select(Aguinaldo).where(Aguinaldo.employee_id == employee.id).order_by(Aguinaldo.year.desc())))
+    branding = get_or_create_branding(db, company)
+    db.commit()
+    payload = build_employee_report_pdf(
+        company=company,
+        employee=employee,
+        calculations=calculations,
+        certificates=certificates,
+        vacations=vacations,
+        aguinaldos=aguinaldos,
+        branding=branding,
+    )
+    filename = safe_download_name("Informe integral", employee.full_name, "pdf")
+    write_audit(db, user, "descargar", "informe_integral", str(employee.id), filename)
+    db.commit()
+    return StreamingResponse(
+        io.BytesIO(payload),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
+    )
+
+
+@app.get("/app/ai", response_class=HTMLResponse)
+def ai_page(
+    request: Request,
+    company_id: int | None = None,
+    employee_id: int | None = None,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    company_ids = company_ids_for_user(db, user)
+    companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name))) if company_ids else []
+    employees = list(db.scalars(select(Employee).where(Employee.company_id.in_(company_ids)).order_by(Employee.full_name))) if company_ids else []
+    selected_company = db.get(Company, company_id) if company_id in company_ids else None
+    selected_employee = db.get(Employee, employee_id) if employee_id else None
+    if selected_employee and selected_employee.company_id not in company_ids:
+        selected_employee = None
+    interactions = list(
+        db.scalars(
+            select(AIInteraction)
+            .where(AIInteraction.studio_id == user.studio_id)
+            .order_by(AIInteraction.created_at.desc())
+            .limit(15)
+        )
+    )
+    latest = db.get(AIInteraction, int(request.query_params["result"])) if request.query_params.get("result", "").isdigit() else None
+    return render(
+        request,
+        "ai_assistant.html",
+        db,
+        user,
+        companies=companies,
+        employees=employees,
+        selected_company=selected_company,
+        selected_employee=selected_employee,
+        interactions=interactions,
+        latest=latest,
+        ai_external_available=bool(settings.openai_api_key and settings.ai_enabled),
+        ai_model=settings.openai_model,
+    )
+
+
+@app.post("/app/ai")
+def ai_assistance(
+    purpose: Annotated[str, Form()] = "control",
+    company_id: Annotated[int | None, Form()] = None,
+    employee_id: Annotated[int | None, Form()] = None,
+    instruction: Annotated[str, Form()] = "",
+    external_consent: Annotated[str | None, Form()] = None,
+    user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
+    db: Session = Depends(get_db),
+):
+    company = company_allowed(db, user, company_id) if company_id else None
+    employee = db.get(Employee, employee_id) if employee_id else None
+    if employee and employee.company_id not in company_ids_for_user(db, user):
+        raise HTTPException(404)
+    if company and employee and employee.company_id != company.id:
+        raise HTTPException(400, "El funcionario no corresponde a la empresa seleccionada.")
+    if employee and not company:
+        company = employee.company
+    context = build_ai_context(db, company, employee)
+    result = generate_assistance(
+        purpose=purpose,
+        context=context,
+        instruction=instruction,
+        allow_external=external_consent == "on",
+    )
+    item = AIInteraction(
+        studio_id=user.studio_id,
+        company_id=company.id if company else None,
+        employee_id=employee.id if employee else None,
+        purpose=purpose,
+        user_instruction=instruction.strip(),
+        context_summary=json.dumps(context, ensure_ascii=False, default=str)[:12000],
+        response_text=result.text,
+        provider=result.provider,
+        model_name=result.model,
+        status="Completado",
+        created_by=user.email,
+    )
+    db.add(item)
+    db.flush()
+    write_audit(db, user, "consultar", "asistente_ia", str(item.id), purpose)
+    db.commit()
+    return RedirectResponse(f"/app/ai?result={item.id}", status_code=303)
 
 
 @app.get("/app/payrolls", response_class=HTMLResponse)
@@ -1202,4 +1875,4 @@ def admin_activation_status(
 @app.get("/health")
 def health(db: Session = Depends(get_db)):
     db.scalar(select(func.count(User.id)))
-    return {"status": "ok", "app": settings.app_name, "environment": settings.environment, "version": "1.3.0-preview"}
+    return {"status": "ok", "app": settings.app_name, "environment": settings.environment, "version": "1.4.0-preview"}
