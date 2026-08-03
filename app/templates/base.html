@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="{{ url_for('static', path='app.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', path='modern.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', path='v17.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', path='v20.css') }}">
 </head>
 <body class="{% if user %}app-body{% else %}public-body{% endif %}">
 {% if user %}
@@ -22,15 +23,14 @@
         <a class="{{ 'active' if active_path.startswith('/admin') else '' }}" href="/admin">Administración</a>
       {% else %}
         <a class="{{ 'active' if active_path == '/app' else '' }}" href="/app">Inicio</a>
-        <a class="{{ 'active' if active_path.startswith('/app/companies') or active_path.startswith('/app/employees') else '' }}" href="/app/companies">Mantenimientos</a>
+        <a class="{{ 'active' if active_path.startswith('/app/employees') else '' }}" href="/app/employees">Personas</a>
+        <a class="{{ 'active' if active_path.startswith('/app/companies') else '' }}" href="/app/companies">Empresas</a>
         <a class="{{ 'active' if active_path.startswith('/app/requests') else '' }}" href="/app/requests">Trámites</a>
-        <a class="{{ 'active' if active_path.startswith('/app/calculations') or active_path.startswith('/app/payrolls') or active_path.startswith('/app/vacations') or active_path.startswith('/app/aguinaldo') else '' }}" href="/app/calculations">Cálculos</a>
-        <a class="{{ 'active' if active_path.startswith('/app/certificates') or active_path.startswith('/app/documents') else '' }}" href="/app/certificates">Certificados</a>
-        <a class="{{ 'active' if active_path.startswith('/app/reports') else '' }}" href="/app/reports">Informes</a>
-        <a class="{{ 'active' if active_path.startswith('/app/calendar') else '' }}" href="/app/calendar">Agenda</a>
-        <a class="{{ 'active' if active_path.startswith('/app/ai') else '' }}" href="/app/ai">Asistente IA</a>
-        <a class="{{ 'active' if active_path.startswith('/app/labor-code') else '' }}" href="/app/labor-code">Código Laboral</a>
-        {% if user.role == 'administrador' %}<a class="{{ 'active' if active_path.startswith('/app/users') or active_path.startswith('/app/audit') or active_path.startswith('/app/parameters') else '' }}" href="/app/users">Admin</a>{% endif %}
+        <a class="{{ 'active' if active_path.startswith('/app/calculations') or active_path.startswith('/app/payrolls') or active_path.startswith('/app/vacations') or active_path.startswith('/app/aguinaldo') else '' }}" href="/app/payrolls">Operaciones</a>
+        <a class="{{ 'active' if active_path.startswith('/app/compliance') or active_path.startswith('/app/labor-code') or active_path.startswith('/app/calendar') else '' }}" href="/app/compliance">Cumplimiento</a>
+        <a class="{{ 'active' if active_path.startswith('/app/certificates') or active_path.startswith('/app/documents') else '' }}" href="/app/documents">Documentos</a>
+        <a class="{{ 'active' if active_path.startswith('/app/reports') else '' }}" href="/app/reports">Reportes</a>
+        {% if user.role == 'administrador' %}<a class="{{ 'active' if active_path.startswith('/app/users') or active_path.startswith('/app/audit') or active_path.startswith('/app/parameters') or active_path.startswith('/app/security') else '' }}" href="/app/users">Admin</a>{% endif %}
       {% endif %}
     </nav>
 
@@ -47,7 +47,7 @@
     {% if user.role == 'superadmin' %}
       <a href="/admin">Administración</a>
     {% else %}
-      <a href="/app">Inicio</a><a href="/app/companies">Mantenimientos</a><a href="/app/requests">Trámites</a><a href="/app/calculations">Cálculos</a><a href="/app/certificates">Certificados</a><a href="/app/reports">Informes</a><a href="/app/calendar">Agenda</a><a href="/app/ai">Asistente IA</a><a href="/app/documents">Archivo digital</a><a href="/app/labor-code">Código Laboral</a><a href="/app/vacations">Vacaciones</a><a href="/app/aguinaldo">Aguinaldo</a><a href="/app/security">Mi seguridad</a>
+      <a href="/app">Inicio</a><a href="/app/employees">Personas</a><a href="/app/companies">Empresas</a><a href="/app/requests">Trámites</a><a href="/app/payrolls">Liquidaciones</a><a href="/app/calculations">Cálculos</a><a href="/app/compliance">REI y REOP</a><a href="/app/calendar">Agenda</a><a href="/app/labor-code">Código Laboral</a><a href="/app/documents">Archivo digital</a><a href="/app/certificates">Documentos laborales</a><a href="/app/reports">Reportes</a><a href="/app/ai">Asistente IA</a><a href="/app/security">Mi seguridad</a>
       {% if user.role == 'administrador' %}<a href="/app/users">Usuarios</a><a href="/app/audit">Auditoría</a><a href="/app/parameters">Parámetros</a>{% endif %}
     {% endif %}
   </nav>
@@ -58,5 +58,6 @@
 {% endif %}
 <script src="{{ url_for('static', path='app.js') }}"></script>
 <script src="{{ url_for('static', path='v17.js') }}"></script>
+<script src="{{ url_for('static', path='v20.js') }}"></script>
 </body>
 </html>

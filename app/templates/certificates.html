@@ -2,7 +2,7 @@
 {% block title %}Documentos laborales | Digit Laboral{% endblock %}
 {% block content %}
 <div class="page-header certificates-header">
-  <div><span class="eyebrow">GENERACIÓN DOCUMENTAL AUTOMATIZADA</span><h1>Documentos laborales</h1><p>Datos de empresa, funcionario, cálculos y membrete conectados en una única emisión.</p></div>
+  <div><span class="eyebrow">GENERACIÓN DOCUMENTAL AUTOMATIZADA</span><h1>Certificados y documentos laborales</h1><p>Datos de empresa, funcionario, cálculos y membrete conectados en una única emisión.</p></div>
   <div class="header-actions"><a class="btn ghost" href="/app/reports">Informes</a><a class="btn ghost" href="/app/ai{% if selected_company %}?company_id={{ selected_company.id }}{% endif %}">Revisar con IA</a><a class="btn ghost" href="/app/documents">Archivo digital</a></div>
 </div>
 {% if request.query_params.get('created') %}<div class="alert success">El documento fue guardado correctamente.</div>{% endif %}

@@ -524,7 +524,7 @@ class SecurityEvent(Base):
     email: Mapped[str] = mapped_column(String(180), default="", index=True)
     event_type: Mapped[str] = mapped_column(String(80), index=True)
     success: Mapped[bool] = mapped_column(Boolean, default=False)
-    ip_address: Mapped[str] = mapped_column(String(80), default="")
+    ip_address: Mapped[str] = mapped_column(String(80), default="", index=True)
     user_agent: Mapped[str] = mapped_column(String(300), default="")
     detail: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC), index=True)
@@ -547,3 +547,168 @@ class StudioPayment(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
 
     studio: Mapped[Studio] = relationship()
+
+
+class CompanyComplianceProfile(Base):
+    __tablename__ = "company_compliance_profiles"
+    __table_args__ = (UniqueConstraint("company_id", name="uq_company_compliance_profile"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    department: Mapped[str] = mapped_column(String(100), default="")
+    district: Mapped[str] = mapped_column(String(100), default="")
+    locality: Mapped[str] = mapped_column(String(120), default="")
+    economic_activity: Mapped[str] = mapped_column(String(220), default="")
+    activity_code: Mapped[str] = mapped_column(String(60), default="")
+    establishment_type: Mapped[str] = mapped_column(String(40), default="Matriz")
+    legal_representative_document: Mapped[str] = mapped_column(String(40), default="")
+    rei_status: Mapped[str] = mapped_column(String(30), default="Pendiente")
+    reop_status: Mapped[str] = mapped_column(String(30), default="Pendiente")
+    rei_last_verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    reop_last_verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    notes: Mapped[str] = mapped_column(Text, default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
+
+    company: Mapped[Company] = relationship()
+
+
+class BranchComplianceProfile(Base):
+    __tablename__ = "branch_compliance_profiles"
+    __table_args__ = (UniqueConstraint("branch_id", name="uq_branch_compliance_profile"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    branch_id: Mapped[int] = mapped_column(ForeignKey("branches.id"), index=True)
+    ips_employer_number: Mapped[str] = mapped_column(String(80), default="")
+    mtess_employer_number: Mapped[str] = mapped_column(String(80), default="")
+    department: Mapped[str] = mapped_column(String(100), default="")
+    district: Mapped[str] = mapped_column(String(100), default="")
+    locality: Mapped[str] = mapped_column(String(120), default="")
+    economic_activity: Mapped[str] = mapped_column(String(220), default="")
+    activity_code: Mapped[str] = mapped_column(String(60), default="")
+    establishment_type: Mapped[str] = mapped_column(String(40), default="Sucursal")
+    rei_status: Mapped[str] = mapped_column(String(30), default="Pendiente")
+    reop_status: Mapped[str] = mapped_column(String(30), default="Pendiente")
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
+
+    branch: Mapped[Branch] = relationship()
+
+
+class EmployeeComplianceProfile(Base):
+    __tablename__ = "employee_compliance_profiles"
+    __table_args__ = (UniqueConstraint("employee_id", name="uq_employee_compliance_profile"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), index=True)
+    document_type: Mapped[str] = mapped_column(String(30), default="CI")
+    sex: Mapped[str] = mapped_column(String(30), default="")
+    nationality: Mapped[str] = mapped_column(String(80), default="Paraguaya")
+    marital_status: Mapped[str] = mapped_column(String(40), default="")
+    birth_place: Mapped[str] = mapped_column(String(120), default="")
+    department: Mapped[str] = mapped_column(String(100), default="")
+    district: Mapped[str] = mapped_column(String(100), default="")
+    profession: Mapped[str] = mapped_column(String(160), default="")
+    occupation_code: Mapped[str] = mapped_column(String(60), default="")
+    position_category: Mapped[str] = mapped_column(String(100), default="")
+    work_schedule: Mapped[str] = mapped_column(String(120), default="")
+    shift: Mapped[str] = mapped_column(String(60), default="Diurno")
+    weekly_hours: Mapped[int] = mapped_column(Integer, default=48)
+    salary_type: Mapped[str] = mapped_column(String(40), default="Mensual")
+    dependent_children: Mapped[int] = mapped_column(Integer, default=0)
+    indigenous: Mapped[bool] = mapped_column(Boolean, default=False)
+    disability: Mapped[bool] = mapped_column(Boolean, default=False)
+    rei_status: Mapped[str] = mapped_column(String(30), default="Pendiente")
+    reop_status: Mapped[str] = mapped_column(String(30), default="Pendiente")
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
+
+    employee: Mapped[Employee] = relationship()
+
+
+class PayrollComplianceDetail(Base):
+    __tablename__ = "payroll_compliance_details"
+    __table_args__ = (UniqueConstraint("payroll_line_id", name="uq_payroll_compliance_detail"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    payroll_line_id: Mapped[int] = mapped_column(ForeignKey("payroll_lines.id"), index=True)
+    period_start: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    period_end: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    payment_method: Mapped[str] = mapped_column(String(60), default="Transferencia")
+    days_worked: Mapped[int] = mapped_column(Integer, default=30)
+    hours_worked: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=0)
+    night_surcharge: Mapped[int] = mapped_column(Integer, default=0)
+    overtime_day: Mapped[int] = mapped_column(Integer, default=0)
+    overtime_night: Mapped[int] = mapped_column(Integer, default=0)
+    holidays: Mapped[int] = mapped_column(Integer, default=0)
+    vacation_pay: Mapped[int] = mapped_column(Integer, default=0)
+    family_allowance: Mapped[int] = mapped_column(Integer, default=0)
+    other_income_detail: Mapped[int] = mapped_column(Integer, default=0)
+    employer_ips: Mapped[int] = mapped_column(Integer, default=0)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
+
+    payroll_line: Mapped[PayrollLine] = relationship()
+
+
+class ComplianceEvent(Base):
+    __tablename__ = "compliance_events"
+    __table_args__ = (UniqueConstraint("company_id", "authority", "source_key", name="uq_compliance_event_source"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    employee_id: Mapped[Optional[int]] = mapped_column(ForeignKey("employees.id"), nullable=True, index=True)
+    branch_id: Mapped[Optional[int]] = mapped_column(ForeignKey("branches.id"), nullable=True, index=True)
+    batch_id: Mapped[Optional[int]] = mapped_column(ForeignKey("integration_batches.id"), nullable=True, index=True)
+    authority: Mapped[str] = mapped_column(String(20), index=True)
+    event_type: Mapped[str] = mapped_column(String(80), index=True)
+    event_date: Mapped[date] = mapped_column(Date, index=True)
+    due_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True, index=True)
+    status: Mapped[str] = mapped_column(String(30), default="Borrador", index=True)
+    source_key: Mapped[Optional[str]] = mapped_column(String(180), nullable=True, index=True)
+    payload_json: Mapped[str] = mapped_column(Text, default="{}")
+    external_reference: Mapped[str] = mapped_column(String(160), default="")
+    receipt_storage_key: Mapped[str] = mapped_column(String(260), default="")
+    notes: Mapped[str] = mapped_column(Text, default="")
+    created_by: Mapped[str] = mapped_column(String(180), default="")
+    approved_by: Mapped[str] = mapped_column(String(180), default="")
+    submitted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC), index=True)
+
+    company: Mapped[Company] = relationship()
+    employee: Mapped[Optional[Employee]] = relationship()
+    branch: Mapped[Optional[Branch]] = relationship()
+
+
+class IntegrationBatch(Base):
+    __tablename__ = "integration_batches"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    studio_id: Mapped[int] = mapped_column(ForeignKey("studios.id"), index=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    authority: Mapped[str] = mapped_column(String(20), index=True)
+    batch_type: Mapped[str] = mapped_column(String(80), index=True)
+    period: Mapped[str] = mapped_column(String(20), default="", index=True)
+    status: Mapped[str] = mapped_column(String(30), default="Generado", index=True)
+    file_name: Mapped[str] = mapped_column(String(260), default="")
+    storage_key: Mapped[str] = mapped_column(String(300), default="")
+    file_sha256: Mapped[str] = mapped_column(String(64), default="")
+    item_count: Mapped[int] = mapped_column(Integer, default=0)
+    external_reference: Mapped[str] = mapped_column(String(160), default="")
+    error_message: Mapped[str] = mapped_column(Text, default="")
+    created_by: Mapped[str] = mapped_column(String(180), default="")
+    approved_by: Mapped[str] = mapped_column(String(180), default="")
+    submitted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC), index=True)
+
+    company: Mapped[Company] = relationship()
+
+
+class IntegrationBatchItem(Base):
+    __tablename__ = "integration_batch_items"
+    __table_args__ = (UniqueConstraint("batch_id", "compliance_event_id", name="uq_batch_event"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    batch_id: Mapped[int] = mapped_column(ForeignKey("integration_batches.id"), index=True)
+    compliance_event_id: Mapped[int] = mapped_column(ForeignKey("compliance_events.id"), index=True)
+    status: Mapped[str] = mapped_column(String(30), default="Incluido")
+    response_message: Mapped[str] = mapped_column(Text, default="")
+
+    batch: Mapped[IntegrationBatch] = relationship()
+    compliance_event: Mapped[ComplianceEvent] = relationship(foreign_keys=[compliance_event_id])

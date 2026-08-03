@@ -1,6 +1,6 @@
 # Row-Level Security en PostgreSQL
 
-Digit Laboral v1.9 puede crear políticas RLS automáticamente cuando `RLS_ENABLED=true`.
+Digit Laboral v2.0 puede crear políticas RLS automáticamente cuando `RLS_ENABLED=true`.
 
 ## Arquitectura recomendada
 
@@ -35,3 +35,11 @@ Las políticas permiten acceso a las filas del estudio activo. Las tablas públi
 3. Intentar consultar identificadores conocidos del estudio B.
 4. Repetir como empresa vinculada.
 5. Confirmar rechazo tanto desde la interfaz como con consultas directas usando `digit_app`.
+
+
+## Separación de URLs
+
+- `MIGRATION_DATABASE_URL`: propietario de tablas, migraciones y creación de políticas.
+- `DATABASE_URL`: rol `digit_laboral_app`, sin `BYPASSRLS`.
+
+Usar `scripts/configure_postgres_roles.sql` y activar `RLS_FORCE=true` solo después de probar ambos accesos.

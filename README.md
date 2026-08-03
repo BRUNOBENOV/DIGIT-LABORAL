@@ -1,36 +1,24 @@
-# Digit Laboral — versión 1.5 Preview
+# Digit Laboral 2.0
 
-Plataforma de gestión laboral para estudios contables paraguayos, presentada por Victor's Contabilidad.
+Plataforma de gestión y cumplimiento laboral para estudios contables paraguayos.
 
-## Vista pública y demostración
+## Alcance de la versión
 
-- `index.html`: sitio comercial, beneficios, módulos y planes.
-- `login.html`: acceso a la demostración pública.
-- `app.html`: demostración navegable sin datos reales.
-- `privacidad.html` y `terminos.html`: información legal de la demostración.
+Digit Laboral 2.0 integra:
 
-La demostración pública guarda datos ficticios únicamente en el navegador. No debe utilizarse para información real de clientes.
+- estudios, empresas y sucursales;
+- funcionarios y expedientes digitales;
+- usuarios, roles, sesiones y 2FA;
+- solicitudes y flujo de trámites;
+- liquidaciones, vacaciones y aguinaldo;
+- documentos Word/PDF e informes;
+- agenda, auditoría y respaldos;
+- Código Laboral estructurado;
+- centro REI/REOP con borradores, validación, Excel, lotes y comprobantes.
 
-## Aplicación productiva
+La interoperabilidad REI/REOP funciona mediante archivos y revisión humana. Los conectores directos permanecen desactivados porque requieren documentación y autorización oficial.
 
-La carpeta `app/` contiene el backend FastAPI con PostgreSQL, autenticación, sesiones, separación por estudio, roles, empresas, funcionarios, solicitudes, liquidaciones, vacaciones, aguinaldo, documentos, cálculos, informes, auditoría y administración.
-
-### Automatización de la versión 1.5
-
-- Logo y membrete configurable por cada empresa.
-- Portal para que la empresa vinculada cargue o actualice su propio logo.
-- Colores, firma autorizada, pie de página y prefijo documental por empresa.
-- Cálculos guardados y vinculados con certificados, informes y expedientes.
-- Numeración automática de documentos.
-- Exportación Word y PDF con el membrete correspondiente.
-- Informes integrales del funcionario y exportación CSV.
-- Alertas de datos incompletos, empresas sin logo y cálculos pendientes de revisión.
-- Asistente de IA con motor interno y conexión opcional a OpenAI.
-- Registro de auditoría para cálculos, documentos, informes y consultas de IA.
-
-La IA no aprueba liquidaciones ni toma decisiones jurídicas. Señala datos faltantes, inconsistencias y próximos pasos; la emisión definitiva requiere revisión humana y profesional.
-
-## Ejecutar localmente
+## Inicio local
 
 ### Windows
 
@@ -38,53 +26,95 @@ La IA no aprueba liquidaciones ni toma decisiones jurídicas. Señala datos falt
 run.bat
 ```
 
-### Linux o macOS
+### Linux/macOS
 
 ```bash
 ./run.sh
 ```
 
-Después abrí `http://127.0.0.1:8000`.
+Abrir `http://127.0.0.1:8000`.
 
-## Configuración de IA
-
-El sistema funciona sin una clave externa mediante el motor interno. Para activar la asistencia de OpenAI, configurá en Render:
+Para una base local de desarrollo se pueden definir:
 
 ```text
-AI_ENABLED=true
-OPENAI_API_KEY=<clave secreta>
-OPENAI_MODEL=gpt-5-mini
-AI_STORE_RESPONSES=false
+DEMO_ADMIN_PASSWORD=<contraseña local>
+DEMO_SUPERADMIN_PASSWORD=<contraseña local>
 ```
 
-Nunca subas la clave a GitHub ni a archivos `.env` públicos.
+Las contraseñas de demostración no están incrustadas en el código.
 
-## Publicación
+## Pruebas
 
-- Para actualizar el repositorio y Render, leé `ACTUALIZAR_V16.md`.
-- Para desplegar desde cero, leé `DEPLOYMENT.md`.
-- Antes de usar datos reales, completá `SECURITY_CHECKLIST.md`.
+```bash
+pip install -r requirements-dev.txt
+pytest -q
+```
 
-## Credenciales demostrativas
+Verificación ampliada:
 
-Correo: `admin@digitlaboral.com.py`  
-Contraseña: `demo123`
+```bash
+python -m compileall -q app alembic tests
+pytest --cov=app --cov-report=term-missing -q
+```
 
-Cambiá las credenciales de demostración antes de ingresar información real.
+Resultado de la entrega: **32 pruebas aprobadas**.
 
-## Novedades v1.5
+## Migraciones
 
-- Corrección del cargador de logo y membrete por empresa.
-- Vista previa y validación de imágenes antes de guardar.
-- Código del Trabajo completo, sincronizable y ordenado por Libro, Título, Capítulo y Artículo.
-- Filtros de vigencia, modificaciones y derogaciones, con trazabilidad a fuentes jurídicas.
+La aplicación usa Alembic y ejecuta el control de migraciones al iniciar.
 
-## Versión 1.9 Preview
+```bash
+alembic current
+alembic upgrade head
+```
 
-La versión 1.9 incorpora importación masiva de funcionarios, expediente digital, historial salarial, agenda laboral, flujo avanzado de trámites, seguridad 2FA, recuperación de contraseña, exportación completa por estudio, respaldo técnico, pagos y políticas RLS preparadas.
+Documentación: `MIGRATION_V19_TO_V20.md`.
 
-Documentación principal:
-- `RELEASE_NOTES_V19.md`
-- `ACTUALIZAR_V19.md`
-- `PRODUCTION_READINESS.md`
-- `PILOT_CHECKLIST.md`
+## Producción
+
+Usar como base `render.production.yaml`, no el Blueprint gratuito de demostración.
+
+Producción requiere:
+
+- PostgreSQL persistente;
+- almacenamiento S3 compatible;
+- SMTP;
+- HTTPS;
+- respaldo externo;
+- staging separado;
+- RLS probado;
+- revisión jurídica y de seguridad.
+
+Documentación: `PRODUCTION_DEPLOYMENT_V20.md` y `SECURITY_AND_BACKUP_V20.md`.
+
+## REI y REOP
+
+El centro de cumplimiento permite:
+
+- completar perfiles oficiales de empresa, sucursal y trabajador;
+- crear comunicaciones automáticas desde operaciones internas;
+- validar datos faltantes;
+- exportar lotes Excel con número patronal por establecimiento;
+- generar planillas REOP de trabajo;
+- registrar comprobantes y resultados;
+- conservar hash, usuario y trazabilidad.
+
+Documentación: `REI_REOP_INTEGRATION.md`.
+
+## Seguridad
+
+- No almacenar PIN o contraseñas gubernamentales.
+- No subir `.env`, bases o documentos a GitHub.
+- Mantener IA desactivada hasta aprobar la política de tratamiento de datos.
+- Activar 2FA para administradores.
+- Probar restauraciones, no solo generar respaldos.
+
+## Documentación principal
+
+- `REVISION_INTEGRAL_V20.md`
+- `RELEASE_NOTES_V20.md`
+- `REI_REOP_INTEGRATION.md`
+- `PRODUCTION_DEPLOYMENT_V20.md`
+- `SECURITY_AND_BACKUP_V20.md`
+- `MIGRATION_V19_TO_V20.md`
+- `SOLICITUD_INTEROPERABILIDAD_REI_REOP.md`

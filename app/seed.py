@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
+import logging
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -9,6 +10,8 @@ from .auth import hash_password
 from .config import settings
 from .database import SessionLocal
 from .models import Branch, Company, CompanyRequest, Employee, LaborArticle, LaborParameter, Studio, User, UserSecurity
+
+logger = logging.getLogger("digit.seed")
 
 SOURCE_213 = "https://www.bacn.gov.py/leyes-paraguayas/2608/ley-n-213-establece-el-codigo-del-trabajo"
 SOURCE_496 = "https://www.bacn.gov.py/leyes-paraguayas/2514/ley-n-496-modifica-amplia-y-deroga-articulos-de-la-ley-21393-codigo-del-trabajo"
@@ -65,7 +68,7 @@ def seed_database() -> None:
                 superadmin = User(
                     full_name="Administrador General",
                     email="sistema@digitlaboral.com.py",
-                    password_hash=hash_password("Digit2026!"),
+                    password_hash=hash_password(settings.demo_superadmin_password),
                     role="superadmin",
                     must_change_password=False,
                 )
@@ -74,6 +77,9 @@ def seed_database() -> None:
             db.add(UserSecurity(user_id=superadmin.id))
 
         if not production and db.scalar(select(Studio.id).limit(1)) is None:
+            logger.warning(
+                "Base de desarrollo inicializada. Credenciales demo controladas por DEMO_ADMIN_PASSWORD y DEMO_SUPERADMIN_PASSWORD."
+            )
             studio = Studio(name="Victor's Contabilidad", phone="0983 102 220", plan_name="Profesional", company_limit=15, payment_status="Activo")
             db.add(studio)
             db.flush()
@@ -102,10 +108,10 @@ def seed_database() -> None:
                 CompanyRequest(company_id=companies[1].id, request_type="Cambio salarial", subject="Propuesta de aumento", detail="Revisar aumento propuesto para la funcionaria administrativa.", status="En revisión"),
             ])
             db.add_all([
-                User(studio_id=studio.id, full_name="Administrador Digit Laboral", email="admin@digitlaboral.com.py", password_hash=hash_password("demo123"), role="administrador", must_change_password=False),
-                User(studio_id=studio.id, full_name="Contador Demo", email="contador@demo.py", password_hash=hash_password("demo123"), role="contador", must_change_password=False),
-                User(studio_id=studio.id, full_name="Auxiliar Demo", email="auxiliar@demo.py", password_hash=hash_password("demo123"), role="auxiliar", must_change_password=False),
-                User(studio_id=studio.id, company_id=companies[0].id, full_name="Empresa Demo", email="empresa@demo.py", password_hash=hash_password("demo123"), role="empresa", must_change_password=False),
+                User(studio_id=studio.id, full_name="Administrador Digit Laboral", email="admin@digitlaboral.com.py", password_hash=hash_password(settings.demo_admin_password), role="administrador", must_change_password=False),
+                User(studio_id=studio.id, full_name="Contador Demo", email="contador@demo.py", password_hash=hash_password(settings.demo_admin_password), role="contador", must_change_password=False),
+                User(studio_id=studio.id, full_name="Auxiliar Demo", email="auxiliar@demo.py", password_hash=hash_password(settings.demo_admin_password), role="auxiliar", must_change_password=False),
+                User(studio_id=studio.id, company_id=companies[0].id, full_name="Empresa Demo", email="empresa@demo.py", password_hash=hash_password(settings.demo_admin_password), role="empresa", must_change_password=False),
             ])
 
         if db.scalar(select(LaborArticle.id).limit(1)) is None:

@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+{% block title %}Cumplimiento REI y REOP | Digit Laboral{% endblock %}
+{% block content %}
+<div class="page-header compliance-page-header">
+  <div>
+    <span class="eyebrow">CUMPLIMIENTO E INTEROPERABILIDAD</span>
+    <h1>Centro REI y REOP</h1>
+    <p>Prepará, validá, exportá y conciliá las comunicaciones laborales de cada empresa.</p>
+  </div>
+  <form method="get" class="compliance-company-switcher">
+    <label>Empresa
+      <select name="company_id" onchange="this.form.submit()">
+        {% for company in companies %}<option value="{{ company.id }}" {{ 'selected' if selected_company and selected_company.id == company.id }}>{{ company.legal_name }}</option>{% endfor %}
+      </select>
+    </label>
+    {% if authority_filter %}<input type="hidden" name="authority" value="{{ authority_filter }}">{% endif %}
+  </form>
+</div>
+
+{% if request.query_params.get('saved') %}<div class="alert success">Los datos oficiales fueron actualizados.</div>{% endif %}
+{% if request.query_params.get('created') %}<div class="alert success">La comunicación quedó guardada como borrador.</div>{% endif %}
+{% if request.query_params.get('empty_export') %}<div class="alert warning">No hay comunicaciones pendientes para exportar.</div>{% endif %}
+{% if request.query_params.get('receipt') %}<div class="alert success">El comprobante y el resultado del lote fueron registrados.</div>{% endif %}
+{% if request.query_params.get('validation_block') %}<div class="alert danger">La exportación {{ request.query_params.get('validation_block') }} fue bloqueada porque existen datos obligatorios incompletos. Revisá las observaciones del perfil antes de generar el lote.</div>{% endif %}
+
+{% if selected_company %}
+<section class="compliance-summary-grid">
+  <article><span>Comunicaciones pendientes</span><b>{{ pending }}</b><small>REI y REOP</small></article>
+  <article class="{{ 'danger-card' if overdue else '' }}"><span>Vencidas</span><b>{{ overdue }}</b><small>Requieren atención</small></article>
+  <article><span>Perfil REI</span><b>{{ 'Listo' if not rei_errors else (rei_errors|length ~ ' faltantes') }}</b><small>{{ selected_company.ips_employer_number or 'Sin número patronal IPS' }}</small></article>
+  <article><span>Perfil REOP</span><b>{{ 'Listo' if not reop_errors else (reop_errors|length ~ ' faltantes') }}</b><small>{{ selected_company.mtess_employer_number or 'Sin número patronal MTESS' }}</small></article>
+</section>
+
+<section class="integration-system-grid">
+  <article class="integration-system-card">
+    <div class="integration-system-heading"><span class="system-logo rei">REI</span><div><h2>Instituto de Previsión Social</h2><p>Movimientos, salarios y aportes.</p></div></div>
+    <div class="integration-mode {{ 'direct' if direct_rei else 'file' }}"><b>{{ 'Conexión directa habilitada' if direct_rei else 'Interoperabilidad mediante archivos' }}</b><span>{{ 'El conector oficial se encuentra habilitado.' if direct_rei else 'La API directa permanece bloqueada hasta obtener documentación y credenciales oficiales.' }}</span></div>
+    {% if rei_errors %}<div class="readiness-errors">{% for error in rei_errors[:6] %}<span>• {{ error }}</span>{% endfor %}{% if rei_errors|length > 6 %}<small>y {{ rei_errors|length - 6 }} observaciones más</small>{% endif %}</div>{% else %}<div class="readiness-ok">Perfil listo para generar archivos de trabajo.</div>{% endif %}
+    <div class="integration-actions">
+      <a class="btn ghost" href="{{ official_sources.REI }}" target="_blank" rel="noopener">Fuente oficial ↗</a>
+      {% if user.role in ['administrador','contador'] %}<a class="btn primary" href="/app/compliance/export/events.xlsx?company_id={{ selected_company.id }}&authority=REI">Exportar validadas</a>{% endif %}
+    </div>
+  </article>
+  <article class="integration-system-card">
+    <div class="integration-system-heading"><span class="system-logo reop">REOP</span><div><h2>Ministerio de Trabajo</h2><p>Comunicaciones, liquidaciones y planillas.</p></div></div>
+    <div class="integration-mode {{ 'direct' if direct_reop else 'file' }}"><b>{{ 'Conexión directa habilitada' if direct_reop else 'Interoperabilidad mediante archivos' }}</b><span>{{ 'El conector oficial se encuentra habilitado.' if direct_reop else 'La presentación final continúa realizándose en el portal oficial con revisión humana.' }}</span></div>
+    {% if reop_errors %}<div class="readiness-errors">{% for error in reop_errors[:6] %}<span>• {{ error }}</span>{% endfor %}{% if reop_errors|length > 6 %}<small>y {{ reop_errors|length - 6 }} observaciones más</small>{% endif %}</div>{% else %}<div class="readiness-ok">Perfil listo para generar archivos de trabajo.</div>{% endif %}
+    <div class="integration-actions">
+      <a class="btn ghost" href="{{ official_sources.REOP }}" target="_blank" rel="noopener">Fuente oficial ↗</a>
+      {% if user.role in ['administrador','contador'] %}<a class="btn ghost" href="/app/compliance/export/events.xlsx?company_id={{ selected_company.id }}&authority=REOP">Comunicaciones validadas</a><a class="btn primary" href="/app/compliance/export/reop-annual.xlsx?company_id={{ selected_company.id }}&year={{ today.year }}">Planillas {{ today.year }}</a>{% endif %}
+    </div>
+  </article>
+</section>
+
+<section class="compliance-tabs" data-compliance-tabs>
+  <button class="active" type="button" data-compliance-tab="communications">Comunicaciones</button>
+  <button type="button" data-compliance-tab="profiles">Datos oficiales</button>
+  <button type="button" data-compliance-tab="batches">Lotes y comprobantes</button>
+  <button type="button" data-compliance-tab="controls">Control técnico</button>
+</section>
+
+<section class="compliance-tab-panel active" data-compliance-panel="communications">
+  {% if user.role != 'empresa' %}
+  <article class="panel compliance-event-form">
+    <div class="panel-head"><div><span>NUEVO REGISTRO</span><h2>Preparar comunicación</h2></div><small>Se guarda como borrador hasta su validación.</small></div>
+    <form method="post" action="/app/compliance/events" class="form-grid compliance-form-grid">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="company_id" value="{{ selected_company.id }}">
+      <label>Sistema<select name="authority" data-authority-select><option value="REOP">REOP</option><option value="REI">REI</option></select></label>
+      <label>Tipo<select name="event_type" data-event-type-select data-rei-types='{{ rei_event_types|tojson }}' data-reop-types='{{ reop_event_types|tojson }}'>{% for item in reop_event_types %}<option>{{ item }}</option>{% endfor %}</select></label>
+      <label>Funcionario<select name="employee_id"><option value="">No aplica / empresa</option>{% for employee in employees %}<option value="{{ employee.id }}">{{ employee.full_name }} · {{ employee.document_number }}</option>{% endfor %}</select></label>
+      <label>Fecha del evento<input type="date" name="event_date" value="{{ today.isoformat() }}" required></label>
+      <label>Fecha límite prevista<input type="date" name="due_date"><small>Confirmar según la obligación aplicable.</small></label>
+      <label class="span-2">Datos complementarios<textarea name="detail" rows="3" placeholder="Motivo, periodo, importe u otra información necesaria"></textarea></label>
+      <label class="span-2">Notas internas<textarea name="notes" rows="2"></textarea></label>
+      <div class="form-actions span-2"><button class="btn primary" type="submit">Guardar borrador</button></div>
+    </form>
+  </article>
+  {% endif %}
+
+  <article class="panel table-panel">
+    <div class="panel-head"><div><span>TRAZABILIDAD</span><h2>Comunicaciones preparadas</h2></div><div class="authority-filter"><a class="{{ 'active' if not authority_filter }}" href="?company_id={{ selected_company.id }}">Todas</a><a class="{{ 'active' if authority_filter == 'REI' }}" href="?company_id={{ selected_company.id }}&authority=REI">REI</a><a class="{{ 'active' if authority_filter == 'REOP' }}" href="?company_id={{ selected_company.id }}&authority=REOP">REOP</a></div></div>
+    <div class="table-wrap"><table><thead><tr><th>Sistema</th><th>Comunicación</th><th>Funcionario</th><th>Establecimiento</th><th>Evento</th><th>Vencimiento</th><th>Estado</th><th>Control</th></tr></thead><tbody>
+      {% for item in events %}<tr class="{{ 'overdue-row' if item.due_date and item.due_date < today and item.status not in ['Presentado','Aceptado','Anulado'] }}"><td><span class="authority-badge {{ item.authority|lower }}">{{ item.authority }}</span></td><td><b>{{ item.event_type }}</b><small class="table-sub">ID {{ item.id }}</small></td><td>{{ item.employee.full_name if item.employee else 'Empresa' }}</td><td>{{ item.branch.name if item.branch else 'Casa matriz' }}</td><td>{{ item.event_date|fecha }}</td><td>{{ item.due_date|fecha }}</td><td><span class="status-pill {{ item.status|lower|replace(' ','-') }}">{{ item.status }}</span></td><td>{% if user.role in ['administrador','contador'] %}<form method="post" action="/app/compliance/events/{{ item.id }}/status" class="inline-status-form"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><select name="status">{% for option in compliance_status_transitions.get(item.status, [item.status]) %}<option {{ 'selected' if item.status == option }}>{{ option }}</option>{% endfor %}</select><input name="external_reference" value="{{ item.external_reference }}" placeholder="Comprobante"><button type="submit">Guardar</button></form>{% else %}Solo lectura{% endif %}</td></tr>{% else %}<tr><td colspan="8"><div class="empty-state">Todavía no hay comunicaciones preparadas para esta empresa.</div></td></tr>{% endfor %}
+    </tbody></table></div>
+  </article>
+</section>
+
+<section class="compliance-tab-panel" data-compliance-panel="profiles">
+  <div class="compliance-profile-grid">
+    <article class="panel">
+      <div class="panel-head"><div><span>EMPRESA</span><h2>Perfil oficial</h2></div><span class="status-pill {{ 'activo' if company_profile else 'pendiente' }}">{{ 'Configurado' if company_profile else 'Incompleto' }}</span></div>
+      {% if user.role != 'empresa' %}<form method="post" action="/app/compliance/company-profile" class="form-grid">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="company_id" value="{{ selected_company.id }}">
+        <label>Departamento<input name="department" value="{{ company_profile.department if company_profile else '' }}"></label><label>Distrito<input name="district" value="{{ company_profile.district if company_profile else '' }}"></label>
+        <label>Localidad<input name="locality" value="{{ company_profile.locality if company_profile else '' }}"></label><label>Tipo de establecimiento<select name="establishment_type"><option {{ 'selected' if company_profile and company_profile.establishment_type == 'Matriz' }}>Matriz</option><option {{ 'selected' if company_profile and company_profile.establishment_type == 'Sucursal' }}>Sucursal</option></select></label>
+        <label class="span-2">Actividad económica<input name="economic_activity" value="{{ company_profile.economic_activity if company_profile else '' }}"></label><label>Código de actividad<input name="activity_code" value="{{ company_profile.activity_code if company_profile else '' }}"></label><label>CI representante legal<input name="legal_representative_document" value="{{ company_profile.legal_representative_document if company_profile else '' }}"></label>
+        <label>Estado REI<select name="rei_status"><option>Pendiente</option><option {{ 'selected' if company_profile and company_profile.rei_status == 'Verificado' }}>Verificado</option><option {{ 'selected' if company_profile and company_profile.rei_status == 'Observado' }}>Observado</option></select></label><label>Estado REOP<select name="reop_status"><option>Pendiente</option><option {{ 'selected' if company_profile and company_profile.reop_status == 'Verificado' }}>Verificado</option><option {{ 'selected' if company_profile and company_profile.reop_status == 'Observado' }}>Observado</option></select></label>
+        <label class="span-2">Notas<textarea name="notes" rows="3">{{ company_profile.notes if company_profile else '' }}</textarea></label><div class="form-actions span-2"><button class="btn primary" type="submit">Guardar perfil oficial</button></div>
+      </form>{% else %}<p class="muted">El estudio contable administra estos datos.</p>{% endif %}
+    </article>
+    <article class="panel compliance-company-identifiers"><div class="panel-head"><div><span>IDENTIFICADORES</span><h2>Datos patronales</h2></div></div><dl><div><dt>RUC</dt><dd>{{ selected_company.ruc }}</dd></div><div><dt>Número IPS</dt><dd>{{ selected_company.ips_employer_number or 'Pendiente' }}</dd></div><div><dt>Número MTESS</dt><dd>{{ selected_company.mtess_employer_number or 'Pendiente' }}</dd></div><div><dt>Representante</dt><dd>{{ selected_company.legal_representative or 'Pendiente' }}</dd></div><div><dt>Almacenamiento</dt><dd>{{ storage_backend|upper }}</dd></div></dl><a class="btn ghost" href="/app/companies/{{ selected_company.id }}">Editar expediente de empresa</a></article>
+  </div>
+
+  <article class="panel branch-compliance-panel">
+    <div class="panel-head"><div><span>ESTABLECIMIENTOS</span><h2>Números patronales por sucursal</h2></div><small>{{ branches|length }} sucursal{{ '' if branches|length == 1 else 'es' }}</small></div>
+    <p class="muted">Cada funcionario puede quedar asociado a un establecimiento. Los archivos REI y REOP usarán el número patronal de su sucursal; cuando no exista, se utiliza el de la casa matriz.</p>
+    <div class="employee-profile-list branch-profile-list">
+      {% for branch in branches %}{% set branch_profile = branch_profiles.get(branch.id) %}
+      <details class="employee-profile-item">
+        <summary><span><b>{{ branch.name }}</b><small>{{ branch.city or 'Ciudad no informada' }} · {{ branch.address or 'Dirección pendiente' }}</small></span><span class="profile-progress {{ 'complete' if branch_profile and branch_profile.ips_employer_number and branch_profile.mtess_employer_number and branch_profile.department and branch_profile.district else '' }}">{{ 'Completo' if branch_profile and branch_profile.ips_employer_number and branch_profile.mtess_employer_number and branch_profile.department and branch_profile.district else 'Completar' }}</span></summary>
+        {% if user.role != 'empresa' %}
+        <form method="post" action="/app/compliance/branch-profile" class="form-grid employee-profile-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="company_id" value="{{ selected_company.id }}"><input type="hidden" name="branch_id" value="{{ branch.id }}">
+          <label>Número patronal IPS<input name="ips_employer_number" value="{{ branch_profile.ips_employer_number if branch_profile else '' }}" placeholder="Específico de esta sucursal"></label>
+          <label>Número patronal MTESS<input name="mtess_employer_number" value="{{ branch_profile.mtess_employer_number if branch_profile else '' }}" placeholder="Específico de esta sucursal"></label>
+          <label>Departamento<input name="department" value="{{ branch_profile.department if branch_profile else '' }}"></label>
+          <label>Distrito<input name="district" value="{{ branch_profile.district if branch_profile else '' }}"></label>
+          <label>Localidad<input name="locality" value="{{ branch_profile.locality if branch_profile else '' }}"></label>
+          <label>Tipo de establecimiento<select name="establishment_type">{% for option in ['Sucursal','Agencia','Depósito','Obra','Otro'] %}<option {{ 'selected' if branch_profile and branch_profile.establishment_type == option }}>{{ option }}</option>{% endfor %}</select></label>
+          <label class="span-2">Actividad económica<input name="economic_activity" value="{{ branch_profile.economic_activity if branch_profile else '' }}"></label>
+          <label>Código de actividad<input name="activity_code" value="{{ branch_profile.activity_code if branch_profile else '' }}"></label>
+          <label>Estado REI<select name="rei_status"><option>Pendiente</option><option {{ 'selected' if branch_profile and branch_profile.rei_status == 'Verificado' }}>Verificado</option><option {{ 'selected' if branch_profile and branch_profile.rei_status == 'Observado' }}>Observado</option></select></label>
+          <label>Estado REOP<select name="reop_status"><option>Pendiente</option><option {{ 'selected' if branch_profile and branch_profile.reop_status == 'Verificado' }}>Verificado</option><option {{ 'selected' if branch_profile and branch_profile.reop_status == 'Observado' }}>Observado</option></select></label>
+          <div class="form-actions span-2"><button class="btn primary" type="submit">Guardar establecimiento</button></div>
+        </form>
+        {% else %}<p class="muted">Información administrada por el estudio.</p>{% endif %}
+      </details>
+      {% else %}<div class="empty-state"><b>No hay sucursales registradas.</b><span>Crealas desde Mantenimientos → Empresas para asignar números patronales por establecimiento.</span></div>{% endfor %}
+    </div>
+  </article>
+
+  <article class="panel table-panel employee-compliance-panel"><div class="panel-head"><div><span>FUNCIONARIOS</span><h2>Datos requeridos para interoperabilidad</h2></div><small>{{ employees|length }} registros</small></div><div class="employee-profile-list">
+    {% for employee in employees %}{% set profile = employee_profiles.get(employee.id) %}<details class="employee-profile-item"><summary><span><b>{{ employee.full_name }}</b><small>{{ employee.document_number }} · {{ employee.position }}</small></span><span class="profile-progress {{ 'complete' if profile and profile.sex and profile.marital_status and profile.occupation_code else '' }}">{{ 'Completo' if profile and profile.sex and profile.marital_status and profile.occupation_code else 'Completar' }}</span></summary>
+      {% if user.role != 'empresa' %}<form method="post" action="/app/compliance/employee-profile" class="form-grid employee-profile-form"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="company_id" value="{{ selected_company.id }}"><input type="hidden" name="employee_id" value="{{ employee.id }}">
+        <label>Tipo documento<input name="document_type" value="{{ profile.document_type if profile else 'CI' }}"></label><label>Sexo<select name="sex"><option value="">Seleccionar</option><option {{ 'selected' if profile and profile.sex == 'Femenino' }}>Femenino</option><option {{ 'selected' if profile and profile.sex == 'Masculino' }}>Masculino</option><option {{ 'selected' if profile and profile.sex == 'Otro' }}>Otro</option></select></label><label>Nacionalidad<input name="nationality" value="{{ profile.nationality if profile else 'Paraguaya' }}"></label><label>Estado civil<input name="marital_status" value="{{ profile.marital_status if profile else '' }}"></label><label>Lugar de nacimiento<input name="birth_place" value="{{ profile.birth_place if profile else '' }}"></label><label>Departamento<input name="department" value="{{ profile.department if profile else '' }}"></label><label>Distrito<input name="district" value="{{ profile.district if profile else '' }}"></label><label>Profesión<input name="profession" value="{{ profile.profession if profile else '' }}"></label><label>Código ocupación<input name="occupation_code" value="{{ profile.occupation_code if profile else '' }}"></label><label>Categoría del cargo<input name="position_category" value="{{ profile.position_category if profile else '' }}"></label><label>Horario<input name="work_schedule" value="{{ profile.work_schedule if profile else '' }}" placeholder="07:30 a 17:30"></label><label>Turno<input name="shift" value="{{ profile.shift if profile else 'Diurno' }}"></label><label>Horas semanales<input type="number" name="weekly_hours" value="{{ profile.weekly_hours if profile else 48 }}" min="1" max="96"></label><label>Tipo de salario<input name="salary_type" value="{{ profile.salary_type if profile else employee.payment_frequency }}"></label><label>Hijos dependientes<input type="number" name="dependent_children" value="{{ profile.dependent_children if profile else 0 }}" min="0"></label><label class="check-line"><input type="checkbox" name="indigenous" {{ 'checked' if profile and profile.indigenous }}> Persona indígena</label><label class="check-line"><input type="checkbox" name="disability" {{ 'checked' if profile and profile.disability }}> Persona con discapacidad</label><div class="form-actions span-2"><button class="btn primary" type="submit">Guardar datos de {{ employee.full_name }}</button></div>
+      </form>{% else %}<p class="muted">Información administrada por el estudio.</p>{% endif %}
+    </details>{% else %}<div class="empty-state">No hay funcionarios registrados.</div>{% endfor %}
+  </div></article>
+</section>
+
+<section class="compliance-tab-panel" data-compliance-panel="batches">
+  <article class="panel table-panel"><div class="panel-head"><div><span>ARCHIVOS GENERADOS</span><h2>Lotes y comprobantes</h2></div><small>Cada archivo conserva su huella SHA-256.</small></div><div class="table-wrap"><table><thead><tr><th>Lote</th><th>Tipo</th><th>Periodo</th><th>Registros</th><th>Estado</th><th>Archivo</th><th>Resultado</th></tr></thead><tbody>
+    {% for batch in batches %}<tr><td><span class="authority-badge {{ batch.authority|lower }}">{{ batch.authority }}</span><small class="table-sub">#{{ batch.id }}</small></td><td><b>{{ batch.batch_type }}</b><small class="table-sub">{{ batch.created_at|fecha }}</small></td><td>{{ batch.period }}</td><td>{{ batch.item_count }}</td><td><span class="status-pill {{ batch.status|lower }}">{{ batch.status }}</span></td><td><a class="table-save" href="/app/compliance/batches/{{ batch.id }}/download">Descargar</a><small class="hash-preview">{{ batch.file_sha256[:12] }}…</small></td><td>{% if user.role in ['administrador','contador'] %}<form method="post" action="/app/compliance/batches/{{ batch.id }}/receipt" enctype="multipart/form-data" class="batch-result-form"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><select name="status"><option>Presentado</option><option>Aceptado</option><option>Observado</option><option>Rechazado</option></select><input name="external_reference" value="{{ batch.external_reference }}" placeholder="N.º comprobante"><input type="file" name="receipt" accept=".pdf,.png,.jpg,.jpeg"><button type="submit">Registrar</button></form>{% else %}{{ batch.external_reference or 'Pendiente' }}{% endif %}</td></tr>{% else %}<tr><td colspan="7"><div class="empty-state">Todavía no se generaron lotes.</div></td></tr>{% endfor %}
+  </tbody></table></div></article>
+</section>
+
+<section class="compliance-tab-panel" data-compliance-panel="controls">
+  <section class="control-check-grid">
+    <article class="panel"><span class="eyebrow">REGLA DE SEGURIDAD</span><h2>Revisión humana obligatoria</h2><p>Ningún archivo generado equivale a una presentación oficial. Debe ser revisado, aprobado y cargado por una persona autorizada. {{ 'La doble aprobación está activa: quien crea no puede validar.' if compliance_dual_approval else 'La doble aprobación está desactivada en este ambiente de prueba.' }}</p></article>
+    <article class="panel"><span class="eyebrow">TRAZABILIDAD</span><h2>Hash y comprobante</h2><p>Cada lote conserva una huella SHA-256, el responsable, el estado y el comprobante de presentación.</p></article>
+    <article class="panel"><span class="eyebrow">CONEXIÓN DIRECTA</span><h2>Solo mediante autorización</h2><p>Los conectores automáticos quedan deshabilitados hasta disponer de una API o web service autorizado por IPS y MTESS.</p></article>
+    <article class="panel"><span class="eyebrow">PRIVACIDAD</span><h2>Sin credenciales gubernamentales</h2><p>Digit Laboral no almacena contraseñas de REI o REOP. La autenticación oficial permanece separada.</p></article>
+  </section>
+</section>
+{% else %}<div class="empty-large"><h2>No hay empresas disponibles</h2><p>Registrá una empresa para configurar su cumplimiento laboral.</p><a class="btn primary" href="/app/companies">Ir a empresas</a></div>{% endif %}
+{% endblock %}

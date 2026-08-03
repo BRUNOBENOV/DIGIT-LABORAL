@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#0a1f4f">
+  <title>Error {{ status_code }} | Digit Laboral</title>
+  <link rel="stylesheet" href="{{ request.url_for('static', path='v17.css') }}">
+  <link rel="stylesheet" href="{{ request.url_for('static', path='v20.css') }}">
+</head>
+<body class="error-page-body">
+  <main class="error-page-card" role="main">
+    <span class="error-code">{{ status_code }}</span>
+    <div>
+      <span class="eyebrow">DIGIT LABORAL</span>
+      <h1>No se pudo completar la operación</h1>
+      <p>{{ detail }}</p>
+      {% if request_id %}<small>Referencia técnica: {{ request_id }}</small>{% endif %}
+      <div class="error-page-actions">
+        <button class="btn ghost" type="button" onclick="history.back()">Volver</button>
+        <a class="btn primary" href="/app">Ir al inicio</a>
+      </div>
+    </div>
+  </main>
+</body>
+</html>
