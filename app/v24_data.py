@@ -9,7 +9,7 @@ from .database import SessionLocal
 from .models import LaborArticle
 
 SOURCE_213 = "https://www.bacn.gov.py/leyes-paraguayas/2608/ley-n-213-establece-el-codigo-del-trabajo"
-SOURCE_496 = "https://www.bacn.gov.py/leyes-paraguayas/2514/modifica-amplia-y-deroga-articulos-de-la-ley-21393-codigo-del-trabajo"
+SOURCE_496 = "https://www.bacn.gov.py/leyes-paraguayas/2514/ley-n-496-modifica-amplia-y-deroga-articulos-de-la-ley-21393-codigo-del-trabajo"
 SOURCE_5764 = "https://www.bacn.gov.py/leyes-paraguayas/8310/ley-n-5764-modifica-el-art-culo-255-de-la-ley-n-213-93-que-establece-el-c-digo-del-trabajo-y-deroga-el-art-culo-256-del-mismo"
 
 # These are deliberately concise fallback summaries. The full library synchronizer
@@ -45,7 +45,6 @@ def _patched_seed_articles():
     return existing
 
 
-# Patch the development/fresh-install fallback before seed_database() executes.
 seed_module.ARTICLES = _patched_seed_articles()
 
 
@@ -56,7 +55,7 @@ def apply_v24_data_fixes() -> None:
             item = db.scalar(select(LaborArticle).where(LaborArticle.article_number == wrong_number))
             if item and item.heading.strip() == wrong_heading:
                 if wrong_number == "154":
-                    db.delete(item)  # Better absent than a materially wrong fallback reference.
+                    db.delete(item)
                 else:
                     heading, category, body, source, amendment = CRITICAL_FALLBACKS[wrong_number]
                     item.heading = heading
