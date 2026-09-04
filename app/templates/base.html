@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="{{ url_for('static', path='modern.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', path='v17.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', path='v20.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', path='v22-dashboard.css') }}">
 </head>
 <body class="{% if user %}app-body{% else %}public-body{% endif %}">
 {% if user %}
@@ -35,7 +36,7 @@
     </nav>
 
     <div class="modern-actions">
-      {% if studio %}<a class="workspace-pill" href="/app/companies"><small>ESPACIO</small><b>{{ studio.name }}</b><span>⌄</span></a>{% endif %}
+      {% if studio %}<a class="workspace-pill" href="/app/companies" title="Abrir empresas del estudio"><small>ESPACIO</small><b>{{ studio.name }}</b></a>{% endif %}
       {% if user.role != 'superadmin' %}<a class="modern-search" href="/app/labor-code"><span>⌕</span><span>Buscar en el Código Laboral</span></a>{% endif %}
       <a class="modern-user" href="/app/security" title="Seguridad de la cuenta"><span class="avatar">{{ user.full_name[:2]|upper }}</span><span><b>{{ user.full_name }}</b><small>{{ user.role|replace('superadmin','Administrador general')|capitalize }}</small></span></a>
       <form method="post" action="/logout"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="modern-logout" type="submit">Salir</button></form>
@@ -59,5 +60,6 @@
 <script src="{{ url_for('static', path='app.js') }}"></script>
 <script src="{{ url_for('static', path='v17.js') }}"></script>
 <script src="{{ url_for('static', path='v20.js') }}"></script>
+<script src="{{ url_for('static', path='v22-dashboard.js') }}"></script>
 </body>
 </html>
