@@ -33,7 +33,13 @@ def _alembic_config() -> Config:
     return cfg
 
 
-def _reconcile_v20_schema() -> None:
+def _reconcile_legacy_schema() -> None:
+    """Bring legacy v20 installations to the minimum shape needed by Alembic.
+
+    create_all() creates missing tables but deliberately does not pretend to migrate
+    existing tables. Targeted historical repairs remain here only for databases that
+    predate formal revisions.
+    """
     Base.metadata.create_all(migration_engine)
 
     if migration_engine.dialect.name != "postgresql":
@@ -73,11 +79,16 @@ def run_migrations() -> None:
     tables = set(inspector.get_table_names())
 
     if not tables:
-        _reconcile_v20_schema()
+        # A fresh installation is built from current metadata and stamped once.
+        # Subsequent releases will execute real incremental Alembic upgrades.
+        _reconcile_legacy_schema()
         command.stamp(cfg, "head")
         logger.info("Fresh database created and stamped at Alembic head")
         return
 
-    _reconcile_v20_schema()
-    command.stamp(cfg, "head", purge=True)
-    logger.info("Database reconciled with Digit Laboral v20 and stamped at Alembic head")
+    _reconcile_legacy_schema()
+    # Important: do not stamp/purge an existing database. Stamping would mark a
+    # revision as applied without executing its DDL. Real upgrades preserve the
+    # migration chain and make future schema changes safe.
+    command.upgrade(cfg, "head")
+    logger.info("Database reconciled and upgraded to Alembic head")
