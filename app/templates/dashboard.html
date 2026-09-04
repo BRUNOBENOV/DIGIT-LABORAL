@@ -2,133 +2,103 @@
 {% block title %}Inicio | Digit Laboral{% endblock %}
 {% block content %}
 {% set is_company = user.role == 'empresa' %}
-{% set company_limit = studio.company_limit if studio and studio.company_limit else 1 %}
-{% set raw_plan_pct = ((companies_count * 100) // company_limit) if studio else 0 %}
-{% set plan_pct = 100 if raw_plan_pct > 100 else raw_plan_pct %}
 
-<div class="dashboard-shell">
-<section class="control-hero dashboard-hero">
-  <div class="dashboard-hero-copy">
-    <span>DIGIT LABORAL · PRODUCCIÓN</span>
-    <h1>{% if is_company %}Portal de empresa{% else %}Control Laboral{% endif %}</h1>
-    <p>{% if is_company %}Consultá tu información laboral, documentos y solicitudes desde un solo lugar.{% else %}Gestión centralizada de empresas, funcionarios, cumplimiento, documentos y operaciones laborales del estudio.{% endif %}</p>
-  </div>
-  <div class="dashboard-hero-actions">
-    {% if is_company %}
-      <a class="btn light-button" href="/app/requests">Enviar solicitud</a>
-      {% if companies %}<a class="btn outline" href="/app/companies/{{ companies[0].id }}">Ver mi empresa</a>{% endif %}
-    {% else %}
-      <a class="btn light-button" href="/app/companies?open=companyModal">+ Nueva empresa</a>
-      <a class="btn outline" href="/app/companies">Gestionar empresas</a>
-    {% endif %}
-  </div>
-</section>
-
-<section class="metrics-grid dashboard-metrics">
-  <article class="metric-ok"><a class="metric-link" href="/app/companies"><span>Empresas vinculadas</span><b>{{ companies_count }}</b><small>{% if studio %}Plan {{ studio.plan_name }} · {{ companies_count }}/{{ studio.company_limit }}{% else %}Cuenta empresa{% endif %}</small></a></article>
-  <article class="metric-ok"><a class="metric-link" href="/app/employees"><span>Funcionarios activos</span><b>{{ employee_count }}</b><small>Legajos actualmente activos</small></a></article>
-  <article class="{{ 'metric-warning' if pending_count else 'metric-ok' }}"><a class="metric-link" href="/app/requests"><span>Solicitudes abiertas</span><b>{{ pending_count }}</b><small>{{ 'Requieren seguimiento' if pending_count else 'Sin pendientes' }}</small></a></article>
-  <article class="{{ 'metric-warning' if payroll_count else 'metric-ok' }}"><a class="metric-link" href="/app/payrolls"><span>Liquidaciones borrador</span><b>{{ payroll_count }}</b><small>{{ 'Pendientes de revisión' if payroll_count else 'Sin borradores abiertos' }}</small></a></article>
-  <article class="{{ 'metric-danger' if compliance_overdue_count else ('metric-warning' if compliance_pending_count else 'metric-ok') }}"><a class="metric-link" href="/app/compliance"><span>REI/REOP pendientes</span><b>{{ compliance_pending_count }}</b><small>{{ compliance_overdue_count }} vencidas</small></a></article>
-</section>
-
-{% if not is_company and (companies_count == 0 or employee_count == 0) %}
-<section class="onboarding-panel">
-  <div class="onboarding-copy">
-    <span class="eyebrow-label">PUESTA EN MARCHA</span>
-    <h2>{% if companies_count == 0 %}Configurá el estudio para empezar a operar{% else %}Completá la base laboral inicial{% endif %}</h2>
-    <p>El sistema ya está habilitado. Completá estos pasos para que liquidaciones, documentos, reportes y cumplimiento trabajen sobre datos reales.</p>
-    <div class="onboarding-actions">
-      {% if companies_count == 0 %}<a class="btn primary" href="/app/companies?open=companyModal">Registrar primera empresa</a>{% else %}<a class="btn primary" href="/app/employees?open=employeeModal">Registrar primer funcionario</a>{% endif %}
-      <a class="btn ghost" href="/app/companies">Revisar mantenimientos</a>
+<div class="dashboard-v23">
+  <section class="control-hero dashboard-hero">
+    <div class="dashboard-hero-copy">
+      <span>DIGIT LABORAL · ÁREA DE TRABAJO</span>
+      <h1>{% if is_company %}Mi empresa{% else %}¿Qué necesitás hacer hoy?{% endif %}</h1>
+      <p>{% if is_company %}Consultá funcionarios, documentos y solicitudes sin recorrer módulos innecesarios.{% else %}Entrá por la tarea que querés resolver. Empresas, funcionarios, operaciones y cumplimiento concentran el trabajo diario del estudio.{% endif %}</p>
     </div>
-  </div>
-  <div class="onboarding-progress">
-    <div class="onboarding-step {{ 'done' if companies_count else '' }}"><span class="step-dot">1</span><div><b>Empresa</b><small>Razón social, RUC y datos patronales</small></div><em>{{ 'LISTO' if companies_count else 'PENDIENTE' }}</em></div>
-    <div class="onboarding-step {{ 'done' if employee_count else '' }}"><span class="step-dot">2</span><div><b>Funcionarios</b><small>Legajos, salarios e IPS</small></div><em>{{ 'LISTO' if employee_count else 'PENDIENTE' }}</em></div>
-    <div class="onboarding-step {{ 'done' if companies_count and employee_count else '' }}"><span class="step-dot">3</span><div><b>Operación</b><small>Liquidaciones y documentos</small></div><em>{{ 'DISPONIBLE' if companies_count and employee_count else 'DESPUÉS' }}</em></div>
-    <div class="onboarding-step {{ 'done' if companies_count else '' }}"><span class="step-dot">4</span><div><b>Cumplimiento</b><small>REI/REOP, agenda y controles</small></div><em>{{ 'DISPONIBLE' if companies_count else 'DESPUÉS' }}</em></div>
-  </div>
-</section>
-{% endif %}
-
-<section class="dashboard-top-grid">
-  <article class="quick-panel">
-    <span class="eyebrow-label">ACCESOS RÁPIDOS</span><h2>Continuá tu trabajo</h2>
-    <div class="quick-grid">
+    <div class="dashboard-hero-actions">
       {% if is_company %}
-        <a class="quick-link primary-action" href="/app/requests"><span class="quick-icon">✉</span><div><b>Nueva solicitud</b><small>Enviar un trámite al estudio</small></div></a>
-        {% if companies %}<a class="quick-link" href="/app/companies/{{ companies[0].id }}"><span class="quick-icon">▦</span><div><b>Mi empresa</b><small>Datos y expediente</small></div></a>{% endif %}
-        <a class="quick-link" href="/app/documents"><span class="quick-icon">▤</span><div><b>Documentos</b><small>Archivo laboral disponible</small></div></a>
-        <a class="quick-link" href="/app/employees"><span class="quick-icon">♙</span><div><b>Funcionarios</b><small>Directorio de la empresa</small></div></a>
+        <a class="btn light-button" href="/app/requests">Nueva solicitud</a>
+        {% if companies %}<a class="btn outline" href="/app/companies/{{ companies[0].id }}">Ver expediente</a>{% endif %}
       {% else %}
-        <a class="quick-link primary-action" href="/app/companies?open=companyModal"><span class="quick-icon">＋</span><div><b>Nueva empresa</b><small>Alta y datos principales</small></div></a>
-        <a class="quick-link" href="{{ '/app/employees?open=employeeModal' if companies_count else '/app/companies?open=companyModal' }}"><span class="quick-icon">♙</span><div><b>Nuevo funcionario</b><small>{{ 'Registro laboral' if companies_count else 'Primero registrá una empresa' }}</small></div></a>
-        <a class="quick-link" href="{{ '/app/calculations' if companies_count else '/app/companies?open=companyModal' }}"><span class="quick-icon">₲</span><div><b>Calcular salario</b><small>{{ 'Simulación y guardado' if companies_count else 'Requiere una empresa' }}</small></div></a>
-        <a class="quick-link" href="{{ '/app/certificates' if companies_count else '/app/companies?open=companyModal' }}"><span class="quick-icon">▤</span><div><b>Emitir documento</b><small>{{ 'Vista previa e impresión' if companies_count else 'Requiere una empresa' }}</small></div></a>
-        <a class="quick-link" href="/app/compliance"><span class="quick-icon">✓</span><div><b>Revisar REI/REOP</b><small>Comunicaciones y planillas</small></div></a>
-        {% if user.role == 'administrador' %}<a class="quick-link" data-download-action href="/app/export/studio.zip"><span class="quick-icon">⇩</span><div><b>Respaldo completo</b><small>Datos y archivos del estudio</small></div></a>{% endif %}
+        <a class="btn light-button" href="/app/companies?open=companyModal">+ Nueva empresa</a>
+        <a class="btn outline" href="{{ '/app/employees?open=employeeModal' if companies_count else '/app/companies?open=companyModal' }}">+ Nuevo funcionario</a>
       {% endif %}
     </div>
-  </article>
+  </section>
 
-  <article class="system-panel">
-    <div class="system-status"><div><span class="eyebrow-label">ESTADO DEL SISTEMA</span><h2>Resumen operativo</h2></div><span class="online-badge">En línea</span></div>
-    <div class="status-list">
-      <div class="status-row"><span>Base de datos</span><b>Conectada</b></div>
-      <div class="status-row"><span>Sesión</span><b>Protegida</b></div>
-      <div class="status-row"><span>Rol activo</span><b>{{ user.role|replace('superadmin','Administrador general')|capitalize }}</b></div>
-      {% if studio %}<div class="status-row"><span>Plan</span><b>{{ studio.plan_name }} · {{ companies_count }}/{{ studio.company_limit }}</b></div>{% endif %}
-      <div class="status-row"><span>Versión</span><b>2.2 · Producción</b></div>
+  {% if not is_company and companies_count == 0 %}
+  <section class="onboarding-panel">
+    <div class="onboarding-copy">
+      <span class="eyebrow-label">PRIMER PASO</span>
+      <h2>Registrá la primera empresa</h2>
+      <p>Todo lo demás —funcionarios, liquidaciones, documentos y REI/REOP— se organiza a partir de una empresa. No necesitás configurar nada más antes.</p>
+      <div class="onboarding-actions"><a class="btn primary" href="/app/companies?open=companyModal">Registrar empresa</a></div>
     </div>
-    <div class="system-health-note">Si esta pantalla carga, la sesión y la conexión principal con la base de datos están operativas. Los módulos muestran sus propios pendientes arriba.</div>
-  </article>
-</section>
+    <div class="onboarding-progress">
+      <div class="onboarding-step"><span class="step-dot">1</span><div><b>Empresa</b><small>Razón social y RUC</small></div><em>AHORA</em></div>
+      <div class="onboarding-step"><span class="step-dot">2</span><div><b>Funcionarios</b><small>Legajos y salarios</small></div><em>DESPUÉS</em></div>
+      <div class="onboarding-step"><span class="step-dot">3</span><div><b>Operar</b><small>Liquidar y documentar</small></div><em>DESPUÉS</em></div>
+    </div>
+  </section>
+  {% endif %}
 
-{% if studio and not is_company %}
-<section class="dashboard-insights">
-  <article class="insight-card">
-    <span class="eyebrow-label">CAPACIDAD DEL PLAN</span><h3>{{ studio.plan_name }}</h3><p>Uso actual de empresas habilitadas para este estudio.</p>
-    <div class="plan-usage"><div class="plan-usage-head"><span>{{ companies_count }} empresas utilizadas</span><b>{{ plan_pct }}%</b></div><div class="plan-track"><span style="width:{{ plan_pct }}%"></span></div></div>
-  </article>
-  <article class="insight-card">
-    <span class="eyebrow-label">CONTROL BÁSICO</span><h3>Listo para operar</h3><p>Controles esenciales visibles desde el inicio.</p>
-    <div class="check-list"><span>Acceso por usuario y rol</span><span>Auditoría de acciones</span><span>Respaldo exportable del estudio</span></div>
-  </article>
-</section>
-{% endif %}
+  <section class="v23-metrics" aria-label="Resumen del estudio">
+    <a class="v23-metric" href="/app/companies"><div><span>Empresas</span><b>{{ companies_count }}</b><em>{% if studio %}{{ companies_count }}/{{ studio.company_limit }} del plan{% else %}Vinculadas{% endif %}</em></div><strong>→</strong></a>
+    <a class="v23-metric" href="/app/employees"><div><span>Funcionarios activos</span><b>{{ employee_count }}</b><em>Legajos vigentes</em></div><strong>→</strong></a>
+    <a class="v23-metric {{ 'alert' if pending_count else '' }}" href="/app/requests"><div><span>Solicitudes</span><b>{{ pending_count }}</b><em>{{ 'Pendientes de atención' if pending_count else 'Sin pendientes' }}</em></div><strong>→</strong></a>
+    <a class="v23-metric {{ 'danger' if compliance_overdue_count else ('alert' if compliance_pending_count else '') }}" href="/app/compliance"><div><span>REI / REOP</span><b>{{ compliance_pending_count }}</b><em>{{ compliance_overdue_count }} vencidas</em></div><strong>→</strong></a>
+  </section>
 
-<div class="section-title-row"><div class="section-label">MÓDULOS DEL SISTEMA</div><p>Entrá directamente al área que necesitás; cada módulo mantiene los datos del estudio separados.</p></div>
-<section class="dashboard-modules">
-  <a href="/app/employees"><i class="blue">♙</i><span class="module-number">1</span><h3>Personas</h3><p>Funcionarios, expedientes, salarios e historial laboral.</p><div class="tag-row"><span>Expediente</span><span>Importación</span></div><b>→</b></a>
-  <a href="/app/payrolls"><i class="green">₲</i><span class="module-number">2</span><h3>Operaciones</h3><p>Liquidaciones, vacaciones, aguinaldo y cálculos controlados.</p><div class="tag-row"><span>Liquidación</span><span>Vacaciones</span></div><b>→</b></a>
-  <a href="/app/compliance" class="module-highlight"><i class="teal">✓</i><span class="module-number">3</span><h3>Cumplimiento</h3><p>Centro REI/REOP, validaciones, lotes y comprobantes.</p><div class="tag-row"><span>REI</span><span>REOP</span><span>Auditoría</span></div><b>→</b></a>
-  <a href="/app/requests"><i class="blue">✉</i><span class="module-number">4</span><h3>Trámites</h3><p>Solicitudes con responsables, plazos, comentarios y adjuntos.</p><div class="tag-row"><span>Flujo</span><span>Seguimiento</span></div><b>→</b></a>
-  <a href="/app/documents"><i class="violet">▤</i><span class="module-number">5</span><h3>Documentos</h3><p>Archivo digital, contratos, constancias y certificados.</p><div class="tag-row"><span>Word</span><span>PDF</span><span>Versiones</span></div><b>→</b></a>
-  <a href="/app/reports"><i class="orange">▥</i><span class="module-number">6</span><h3>Reportes</h3><p>Listados, indicadores y exportaciones de gestión laboral.</p><div class="tag-row"><span>CSV</span><span>Resumen</span></div><b>→</b></a>
-  <a href="/app/calendar"><i class="orange">◷</i><span class="module-number">7</span><h3>Agenda laboral</h3><p>Vencimientos, alertas y tareas críticas por empresa.</p><div class="tag-row"><span>Alertas</span><span>Calendario</span></div><b>→</b></a>
-  <a href="/app/labor-code"><i class="gray">§</i><span class="module-number">8</span><h3>Biblioteca jurídica</h3><p>Código Laboral estructurado, fuentes y parámetros vigentes.</p><div class="tag-row"><span>Artículos</span><span>Fuentes</span></div><b>→</b></a>
-</section>
+  <section class="v23-workspace">
+    <article class="v23-card">
+      <div class="v23-card-head"><div><span class="eyebrow-label">TRABAJO PRINCIPAL</span><h2>Elegí una tarea</h2><p>Estas cuatro áreas cubren la mayor parte del trabajo cotidiano.</p></div></div>
+      <div class="v23-task-grid">
+        <a class="v23-task" href="/app/companies"><span class="v23-task-icon">E</span><div><b>Empresas</b><small>Alta, datos patronales, logo, sucursales y expediente.</small></div><span>→</span></a>
+        <a class="v23-task" href="/app/employees"><span class="v23-task-icon">F</span><div><b>Funcionarios</b><small>Altas, legajos, salarios, IPS e historial laboral.</small></div><span>→</span></a>
+        <a class="v23-task" href="/app/payrolls"><span class="v23-task-icon">₲</span><div><b>Operaciones</b><small>Liquidaciones, vacaciones, aguinaldo y cálculos.</small></div><span>→</span></a>
+        <a class="v23-task" href="/app/compliance"><span class="v23-task-icon">✓</span><div><b>Cumplimiento</b><small>REI/REOP, controles, lotes y comprobantes.</small></div><span>→</span></a>
+      </div>
+    </article>
 
-{% if automation_alerts %}
-<section class="automation-center panel">
-  <div class="panel-head"><div><span>CONTROL OPERATIVO</span><h2>Acciones recomendadas</h2></div><a href="/app/calendar">Ver agenda</a></div>
-  <div class="automation-alert-grid">
-    {% for alert in automation_alerts %}<a href="{{ alert.href }}" class="automation-alert {{ alert.level }}"><b>{{ alert.title }}</b><span>{{ alert.detail }}</span><em>Resolver →</em></a>{% endfor %}
-  </div>
-</section>
-{% endif %}
+    <article class="v23-card">
+      <div class="v23-card-head"><div><span class="eyebrow-label">ATENCIÓN</span><h2>Qué conviene revisar</h2></div></div>
+      <div class="v23-attention">
+        {% set has_attention = compliance_overdue_count or pending_count or payroll_count or missing_logo_count or incomplete_company_count or low_salary_count %}
+        {% if compliance_overdue_count %}<a class="danger" href="/app/compliance"><b>{{ compliance_overdue_count }} vencimiento(s) REI/REOP</b><span>Hay obligaciones que ya superaron su fecha.</span></a>{% endif %}
+        {% if pending_count %}<a class="warning" href="/app/requests"><b>{{ pending_count }} solicitud(es) pendiente(s)</b><span>Requieren seguimiento del estudio.</span></a>{% endif %}
+        {% if payroll_count %}<a class="warning" href="/app/payrolls"><b>{{ payroll_count }} liquidación(es) en borrador</b><span>Podés continuar su revisión.</span></a>{% endif %}
+        {% if missing_logo_count %}<a class="info" href="{% if companies_count == 1 and companies %}/app/companies/{{ companies[0].id }}?open=brandingModal{% else %}/app/companies{% endif %}"><b>{{ missing_logo_count }} empresa(s) sin logo</b><span>Subí el logo desde el expediente de la empresa.</span></a>{% endif %}
+        {% if incomplete_company_count %}<a class="info" href="/app/companies"><b>{{ incomplete_company_count }} expediente(s) incompleto(s)</b><span>Faltan datos para documentos y cumplimiento.</span></a>{% endif %}
+        {% if low_salary_count %}<a class="danger" href="/app/employees"><b>{{ low_salary_count }} salario(s) para revisar</b><span>Están por debajo del parámetro general cargado.</span></a>{% endif %}
+        {% if not has_attention %}<div class="v23-empty"><b>Todo al día en el resumen</b><span>No hay pendientes principales detectados ahora.</span></div>{% endif %}
+      </div>
+    </article>
+  </section>
 
-<section class="two-columns">
-  <article class="panel"><div class="panel-head"><div><span>EMPRESAS</span><h2>Actividad reciente</h2></div><a href="/app/companies">Ver todas</a></div><div class="compact-list">{% for company in companies %}<a href="/app/companies/{{ company.id }}"><span class="company-avatar">{{ company.legal_name[:2]|upper }}</span><div><b>{{ company.legal_name }}</b><small>{{ company.city }} · {{ company.employees|length }} funcionarios</small></div><span class="status-pill {{ company.status|lower }}">{{ company.status }}</span></a>{% else %}<div class="empty-state-action"><b>Todavía no hay empresas</b><span>Registrá la primera para habilitar el resto del flujo laboral.</span>{% if not is_company %}<a class="btn primary" href="/app/companies?open=companyModal">+ Nueva empresa</a>{% endif %}</div>{% endfor %}</div></article>
-  <article class="panel"><div class="panel-head"><div><span>SOLICITUDES</span><h2>Últimos movimientos</h2></div><a href="/app/requests">Gestionar</a></div><div class="compact-list">{% for item in recent_requests %}<div><span class="request-icon">✉</span><div><b>{{ item.subject or item.request_type }}</b><small>{{ item.company.legal_name }}</small></div><span class="status-pill {{ item.status|lower|replace(' ', '-') }}">{{ item.status }}</span></div>{% else %}<div class="empty-state-action"><b>Sin solicitudes pendientes</b><span>Los nuevos trámites aparecerán acá con su estado.</span></div>{% endfor %}</div></article>
-</section>
+  <details class="v23-more">
+    <summary>Más herramientas</summary>
+    <div class="v23-more-grid">
+      <a href="/app/documents"><b>Documentos</b><span>Archivo, contratos, constancias y certificados.</span></a>
+      <a href="/app/requests"><b>Trámites</b><span>Solicitudes, responsables y seguimiento.</span></a>
+      <a href="/app/reports"><b>Reportes</b><span>Listados, indicadores y exportaciones.</span></a>
+      <a href="/app/calendar"><b>Agenda laboral</b><span>Vencimientos, alertas y tareas.</span></a>
+      <a href="/app/calculations"><b>Centro de cálculos</b><span>Salario, horas, aguinaldo, vacaciones y preaviso.</span></a>
+      <a href="/app/labor-code"><b>Código Laboral</b><span>Biblioteca jurídica y artículos.</span></a>
+      {% if user.role == 'administrador' %}<a href="/app/users"><b>Usuarios y permisos</b><span>Accesos del equipo del estudio.</span></a>{% endif %}
+      {% if user.role == 'administrador' %}<a data-download-action href="/app/export/studio.zip"><b>Respaldo completo</b><span>Exportación de datos y archivos del estudio.</span></a>{% endif %}
+    </div>
+  </details>
 
-{% if recent_calculations %}
-<section class="panel recent-calculations-panel"><div class="panel-head"><div><span>CÁLCULOS CONECTADOS</span><h2>Últimos resultados guardados</h2></div><a href="/app/calculations">Ver todos</a></div><div class="compact-list">{% for item in recent_calculations %}<a href="/app/calculations/{{ item.id }}/certificate"><span class="request-icon">₲</span><div><b>{{ item.calculation_type|capitalize }} · Gs. {{ item.amount|gs }}</b><small>{{ item.employee.full_name if item.employee else item.company.legal_name }} · {{ item.reference_period or 'Sin periodo' }}</small></div><span class="status-pill {{ item.status|lower }}">{{ item.status }}</span></a>{% endfor %}</div></section>
-{% endif %}
+  <section class="v23-recent">
+    <article class="panel">
+      <div class="panel-head"><div><span>EMPRESAS</span><h2>Acceso rápido</h2></div><a href="/app/companies">Ver todas</a></div>
+      <div class="compact-list">
+        {% for company in companies %}<a href="/app/companies/{{ company.id }}"><span class="company-avatar">{{ company.legal_name[:2]|upper }}</span><div><b>{{ company.legal_name }}</b><small>{{ company.city }} · {{ company.employees|length }} funcionarios</small></div><span class="status-pill {{ company.status|lower }}">{{ company.status }}</span></a>{% else %}<div class="empty-state-action"><b>No hay empresas todavía</b>{% if not is_company %}<a class="btn primary" href="/app/companies?open=companyModal">Registrar empresa</a>{% endif %}</div>{% endfor %}
+      </div>
+    </article>
+    <article class="panel">
+      <div class="panel-head"><div><span>ÚLTIMOS MOVIMIENTOS</span><h2>Solicitudes</h2></div><a href="/app/requests">Abrir</a></div>
+      <div class="compact-list">
+        {% for item in recent_requests %}<div><span class="request-icon">✉</span><div><b>{{ item.subject or item.request_type }}</b><small>{{ item.company.legal_name }}</small></div><span class="status-pill {{ item.status|lower|replace(' ', '-') }}">{{ item.status }}</span></div>{% else %}<div class="empty-state-action"><b>Sin solicitudes recientes</b><span>Cuando exista actividad aparecerá acá.</span></div>{% endfor %}
+      </div>
+    </article>
+  </section>
 
-{% if minimum_salary %}<div class="legal-note"><b>Referencia cargada:</b> salario mínimo mensual general de Gs. {{ minimum_salary.value|int|gs }}, vigente desde {{ minimum_salary.effective_from|fecha }}. Las alertas y cálculos deben revisarse según actividad, régimen y caso concreto.</div>{% endif %}
-<div class="dashboard-footer-note"><span>Digit Laboral 2.2 · Panel operativo del estudio</span><a href="/app/security">Seguridad de la cuenta</a></div>
+  <div class="dashboard-footer-note"><span>Digit Laboral 2.3 · Datos separados por estudio y usuario.</span><a href="/app/security">Seguridad de mi cuenta</a></div>
 </div>
 {% endblock %}
