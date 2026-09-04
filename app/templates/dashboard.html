@@ -1,47 +1,109 @@
 {% extends "base.html" %}
 {% block title %}Inicio | Digit Laboral{% endblock %}
 {% block content %}
-<section class="control-hero">
-  <div><span>DIGIT LABORAL · CONTROL LABORAL</span><h1>{% if user.role == 'empresa' %}Portal de empresa{% else %}Control Laboral{% endif %}</h1><p>{% if user.role == 'empresa' %}Consultá datos, documentos y enviá solicitudes a tu estudio contable.{% else %}Sistema integrado de gestión laboral para estudios contables.{% endif %}</p></div>
-  <a class="btn light-button" href="{% if user.role == 'empresa' %}/app/requests{% else %}/app/companies{% endif %}">▦ {% if user.role == 'empresa' %}Enviar solicitud{% else %}Ir a Mantenimientos{% endif %}</a>
+{% set is_company = user.role == 'empresa' %}
+{% set company_limit = studio.company_limit if studio and studio.company_limit else 1 %}
+{% set raw_plan_pct = ((companies_count * 100) // company_limit) if studio else 0 %}
+{% set plan_pct = 100 if raw_plan_pct > 100 else raw_plan_pct %}
+
+<div class="dashboard-shell">
+<section class="control-hero dashboard-hero">
+  <div class="dashboard-hero-copy">
+    <span>DIGIT LABORAL · PRODUCCIÓN</span>
+    <h1>{% if is_company %}Portal de empresa{% else %}Control Laboral{% endif %}</h1>
+    <p>{% if is_company %}Consultá tu información laboral, documentos y solicitudes desde un solo lugar.{% else %}Gestión centralizada de empresas, funcionarios, cumplimiento, documentos y operaciones laborales del estudio.{% endif %}</p>
+  </div>
+  <div class="dashboard-hero-actions">
+    {% if is_company %}
+      <a class="btn light-button" href="/app/requests">Enviar solicitud</a>
+      {% if companies %}<a class="btn outline" href="/app/companies/{{ companies[0].id }}">Ver mi empresa</a>{% endif %}
+    {% else %}
+      <a class="btn light-button" href="/app/companies?open=companyModal">+ Nueva empresa</a>
+      <a class="btn outline" href="/app/companies">Gestionar empresas</a>
+    {% endif %}
+  </div>
 </section>
 
-<section class="metrics-grid">
-  <article><span>Empresas vinculadas</span><b>{{ companies_count }}</b><small>Plan {{ studio.plan_name if studio else 'Empresa' }}{% if studio %} · límite {{ studio.company_limit }}{% endif %}</small></article>
-  <article><span>Funcionarios activos</span><b>{{ employee_count }}</b><small>Directorio central</small></article>
-  <article><span>Solicitudes abiertas</span><b>{{ pending_count }}</b><small>Requieren seguimiento</small></article>
-  <article><span>Liquidaciones borrador</span><b>{{ payroll_count }}</b><small>Pendientes de revisión</small></article>
-  <article class="{{ 'metric-danger' if compliance_overdue_count else '' }}"><span>REI/REOP pendientes</span><b>{{ compliance_pending_count }}</b><small>{{ compliance_overdue_count }} vencidas</small></article>
+<section class="metrics-grid dashboard-metrics">
+  <article class="metric-ok"><a class="metric-link" href="/app/companies"><span>Empresas vinculadas</span><b>{{ companies_count }}</b><small>{% if studio %}Plan {{ studio.plan_name }} · {{ companies_count }}/{{ studio.company_limit }}{% else %}Cuenta empresa{% endif %}</small></a></article>
+  <article class="metric-ok"><a class="metric-link" href="/app/employees"><span>Funcionarios activos</span><b>{{ employee_count }}</b><small>Legajos actualmente activos</small></a></article>
+  <article class="{{ 'metric-warning' if pending_count else 'metric-ok' }}"><a class="metric-link" href="/app/requests"><span>Solicitudes abiertas</span><b>{{ pending_count }}</b><small>{{ 'Requieren seguimiento' if pending_count else 'Sin pendientes' }}</small></a></article>
+  <article class="{{ 'metric-warning' if payroll_count else 'metric-ok' }}"><a class="metric-link" href="/app/payrolls"><span>Liquidaciones borrador</span><b>{{ payroll_count }}</b><small>{{ 'Pendientes de revisión' if payroll_count else 'Sin borradores abiertos' }}</small></a></article>
+  <article class="{{ 'metric-danger' if compliance_overdue_count else ('metric-warning' if compliance_pending_count else 'metric-ok') }}"><a class="metric-link" href="/app/compliance"><span>REI/REOP pendientes</span><b>{{ compliance_pending_count }}</b><small>{{ compliance_overdue_count }} vencidas</small></a></article>
 </section>
+
+{% if not is_company and (companies_count == 0 or employee_count == 0) %}
+<section class="onboarding-panel">
+  <div class="onboarding-copy">
+    <span class="eyebrow-label">PUESTA EN MARCHA</span>
+    <h2>{% if companies_count == 0 %}Configurá el estudio para empezar a operar{% else %}Completá la base laboral inicial{% endif %}</h2>
+    <p>El sistema ya está habilitado. Completá estos pasos para que liquidaciones, documentos, reportes y cumplimiento trabajen sobre datos reales.</p>
+    <div class="onboarding-actions">
+      {% if companies_count == 0 %}<a class="btn primary" href="/app/companies?open=companyModal">Registrar primera empresa</a>{% else %}<a class="btn primary" href="/app/employees?open=employeeModal">Registrar primer funcionario</a>{% endif %}
+      <a class="btn ghost" href="/app/companies">Revisar mantenimientos</a>
+    </div>
+  </div>
+  <div class="onboarding-progress">
+    <div class="onboarding-step {{ 'done' if companies_count else '' }}"><span class="step-dot">1</span><div><b>Empresa</b><small>Razón social, RUC y datos patronales</small></div><em>{{ 'LISTO' if companies_count else 'PENDIENTE' }}</em></div>
+    <div class="onboarding-step {{ 'done' if employee_count else '' }}"><span class="step-dot">2</span><div><b>Funcionarios</b><small>Legajos, salarios e IPS</small></div><em>{{ 'LISTO' if employee_count else 'PENDIENTE' }}</em></div>
+    <div class="onboarding-step {{ 'done' if companies_count and employee_count else '' }}"><span class="step-dot">3</span><div><b>Operación</b><small>Liquidaciones y documentos</small></div><em>{{ 'DISPONIBLE' if companies_count and employee_count else 'DESPUÉS' }}</em></div>
+    <div class="onboarding-step {{ 'done' if companies_count else '' }}"><span class="step-dot">4</span><div><b>Cumplimiento</b><small>REI/REOP, agenda y controles</small></div><em>{{ 'DISPONIBLE' if companies_count else 'DESPUÉS' }}</em></div>
+  </div>
+</section>
+{% endif %}
 
 <section class="dashboard-top-grid">
   <article class="quick-panel">
     <span class="eyebrow-label">ACCESOS RÁPIDOS</span><h2>Continuá tu trabajo</h2>
     <div class="quick-grid">
-      <a class="quick-link" href="/app/companies"><span class="quick-icon">＋</span><div><b>Nueva empresa</b><small>Alta y datos principales</small></div></a>
-      <a class="quick-link" href="/app/employees"><span class="quick-icon">♙</span><div><b>Nuevo funcionario</b><small>Registro laboral</small></div></a>
-      <a class="quick-link" href="/app/calculations"><span class="quick-icon">₲</span><div><b>Calcular salario</b><small>Simulación inmediata</small></div></a>
-      <a class="quick-link" href="/app/certificates"><span class="quick-icon">▤</span><div><b>Emitir documento</b><small>Vista previa e impresión</small></div></a>
-      <a class="quick-link" href="/app/compliance"><span class="quick-icon">✓</span><div><b>Revisar REI/REOP</b><small>Comunicaciones y planillas</small></div></a>{% if user.role == 'administrador' %}<a class="quick-link" href="/app/export/studio.zip"><span class="quick-icon">⇩</span><div><b>Respaldo completo</b><small>Datos y archivos del estudio</small></div></a>{% endif %}
+      {% if is_company %}
+        <a class="quick-link primary-action" href="/app/requests"><span class="quick-icon">✉</span><div><b>Nueva solicitud</b><small>Enviar un trámite al estudio</small></div></a>
+        {% if companies %}<a class="quick-link" href="/app/companies/{{ companies[0].id }}"><span class="quick-icon">▦</span><div><b>Mi empresa</b><small>Datos y expediente</small></div></a>{% endif %}
+        <a class="quick-link" href="/app/documents"><span class="quick-icon">▤</span><div><b>Documentos</b><small>Archivo laboral disponible</small></div></a>
+        <a class="quick-link" href="/app/employees"><span class="quick-icon">♙</span><div><b>Funcionarios</b><small>Directorio de la empresa</small></div></a>
+      {% else %}
+        <a class="quick-link primary-action" href="/app/companies?open=companyModal"><span class="quick-icon">＋</span><div><b>Nueva empresa</b><small>Alta y datos principales</small></div></a>
+        <a class="quick-link" href="{{ '/app/employees?open=employeeModal' if companies_count else '/app/companies?open=companyModal' }}"><span class="quick-icon">♙</span><div><b>Nuevo funcionario</b><small>{{ 'Registro laboral' if companies_count else 'Primero registrá una empresa' }}</small></div></a>
+        <a class="quick-link" href="{{ '/app/calculations' if companies_count else '/app/companies?open=companyModal' }}"><span class="quick-icon">₲</span><div><b>Calcular salario</b><small>{{ 'Simulación y guardado' if companies_count else 'Requiere una empresa' }}</small></div></a>
+        <a class="quick-link" href="{{ '/app/certificates' if companies_count else '/app/companies?open=companyModal' }}"><span class="quick-icon">▤</span><div><b>Emitir documento</b><small>{{ 'Vista previa e impresión' if companies_count else 'Requiere una empresa' }}</small></div></a>
+        <a class="quick-link" href="/app/compliance"><span class="quick-icon">✓</span><div><b>Revisar REI/REOP</b><small>Comunicaciones y planillas</small></div></a>
+        {% if user.role == 'administrador' %}<a class="quick-link" data-download-action href="/app/export/studio.zip"><span class="quick-icon">⇩</span><div><b>Respaldo completo</b><small>Datos y archivos del estudio</small></div></a>{% endif %}
+      {% endif %}
     </div>
   </article>
+
   <article class="system-panel">
     <div class="system-status"><div><span class="eyebrow-label">ESTADO DEL SISTEMA</span><h2>Resumen operativo</h2></div><span class="online-badge">En línea</span></div>
     <div class="status-list">
       <div class="status-row"><span>Base de datos</span><b>Conectada</b></div>
       <div class="status-row"><span>Sesión</span><b>Protegida</b></div>
       <div class="status-row"><span>Rol activo</span><b>{{ user.role|replace('superadmin','Administrador general')|capitalize }}</b></div>
-      <div class="status-row"><span>Versión</span><b>2.0 · Producción controlada</b></div>
+      {% if studio %}<div class="status-row"><span>Plan</span><b>{{ studio.plan_name }} · {{ companies_count }}/{{ studio.company_limit }}</b></div>{% endif %}
+      <div class="status-row"><span>Versión</span><b>2.2 · Producción</b></div>
     </div>
+    <div class="system-health-note">Si esta pantalla carga, la sesión y la conexión principal con la base de datos están operativas. Los módulos muestran sus propios pendientes arriba.</div>
   </article>
 </section>
 
-<div class="section-label">MÓDULOS DEL SISTEMA</div>
+{% if studio and not is_company %}
+<section class="dashboard-insights">
+  <article class="insight-card">
+    <span class="eyebrow-label">CAPACIDAD DEL PLAN</span><h3>{{ studio.plan_name }}</h3><p>Uso actual de empresas habilitadas para este estudio.</p>
+    <div class="plan-usage"><div class="plan-usage-head"><span>{{ companies_count }} empresas utilizadas</span><b>{{ plan_pct }}%</b></div><div class="plan-track"><span style="width:{{ plan_pct }}%"></span></div></div>
+  </article>
+  <article class="insight-card">
+    <span class="eyebrow-label">CONTROL BÁSICO</span><h3>Listo para operar</h3><p>Controles esenciales visibles desde el inicio.</p>
+    <div class="check-list"><span>Acceso por usuario y rol</span><span>Auditoría de acciones</span><span>Respaldo exportable del estudio</span></div>
+  </article>
+</section>
+{% endif %}
+
+<div class="section-title-row"><div class="section-label">MÓDULOS DEL SISTEMA</div><p>Entrá directamente al área que necesitás; cada módulo mantiene los datos del estudio separados.</p></div>
 <section class="dashboard-modules">
   <a href="/app/employees"><i class="blue">♙</i><span class="module-number">1</span><h3>Personas</h3><p>Funcionarios, expedientes, salarios e historial laboral.</p><div class="tag-row"><span>Expediente</span><span>Importación</span></div><b>→</b></a>
   <a href="/app/payrolls"><i class="green">₲</i><span class="module-number">2</span><h3>Operaciones</h3><p>Liquidaciones, vacaciones, aguinaldo y cálculos controlados.</p><div class="tag-row"><span>Liquidación</span><span>Vacaciones</span></div><b>→</b></a>
   <a href="/app/compliance" class="module-highlight"><i class="teal">✓</i><span class="module-number">3</span><h3>Cumplimiento</h3><p>Centro REI/REOP, validaciones, lotes y comprobantes.</p><div class="tag-row"><span>REI</span><span>REOP</span><span>Auditoría</span></div><b>→</b></a>
-  <a href="/app/requests"><i class="blue">✉</i><span class="module-number">4</span><h3>Trámites</h3><p>Solicitudes de empresas con responsables, plazos y adjuntos.</p><div class="tag-row"><span>Flujo</span><span>Seguimiento</span></div><b>→</b></a>
+  <a href="/app/requests"><i class="blue">✉</i><span class="module-number">4</span><h3>Trámites</h3><p>Solicitudes con responsables, plazos, comentarios y adjuntos.</p><div class="tag-row"><span>Flujo</span><span>Seguimiento</span></div><b>→</b></a>
   <a href="/app/documents"><i class="violet">▤</i><span class="module-number">5</span><h3>Documentos</h3><p>Archivo digital, contratos, constancias y certificados.</p><div class="tag-row"><span>Word</span><span>PDF</span><span>Versiones</span></div><b>→</b></a>
   <a href="/app/reports"><i class="orange">▥</i><span class="module-number">6</span><h3>Reportes</h3><p>Listados, indicadores y exportaciones de gestión laboral.</p><div class="tag-row"><span>CSV</span><span>Resumen</span></div><b>→</b></a>
   <a href="/app/calendar"><i class="orange">◷</i><span class="module-number">7</span><h3>Agenda laboral</h3><p>Vencimientos, alertas y tareas críticas por empresa.</p><div class="tag-row"><span>Alertas</span><span>Calendario</span></div><b>→</b></a>
@@ -50,7 +112,7 @@
 
 {% if automation_alerts %}
 <section class="automation-center panel">
-  <div class="panel-head"><div><span>AUTOMATIZACIÓN</span><h2>Acciones recomendadas</h2></div><a href="/app/ai">Analizar con IA</a></div>
+  <div class="panel-head"><div><span>CONTROL OPERATIVO</span><h2>Acciones recomendadas</h2></div><a href="/app/calendar">Ver agenda</a></div>
   <div class="automation-alert-grid">
     {% for alert in automation_alerts %}<a href="{{ alert.href }}" class="automation-alert {{ alert.level }}"><b>{{ alert.title }}</b><span>{{ alert.detail }}</span><em>Resolver →</em></a>{% endfor %}
   </div>
@@ -58,11 +120,15 @@
 {% endif %}
 
 <section class="two-columns">
-  <article class="panel"><div class="panel-head"><div><span>EMPRESAS</span><h2>Actividad reciente</h2></div><a href="/app/companies">Ver todas</a></div><div class="compact-list">{% for company in companies %}<a href="/app/companies/{{ company.id }}"><span class="company-avatar">{{ company.legal_name[:2]|upper }}</span><div><b>{{ company.legal_name }}</b><small>{{ company.city }} · {{ company.employees|length }} funcionarios</small></div><span class="status-pill {{ company.status|lower }}">{{ company.status }}</span></a>{% else %}<p class="empty-state">No hay empresas registradas.</p>{% endfor %}</div></article>
-  <article class="panel"><div class="panel-head"><div><span>SOLICITUDES</span><h2>Últimos movimientos</h2></div><a href="/app/requests">Gestionar</a></div><div class="compact-list">{% for item in recent_requests %}<div><span class="request-icon">✉</span><div><b>{{ item.subject or item.request_type }}</b><small>{{ item.company.legal_name }}</small></div><span class="status-pill {{ item.status|lower|replace(' ', '-') }}">{{ item.status }}</span></div>{% else %}<p class="empty-state">No hay solicitudes.</p>{% endfor %}</div></article>
+  <article class="panel"><div class="panel-head"><div><span>EMPRESAS</span><h2>Actividad reciente</h2></div><a href="/app/companies">Ver todas</a></div><div class="compact-list">{% for company in companies %}<a href="/app/companies/{{ company.id }}"><span class="company-avatar">{{ company.legal_name[:2]|upper }}</span><div><b>{{ company.legal_name }}</b><small>{{ company.city }} · {{ company.employees|length }} funcionarios</small></div><span class="status-pill {{ company.status|lower }}">{{ company.status }}</span></a>{% else %}<div class="empty-state-action"><b>Todavía no hay empresas</b><span>Registrá la primera para habilitar el resto del flujo laboral.</span>{% if not is_company %}<a class="btn primary" href="/app/companies?open=companyModal">+ Nueva empresa</a>{% endif %}</div>{% endfor %}</div></article>
+  <article class="panel"><div class="panel-head"><div><span>SOLICITUDES</span><h2>Últimos movimientos</h2></div><a href="/app/requests">Gestionar</a></div><div class="compact-list">{% for item in recent_requests %}<div><span class="request-icon">✉</span><div><b>{{ item.subject or item.request_type }}</b><small>{{ item.company.legal_name }}</small></div><span class="status-pill {{ item.status|lower|replace(' ', '-') }}">{{ item.status }}</span></div>{% else %}<div class="empty-state-action"><b>Sin solicitudes pendientes</b><span>Los nuevos trámites aparecerán acá con su estado.</span></div>{% endfor %}</div></article>
 </section>
+
 {% if recent_calculations %}
 <section class="panel recent-calculations-panel"><div class="panel-head"><div><span>CÁLCULOS CONECTADOS</span><h2>Últimos resultados guardados</h2></div><a href="/app/calculations">Ver todos</a></div><div class="compact-list">{% for item in recent_calculations %}<a href="/app/calculations/{{ item.id }}/certificate"><span class="request-icon">₲</span><div><b>{{ item.calculation_type|capitalize }} · Gs. {{ item.amount|gs }}</b><small>{{ item.employee.full_name if item.employee else item.company.legal_name }} · {{ item.reference_period or 'Sin periodo' }}</small></div><span class="status-pill {{ item.status|lower }}">{{ item.status }}</span></a>{% endfor %}</div></section>
 {% endif %}
+
 {% if minimum_salary %}<div class="legal-note"><b>Referencia cargada:</b> salario mínimo mensual general de Gs. {{ minimum_salary.value|int|gs }}, vigente desde {{ minimum_salary.effective_from|fecha }}. Las alertas y cálculos deben revisarse según actividad, régimen y caso concreto.</div>{% endif %}
+<div class="dashboard-footer-note"><span>Digit Laboral 2.2 · Panel operativo del estudio</span><a href="/app/security">Seguridad de la cuenta</a></div>
+</div>
 {% endblock %}
