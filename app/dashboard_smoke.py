@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import logging
 
-from .main import app, templates
-from . import ux_v23 as _ux_v23  # noqa: F401
+from .main import templates
+from .runtime import app
 
 logger = logging.getLogger("digit.dashboard_smoke")
 
@@ -13,6 +13,9 @@ TEMPLATES = (
     "companies.html",
     "company_detail.html",
     "employees.html",
+    "payroll_detail.html",
+    "calculations.html",
+    "vacations.html",
 )
 
 REQUIRED_ROUTES = {
@@ -25,9 +28,14 @@ REQUIRED_ROUTES = {
     ("POST", "/app/companies/{company_id}/branding"),
     ("GET", "/app/employees"),
     ("POST", "/app/employees"),
-    ("GET", "/app/requests"),
+    ("POST", "/app/employees/{employee_id}/status"),
     ("GET", "/app/payrolls"),
+    ("POST", "/app/payrolls/{payroll_id}/lines/{line_id}"),
     ("GET", "/app/calculations"),
+    ("POST", "/app/calculations"),
+    ("GET", "/app/vacations"),
+    ("POST", "/app/vacations"),
+    ("GET", "/app/requests"),
     ("GET", "/app/certificates"),
     ("GET", "/app/compliance"),
     ("GET", "/app/documents"),
