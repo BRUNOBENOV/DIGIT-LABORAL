@@ -1,5 +1,7 @@
 (() => {
   const intValue = input => Math.max(0, Number.parseInt(input?.value || '0', 10) || 0);
+  const money = value => `Gs. ${Math.round(Number(value || 0)).toLocaleString('es-PY')}`;
+  const workbench = document.querySelector('#calculatorWorkbench');
 
   // Salary calculator: keep the IPS base synchronized with gross earnings until
   // the professional explicitly overrides it for non-computable concepts.
@@ -7,16 +9,49 @@
   if (salaryForm) {
     const gross = salaryForm.querySelector('[name="gross"]');
     const other = salaryForm.querySelector('[name="other_income"]');
+    const discount = salaryForm.querySelector('[name="other_discount"]');
+    const applyIps = salaryForm.querySelector('[name="apply_ips"]');
     const ipsBase = salaryForm.querySelector('[name="ips_base"]');
     let manual = false;
-    const sync = () => {
-      if (!ipsBase || manual) return;
-      ipsBase.value = String(intValue(gross) + intValue(other));
+    const calculate = () => {
+      const computable = intValue(gross) + intValue(other);
+      if (ipsBase && !manual) ipsBase.value = String(computable);
+      const rate = Number(workbench?.dataset.ipsRate || 9) / 100;
+      const base = Math.min(computable, intValue(ipsBase));
+      const ips = applyIps?.checked ? Math.round(base * rate) : 0;
+      const net = Math.max(0, computable - ips - intValue(discount));
+      const grossResult = document.getElementById('calcSalaryGrossResult');
+      const ipsResult = document.getElementById('calcSalaryIpsResult');
+      const netResult = document.getElementById('calcSalaryNetResult');
+      if (grossResult) grossResult.textContent = money(computable);
+      if (ipsResult) ipsResult.textContent = money(ips);
+      if (netResult) netResult.textContent = money(net);
     };
-    ipsBase?.addEventListener('input', () => { manual = true; ipsBase.classList.add('manual-control'); });
-    gross?.addEventListener('input', sync);
-    other?.addEventListener('input', sync);
-    sync();
+    ipsBase?.addEventListener('input', () => { manual = true; ipsBase.classList.add('manual-control'); calculate(); });
+    [gross, other, discount].forEach(input => input?.addEventListener('input', calculate));
+    applyIps?.addEventListener('change', calculate);
+    calculate();
+  }
+
+  // Vacation preview mirrors the server control from art. 220: use at least the
+  // minimum general reference loaded in the system when it is higher.
+  const vacationCalculator = document.querySelector('[data-calculator-panel="vacation"]');
+  if (vacationCalculator) {
+    const salary = vacationCalculator.querySelector('[name="salary"]');
+    const days = vacationCalculator.querySelector('[name="days"]');
+    const dailyResult = document.getElementById('calcVacationDailyResult');
+    const totalResult = document.getElementById('calcVacationResult');
+    const calculate = () => {
+      const minimum = Number(workbench?.dataset.minimumSalary || 0);
+      const monthlyBase = Math.max(intValue(salary), minimum);
+      const daily = monthlyBase / 30;
+      const quantity = Math.max(0, Number(days?.value || 0));
+      if (dailyResult) dailyResult.textContent = money(daily);
+      if (totalResult) totalResult.textContent = money(daily * quantity);
+    };
+    salary?.addEventListener('input', calculate);
+    days?.addEventListener('input', calculate);
+    calculate();
   }
 
   // Payroll rows use valid external forms. The IPS base follows total earnings
@@ -29,7 +64,7 @@
     let manual = ipsBase?.dataset.manual === 'true';
     const sync = () => {
       const gross = inputs.reduce((sum, input) => sum + intValue(input), 0);
-      if (grossLabel) grossLabel.textContent = `Gs. ${gross.toLocaleString('es-PY')}`;
+      if (grossLabel) grossLabel.textContent = money(gross);
       if (ipsBase && !manual) ipsBase.value = String(gross);
     };
     inputs.forEach(input => input.addEventListener('input', sync));
