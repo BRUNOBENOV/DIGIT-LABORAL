@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 
 QA_DB = Path('/tmp/digit_laboral_persona_qa.db')
+QA_PASSWORD = 'Persona-QA-Only-2026!'
 try:
     QA_DB.unlink()
 except FileNotFoundError:
@@ -12,6 +13,7 @@ except FileNotFoundError:
 os.environ['ENVIRONMENT'] = 'development'
 os.environ['DATABASE_URL'] = f'sqlite:///{QA_DB}'
 os.environ['MIGRATION_DATABASE_URL'] = f'sqlite:///{QA_DB}'
+os.environ['DEMO_ADMIN_PASSWORD'] = QA_PASSWORD
 os.environ['SECURE_COOKIES'] = 'false'
 os.environ['CSRF_ENABLED'] = 'false'
 os.environ['RLS_ENABLED'] = 'false'
@@ -36,7 +38,7 @@ def run() -> None:
     from .persona_qa_rules import run_rule_stress
     from .persona_qa_http import run_http_personas
     run_rule_stress(check)
-    run_http_personas(check)
+    run_http_personas(check, QA_PASSWORD)
     if FAILURES:
         raise RuntimeError(f'PERSONA_QA_FAILED checks={CHECKS} failures={len(FAILURES)} :: ' + ' | '.join(FAILURES))
     print(f'PERSONA_QA_OK checks={CHECKS} personas=4')
