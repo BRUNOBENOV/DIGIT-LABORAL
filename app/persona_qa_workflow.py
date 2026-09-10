@@ -115,12 +115,19 @@ def run_admin_workflow(check, client, password: str) -> dict:  # noqa: ANN001
         check(line is not None, 'línea de liquidación QA ausente')
         line_id = line.id if line else 0
 
-    response = client.post(f'/app/payrolls/{payroll_id}/lines/{line_id}', data={'base_salary': '4200000', 'overtime': '300000', 'commissions': '200000', 'bonuses': '100000', 'other_income': '200000', 'ips_base': '4200000', 'absences_discount': '0', 'advances': '100000', 'other_discount': '50000'}, follow_redirects=False)
+    response = client.post(f'/app/payrolls/{payroll_id}/lines/{line_id}', data={'base_salary': '4200000', 'overtime': '300000', 'commissions': '200000', 'bonuses': '100000', 'other_income': '200000', 'ips_base': '4200000', 'absences_discount': '0', 'advances': '100000', 'other_discount': '50000', 'ips_basis_note': 'Base revisada en caso QA', 'other_discount_note': 'Descuento documentado de ejemplo', 'ips_rate': '9', 'days_worked': '22'}, follow_redirects=False)
     expect_status(check, response, {303}, 'editar línea con base IPS')
     with SessionLocal() as db:
         line = db.get(PayrollLine, line_id)
         check(line is not None and line.gross == 5_000_000, f'bruto inesperado {getattr(line, "gross", None)}')
         check(line is not None and line.ips_employee == 378_000, f'IPS no respetó base: {getattr(line, "ips_employee", None)}')
+        check(line is not None and line.ips_base == 4_200_000, 'base IPS no persistió')
+        check(line is not None and float(line.ips_rate) == 9, 'tasa histórica IPS no persistió')
+    receipt = client.get(f'/app/payrolls/{payroll_id}/recibos.pdf?line_id={line_id}')
+    expect_status(check, receipt, {200}, 'descarga recibo PDF con sesión real')
+    check(receipt.content.startswith(b'%PDF'), 'recibo no contiene PDF')
+    expect_status(check, client.get('/herramientas'), {200}, 'centro público')
+    expect_status(check, client.get(f'/app/liquidaciones?company_id={company_id}&employee_id={employee_id}'), {200}, 'centro profesional contextual')
 
     response = client.post(f'/app/employees/{employee_id}/status', data={'status': 'Desvinculado', 'termination_date': '2019-01-01'}, follow_redirects=False)
     expect_status(check, response, {303}, 'validación fecha salida')

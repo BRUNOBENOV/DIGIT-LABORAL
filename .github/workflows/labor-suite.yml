@@ -30,6 +30,10 @@ jobs:
           python -c "from jinja2 import Environment, FileSystemLoader; e=Environment(loader=FileSystemLoader('app/templates')); [e.parse(e.loader.get_source(e,n)[0]) for n in e.list_templates()]"
       - name: Calculate, export, save and isolate tenants
         run: python -m pytest tests/test_labor_suite.py -q --junitxml=/tmp/labor-tests.xml -o faulthandler_timeout=90
+      - name: Full startup and deployment smoke gates
+        run: |
+          timeout 180 python -m app.persona_qa
+          timeout 30 python -m app.dashboard_smoke
       - name: Test report
         if: always()
         run: |

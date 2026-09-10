@@ -41,4 +41,6 @@ Los cálculos del centro usan la tabla CalculationRecord ya existente y guardan 
 
 El flujo labor-suite.yml ejecuta casos de límites por fecha, redondeo, IPS cero, haberes protegidos, PDF/CSV, validación de formularios, CSRF, aislamiento por estudio, historial inmutable, guardado de nómina y migración sin alterar importes. Consultar los resultados de GitHub Actions del commit; la presencia del archivo de pruebas no acredita su ejecución.
 
-Pendientes antes de una publicación final: arranque completo del servicio con la configuración de despliegue, inspección visual en escritorio y móvil, revisión de paginación de PDFs renderizados y comprobación en Render. El entorno local anterior quedó inaccesible antes de completar estas verificaciones. Esta rama reconstruye los cambios a partir de la revisión realizada; no recupera archivos inaccesibles ni afirma que estén publicados.
+Primera ejecución: 40 pruebas aprobadas en el commit 7004768efd7bcaed03804014d70c7b9500c472eb. Se añaden los controles de arranque y personas utilizados por el Dockerfile, sobre una base temporal y datos sintéticos.
+
+Pendientes antes de una publicación final: comprobar el arranque en Render con su configuración de producción, inspección visual en escritorio y móvil, revisión de paginación de PDFs renderizados y comprobación en Render. El entorno local anterior quedó inaccesible antes de completar estas verificaciones. Esta rama reconstruye los cambios a partir de la revisión realizada; no recupera archivos inaccesibles ni afirma que estén publicados.
