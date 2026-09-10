@@ -11,6 +11,9 @@ except FileNotFoundError:
     pass
 
 os.environ['ENVIRONMENT'] = 'development'
+# TestClient uses testserver. Keep this isolated process independent of the
+# production host allowlist; the serving process keeps its configured hosts.
+os.environ['ALLOWED_HOSTS'] = 'testserver,localhost,127.0.0.1'
 os.environ['DATABASE_URL'] = f'sqlite:///{QA_DB}'
 os.environ['MIGRATION_DATABASE_URL'] = f'sqlite:///{QA_DB}'
 os.environ['DEMO_ADMIN_PASSWORD'] = QA_PASSWORD
