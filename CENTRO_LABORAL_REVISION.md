@@ -41,6 +41,8 @@ Los cálculos del centro usan la tabla CalculationRecord ya existente y guardan 
 
 El flujo labor-suite.yml ejecuta casos de límites por fecha, redondeo, IPS cero, haberes protegidos, PDF/CSV, validación de formularios, CSRF, aislamiento por estudio, historial inmutable, guardado de nómina y migración sin alterar importes. Consultar los resultados de GitHub Actions del commit; la presencia del archivo de pruebas no acredita su ejecución.
 
-Primera ejecución: 40 pruebas aprobadas en el commit 7004768efd7bcaed03804014d70c7b9500c472eb. Se añaden los controles de arranque y personas utilizados por el Dockerfile, sobre una base temporal y datos sintéticos.
+Validación del commit 08c5033a551916fde75af00edb7e5a77c09075a7: 41 pruebas aprobadas; PERSONA_QA_OK con 12.667 comprobaciones y cuatro perfiles; Dashboard smoke OK con ocho plantillas y 25 rutas críticas. Ejecución: https://github.com/BRUNOBENOV/DIGIT-LABORAL/actions/runs/34420394903.
 
-Pendientes antes de una publicación final: comprobar el arranque en Render con su configuración de producción, inspección visual en escritorio y móvil, revisión de paginación de PDFs renderizados y comprobación en Render. El entorno local anterior quedó inaccesible antes de completar estas verificaciones. Esta rama reconstruye los cambios a partir de la revisión realizada; no recupera archivos inaccesibles ni afirma que estén publicados.
+El 10 de septiembre se renderizaron e inspeccionaron recibos A4 de salario y egreso con datos sintéticos: una página por copia, original y duplicado, sin recortes. Se incorporaron fuentes DejaVu con su licencia para evitar diferencias entre visores y se separaron las firmas en columnas. Las dos pruebas específicas de PDF volvieron a aprobarse.
+
+La comprobación de interfaz y arranque de producción se realiza en Render después de desplegar. El navegador de revisión no permite abrir la dirección local del servidor. Los resultados de publicación y navegación se registran en la solicitud de cambios; este documento no afirma que el despliegue ya esté activo.

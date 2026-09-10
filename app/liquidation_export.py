@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import io
+from pathlib import Path
 from xml.sax.saxutils import escape
 
 from reportlab.lib import colors
@@ -9,11 +10,16 @@ from reportlab.lib.enums import TA_RIGHT
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Table, TableStyle, Spacer, PageBreak, KeepTogether
 
 from .labor_calculator import gs
 
 GREEN = colors.HexColor("#193b31")
+FONT_DIR = Path(__file__).parent / "assets" / "fonts"
+pdfmetrics.registerFont(TTFont("DigitSans", str(FONT_DIR / "DejaVuSans.ttf")))
+pdfmetrics.registerFont(TTFont("DigitSans-Bold", str(FONT_DIR / "DejaVuSans-Bold.ttf")))
 
 
 def build_liquidation_pdf(result):
@@ -21,9 +27,9 @@ def build_liquidation_pdf(result):
     doc = SimpleDocTemplate(stream, pagesize=A4, leftMargin=17*mm, rightMargin=17*mm,
                             topMargin=16*mm, bottomMargin=18*mm,
                             title=result["title"], author="Digit Laboral")
-    body = ParagraphStyle("body", fontName="Helvetica", fontSize=8.4, leading=11, spaceAfter=4)
+    body = ParagraphStyle("body", fontName="DigitSans", fontSize=8.4, leading=11, spaceAfter=4)
     small = ParagraphStyle("small", parent=body, fontSize=7.1, leading=9)
-    heading = ParagraphStyle("heading", parent=body, fontName="Helvetica-Bold", fontSize=19, leading=22, textColor=GREEN)
+    heading = ParagraphStyle("heading", parent=body, fontName="DigitSans-Bold", fontSize=19, leading=22, textColor=GREEN)
     right = ParagraphStyle("right", parent=body, alignment=TA_RIGHT)
     def p(value, style=body):
         text = str(value or "").replace("−", "-").replace("—", "-").replace("–", "-")
@@ -72,15 +78,20 @@ def build_liquidation_pdf(result):
             flow.append(p(title + ": " + url, small))
         signature = [
             Spacer(1, 8*mm),
-            p("______________________________                    ______________________________"),
-            p("Firma del empleador / representante                           Firma del trabajador", small),
+            Table([[p("Firma del empleador / representante", small), "", p("Firma del trabajador", small)]],
+                  colWidths=[79*mm, 18*mm, 79*mm], style=TableStyle([
+                      ("LINEABOVE", (0,0), (0,0), .5, GREEN),
+                      ("LINEABOVE", (2,0), (2,0), .5, GREEN),
+                      ("TOPPADDING", (0,0), (-1,-1), 7),
+                      ("LEFTPADDING", (0,0), (-1,-1), 0),
+                      ("VALIGN", (0,0), (-1,-1), "TOP")])),
             p("Fecha y constancia efectiva de pago: ______________________________", small),
             p("Medio de pago previsto: " + identity.get("payment_method", "") + " · Preparado por: " + identity.get("prepared_by", ""), small),
             p("La generación de este documento no acredita pago ni firma y no implica renuncia de derechos.", small)]
         flow.append(KeepTogether(signature))
     def footer(canvas, document):
         canvas.saveState()
-        canvas.setFont("Helvetica", 7)
+        canvas.setFont("DigitSans", 7)
         canvas.setFillColor(colors.HexColor("#52645b"))
         canvas.drawString(17*mm, 10*mm, f"Digit Laboral · Motor {result['engine_version']} · Borrador para revisión")
         canvas.drawRightString(193*mm, 10*mm, f"Página {document.page}")
