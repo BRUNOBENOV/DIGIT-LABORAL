@@ -310,3 +310,15 @@ def test_migration_adds_columns_without_rewriting_history(tmp_path):
         assert tuple(row) == (3500000,315000,3185000,None,None)
         assert {"ips_base","ips_rate","ips_basis_note","other_discount_note"} <= {c["name"] for c in inspect(conn).get_columns("payroll_lines")}
     engine.dispose()
+
+
+def test_legacy_calculator_rejects_negative_net_and_unknown_employee(web_case):
+    client,db,box,company,employee,_=web_case
+    csrf=token(client)
+    data=dict(csrf_token=csrf,calculation_type="salary",company_id=str(company.id),
+              employee_id=str(employee.id),gross="3500000",other_discount="4000000")
+    assert client.post("/app/calculations",data=data).status_code == 422
+    data.update(other_discount="0",employee_id="9999999")
+    assert client.post("/app/calculations",data=data).status_code == 404
+    data.update(employee_id=str(employee.id),gross="NaN")
+    assert client.post("/app/calculations",data=data).status_code == 422
