@@ -19,7 +19,8 @@ from .labor_rules import (
     vacation_amount,
     vacation_entitlement_days,
 )
-from .models import Branch, CalculationRecord, Employee, Payroll, PayrollLine, User
+from .models import Branch, CalculationRecord, Employee, Payroll, PayrollLine, PayrollComplianceDetail, User
+from .labor_calculator import CalculationError, amount as round_gs, number
 
 app = core.app
 
@@ -283,17 +284,29 @@ async def save_calculation_v24(
     company = core.company_allowed(db, user, company_id)
     employee_id = _int(form.get("employee_id")) or None
     employee = db.get(Employee, employee_id) if employee_id else None
+    if employee_id and not employee:
+        raise HTTPException(404, "Funcionario no encontrado.")
     if employee and employee.company_id != company.id:
         raise HTTPException(400, "El funcionario no pertenece a la empresa seleccionada.")
 
-    gross = max(0, _int(form.get("gross")))
-    other_income = max(0, _int(form.get("other_income")))
-    other_discount = max(0, _int(form.get("other_discount")))
-    salary = max(0, _int(form.get("salary")))
+    try:
+        for key in ("gross", "other_income", "other_discount", "salary", "total_remunerations", "ips_base"):
+            number(form, key, maximum="2147483647")
+        for key in ("monthly_hours", "hours_quantity", "multiplier", "days"):
+            if _clean(form.get(key)):
+                number(form, key, maximum="10000", decimals=4)
+        if _clean(form.get("monthly_hours")) and number(form, "monthly_hours", decimals=4) == 0:
+            raise CalculationError("Las horas mensuales deben ser mayores que cero.")
+    except CalculationError as exc:
+        raise HTTPException(422, str(exc))
+    gross = int(number(form, "gross", maximum="2147483647"))
+    other_income = int(number(form, "other_income", maximum="2147483647"))
+    other_discount = int(number(form, "other_discount", maximum="2147483647"))
+    salary = int(number(form, "salary", maximum="2147483647"))
     monthly_hours = max(1.0, _float(form.get("monthly_hours"), 240))
     hours_quantity = max(0.0, _float(form.get("hours_quantity"), 0))
     multiplier = max(0.0, _float(form.get("multiplier"), 1))
-    total_remunerations = max(0, _int(form.get("total_remunerations")))
+    total_remunerations = int(number(form, "total_remunerations", maximum="2147483647"))
     days = max(0.0, _float(form.get("days"), 0))
     if employee:
         salary = salary or employee.base_salary
@@ -306,12 +319,15 @@ async def save_calculation_v24(
         computable = gross + other_income
         apply_ips = form.get("apply_ips") == "on" and (not employee or employee.ips_contributor)
         ips_base_raw = _clean(form.get("ips_base"), 30)
-        ips_base = _int(ips_base_raw, computable) if ips_base_raw else computable
-        ips_base = min(max(0, ips_base), computable)
+        ips_base = int(number(form, "ips_base", maximum="2147483647")) if ips_base_raw else computable
+        if apply_ips and ips_base != computable and not _clean(form.get("notes")):
+            raise HTTPException(422, "Describí en observaciones el criterio de la base IPS ajustada.")
         rate = core.get_parameter(db, "ips_employee_rate_general", 9)
-        ips = round(ips_base * rate / 100) if apply_ips else 0
+        ips = round_gs(number({"base": ips_base}, "base") * number({"rate": rate}, "rate", decimals=2) / 100) if apply_ips else 0
         discounts = ips + other_discount
-        amount = max(0, computable - discounts)
+        amount = computable - discounts
+        if amount < 0:
+            raise HTTPException(422, "Los descuentos superan los haberes. Revisá los importes.")
         inputs.update({"gross": gross, "other_income": other_income, "other_discount": other_discount, "apply_ips": apply_ips, "ips_base": ips_base, "ips_rate": rate})
         results.update({"gross_computable": computable, "ips_base": ips_base, "ips_employee": ips, "discounts": discounts, "net": amount})
     elif calculation_type == "hours":
@@ -337,6 +353,8 @@ async def save_calculation_v24(
         inputs.update({"monthly_average_base": salary, "days": days})
         results.update({"daily_value": round(salary / 30), "days": days, "total": amount, "legal_basis": "Código del Trabajo, arts. 87, 90 y 92"})
 
+    if amount > 2147483647:
+        raise HTTPException(422, "El resultado supera el límite del historial.")
     item = CalculationRecord(
         company_id=company.id,
         employee_id=employee.id if employee else None,
@@ -372,16 +390,42 @@ async def update_payroll_line_v24(
     if payroll.status == "Cerrada":
         raise HTTPException(409, "La liquidación está cerrada.")
     form = await request.form()
-    for attr in ("base_salary", "overtime", "commissions", "bonuses", "other_income", "absences_discount", "advances", "other_discount"):
-        setattr(line, attr, max(0, _int(form.get(attr))))
-    line.gross = line.base_salary + line.overtime + line.commissions + line.bonuses + line.other_income
-    rate = core.get_parameter(db, "ips_employee_rate_general", 9)
-    ips_base_raw = _clean(form.get("ips_base"), 30)
-    ips_base = _int(ips_base_raw, line.gross) if ips_base_raw else line.gross
-    ips_base = min(max(0, ips_base), line.gross)
-    line.ips_employee = round(ips_base * rate / 100) if line.employee.ips_contributor else 0
-    line.total_discounts = line.ips_employee + line.absences_discount + line.advances + line.other_discount
-    line.net = max(0, line.gross - line.total_discounts)
+    try:
+        inputs = {key: int(number(form, key, maximum="2147483647")) for key in
+                  ("base_salary", "overtime", "commissions", "bonuses", "other_income",
+                   "absences_discount", "advances", "other_discount")}
+        gross = sum(inputs[k] for k in ("base_salary", "overtime", "commissions", "bonuses", "other_income"))
+        default_rate = str(line.ips_rate if line.ips_rate is not None else core.get_parameter(db, "ips_employee_rate_general", 9))
+        rate = number(form, "ips_rate", "tasa IPS", default=default_rate, maximum="100", decimals=2)
+        base = int(number(form, "ips_base", "base IPS", default=str(gross), maximum="2147483647"))
+        basis_note = _clean(form.get("ips_basis_note"), 300)
+        discount_note = _clean(form.get("other_discount_note"), 300)
+        if line.employee.ips_contributor and base != gross and not basis_note:
+            raise CalculationError("Explicá el criterio de la base IPS ajustada.")
+        if inputs["other_discount"] and not discount_note:
+            raise CalculationError("Describí el motivo de los otros descuentos.")
+        contribution = round_gs(number({"base":base},"base") * rate / 100) if line.employee.ips_contributor else 0
+        discounts = contribution + inputs["absences_discount"] + inputs["advances"] + inputs["other_discount"]
+        if gross > 2147483647 or discounts > gross:
+            raise CalculationError("Revisá los importes: el neto no puede ser negativo y los haberes deben estar dentro del límite del sistema.")
+        days_raw = _clean(form.get("days_worked"), 20)
+        days_worked = int(number(form, "days_worked", "jornadas trabajadas", maximum="31")) if days_raw else None
+    except CalculationError as exc:
+        raise HTTPException(422, str(exc))
+    for key, value in inputs.items():
+        setattr(line, key, value)
+    line.gross, line.ips_employee = gross, contribution
+    line.ips_base = base if line.employee.ips_contributor else 0
+    line.ips_rate = rate if line.employee.ips_contributor else 0
+    line.ips_basis_note, line.other_discount_note = basis_note, discount_note
+    line.total_discounts, line.net = discounts, gross - discounts
+    if days_worked is not None:
+        detail = db.scalar(select(PayrollComplianceDetail).where(PayrollComplianceDetail.payroll_line_id == line.id))
+        if detail is None:
+            detail = PayrollComplianceDetail(payroll_line_id=line.id)
+            db.add(detail)
+        detail.days_worked = days_worked
+    ips_base = line.ips_base
     core.recalculate_payroll(db, payroll)
     core.write_audit(db, user, "editar", "linea_liquidacion", str(line.id), f"{line.employee.full_name} · base IPS Gs. {ips_base}")
     db.commit()

@@ -12,6 +12,7 @@
   <link rel="stylesheet" href="{{ url_for('static', path='v22-dashboard.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', path='v23.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', path='v24.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', path='labor-suite.css') }}?v=20260909">
 </head>
 <body class="{% if user %}app-body{% else %}public-body{% endif %}">
 {% if user %}
@@ -26,6 +27,7 @@
         <a class="{{ 'active' if active_path.startswith('/admin') else '' }}" href="/admin">Administración</a>
       {% else %}
         <a class="{{ 'active' if active_path == '/app' else '' }}" href="/app">Inicio</a>
+        <a class="{{ 'active' if active_path.startswith('/app/liquidaciones') else '' }}" href="/app/liquidaciones">Calcular y emitir</a>
         <a class="{{ 'active' if active_path.startswith('/app/companies') else '' }}" href="/app/companies">Empresas</a>
         <a class="{{ 'active' if active_path.startswith('/app/employees') else '' }}" href="/app/employees">Funcionarios</a>
         {% if user.role != 'empresa' %}<a class="{{ 'active' if active_path.startswith('/app/payrolls') or active_path.startswith('/app/vacations') or active_path.startswith('/app/aguinaldo') or active_path.startswith('/app/calculations') else '' }}" href="/app/payrolls">Operaciones</a>{% endif %}
@@ -62,7 +64,7 @@
     {% if user.role == 'superadmin' %}
       <a href="/admin">Administración</a>
     {% else %}
-      <a href="/app">Inicio</a>
+      <a href="/app">Inicio</a><a href="/app/liquidaciones">Calcular y emitir</a>
       <a href="/app/companies">Empresas</a>
       <a href="/app/employees">Funcionarios</a>
       {% if user.role != 'empresa' %}<a href="/app/payrolls">Operaciones</a><a href="/app/compliance">Cumplimiento</a>{% endif %}
@@ -85,5 +87,6 @@
 <script src="{{ url_for('static', path='v22-dashboard.js') }}"></script>
 <script src="{{ url_for('static', path='v23.js') }}"></script>
 <script src="{{ url_for('static', path='v24.js') }}"></script>
+<script src="{{ url_for('static', path='labor-suite.js') }}?v=20260909" defer></script>
 </body>
 </html>

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
+from .labor_calculator import anniversary
 
 
 @dataclass(frozen=True)
@@ -38,9 +39,9 @@ def vacation_entitlement_days(admission_date: date, as_of: date) -> RuleResult:
     years = completed_years(admission_date, as_of)
     if years < 1:
         return RuleResult(0, "Código del Trabajo, art. 218", "Aún no completa un año; revisar derecho proporcional o régimen aplicable.")
-    if years <= 5:
+    if as_of <= anniversary(admission_date, 5):
         days = 12
-    elif years <= 10:
+    elif as_of <= anniversary(admission_date, 10):
         days = 18
     else:
         days = 30
@@ -54,11 +55,11 @@ def preaviso_days(admission_date: date, as_of: date, *, trial_completed: bool = 
     if not trial_completed:
         return RuleResult(0, "Código del Trabajo, arts. 58 y 87", "Revisar primero si el período de prueba sigue vigente.")
     months = months_of_service(admission_date, as_of)
-    if months <= 12:
+    if as_of <= anniversary(admission_date, 1):
         days = 30
-    elif months <= 60:
+    elif as_of <= anniversary(admission_date, 5):
         days = 45
-    elif months <= 120:
+    elif as_of <= anniversary(admission_date, 10):
         days = 60
     else:
         days = 90

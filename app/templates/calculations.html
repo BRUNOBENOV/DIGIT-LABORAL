@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Cálculos | Digit Laboral{% endblock %}
 {% block content %}
+<div class="dl"><a class="dl-button dl-payroll-link" href="/app/liquidaciones">Calcular y emitir una liquidación →</a></div>
 <div class="page-header calculations-header"><div><span class="eyebrow">CENTRO DE CÁLCULOS</span><h1>Calculá con contexto</h1><p>Cada resultado queda vinculado a empresa y funcionario, con los datos utilizados para poder revisarlo después.</p></div><div class="header-actions"><a class="btn ghost" href="/app/reports">Ver informes</a><a class="btn primary" href="/app/payrolls">Liquidaciones mensuales</a></div></div>
 {% if request.query_params.get('saved') %}<div class="alert success">Cálculo guardado en estado <b>Revisar</b>. Podés aprobarlo después del control profesional.</div>{% endif %}
 <div class="v24-professional-note"><span class="v24-note-icon">§</span><div><b>El sistema calcula; el profesional determina la procedencia.</b> Revisá régimen, conceptos computables, base IPS, antigüedad y documentación antes de aprobar un resultado. Las referencias sirven como control y no sustituyen el análisis del caso.</div></div>

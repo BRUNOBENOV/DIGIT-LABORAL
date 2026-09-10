@@ -1,0 +1,55 @@
+name: Labor suite validation
+on:
+  push:
+    branches: ["codex/centro-laboral-liquidaciones"]
+  pull_request:
+    branches: ["main"]
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      DATABASE_URL: sqlite:////tmp/digit-ci-unused.db
+      MIGRATION_DATABASE_URL: sqlite:////tmp/digit-ci-unused.db
+      ENVIRONMENT: development
+      CSRF_ENABLED: "true"
+      DEMO_ADMIN_PASSWORD: synthetic-test-only
+      DEMO_SUPERADMIN_PASSWORD: synthetic-test-only
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements-dev.txt "pypdf>=5,<7"
+      - name: Compile application and templates
+        run: |
+          python -m compileall -q app alembic tests/test_labor_suite.py
+          python -c "from jinja2 import Environment, FileSystemLoader; e=Environment(loader=FileSystemLoader('app/templates')); [e.parse(e.loader.get_source(e,n)[0]) for n in e.list_templates()]"
+      - name: Calculate, export, save and isolate tenants
+        run: python -m pytest tests/test_labor_suite.py -q --junitxml=/tmp/labor-tests.xml -o faulthandler_timeout=90
+      - name: Full startup and deployment smoke gates
+        run: |
+          timeout 180 python -m app.persona_qa
+          timeout 30 python -m app.dashboard_smoke
+      - name: Test report
+        if: always()
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from xml.etree import ElementTree
+          p=Path('/tmp/labor-tests.xml')
+          if p.exists():
+              root=ElementTree.parse(p).getroot()
+              with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as output:
+                  for suite in root.iter('testsuite'):
+                      output.write(f"Tests: {suite.get('tests')} | Failures: {suite.get('failures')} | Errors: {suite.get('errors')}\n")
+              for test in root.iter('testcase'):
+                  for tag in ('failure','error'):
+                      for problem in test.findall(tag):
+                          message=(problem.text or problem.get('message','')).replace('%','%25').replace('\r','%0D').replace('\n','%0A')
+                          print(f"::error title={test.get('name')}::{message}")
+          PY

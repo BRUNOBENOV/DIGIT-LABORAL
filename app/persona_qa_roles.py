@@ -53,7 +53,10 @@ def run_role_and_legal_checks(check, client, password: str, context: dict) -> No
         check('213' in articles and 'descanso' in articles['213'].heading.lower(), 'art. 213 descanso semanal ausente')
         check('218' in articles and 'vacaciones' in articles['218'].heading.lower(), 'art. 218 no identifica vacaciones')
         check('227' in articles and 'salario' in articles['227'].heading.lower(), 'art. 227 concepto de salario ausente')
-        check('243' in articles and 'aguinaldo' in articles['243'].heading.lower(), 'art. 243 no identifica aguinaldo')
+        # Synced headings contain book/title/chapter names, not the article subject.
+        # Verify the legal content and the one-twelfth basis in either source format.
+        body_243 = articles['243'].body.lower() if '243' in articles else ''
+        check('aguinaldo' in body_243 and ('doceava' in body_243 or 'duodécima' in body_243), 'art. 243 no identifica aguinaldo y base de cálculo')
         check('255' in articles and 'salario mínimo' in articles['255'].heading.lower(), 'art. 255 mínimo ausente')
         check(not ('154' in articles and articles['154'].heading == 'Descanso semanal'), 'persiste mapeo jurídico erróneo art. 154')
     law_page = client.get('/app/labor-code?q=218')

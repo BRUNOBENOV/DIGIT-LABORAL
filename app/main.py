@@ -13,6 +13,7 @@ import secrets
 import uuid
 import zipfile
 from collections import OrderedDict
+from decimal import Decimal
 from contextlib import asynccontextmanager
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
@@ -34,6 +35,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from .ai_service import generate_assistance
 from .auth import hash_password, verify_password
+from .labor_calculator import amount as round_gs
 from .config import settings
 from .database import Base, SessionLocal, apply_session_tenant_context, engine
 from .document_export import (
@@ -218,11 +220,18 @@ class CSRFMiddleware:
             return
 
         body_parts: list[bytes] = []
+        body_size = 0
         more = True
         while more:
             message = await receive()
+            if message.get("type") == "http.disconnect":
+                return
             if message.get("type") != "http.request":
                 continue
+            body_size += len(message.get("body", b""))
+            if (path.startswith("/herramientas/") or path.startswith("/app/liquidaciones/")) and body_size > 64000:
+                await Response("Formulario demasiado grande.", status_code=413)(scope, receive, send)
+                return
             body_parts.append(message.get("body", b""))
             more = message.get("more_body", False)
         body = b"".join(body_parts)
@@ -648,6 +657,9 @@ def calculate_values(
 
 
 def calculation_label(value: str) -> str:
+    if value.startswith("suite_"):
+        from .labor_calculator import TITLES
+        return TITLES.get(value[6:], value)
     return {
         "salary": "Salario neto",
         "hours": "Horas",
@@ -1902,7 +1914,7 @@ def calculations_page(
     if company_id and company_id in company_ids:
         employees_query = employees_query.where(Employee.company_id == company_id)
     employees = list(db.scalars(employees_query.order_by(Employee.full_name)))
-    recent_query = select(CalculationRecord).where(CalculationRecord.company_id.in_(company_ids)) if company_ids else select(CalculationRecord).where(False)
+    recent_query = select(CalculationRecord).where(CalculationRecord.company_id.in_(company_ids), CalculationRecord.source != "Centro laboral") if company_ids else select(CalculationRecord).where(False)
     if company_id and company_id in company_ids:
         recent_query = recent_query.where(CalculationRecord.company_id == company_id)
     if employee_id:
@@ -2013,6 +2025,8 @@ def calculation_to_certificate(
     item = db.get(CalculationRecord, calculation_id)
     if not item or item.company_id not in company_ids_for_user(db, user):
         raise HTTPException(404)
+    if item.source == "Centro laboral":
+        return RedirectResponse(f"/app/liquidaciones/{item.id}", status_code=303)
     document_type = {
         "aguinaldo": "aguinaldo_anual",
         "vacation": "usufructo_vacaciones",
@@ -2471,7 +2485,11 @@ def create_payroll(
     db: Session = Depends(get_db),
 ):
     company_allowed(db, user, company_id)
-    if not re.fullmatch(r"\d{4}-\d{2}", period):
+    try:
+        if not re.fullmatch(r"\d{4}-\d{2}", period):
+            raise ValueError
+        date.fromisoformat(period + "-01")
+    except ValueError:
         raise HTTPException(400, "Periodo inválido")
     payroll = Payroll(company_id=company_id, period=period, notes=notes.strip(), created_by=user.email)
     db.add(payroll)
@@ -2485,8 +2503,8 @@ def create_payroll(
     ips_rate = get_parameter(db, "ips_employee_rate_general", 9) / 100
     for employee in employees:
         gross = employee.base_salary
-        ips = round(gross * ips_rate) if employee.ips_contributor else 0
-        db.add(PayrollLine(payroll_id=payroll.id, employee_id=employee.id, base_salary=employee.base_salary, gross=gross, ips_employee=ips, total_discounts=ips, net=gross - ips))
+        ips = round_gs(Decimal(gross) * Decimal(str(ips_rate))) if employee.ips_contributor else 0
+        db.add(PayrollLine(payroll_id=payroll.id, employee_id=employee.id, base_salary=employee.base_salary, gross=gross, ips_employee=ips, total_discounts=ips, net=gross - ips, ips_base=gross if employee.ips_contributor else 0, ips_rate=round(ips_rate * 100, 2) if employee.ips_contributor else 0))
     db.flush()
     recalculate_payroll(db, payroll)
     period_year, period_month = (int(part) for part in period.split("-"))
@@ -2517,7 +2535,8 @@ def payroll_detail(request: Request, payroll_id: int, user: User = Depends(requi
     if not payroll or payroll.company_id not in company_ids_for_user(db, user):
         raise HTTPException(404)
     lines = list(db.scalars(select(PayrollLine).where(PayrollLine.payroll_id == payroll.id).order_by(PayrollLine.id)))
-    return render(request, "payroll_detail.html", db, user, payroll=payroll, lines=lines, ips_rate=get_parameter(db, "ips_employee_rate_general", 9))
+    details = {item.payroll_line_id: item for item in db.scalars(select(PayrollComplianceDetail).where(PayrollComplianceDetail.payroll_line_id.in_([line.id for line in lines])))}
+    return render(request, "payroll_detail.html", db, user, payroll=payroll, lines=lines, detail_by_line=details, ips_rate=get_parameter(db, "ips_employee_rate_general", 9))
 
 
 @app.post("/app/payrolls/{payroll_id}/lines/{line_id}")
@@ -2573,6 +2592,16 @@ def payroll_status(
     payroll = db.get(Payroll, payroll_id)
     if not payroll or payroll.company_id not in company_ids_for_user(db, user):
         raise HTTPException(404)
+    if status_value not in {"Borrador", "En revisión", "Cerrada"}:
+        raise HTTPException(422, "Estado de nómina inválido.")
+    if status_value == "Cerrada":
+        from .calculator_routes import payroll_result
+        lines = list(db.scalars(select(PayrollLine).where(PayrollLine.payroll_id == payroll.id)))
+        if not lines:
+            raise HTTPException(409, "La nómina no contiene funcionarios.")
+        for line in lines:
+            payroll_result(payroll, line)
+        recalculate_payroll(db, payroll)
     payroll.status = status_value
     if status_value == "Cerrada":
         payroll.closed_at = datetime.now(UTC)

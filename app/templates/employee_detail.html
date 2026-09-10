@@ -2,6 +2,7 @@
 {% block title %}{{ employee.full_name }} | Digit Laboral{% endblock %}
 {% block page_name %}Expediente laboral{% endblock %}
 {% block content %}
+<div class="dl"><a class="dl-button dl-payroll-link" href="/app/liquidaciones?company_id={{ employee.company_id }}&amp;employee_id={{ employee.id }}">Calcular y emitir una liquidación →</a></div>
 <a class="back-link dark" href="/app/employees">← Volver a funcionarios</a>
 <section class="employee-profile-card">
   <div class="employee-profile-avatar">{{ employee.full_name[:2]|upper }}</div>

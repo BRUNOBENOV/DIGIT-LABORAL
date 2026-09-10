@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}{{ titles[kind] }} | Digit Laboral{% endblock %}
+{% macro input_field(field) %}
+{% set value = values.get(field.name, field.value) %}
+<div class="dl-field {{ 'dl-check' if field.type == 'checkbox' else '' }} {{ 'dl-invalid' if error_field == field.name else '' }}">
+{% if field.type == 'checkbox' %}<label for="f-{{ field.name }}"><input type="checkbox" id="f-{{ field.name }}" name="{{ field.name }}" value="on" {% if value in ['on','true','1',True] %}checked{% endif %}>{{ field.label }}</label>
+{% else %}<label for="f-{{ field.name }}">{{ field.label }}{% if field.required %}<span aria-hidden="true"> *</span>{% endif %}</label>
+{% if field.type == 'select' %}<select id="f-{{ field.name }}" name="{{ field.name }}">{% for k,label in field.attrs.options %}<option value="{{ k }}" {% if value == k %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+{% elif field.type == 'textarea' %}<textarea id="f-{{ field.name }}" name="{{ field.name }}" rows="3" maxlength="600">{{ value }}</textarea>
+{% else %}<input id="f-{{ field.name }}" name="{{ field.name }}" type="{{ field.type }}" value="{{ value }}"
+{% if field.required %}required{% endif %} {% if field.help %}aria-describedby="help-{{ field.name }}"{% endif %}
+{% for key, val in field.attrs.items() %}{{ key }}="{{ val }}"{% endfor %}
+{% if private and ((company_id and field.name in ['employer','ruc']) or (employee_id and field.name in ['employee','ci','position'])) %}readonly{% endif %}>{% endif %}{% endif %}
+{% if field.help %}<small id="help-{{ field.name }}">{{ field.help }}</small>{% endif %}</div>
+{% endmacro %}
+{% macro workbench() %}
+<div class="dl dl-workbench {{ 'dl-wrap' if not private else '' }}">
+<header class="dl-workbench-head"><p class="dl-eyebrow">{{ 'CENTRO PROFESIONAL' if private else 'CALCULADORAS LABORALES · PARAGUAY' }}</p><h1>Calculá. Revisá. Emití.</h1><p>Completá los datos y obtené un desglose listo para descargar. Los campos con * son obligatorios.</p></header>
+{% if private %}<form method="get" action="/app/liquidaciones" class="dl-context"><input type="hidden" name="tipo" value="{{ kind }}"><div class="dl-field"><label for="ctx-company">Empresa</label><select name="company_id" id="ctx-company"><option value="">Seleccioná una empresa</option>{% for item in companies %}<option value="{{ item.id }}" {% if item.id == company_id %}selected{% endif %}>{{ item.legal_name }}</option>{% endfor %}</select></div><div class="dl-field"><label for="ctx-employee">Funcionario</label><select name="employee_id" id="ctx-employee"><option value="">Seleccioná un funcionario</option>{% for item in employees %}<option value="{{ item.id }}" {% if item.id == employee_id %}selected{% endif %}>{{ item.full_name }}</option>{% endfor %}</select></div><button class="dl-button dl-outline">Cargar selección</button><small>Cargá primero la empresa para ver sus funcionarios.</small></form>{% endif %}
+<nav class="dl-tabs" aria-label="Tipo de cálculo">{% for key, title in titles.items() %}<a href="{{ '/app/liquidaciones' if private else '/herramientas' }}?tipo={{ key }}{% if private %}&amp;company_id={{ company_id }}&amp;employee_id={{ employee_id }}{% endif %}" {% if key == kind %}aria-current="page"{% endif %}>{{ title }}</a>{% endfor %}</nav>
+<div class="dl-calculator-layout">
+<form id="labor-form" method="post" action="{{ '/app/liquidaciones/calcular' if private else '/herramientas/calcular' }}">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="kind" value="{{ kind }}">
+{% if private %}<input type="hidden" name="company_id" value="{{ company_id }}"><input type="hidden" name="employee_id" value="{{ employee_id }}">{% endif %}
+<div class="dl-form-title"><span class="dl-step">01</span><h2>{{ titles[kind] }}</h2></div>
+{% if error %}<div class="dl-alert dl-error" role="alert" id="labor-error" tabindex="-1"><b>Revisá los datos</b><p>{{ error }}</p></div>{% endif %}
+{% for group in groups %}
+{% if group.advanced %}<details class="dl-form-section"><summary>{{ group.title }}</summary><div class="dl-fields">{% for field in group.fields %}{{ input_field(field) }}{% endfor %}</div></details>
+{% else %}<fieldset class="dl-form-section"><legend>{{ group.title }}</legend><div class="dl-fields">{% for field in group.fields %}{{ input_field(field) }}{% endfor %}</div></fieldset>{% endif %}
+{% endfor %}
+<div class="dl-form-submit"><button class="dl-button" type="submit">{{ 'Recalcular' if result else 'Calcular liquidación' }} <span aria-hidden="true">→</span></button><span>Revisá los conceptos antes de firmar.</span></div>
+</form>
+<aside class="dl-output">
+{% if result %}
+<p class="dl-alert dl-stale" hidden role="status">Cambiaste datos. Volvé a calcular para actualizar el resultado y las descargas.</p>
+<div class="dl-output-actions"><button type="submit" class="dl-button" form="labor-form" formaction="/herramientas/exportar/pdf" data-result-action>Descargar PDF</button><button type="submit" class="dl-button dl-outline" form="labor-form" formaction="/herramientas/exportar/csv" data-result-action>CSV</button><button type="button" class="dl-button dl-outline" data-print data-result-action>Imprimir</button>
+{% if private and user.role in ['administrador','contador','auxiliar'] %}<button type="submit" class="dl-button dl-outline" form="labor-form" formaction="/app/liquidaciones/guardar" data-result-action>Guardar en el funcionario</button>{% endif %}</div>
+{% include "liquidation_result.html" %}
+{% else %}<div class="dl-empty"><span class="dl-step">02</span><h2>Acá vas a ver tu liquidación.</h2><p>El resultado mostrará cada haber, descuento y fórmula. Luego podrás descargar un PDF con original y duplicado.</p><ol><li>Completá los datos del cálculo.</li><li>Revisá el neto y las observaciones.</li><li>Descargá, imprimí o guardá el documento.</li></ol><p class="dl-caption">{{ 'Para guardar, seleccioná empresa y funcionario.' if private else 'No necesitás cuenta. Los datos de esta consulta no se guardan como expediente.' }}</p></div>{% endif %}
+</aside></div>
+{% if private %}<section class="dl-history"><h2>Historial del centro laboral</h2><p>Últimos 30 cálculos de la selección. Cada registro conserva su resultado original.</p><div class="dl-table-wrap"><table><thead><tr><th>Referencia</th><th>Funcionario</th><th>Período</th><th>Importe · Gs.</th><th>Documento</th></tr></thead><tbody>{% for item in history %}<tr><td>#{{ item.id }}</td><td>{{ item.employee.full_name if item.employee else 'Sin funcionario' }}</td><td>{{ item.reference_period }}</td><td>{{ item.amount|gs }}</td><td><a href="/app/liquidaciones/{{ item.id }}">Ver y descargar</a></td></tr>{% else %}<tr><td colspan="5">Todavía no hay cálculos guardados para esta selección.</td></tr>{% endfor %}</tbody></table></div></section>{% endif %}
+</div>
+{% endmacro %}
+{% block content %}{{ workbench() }}{% endblock %}
+{% block public_content %}{% include "labor_public_nav.html" %}{{ workbench() }}{% include "labor_public_footer.html" %}{% endblock %}
