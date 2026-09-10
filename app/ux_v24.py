@@ -19,7 +19,8 @@ from .labor_rules import (
     vacation_amount,
     vacation_entitlement_days,
 )
-from .models import Branch, CalculationRecord, Employee, Payroll, PayrollLine, User
+from .models import Branch, CalculationRecord, Employee, Payroll, PayrollLine, PayrollComplianceDetail, User
+from .labor_calculator import CalculationError, amount, number
 
 app = core.app
 
@@ -372,16 +373,42 @@ async def update_payroll_line_v24(
     if payroll.status == "Cerrada":
         raise HTTPException(409, "La liquidación está cerrada.")
     form = await request.form()
-    for attr in ("base_salary", "overtime", "commissions", "bonuses", "other_income", "absences_discount", "advances", "other_discount"):
-        setattr(line, attr, max(0, _int(form.get(attr))))
-    line.gross = line.base_salary + line.overtime + line.commissions + line.bonuses + line.other_income
-    rate = core.get_parameter(db, "ips_employee_rate_general", 9)
-    ips_base_raw = _clean(form.get("ips_base"), 30)
-    ips_base = _int(ips_base_raw, line.gross) if ips_base_raw else line.gross
-    ips_base = min(max(0, ips_base), line.gross)
-    line.ips_employee = round(ips_base * rate / 100) if line.employee.ips_contributor else 0
-    line.total_discounts = line.ips_employee + line.absences_discount + line.advances + line.other_discount
-    line.net = max(0, line.gross - line.total_discounts)
+    try:
+        inputs = {key: int(number(form, key, maximum="2147483647")) for key in
+                  ("base_salary", "overtime", "commissions", "bonuses", "other_income",
+                   "absences_discount", "advances", "other_discount")}
+        gross = sum(inputs[k] for k in ("base_salary", "overtime", "commissions", "bonuses", "other_income"))
+        default_rate = str(line.ips_rate if line.ips_rate is not None else core.get_parameter(db, "ips_employee_rate_general", 9))
+        rate = number(form, "ips_rate", "tasa IPS", default=default_rate, maximum="100", decimals=2)
+        base = int(number(form, "ips_base", "base IPS", default=str(gross), maximum="2147483647"))
+        basis_note = _clean(form.get("ips_basis_note"), 300)
+        discount_note = _clean(form.get("other_discount_note"), 300)
+        if line.employee.ips_contributor and base != gross and not basis_note:
+            raise CalculationError("Explicá el criterio de la base IPS ajustada.")
+        if inputs["other_discount"] and not discount_note:
+            raise CalculationError("Describí el motivo de los otros descuentos.")
+        contribution = amount(number({"base":base},"base") * rate / 100) if line.employee.ips_contributor else 0
+        discounts = contribution + inputs["absences_discount"] + inputs["advances"] + inputs["other_discount"]
+        if gross > 2147483647 or discounts > gross:
+            raise CalculationError("Revisá los importes: el neto no puede ser negativo y los haberes deben estar dentro del límite del sistema.")
+        days_raw = _clean(form.get("days_worked"), 20)
+        days_worked = int(number(form, "days_worked", "jornadas trabajadas", maximum="31")) if days_raw else None
+    except CalculationError as exc:
+        raise HTTPException(422, str(exc))
+    for key, value in inputs.items():
+        setattr(line, key, value)
+    line.gross, line.ips_employee = gross, contribution
+    line.ips_base = base if line.employee.ips_contributor else 0
+    line.ips_rate = rate if line.employee.ips_contributor else 0
+    line.ips_basis_note, line.other_discount_note = basis_note, discount_note
+    line.total_discounts, line.net = discounts, gross - discounts
+    if days_worked is not None:
+        detail = db.scalar(select(PayrollComplianceDetail).where(PayrollComplianceDetail.payroll_line_id == line.id))
+        if detail is None:
+            detail = PayrollComplianceDetail(payroll_line_id=line.id)
+            db.add(detail)
+        detail.days_worked = days_worked
+    ips_base = line.ips_base
     core.recalculate_payroll(db, payroll)
     core.write_audit(db, user, "editar", "linea_liquidacion", str(line.id), f"{line.employee.full_name} · base IPS Gs. {ips_base}")
     db.commit()

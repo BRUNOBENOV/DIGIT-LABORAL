@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 from datetime import date
+from .labor_calculator import anniversary
 
 from PIL import Image
 
@@ -31,11 +32,11 @@ def run_rule_stress(check) -> None:  # noqa: ANN001
                 months = months_of_service(admission, as_of)
                 check(months >= years * 12, f'meses inconsistentes {admission}')
                 vacation = vacation_entitlement_days(admission, as_of)
-                expected_vacation = 0 if years < 1 else (12 if years <= 5 else (18 if years <= 10 else 30))
+                expected_vacation = 0 if years < 1 else (12 if as_of <= anniversary(admission, 5) else (18 if as_of <= anniversary(admission, 10) else 30))
                 check(vacation.value == expected_vacation, f'vacaciones art.218 {admission}: {vacation.value}/{expected_vacation}')
                 if admission <= as_of:
                     notice = preaviso_days(admission, as_of)
-                    expected_notice = 30 if months <= 12 else (45 if months <= 60 else (60 if months <= 120 else 90))
+                    expected_notice = 30 if as_of <= anniversary(admission, 1) else (45 if as_of <= anniversary(admission, 5) else (60 if as_of <= anniversary(admission, 10) else 90))
                     check(notice.value == expected_notice, f'preaviso art.87 {admission}: {notice.value}/{expected_notice}')
 
     for total in range(0, 120_000_001, 113_777):

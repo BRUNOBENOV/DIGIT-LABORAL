@@ -6,6 +6,7 @@ from .production_entry import app
 from . import ux_v23 as _ux_v23  # noqa: F401
 from . import v24_data as _v24_data
 from . import ux_v24 as _ux_v24  # noqa: F401
+from . import calculator_routes as _calculator_routes  # noqa: F401
 
 _original_lifespan = app.router.lifespan_context
 
