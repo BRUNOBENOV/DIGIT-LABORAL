@@ -1,8 +1,18 @@
 from __future__ import annotations
 
 from datetime import date
+from typing import Annotated
 
 from fastapi import HTTPException
+from pydantic import BeforeValidator
+
+
+def _blank_query_id(value):
+    """A browser's unselected option is an empty string, not a missing query."""
+    return None if isinstance(value, str) and not value.strip() else value
+
+
+OptionalQueryId = Annotated[int | None, BeforeValidator(_blank_query_id)]
 
 
 def optional_int(value: str | int | None, *, field: str = "valor") -> int | None:

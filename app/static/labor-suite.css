@@ -23,3 +23,10 @@ body{background:#fff!important;color:#000!important}
 .dl-payroll-totals{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin:24px 0}.dl-payroll-totals article{background:#fff;border:1px solid var(--line);padding:18px;border-radius:8px}.dl-payroll-totals small,.dl-payroll-totals b{display:block}.dl-payroll-totals b{font-size:20px}.dl-payroll-person{border:1px solid var(--line);border-radius:10px;padding:24px;margin:20px 0;background:#fff}.dl-payroll-person header{display:flex;align-items:center;justify-content:space-between;gap:18px}.dl-payroll-person header h2{font-size:22px;margin:0}.dl-payroll-person header p{font-size:12px;margin:4px 0}.dl-payroll-person header>div:last-child{text-align:right}.dl-payroll-person header b{display:block;font-size:22px}.dl-payroll-person header span,.dl-payroll-person header a{font-size:12px}.dl-payroll-person details{margin-top:16px;padding-top:16px;border-top:1px solid var(--line)}.dl-payroll-person summary{cursor:pointer;font-size:13px;font-weight:650}.dl-payroll-person fieldset{border:0;padding:24px 0 0;margin:0;grid-template-columns:repeat(4,minmax(0,1fr))}.dl-payroll-person [aria-disabled=true]{opacity:.4;cursor:not-allowed}
 @media(max-width:1000px){.dl-payroll-person fieldset,.dl-payroll-totals{grid-template-columns:1fr 1fr}}
 @media(max-width:560px){.dl-payroll-person{padding:18px}.dl-payroll-person header{align-items:flex-start;flex-direction:column}.dl-payroll-person header>div:last-child{text-align:left}.dl-payroll-person fieldset{grid-template-columns:1fr}.dl-payroll-totals b{font-size:16px}}
+
+.dl-saved-status{display:flex;flex-direction:column;gap:4px;padding:16px 20px;background:#edf5e5;border:1px solid #d3dfca;border-radius:8px;font-size:13px}
+.dl-saved-status b{color:var(--ink)}
+.dl-saved-status span{font-size:12px}
+.dl [aria-disabled="true"]{opacity:.45;cursor:not-allowed;text-decoration:none}
+.dl [data-payroll-bulk-dirty][hidden]{display:none}
+@media print{.dl-saved-status,[data-payroll-bulk-dirty]{display:none!important}}

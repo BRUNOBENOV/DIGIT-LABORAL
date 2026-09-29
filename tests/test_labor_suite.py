@@ -267,6 +267,151 @@ def test_company_role_cannot_save(web_case):
     assert response.status_code == 403
 
 
+@pytest.mark.parametrize("path", [
+    "/app/liquidaciones?company_id=&employee_id=",
+    "/app/employees?company_id=&q=Persona",
+    "/app/calendar?company_id=&employee_id=",
+    "/app/calculations?company_id=&employee_id=",
+    "/app/certificates?company_id=&employee_id=",
+    "/app/reports?company_id=&employee_id=",
+    "/app/ai?company_id=&employee_id=",
+    "/app/compliance?company_id=",
+])
+def test_empty_browser_filters_are_optional(web_case, path):
+    client, *_ = web_case
+    response = client.get(path)
+    assert response.status_code == 200, response.text[:600]
+
+
+def test_select_company_before_employee_and_clear_selection(web_case):
+    client, _, _, company, employee, _ = web_case
+    response = client.get("/app/liquidaciones", params={"company_id": company.id, "employee_id": ""})
+    assert response.status_code == 200, response.text[:600]
+    assert employee.full_name in response.text
+    assert f'value="{employee.id}"' in response.text
+    assert client.get("/app/liquidaciones?company_id=&employee_id=").status_code == 200
+
+
+def test_normal_account_login_csrf_private_pages_and_logout(web_case):
+    from app import main as core
+    from app.auth import hash_password
+    from app.runtime import app
+    client, db, box, company, employee, other = web_case
+    user = box["user"]
+    user.password_hash = hash_password("Synthetic-login-test-914!")
+    db.commit()
+    app.dependency_overrides.pop(core.require_user)
+    assert client.get("/app", follow_redirects=False).headers["location"] == "/login"
+    csrf = token(client, "/login")
+    response = client.post("/login", data={"email": user.email, "password": "Synthetic-login-test-914!", "csrf_token": csrf}, follow_redirects=False)
+    assert response.status_code == 303
+    assert response.headers["location"] == "/app"
+    for path in ("/app", "/app/companies", "/app/employees", "/app/payrolls", "/app/liquidaciones", "/app/documents"):
+        assert client.get(path).status_code == 200, path
+    assert client.get("/admin").status_code == 403
+    assert client.get("/app/users").status_code == 403
+    assert client.get(f"/app/companies/{other.company_id}").status_code == 404
+    assert client.get(f"/app/employees/{other.id}").status_code == 404
+    csrf = token(client, "/app/liquidaciones")
+    created = client.post("/app/companies", data=dict(csrf_token=csrf, legal_name="Nueva empresa de QA", ruc="80099999-1"), follow_redirects=False)
+    assert created.status_code == 303
+    company_id = int(created.headers["location"].rsplit("/", 1)[1])
+    created = client.post("/app/employees", data=dict(csrf_token=csrf, company_id=company_id,
+        full_name="Funcionario de QA", document_number="1999999", position="Auxiliar", admission_date="2024-01-01",
+        birth_date="", branch_id="", base_salary="3500000", contract_type="Tiempo indefinido", payment_frequency="Mensual", ips_contributor="on"), follow_redirects=False)
+    assert created.status_code == 303, created.text
+    from app.models import Employee
+    new_employee = db.query(Employee).filter_by(company_id=company_id).one()
+    data = salary(csrf_token=csrf, company_id=company_id, employee_id=new_employee.id)
+    calculated = client.post("/app/liquidaciones/calcular", data=data)
+    assert calculated.status_code == 200 and "3.185.000" in calculated.text
+    saved = client.post("/app/liquidaciones/guardar", data=data, follow_redirects=False)
+    assert saved.status_code == 303
+    for fmt in ("pdf", "csv"):
+        exported = client.get(saved.headers["location"] + "/exportar/" + fmt)
+        assert exported.status_code == 200
+    assert client.post("/logout", data={"csrf_token": csrf}, follow_redirects=False).status_code == 303
+    assert client.get("/app/liquidaciones", follow_redirects=False).headers["location"] == "/login"
+
+
+def test_private_exports_keep_identity_scope_and_validation_context(web_case):
+    client, _, _, company, employee, other = web_case
+    data = salary(csrf_token=token(client), company_id=company.id, employee_id=employee.id, employee="Alterado")
+    pdf = client.post("/app/liquidaciones/exportar/pdf", data=data)
+    assert pdf.status_code == 200
+    assert "2026-09-Persona-sintetica.pdf" in pdf.headers["content-disposition"]
+    text = "".join(p.extract_text() for p in PdfReader(io.BytesIO(pdf.content)).pages)
+    assert "Persona sintética" in text and "Alterado" not in text
+    data["employee_id"] = other.id
+    assert client.post("/app/liquidaciones/exportar/pdf", data=data).status_code == 404
+    data.update(employee_id=employee.id, salary="-1")
+    invalid = client.post("/app/liquidaciones/exportar/pdf", data=data)
+    assert invalid.status_code == 422
+    assert "CENTRO PROFESIONAL" in invalid.text and "Empresa sintética" in invalid.text
+
+
+def test_copy_calculation_preserves_original_and_needs_recalculation(web_case):
+    import json
+    from app.models import CalculationRecord
+    client, db, box, company, employee, _ = web_case
+    data = salary(csrf_token=token(client), company_id=company.id, employee_id=employee.id, salary="4000000", notes="Ejemplo anterior")
+    saved = client.post("/app/liquidaciones/guardar", data=data, follow_redirects=False)
+    path = saved.headers["location"]
+    record = db.get(CalculationRecord, int(path.rsplit("/", 1)[1]))
+    original = record.result_json
+    copied = client.get(path + "/copiar")
+    assert copied.status_code == 200
+    assert 'value="4000000"' in copied.text and "Ejemplo anterior" in copied.text
+    assert 'id="labor-result"' not in copied.text
+    assert "El registro original se conserva" in copied.text
+    data.update(salary="5000000")
+    second = client.post("/app/liquidaciones/guardar", data=data, follow_redirects=False)
+    assert second.headers["location"] != path
+    db.refresh(record)
+    assert record.result_json == original and json.loads(original)["net"] == 3640000
+    box["user"].studio_id = 999999
+    assert client.get(path + "/copiar").status_code == 404
+
+
+def test_calendar_handles_february_29_admission(web_case, monkeypatch):
+    from app import main as core
+    client, db, _, company, employee, _ = web_case
+    class FixedDate(date):
+        @classmethod
+        def today(cls):
+            return cls(2026, 1, 15)
+    monkeypatch.setattr(core, "date", FixedDate)
+    employee.admission_date = date(2024, 2, 29)
+    db.commit()
+    response = client.get("/app/calendar", params={"company_id": company.id})
+    assert response.status_code == 200
+    assert "28/02/2026" in response.text
+
+
+def test_certificate_context_rejects_foreign_employee_without_company(web_case):
+    client, _, _, company, employee, other = web_case
+    assert client.get(f"/app/certificates?employee_id={other.id}").status_code == 404
+    own = client.get(f"/app/certificates?employee_id={employee.id}")
+    assert own.status_code == 200 and company.legal_name in own.text
+
+
+def test_assistant_results_are_scoped_to_authorized_companies(web_case):
+    from app.models import AIInteraction, Company
+    client, db, box, company, employee, other = web_case
+    another_company = Company(studio_id=company.studio_id, legal_name="Otra empresa del estudio", ruc="80099998-2")
+    db.add(another_company); db.flush()
+    own = AIInteraction(studio_id=company.studio_id, company_id=company.id, purpose="control", response_text="Resultado autorizado")
+    foreign = AIInteraction(studio_id=other.company.studio_id, company_id=other.company_id, purpose="control", response_text="Resultado privado ajeno")
+    sibling = AIInteraction(studio_id=company.studio_id, company_id=another_company.id, purpose="control", response_text="Otra empresa privada")
+    db.add_all([own, foreign, sibling]); db.commit()
+    assert "Resultado autorizado" in client.get(f"/app/ai?result={own.id}").text
+    assert client.get(f"/app/ai?result={foreign.id}").status_code == 404
+    box["user"].role = "empresa"
+    box["user"].company_id = company.id
+    assert client.get(f"/app/ai?result={sibling.id}").status_code == 404
+    assert "Otra empresa del estudio" not in client.get("/app/ai").text
+
+
 def test_payroll_zero_base_persistence_and_closed_edit_guard(web_case):
     client,db,box,company,employee,_=web_case
     from app.models import Payroll,PayrollLine,PayrollComplianceDetail

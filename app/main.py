@@ -35,7 +35,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from .ai_service import generate_assistance
 from .auth import hash_password, verify_password
-from .labor_calculator import amount as round_gs
+from .labor_calculator import amount as round_gs, anniversary as labor_anniversary
 from .config import settings
 from .database import Base, SessionLocal, apply_session_tenant_context, engine
 from .document_export import (
@@ -107,7 +107,7 @@ from .tenant_security import apply_postgres_rls
 from .migration_service import migration_engine, run_migrations
 from .observability import configure_logging, request_context_middleware
 from .storage_service import storage
-from .form_utils import optional_int, clean_text
+from .form_utils import OptionalQueryId, optional_int, clean_text
 from .compliance_service import (
     COMPLIANCE_STATUS_TRANSITIONS,
     OFFICIAL_SOURCES,
@@ -1275,7 +1275,7 @@ def add_branch(
 
 
 @app.get("/app/employees", response_class=HTMLResponse)
-def employees_page(request: Request, q: str = "", company_id: int | None = None, user: User = Depends(require_user), db: Session = Depends(get_db)):
+def employees_page(request: Request, q: str = "", company_id: OptionalQueryId = None, user: User = Depends(require_user), db: Session = Depends(get_db)):
     company_ids = company_ids_for_user(db, user)
     query = select(Employee).where(Employee.company_id.in_(company_ids)) if company_ids else select(Employee).where(False)
     if company_id and company_id in company_ids:
@@ -1605,7 +1605,7 @@ def employee_status(
 
 @app.get("/app/calendar", response_class=HTMLResponse)
 def calendar_page(
-    request: Request, company_id: int | None = None, employee_id: int | None = None,
+    request: Request, company_id: OptionalQueryId = None, employee_id: OptionalQueryId = None,
     status_filter: str = "", user: User = Depends(require_user), db: Session = Depends(get_db),
 ):
     company_ids = company_ids_for_user(db, user)
@@ -1626,9 +1626,9 @@ def calendar_page(
     horizon = today_value + timedelta(days=60)
     automatic_alerts: list[dict] = []
     for employee in employees:
-        anniversary = employee.admission_date.replace(year=today_value.year)
+        anniversary = labor_anniversary(employee.admission_date, today_value.year - employee.admission_date.year)
         if anniversary < today_value:
-            anniversary = anniversary.replace(year=today_value.year + 1)
+            anniversary = labor_anniversary(employee.admission_date, today_value.year + 1 - employee.admission_date.year)
         if anniversary <= horizon:
             automatic_alerts.append({
                 "date": anniversary, "type": "Aniversario laboral", "title": employee.full_name,
@@ -1903,8 +1903,8 @@ def request_status(
 @app.get("/app/calculations", response_class=HTMLResponse)
 def calculations_page(
     request: Request,
-    company_id: int | None = None,
-    employee_id: int | None = None,
+    company_id: OptionalQueryId = None,
+    employee_id: OptionalQueryId = None,
     user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ):
@@ -2043,9 +2043,9 @@ def calculation_to_certificate(
 @app.get("/app/certificates", response_class=HTMLResponse)
 def certificates_page(
     request: Request,
-    calculation_id: int | None = None,
-    company_id: int | None = None,
-    employee_id: int | None = None,
+    calculation_id: OptionalQueryId = None,
+    company_id: OptionalQueryId = None,
+    employee_id: OptionalQueryId = None,
     document_type: str = "",
     user: User = Depends(require_user),
     db: Session = Depends(get_db),
@@ -2062,15 +2062,21 @@ def certificates_page(
         )
     ) if company_ids else []
     selected_calculation = db.get(CalculationRecord, calculation_id) if calculation_id else None
-    if selected_calculation and selected_calculation.company_id not in company_ids:
+    if calculation_id and (not selected_calculation or selected_calculation.company_id not in company_ids):
         raise HTTPException(404)
     if selected_calculation:
         company_id = selected_calculation.company_id
         employee_id = selected_calculation.employee_id
     selected_company = db.get(Company, company_id) if company_id in company_ids else None
     selected_employee = db.get(Employee, employee_id) if employee_id else None
-    if selected_employee and selected_company and selected_employee.company_id != selected_company.id:
-        selected_employee = None
+    if company_id and not selected_company:
+        raise HTTPException(404, "Empresa no encontrada.")
+    if employee_id and (not selected_employee or selected_employee.company_id not in company_ids):
+        raise HTTPException(404, "Funcionario no encontrado.")
+    if selected_employee:
+        if selected_company and selected_employee.company_id != selected_company.id:
+            raise HTTPException(404, "Funcionario no encontrado en la empresa seleccionada.")
+        selected_company = selected_company or selected_employee.company
     calculation_inputs = json_dict(selected_calculation.input_json) if selected_calculation else {}
     calculation_results = json_dict(selected_calculation.result_json) if selected_calculation else {}
     branding = get_or_create_branding(db, selected_company) if selected_company else None
@@ -2274,8 +2280,8 @@ def download_certificate_pdf(certificate_id: int, user: User = Depends(require_u
 @app.get("/app/reports", response_class=HTMLResponse)
 def reports_page(
     request: Request,
-    company_id: int | None = None,
-    employee_id: int | None = None,
+    company_id: OptionalQueryId = None,
+    employee_id: OptionalQueryId = None,
     user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ):
@@ -2313,7 +2319,7 @@ def reports_page(
 @app.get("/app/reports/export.csv")
 def reports_export_csv(
     company_id: int,
-    employee_id: int | None = None,
+    employee_id: OptionalQueryId = None,
     user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ):
@@ -2386,8 +2392,8 @@ def employee_integral_report(
 @app.get("/app/ai", response_class=HTMLResponse)
 def ai_page(
     request: Request,
-    company_id: int | None = None,
-    employee_id: int | None = None,
+    company_id: OptionalQueryId = None,
+    employee_id: OptionalQueryId = None,
     user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ):
@@ -2398,15 +2404,17 @@ def ai_page(
     selected_employee = db.get(Employee, employee_id) if employee_id else None
     if selected_employee and selected_employee.company_id not in company_ids:
         selected_employee = None
-    interactions = list(
-        db.scalars(
-            select(AIInteraction)
-            .where(AIInteraction.studio_id == user.studio_id)
-            .order_by(AIInteraction.created_at.desc())
-            .limit(15)
-        )
+    interactions_query = select(AIInteraction).where(
+        AIInteraction.studio_id == user.studio_id,
+        or_(AIInteraction.company_id.is_(None), AIInteraction.company_id.in_(company_ids)),
     )
-    latest = db.get(AIInteraction, int(request.query_params["result"])) if request.query_params.get("result", "").isdigit() else None
+    if user.role == "empresa":
+        interactions_query = interactions_query.where(AIInteraction.company_id.in_(company_ids))
+    interactions = list(db.scalars(interactions_query.order_by(AIInteraction.created_at.desc()).limit(15)))
+    result_id = request.query_params.get("result", "")
+    latest = db.scalar(interactions_query.where(AIInteraction.id == int(result_id))) if result_id.isdigit() else None
+    if result_id and not latest:
+        raise HTTPException(404, "Consulta no encontrada.")
     return render(
         request,
         "ai_assistant.html",
@@ -2986,7 +2994,7 @@ def _labor_outline(items: list[dict]) -> list[dict]:
 @app.get("/app/compliance", response_class=HTMLResponse)
 def compliance_page(
     request: Request,
-    company_id: int | None = None,
+    company_id: OptionalQueryId = None,
     authority: str = "",
     user: User = Depends(require_user),
     db: Session = Depends(get_db),
