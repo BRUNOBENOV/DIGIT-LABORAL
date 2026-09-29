@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import io
 import json
+import re
+import unicodedata
 import zipfile
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -14,6 +16,7 @@ from starlette.concurrency import run_in_threadpool
 
 from . import main as core
 from .calculator_fields import GROUPS
+from .form_utils import OptionalQueryId
 from .labor_calculator import CalculationError, SOURCE, TITLES, VERSION, calculate, clean
 from .liquidation_export import build_liquidation_pdf, build_liquidation_csv
 from .models import CalculationRecord, Company, Employee, Payroll, PayrollLine, PayrollComplianceDetail, User
@@ -77,11 +80,11 @@ def private_context(db, user, data):
                 employee=employee, company_id=company_id, employee_id=employee_id, history=history)
 
 
-def page(request, kind, data=None, result=None, error=None, db=None, user=None):
+def page(request, kind, data=None, result=None, error=None, db=None, user=None, copied_from=None):
     values = dict(data) if data is not None else None
     private = private_context(db, user, values if values is not None else {}) if user else {}
     ctx = context(kind, values)
-    ctx.update(private, result=result, error=str(error or ""), error_field=getattr(error, "field", ""))
+    ctx.update(private, result=result, error=str(error or ""), error_field=getattr(error, "field", ""), copied_from=copied_from)
     response = core.render(request, "labor_workbench.html", db, user, **ctx)
     response.headers.update(HEADERS)
     if error:
@@ -95,9 +98,9 @@ def public_page(request: Request, tipo: str = "salary"):
 
 
 @router.get("/app/liquidaciones")
-def professional_page(request: Request, tipo: str = "salary", company_id: int = 0, employee_id: int = 0,
+def professional_page(request: Request, tipo: str = "salary", company_id: OptionalQueryId = None, employee_id: OptionalQueryId = None,
                       user: User = Depends(core.require_user), db: Session = Depends(core.get_db)):
-    values = dict(context(tipo)["values"], company_id=company_id, employee_id=employee_id, prepared_by=user.full_name)
+    values = dict(context(tipo)["values"], company_id=company_id or 0, employee_id=employee_id or 0, prepared_by=user.full_name)
     scoped = private_context(db, user, values)
     if employee := scoped["employee"]:
         values.update(salary=str(employee.base_salary), start_date=employee.admission_date.isoformat(),
@@ -133,8 +136,14 @@ async def download(result, fmt):
         raise HTTPException(404)
     builder = build_liquidation_pdf if fmt == "pdf" else build_liquidation_csv
     content = await run_in_threadpool(builder, result)
+    # A distinct, ASCII-safe name makes monthly downloads easy to identify.
+    parts = [result["kind"], result.get("period", ""), result.get("identity", {}).get("employee", "")]
+    def slug(part):
+        ascii_text = unicodedata.normalize("NFKD", str(part)).encode("ascii", "ignore").decode()
+        return re.sub(r"[^A-Za-z0-9_-]+", "-", ascii_text).strip("-")[:70]
+    name = "-".join(filter(None, (slug(part) for part in parts)))
     return Response(content, media_type="application/pdf" if fmt == "pdf" else "text/csv; charset=utf-8",
-                    headers={**HEADERS, "Content-Disposition": f'attachment; filename="digit-laboral-{result["kind"]}.{fmt}"'})
+                    headers={**HEADERS, "Content-Disposition": f'attachment; filename="digit-laboral-{name}.{fmt}"'})
 
 
 @router.post("/herramientas/exportar/{fmt}")
@@ -144,6 +153,17 @@ async def public_export(request: Request, fmt: str):
         return await download(calculate(data), fmt)
     except CalculationError as exc:
         return page(request, data["kind"], data, error=exc)
+
+
+@router.post("/app/liquidaciones/exportar/{fmt}")
+async def professional_export(request: Request, fmt: str, user: User = Depends(core.require_user),
+                              db: Session = Depends(core.get_db)):
+    data = await form_values(request)
+    private_context(db, user, data)
+    try:
+        return await download(calculate(data), fmt)
+    except CalculationError as exc:
+        return page(request, data["kind"], data, error=exc, db=db, user=user)
 
 
 @router.post("/app/liquidaciones/guardar")
@@ -186,6 +206,17 @@ def saved_page(request: Request, record_id: int, user: User = Depends(core.requi
     response = core.render(request, "liquidation_saved.html", db, user, item=item, result=result)
     response.headers.update(HEADERS)
     return response
+
+
+@router.get("/app/liquidaciones/{record_id}/copiar")
+def copy_saved_calculation(request: Request, record_id: int, user: User = Depends(core.require_user),
+                           db: Session = Depends(core.get_db)):
+    item, _ = saved_result(db, user, record_id)
+    values = json.loads(item.input_json)
+    values.update(company_id=item.company_id, employee_id=item.employee_id or 0, prepared_by=user.full_name,
+                  issued_date=context(values["kind"])["values"]["issued_date"])
+    # The saved result remains immutable. This opens a new form for review.
+    return page(request, values["kind"], values, db=db, user=user, copied_from=item.id)
 
 
 @router.get("/app/liquidaciones/{record_id}/exportar/{fmt}")
