@@ -19,6 +19,7 @@ from .calculator_fields import GROUPS
 from .form_utils import OptionalQueryId
 from .labor_calculator import CalculationError, SOURCE, TITLES, VERSION, calculate, clean
 from .liquidation_export import build_liquidation_pdf, build_liquidation_csv
+from .labor_examples import example_values
 from .models import CalculationRecord, Company, Employee, Payroll, PayrollLine, PayrollComplianceDetail, User
 
 router = APIRouter()
@@ -93,8 +94,9 @@ def page(request, kind, data=None, result=None, error=None, db=None, user=None, 
 
 
 @router.get("/herramientas")
-def public_page(request: Request, tipo: str = "salary"):
-    return page(request, tipo)
+def public_page(request: Request, tipo: str = "salary", ejemplo: bool = False):
+    values = example_values(tipo, context(tipo)["values"]) if ejemplo and tipo in {"salary", "settlement"} else None
+    return page(request, tipo, values)
 
 
 @router.get("/app/liquidaciones")

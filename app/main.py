@@ -393,8 +393,10 @@ def require_roles(*roles: str):
 
 
 def company_ids_for_user(db: Session, user: User) -> list[int]:
-    if user.role == "empresa" and user.company_id:
-        return [user.company_id]
+    if user.role == "empresa":
+        if not user.company_id or not user.studio_id:
+            return []
+        return list(db.scalars(select(Company.id).where(Company.id == user.company_id, Company.studio_id == user.studio_id)))
     if user.studio_id:
         return list(db.scalars(select(Company.id).where(Company.studio_id == user.studio_id)))
     return []
