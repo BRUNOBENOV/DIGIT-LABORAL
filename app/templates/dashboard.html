@@ -11,6 +11,7 @@
       <p>{% if is_company %}Consultá tu expediente, funcionarios, documentos y solicitudes. Las tareas internas del estudio quedan fuera de tu vista.{% else %}Trabajá por tarea: empresas, funcionarios, operaciones y cumplimiento. Los controles técnicos aparecen solamente cuando hacen falta.{% endif %}</p>
     </div>
     <div class="dashboard-hero-actions">
+      <a class="btn outline" href="/app/guia">Guía de mi espacio</a>
       {% if is_company %}
         <a class="btn light-button" href="/app/requests">+ Nueva solicitud</a>
         {% if companies %}<a class="btn outline" href="/app/companies/{{ companies[0].id }}">Abrir mi expediente</a>{% endif %}

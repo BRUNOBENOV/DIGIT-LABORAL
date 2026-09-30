@@ -1,7 +1,7 @@
 name: Labor suite validation
 on:
   push:
-    branches: ["codex/centro-laboral-liquidaciones"]
+    branches: ["main", "codex/centro-laboral-liquidaciones"]
   pull_request:
     branches: ["main"]
 permissions:

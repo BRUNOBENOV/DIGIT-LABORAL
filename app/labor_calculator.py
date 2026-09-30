@@ -5,7 +5,7 @@ from calendar import monthrange
 from datetime import date
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
-VERSION = "2026.09.1"
+VERSION = "2026.09.2"
 SOURCE = "Centro laboral"
 TITLES = {"salary": "Liquidación de salario", "settlement": "Liquidación de haberes",
           "aguinaldo": "Aguinaldo", "vacation": "Vacaciones", "hours": "Horas y recargos"}
@@ -282,6 +282,13 @@ def calculate(data):
     result["net_label"] = ("Subtotal parcial" if result["partial"] else
                            "Total bruto" if kind in {"vacation", "hours"} else "Neto a percibir")
     result["employer_cost"] = result["gross"] + result["employer_contribution"] if kind == "salary" else None
+    if kind in {"salary", "settlement"} and str(data.get("reported_net", "")).strip():
+        reported = int(number(data, "reported_net", "neto informado en el recibo"))
+        difference = result["net"] - reported
+        result["receipt_review"] = dict(reported=reported, difference=difference)
+        fact("Neto informado en el recibo", "Gs. " + gs(reported))
+        fact("Diferencia (calculado menos informado)", "Gs. " + gs(difference))
+        result["notes"].append("La diferencia compara los importes según los datos ingresados; no acredita un pago ni determina por sí sola una deuda. Revisá período, conceptos y comprobantes.")
     if any(not identity[key] for key in ("employer", "ruc", "employee", "ci")):
         result["warnings"].append("Completá empleador, RUC, trabajador y documento antes de emitir un recibo para firma.")
     if note := clean(data.get("notes"), 600):

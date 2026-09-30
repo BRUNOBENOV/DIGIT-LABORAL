@@ -1,21 +1,14 @@
 {% extends "base.html" %}
 {% block title %}{{ titles[kind] }} | Digit Laboral{% endblock %}
+{% from 'labor_fields.html' import input_field as shared_field %}
 {% macro input_field(field) %}
-{% set value = values.get(field.name, field.value) %}
-<div class="dl-field {{ 'dl-check' if field.type == 'checkbox' else '' }} {{ 'dl-invalid' if error_field == field.name else '' }}">
-{% if field.type == 'checkbox' %}<label for="f-{{ field.name }}"><input type="checkbox" id="f-{{ field.name }}" name="{{ field.name }}" value="on" {% if value in ['on','true','1',True] %}checked{% endif %}>{{ field.label }}</label>
-{% else %}<label for="f-{{ field.name }}">{{ field.label }}{% if field.required %}<span aria-hidden="true"> *</span>{% endif %}</label>
-{% if field.type == 'select' %}<select id="f-{{ field.name }}" name="{{ field.name }}">{% for k,label in field.attrs.options %}<option value="{{ k }}" {% if value == k %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
-{% elif field.type == 'textarea' %}<textarea id="f-{{ field.name }}" name="{{ field.name }}" rows="3" maxlength="600">{{ value }}</textarea>
-{% else %}<input id="f-{{ field.name }}" name="{{ field.name }}" type="{{ field.type }}" value="{{ value }}"
-{% if field.required %}required{% endif %} {% if field.help %}aria-describedby="help-{{ field.name }}"{% endif %}
-{% for key, val in field.attrs.items() %}{{ key }}="{{ val }}"{% endfor %}
-{% if private and ((company_id and field.name in ['employer','ruc']) or (employee_id and field.name in ['employee','ci','position'])) %}readonly{% endif %}>{% endif %}{% endif %}
-{% if field.help %}<small id="help-{{ field.name }}">{{ field.help }}</small>{% endif %}</div>
+{{ shared_field(field, values, error_field, locked=private and ((company_id and field.name in ['employer','ruc']) or (employee_id and field.name in ['employee','ci','position']))) }}
 {% endmacro %}
 {% macro workbench() %}
 <div class="dl dl-workbench {{ 'dl-wrap' if not private else '' }}">
 <header class="dl-workbench-head"><p class="dl-eyebrow">{{ 'CENTRO PROFESIONAL' if private else 'CALCULADORAS LABORALES · PARAGUAY' }}</p><h1>Calculá. Revisá. Emití.</h1><p>Completá los datos y obtené un desglose listo para descargar. Los campos con * son obligatorios.</p></header>
+<div class="dl-output-actions"><a class="dl-textlink" href="{{ '/app/guia' if private else '/empezar' }}">Guía para empezar</a><a class="dl-textlink" href="/herramientas/comparar?tipo={{ kind }}">Comparar dos escenarios</a></div>
+{% if not private and values.get('reference') == 'EJEMPLO' %}<p class="dl-alert dl-example-notice">Estás usando datos ficticios. Podés calcular y descargar el ejemplo; reemplazá los datos antes de usarlo en un caso real.</p>{% endif %}
 {% if copied_from %}<p class="dl-alert" role="status">Datos cargados desde la liquidación #{{ copied_from }}. Revisá el período y los conceptos antes de calcular. El registro original se conserva.</p>{% endif %}
 {% if private %}<form method="get" action="/app/liquidaciones" class="dl-context"><input type="hidden" name="tipo" value="{{ kind }}"><div class="dl-field"><label for="ctx-company">Empresa</label><select name="company_id" id="ctx-company" aria-describedby="context-help"><option value="">Seleccioná una empresa</option>{% for item in companies %}<option value="{{ item.id }}" {% if item.id == company_id %}selected{% endif %}>{{ item.legal_name }}</option>{% endfor %}</select></div><div class="dl-field"><label for="ctx-employee">Funcionario</label><select name="employee_id" id="ctx-employee" aria-describedby="context-help"><option value="">Seleccioná un funcionario</option>{% for item in employees %}<option value="{{ item.id }}" {% if item.id == employee_id %}selected{% endif %}>{{ item.full_name }}</option>{% endfor %}</select></div><button class="dl-button dl-outline">Cargar selección</button><small id="context-help">Elegí una empresa y luego un funcionario. Sus datos se cargarán en el formulario.</small></form>{% endif %}
 {% if private and not companies %}<p class="dl-alert">Todavía no hay empresas en tu espacio. <a href="/app/companies">Registrá una empresa</a> para organizar tus liquidaciones.</p>{% elif private and company_id and not employees %}<p class="dl-alert">Esta empresa todavía no tiene funcionarios. <a href="/app/employees?company_id={{ company_id }}">Registrá un funcionario</a> para guardar sus liquidaciones.</p>{% endif %}

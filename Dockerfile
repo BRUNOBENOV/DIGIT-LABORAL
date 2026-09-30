@@ -24,4 +24,6 @@ USER digit
 HEALTHCHECK --interval=30s --timeout=5s --start-period=25s --retries=3 \
   CMD python -c "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:'+os.getenv('PORT','8000')+'/health/live', timeout=4)" || exit 1
 
-CMD ["sh", "-c", "python -m app.admin_recovery && python -m app.persona_qa && python -m app.dashboard_smoke && uvicorn app.runtime:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips='*'"]
+# The full persona/template suite runs before merge in GitHub Actions. Running
+# it on every cold start delays the first request without checking new code.
+CMD ["sh", "-c", "python -m app.admin_recovery && exec uvicorn app.runtime:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips='*'"]

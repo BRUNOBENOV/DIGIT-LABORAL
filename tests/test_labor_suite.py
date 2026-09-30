@@ -55,6 +55,151 @@ def test_salary_and_employer_cost_are_separate():
     assert (r["employer_contribution"],r["employer_cost"]) == (577500,4077500)
 
 
+@pytest.mark.parametrize("reported,difference", [("3185000",0),("3000000",185000),("3500000",-315000),("0",3185000)])
+def test_receipt_review_preserves_salary_and_reports_signed_difference(reported, difference):
+    result = calculate(salary(reported_net=reported))
+    assert result["net"] == 3185000
+    assert result["receipt_review"] == dict(reported=int(reported), difference=difference)
+    pdf_text = "\n".join(p.extract_text() for p in PdfReader(io.BytesIO(build_liquidation_pdf(result))).pages)
+    assert "Neto informado en el recibo" in pdf_text
+    assert "no acredita un pago" in pdf_text
+    assert "Diferencia (calculado menos informado)" in build_liquidation_csv(result).decode("utf-8-sig")
+
+
+def test_receipt_review_is_optional_and_rejects_invalid_amounts():
+    assert "receipt_review" not in calculate(salary())
+    for invalid in ("-1", "NaN", "10.5", "1.000.000"):
+        with pytest.raises(CalculationError) as error:
+            calculate(salary(reported_net=invalid))
+        assert error.value.field == "reported_net"
+
+
+def comparison_form(csrf, a=None, b=None):
+    a = salary() if a is None else a
+    b = salary(salary="4000000") if b is None else b
+    return dict(csrf_token=csrf, kind=a["kind"], label_a="Base", label_b="Alternativa",
+                **{"a_"+k:v for k,v in a.items() if k != "kind"},
+                **{"b_"+k:v for k,v in b.items() if k != "kind"})
+
+
+def test_comparison_calculates_two_independent_scenarios_and_exports(web_case):
+    client, *_ = web_case
+    csrf = token(client, "/herramientas/comparar?tipo=salary")
+    data = comparison_form(csrf)
+    response = client.post("/herramientas/comparar", data=data)
+    assert response.status_code == 200
+    for expected in ("3.185.000", "3.640.000", "455.000", "582.500", "Datos que cambian"):
+        assert expected in response.text
+    ids = re.findall(r'\bid="([^"]+)"', response.text)
+    assert len(ids) == len(set(ids)), "Comparison forms and results require unique ids"
+    for side, net in (("a","3.185.000"),("b","3.640.000")):
+        exported = client.post(f"/herramientas/comparar/exportar/{side}/pdf", data=data)
+        assert exported.status_code == 200
+        assert f"escenario-{side}-" in exported.headers["content-disposition"]
+        assert net in "".join(p.extract_text() for p in PdfReader(io.BytesIO(exported.content)).pages)
+        assert exported.headers["cache-control"] == "no-store"
+    csv = client.post("/herramientas/comparar/exportar/b/csv", data=data)
+    assert "Neto a percibir;3640000" in csv.content.decode("utf-8-sig")
+    assert client.post("/herramientas/comparar/exportar/c/pdf", data=data).status_code == 404
+
+
+def test_comparison_validation_csrf_partial_results_and_escaping(web_case):
+    client, *_ = web_case
+    data = comparison_form(token(client), salary(salary="-1"), salary(salary=""))
+    invalid = client.post("/herramientas/comparar",data=data)
+    assert invalid.status_code == 422
+    assert "Escenario A:" in invalid.text and "Escenario B:" in invalid.text
+    assert 'id="labor-result"' not in invalid.text
+    assert client.post("/herramientas/comparar/exportar/a/pdf",data=data).status_code == 422
+    data.pop("csrf_token")
+    assert client.post("/herramientas/comparar",data=data).status_code == 403
+    data = comparison_form(token(client), settlement(protected="on"), settlement())
+    data["label_a"] = '<script>alert("x")</script>'
+    partial = client.post("/herramientas/comparar", data=data)
+    assert partial.status_code == 200
+    assert "Hay un escenario parcial" in partial.text
+    assert '<script>alert("x")</script>' not in partial.text
+    assert '&lt;script&gt;' in partial.text
+    huge = comparison_form(token(client))
+    huge["a_notes"] = "x" * 65000
+    assert client.post("/herramientas/comparar", data=huge).status_code == 413
+
+
+@pytest.mark.parametrize("profile", ["empresa","contador","abogado","empleado"])
+def test_each_profile_has_actionable_guide_and_safe_examples(web_case, profile):
+    from app.models import CalculationRecord
+    client, db, *_ = web_case
+    response = client.get("/empezar",params={"perfil":profile})
+    assert response.status_code == 200
+    assert 'aria-current="page"' in response.text
+    assert "DATOS FICTICIOS" in response.text
+    assert "registro(s) disponible(s)" not in response.text
+    before = db.query(CalculationRecord).count()
+    demo = client.get("/herramientas?tipo=salary&ejemplo=true")
+    assert 'value="3500000"' in demo.text and "Estás usando datos ficticios" in demo.text
+    assert 'id="labor-result"' not in demo.text
+    assert db.query(CalculationRecord).count() == before
+    assert client.get("/empezar?perfil=no-existe").status_code == 404
+
+
+def test_comparison_demo_is_executable_and_does_not_persist(web_case):
+    from html.parser import HTMLParser
+    from app.models import CalculationRecord
+    client, db, *_ = web_case
+    response = client.get("/herramientas/comparar?tipo=settlement&ejemplo=true")
+    class FormValues(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.data, self.active, self.select, self.textarea = {}, False, None, None
+        def handle_starttag(self, tag, attrs):
+            attrs = dict(attrs)
+            if tag == "form":
+                self.active = attrs.get("id") == "labor-form"
+            if not self.active:
+                return
+            if tag == "input" and attrs.get("name"):
+                if attrs.get("type") != "checkbox" or "checked" in attrs:
+                    self.data[attrs["name"]] = attrs.get("value", "")
+            elif tag == "select":
+                self.select = attrs["name"]
+            elif tag == "option" and self.select:
+                if self.select not in self.data or "selected" in attrs:
+                    self.data[self.select] = attrs.get("value", "")
+            elif tag == "textarea":
+                self.textarea = attrs["name"]
+                self.data[self.textarea] = ""
+        def handle_data(self, text):
+            if self.active and self.textarea:
+                self.data[self.textarea] += text
+        def handle_endtag(self, tag):
+            if tag == "form": self.active = False
+            elif tag == "select": self.select = None
+            elif tag == "textarea": self.textarea = None
+    form = FormValues()
+    form.feed(response.text)
+    data = form.data
+    result = client.post("/herramientas/comparar", data=data)
+    assert result.status_code == 200, result.text[:500]
+    assert "9.000.000" in result.text and "1.500.000" in result.text and "-7.500.000" in result.text
+    assert db.query(CalculationRecord).count() == 0
+
+
+def test_company_scope_fails_closed_without_valid_assignment(web_case):
+    from app import main as core
+    client, db, box, company, employee, other = web_case
+    box["user"].role = "empresa"
+    for assignment in (None, other.company_id):
+        box["user"].company_id = assignment
+        assert core.company_ids_for_user(db, box["user"]) == []
+        assert client.get(f"/app/employees/{employee.id}").status_code == 404
+    box["user"].company_id = company.id
+    assert core.company_ids_for_user(db, box["user"]) == [company.id]
+    guide = client.get("/app/guia")
+    assert guide.status_code == 200
+    assert "1 registro(s) disponible(s)" in guide.text and "0 registro(s) disponible(s)" in guide.text
+    assert "empresa vinculada" in guide.text and "Nóminas</h2>" not in guide.text
+
+
 def test_family_and_reimbursements_do_not_increase_default_ips_base():
     r = calculate(salary(family="200000",reimbursements="100000"))
     assert r["discounts"] == 315000

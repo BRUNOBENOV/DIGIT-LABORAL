@@ -1,0 +1,41 @@
+{% extends 'base.html' %}
+{% from 'labor_fields.html' import input_field %}
+{% block title %}Comparar escenarios | Digit Laboral{% endblock %}
+{% block public_content %}
+{% include 'labor_public_nav.html' %}
+<main class="dl dl-wrap dl-workbench dl-comparison">
+<header class="dl-workbench-head"><p class="dl-eyebrow">COMPARACIÓN DE ESCENARIOS</p><h1>Dos escenarios, un mismo criterio.</h1><p>Completá A, copialo en B y cambiá los datos que querés contrastar. El desglose muestra la diferencia económica y los supuestos de cada uno.</p></header>
+<nav class="dl-tabs" aria-label="Tipo de comparación">{% for key,title in titles.items() %}<a href="/herramientas/comparar?tipo={{ key }}" {% if key == kind %}aria-current="page"{% endif %}>{{ title }}</a>{% endfor %}</nav>
+{% if example %}<p class="dl-alert dl-example-notice">Cargamos datos ficticios en ambos escenarios. Revisalos y pulsá Comparar escenarios. No se guardan en ningún expediente.</p>{% endif %}
+<form id="labor-form" data-comparison-form method="post" action="/herramientas/comparar">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="kind" value="{{ kind }}">
+{% if errors %}<div class="dl-alert dl-error" id="labor-error" role="alert" tabindex="-1"><b>Revisá los escenarios</b>{% for side,error in errors.items() %}<p>Escenario {{ side|upper }}: {{ error.message }}</p>{% endfor %}</div>{% endif %}
+<div class="dl-compare-inputs">
+{% for side in ['a','b'] %}
+<section aria-labelledby="scenario-{{ side }}"><header class="dl-scenario-head"><h2 id="scenario-{{ side }}">Escenario {{ side|upper }}</h2>{% if side == 'b' %}<button class="dl-button dl-outline" type="button" data-copy-scenario hidden>Copiar A en B</button>{% endif %}</header>
+<div class="dl-field dl-scenario-name"><label for="label-{{ side }}">Nombre del escenario {{ side|upper }}</label><input id="label-{{ side }}" name="label_{{ side }}" value="{{ labels[side] }}" maxlength="70"><small>{{ 'Identificá el supuesto que vas a revisar.' if side == 'a' else 'Copiar A en B reemplaza los datos de B; después podés modificarlos.' }}</small></div>
+{% for group in groups %}
+{% if group.advanced %}<details class="dl-form-section"><summary>{{ group.title }}</summary><div class="dl-fields">{% for field in group.fields %}{{ input_field(field,scenarios[side],errors.get(side,{}).get('field',''),side ~ '_') }}{% endfor %}</div></details>
+{% else %}<fieldset class="dl-form-section"><legend>{{ group.title }}</legend><div class="dl-fields">{% for field in group.fields %}{{ input_field(field,scenarios[side],errors.get(side,{}).get('field',''),side ~ '_') }}{% endfor %}</div></fieldset>{% endif %}
+{% endfor %}</section>
+{% endfor %}
+</div>
+<p class="dl-caption" data-copy-status role="status"></p>
+<div class="dl-form-submit"><button class="dl-button" data-keep-enabled="true">{{ 'Recalcular comparación' if results else 'Comparar escenarios' }} →</button><span>La comparación no determina qué causa de egreso corresponde ni acredita hechos.</span></div>
+</form>
+{% if results %}
+<p class="dl-alert dl-stale" hidden role="status">Cambiaste datos. Recalculá la comparación antes de imprimir o descargar.</p>
+<div class="dl-output-actions"><button class="dl-button" type="button" data-print data-result-action>Imprimir comparación</button>{% for side in ['a','b'] %}<button class="dl-button dl-outline" type="submit" form="labor-form" data-keep-enabled="true" data-result-action formaction="/herramientas/comparar/exportar/{{ side }}/pdf">PDF escenario {{ side|upper }}</button><button class="dl-button dl-outline" type="submit" form="labor-form" data-keep-enabled="true" data-result-action formaction="/herramientas/comparar/exportar/{{ side }}/csv">CSV escenario {{ side|upper }}</button>{% endfor %}</div>
+<section id="labor-result" class="dl-comparison-output" tabindex="-1" aria-label="Resultado de la comparación">
+<h2>Resultado de la comparación</h2><p>{{ titles[kind] }} · {{ results.a.issued_date }} · Importes en guaraníes</p>
+{% if results.a.partial or results.b.partial %}<p class="dl-alert"><b>Hay un escenario parcial.</b> Su importe excluye conceptos que requieren revisión del régimen aplicable. La diferencia no representa una liquidación completa.</p>{% endif %}
+<div class="dl-table-wrap"><table class="dl-compare-summary"><thead><tr><th scope="col">Concepto</th><th scope="col">A · {{ labels.a }}</th><th scope="col">B · {{ labels.b }}</th><th scope="col">Variación B − A</th></tr></thead><tbody>{% for key,title in [('gross','Haberes'),('discounts','Descuentos'),('net','Total calculado')] %}<tr><th scope="row">{{ title }}</th><td>{{ results.a[key]|gs }}{% if key == 'net' and results.a.partial %}<small>Parcial</small>{% endif %}</td><td>{{ results.b[key]|gs }}{% if key == 'net' and results.b.partial %}<small>Parcial</small>{% endif %}</td><td>{{ (results.b[key] - results.a[key])|gs }}</td></tr>{% endfor %}{% if kind == 'salary' %}<tr><th scope="row">Costo del empleador</th><td>{{ results.a.employer_cost|gs }}</td><td>{{ results.b.employer_cost|gs }}</td><td>{{ (results.b.employer_cost - results.a.employer_cost)|gs }}</td></tr>{% endif %}</tbody></table></div>
+<p class="dl-caption">Un valor positivo indica que B supera a A; un valor negativo indica que B es menor. Revisá que períodos y conceptos sean comparables.</p>
+<h3>Datos que cambian</h3>{% if changes %}<div class="dl-table-wrap"><table class="dl-compare-changes"><thead><tr><th scope="col">Dato</th><th scope="col">Escenario A</th><th scope="col">Escenario B</th></tr></thead><tbody>{% for change in changes %}<tr><th scope="row">{{ change.label }}</th><td>{{ change.a }}</td><td>{{ change.b }}</td></tr>{% endfor %}</tbody></table></div>{% else %}<p>Ambos escenarios utilizan los mismos datos.</p>{% endif %}
+<div class="dl-compare-results">{% for side in ['a','b'] %}<section class="dl-scenario-result"><h2>{{ side|upper }} · {{ labels[side] }}</h2>{% with result=results[side], result_id='result-' ~ side %}{% include 'liquidation_result.html' %}{% endwith %}</section>{% endfor %}</div>
+</section>
+{% endif %}
+<p class="dl-caption dl-comparison-back"><a href="/empezar?perfil=abogado">Volver a la guía</a> · Las consultas públicas no se guardan como expediente.</p>
+</main>
+{% include 'labor_public_footer.html' %}
+{% endblock %}

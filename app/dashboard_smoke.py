@@ -16,9 +16,19 @@ TEMPLATES = (
     "payroll_detail.html",
     "calculations.html",
     "vacations.html",
+    "labor_guide.html",
+    "labor_compare.html",
+    "labor_fields.html",
+    "labor_workbench.html",
+    "liquidation_result.html",
 )
 
 REQUIRED_ROUTES = {
+    ("GET", "/empezar"),
+    ("GET", "/app/guia"),
+    ("GET", "/herramientas/comparar"),
+    ("POST", "/herramientas/comparar"),
+    ("POST", "/herramientas/comparar/exportar/{side}/{fmt}"),
     ("GET", "/app"),
     ("GET", "/app/companies"),
     ("POST", "/app/companies"),

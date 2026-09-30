@@ -26,6 +26,9 @@ ANNUAL = group("Aguinaldo", [
     field("annual_remuneration", "Remuneraciones computables del año · Gs.", required=True,
           help="Incluí lo devengado hasta el egreso, antes de descuentos. No ingreses solo el último sueldo."),
     field("aguinaldo_paid", "Aguinaldo ya abonado · Gs.")])
+RECEIPT_REVIEW = group("Revisar un recibo", [
+    field("reported_net", "Neto informado en el recibo · Gs.",
+          help="Opcional. Copiá el neto de tu recibo para compararlo con este cálculo; no modifica haberes ni descuentos.")])
 IDENTITY = group("Datos del documento", [
     field("employer", "Empleador / razón social", "text", maxlength="180"),
     field("ruc", "RUC del empleador", "text", maxlength="40"),
@@ -45,7 +48,7 @@ GROUPS = {
                   help="Dato del recibo. Distinto de la base mensual de 30 días.")]),
         EXTRAS, group("Conceptos separados", [
             field("family", "Bonificación familiar · Gs.", help="Ingresá el importe cuyo derecho verificaste."),
-            field("reimbursements", "Reintegros documentados · Gs.")], True), IPS, IDENTITY],
+            field("reimbursements", "Reintegros documentados · Gs.")], True), IPS, RECEIPT_REVIEW, IDENTITY],
     "settlement": [
         group("Relación laboral", [SALARY, field("days_paid", "Días de salario pendientes", value="0", max="30", required=True),
             field("start_date", "Fecha de ingreso", "date", required=True),
@@ -64,7 +67,7 @@ GROUPS = {
             field("double_days", "Días pendientes con pago doble", max="365", step="0.01",
                   help="Solo cuando proceda legalmente. No repetir días simples."),
             field("proportional_days", "Días proporcionales reconocidos", max="30", step="0.01",
-                  help="Ingresá el derecho verificado según causa y período.")]), ANNUAL, IPS, IDENTITY],
+                  help="Ingresá el derecho verificado según causa y período.")]), ANNUAL, IPS, RECEIPT_REVIEW, IDENTITY],
     "aguinaldo": [group("Período", [field("year", "Año liquidado", min="1900", max="2100", required=True)]), ANNUAL, IDENTITY],
     "vacation": [group("Remuneración de vacaciones", [SALARY,
         field("legal_minimum", "Mínimo legal de la actividad y período · Gs.", min="1", required=True,

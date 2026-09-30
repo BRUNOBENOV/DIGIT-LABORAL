@@ -1,0 +1,21 @@
+{% extends 'base.html' %}
+{% block title %}Guía para empezar | Digit Laboral{% endblock %}
+{% macro guide_content() %}
+<div class="dl dl-wrap dl-workbench">
+<header class="dl-workbench-head"><p class="dl-eyebrow">TU RECORRIDO EN DIGIT LABORAL</p><h1>{{ 'Tu espacio, paso a paso.' if private else '¿Qué necesitás resolver?' }}</h1><p>Calculá, documentá y revisá obligaciones laborales en Paraguay.</p></header>
+{% if private %}
+<p class="dl-alert">{% if user.role == 'empresa' %}Tu cuenta consulta la empresa vinculada y permite enviar solicitudes al estudio. Las altas y el guardado de liquidaciones dependen de los permisos del equipo.{% else %}Estos números muestran registros de tu espacio; completarlos no sustituye revisar sus datos y documentos.{% endif %}</p>
+<div class="dl-guide-steps">{% for step in steps %}<article><span class="dl-step">{{ loop.index }}</span><div><h2>{{ step.title }}</h2><p>{{ step.description }}</p><small>{{ step.count }} registro(s) disponible(s)</small></div><a class="dl-button dl-outline" href="{{ step.href }}">Abrir</a></article>{% endfor %}</div>
+<div class="dl-access"><article><h2>Antes de cerrar el mes</h2><ol><li>Revisá período, jornadas y novedades.</li><li>Guardá los cambios y descargá los recibos.</li><li>Abrí el PDF y verificá nombres, conceptos y neto.</li><li>Documentá el pago y las firmas por el medio correspondiente.</li></ol><a class="dl-textlink" href="/app/liquidaciones">Abrir liquidaciones e historial →</a></article><article><h2>Una consulta o revisión</h2><p>También podés comparar escenarios o revisar el neto informado en un recibo sin modificar los registros guardados.</p><a class="dl-button dl-outline" href="/herramientas/comparar">Comparar escenarios</a></article></div>
+{% else %}
+<nav class="dl-tabs" aria-label="Elegir recorrido">{% for key,item in profiles.items() %}<a href="/empezar?perfil={{ key }}" {% if key == profile %}aria-current="page"{% endif %}>{{ item.label }}</a>{% endfor %}</nav>
+<section class="dl-guide-intro"><p class="dl-eyebrow">{{ guide.label }}</p><h2>{{ guide.title }}</h2><p class="dl-lead">{{ guide.intro }}</p></section>
+<div class="dl-guide-tasks">{% for title,description,href in guide.tasks %}<a href="{{ href }}"><span class="dl-step">{{ loop.index }}</span><h3>{{ title }}</h3><p>{{ description }}</p><b>Abrir →</b></a>{% endfor %}</div>
+<section class="dl-guide-prepare"><h2>Tené a mano</h2><ul>{% for item in guide.prepare %}<li>{{ item }}</li>{% endfor %}</ul><p>Las consultas públicas no se guardan como expediente. El historial y la gestión de empresas requieren una cuenta activada con los permisos correspondientes.</p></section>
+{% endif %}
+<section class="dl-pilot" aria-labelledby="pilot-title"><div><p class="dl-eyebrow">PRUEBA GUIADA · DATOS FICTICIOS</p><h2 id="pilot-title">Probá antes de cargar un caso real.</h2><p>El ejemplo salarial usa Gs. 3.500.000, 30 días e IPS del 9%: neto Gs. 3.185.000. Podés recalcularlo y descargar original y duplicado.</p><div class="dl-actions"><a class="dl-button" href="/herramientas?tipo=salary&amp;ejemplo=true">Cargar ejemplo salarial</a><a class="dl-button dl-outline" href="/herramientas/comparar?tipo=settlement&amp;ejemplo=true">Cargar dos escenarios de egreso</a></div></div><div><h3>Para probar con un caso real</h3><ol><li>Elegí un período y reuní el recibo y sus respaldos.</li><li>Ingresá los mismos conceptos y contrastá cada importe.</li><li>Revisá las diferencias antes de emitir el documento.</li><li>Guardá el resultado en el funcionario si tu cuenta lo permite.</li></ol><p class="dl-caption">Los ejemplos no crean empresas, empleados ni liquidaciones guardadas.</p></div></section>
+{% if not private %}<p class="dl-caption">¿Necesitás gestionar una empresa o estudio? <a href="/activacion">Solicitá activación</a>. Si ya tenés cuenta, <a href="/login">ingresá a tu espacio</a>.</p>{% endif %}
+</div>
+{% endmacro %}
+{% block content %}{{ guide_content() }}{% endblock %}
+{% block public_content %}{% include 'labor_public_nav.html' %}{{ guide_content() }}{% include 'labor_public_footer.html' %}{% endblock %}

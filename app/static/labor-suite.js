@@ -4,6 +4,22 @@
   const result = document.getElementById("labor-result");
   let formChanged = false;
   if (form) form.addEventListener("input", () => { formChanged = true; });
+  const copyScenario = document.querySelector("[data-copy-scenario]");
+  if (copyScenario && form) {
+    copyScenario.hidden = false;
+    copyScenario.addEventListener("click", () => {
+      for (const source of form.elements) {
+        if (!source.name?.startsWith("a_")) continue;
+        const target = form.elements.namedItem("b_" + source.name.slice(2));
+        if (!target) continue;
+        if (source.type === "checkbox") target.checked = source.checked;
+        else target.value = source.value;
+      }
+      form.dispatchEvent(new Event("input", {bubbles: true}));
+      const status = document.querySelector("[data-copy-status]");
+      if (status) status.textContent = "Datos de A copiados en B. Cambiá los supuestos y volvé a comparar.";
+    });
+  }
   if (form && result) {
     const markDirty = () => {
       document.body.classList.add("dl-form-dirty");
