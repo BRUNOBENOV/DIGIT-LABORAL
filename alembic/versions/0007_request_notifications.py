@@ -81,6 +81,7 @@ def upgrade() -> None:
         op.create_table(
             "notification_deliveries",
             sa.Column("id", sa.Integer(), primary_key=True),
+            sa.Column("studio_id", sa.Integer(), sa.ForeignKey("studios.id"), nullable=True),
             sa.Column("notification_id", sa.Integer(), sa.ForeignKey("notifications.id"), nullable=False),
             sa.Column("channel", sa.String(20), nullable=False, server_default="email"),
             sa.Column("status", sa.String(30), nullable=False, server_default="Pendiente"),
@@ -92,6 +93,7 @@ def upgrade() -> None:
         )
     delivery_indexes = _indexes("notification_deliveries")
     for name, columns in [
+        ("ix_notification_deliveries_studio_id", ["studio_id"]),
         ("ix_notification_deliveries_notification_id", ["notification_id"]),
         ("ix_notification_deliveries_status", ["status"]),
     ]:

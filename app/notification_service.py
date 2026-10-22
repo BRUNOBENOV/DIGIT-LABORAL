@@ -9,8 +9,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .config import settings
-from .database import SessionLocal
-from .models import Notification, NotificationDelivery, User
+from .database import SessionLocal, apply_session_tenant_context
+from .models import Notification, NotificationDelivery, Studio, User
 
 logger = logging.getLogger("digit.notifications")
 
@@ -47,6 +47,7 @@ def create_notification(
     delivery = None
     if settings.smtp_host and settings.smtp_from_email and recipient.email:
         delivery = NotificationDelivery(
+            studio_id=recipient.studio_id,
             notification_id=notification.id, channel="email", status="Pendiente", attempts=0,
         )
         db.add(delivery)
@@ -54,9 +55,12 @@ def create_notification(
     return notification, delivery, True
 
 
-def send_notification_delivery(delivery_id: int) -> bool:
+def send_notification_delivery(delivery_id: int, studio_id: int | None = None) -> bool:
     """Deliver one queued email after the business transaction commits."""
     with SessionLocal() as db:
+        db.info["studio_id"] = studio_id
+        db.info["is_superadmin"] = False
+        apply_session_tenant_context(db)
         delivery = db.get(NotificationDelivery, delivery_id)
         if not delivery or delivery.status == "Enviado" or delivery.status == "Enviando":
             return delivery is not None and delivery.status == "Enviado"
@@ -102,6 +106,9 @@ def send_notification_delivery(delivery_id: int) -> bool:
     except Exception as exc:
         logger.warning("Notification email delivery failed: %s", str(exc)[:250], extra={"delivery_id": delivery_id})
         with SessionLocal() as db:
+            db.info["studio_id"] = studio_id
+            db.info["is_superadmin"] = False
+            apply_session_tenant_context(db)
             delivery = db.get(NotificationDelivery, delivery_id)
             if delivery:
                 delivery.status = "Fallido" if delivery.attempts >= 5 else "Pendiente"
@@ -111,6 +118,9 @@ def send_notification_delivery(delivery_id: int) -> bool:
         return False
 
     with SessionLocal() as db:
+        db.info["studio_id"] = studio_id
+        db.info["is_superadmin"] = False
+        apply_session_tenant_context(db)
         delivery = db.get(NotificationDelivery, delivery_id)
         if delivery:
             delivery.status = "Enviado"
@@ -122,19 +132,28 @@ def send_notification_delivery(delivery_id: int) -> bool:
 
 
 def dispatch_notification_outbox(limit: int = 100) -> dict[str, int]:
-    """Retry pending or transiently failed SMTP messages; safe to run from cron."""
+    """Retry pending or transiently failed SMTP messages across tenant scopes."""
+    pending: list[tuple[int, int | None]] = []
     with SessionLocal() as db:
-        deliveries = list(db.scalars(
-            select(NotificationDelivery)
-            .where(NotificationDelivery.status.in_(("Pendiente", "Fallido")), NotificationDelivery.attempts < 5)
-            .order_by(NotificationDelivery.created_at, NotificationDelivery.id)
-            .limit(max(1, min(limit, 500)))
-        ))
-        ids = [item.id for item in deliveries]
+        # Studios are not row-level protected; set each tenant context before
+        # touching tenant-scoped notification tables.
+        studio_ids = list(db.scalars(select(Studio.id).order_by(Studio.id)))
+        for studio_id in studio_ids:
+            db.info["studio_id"] = studio_id
+            db.info["is_superadmin"] = False
+            apply_session_tenant_context(db)
+            rows = list(db.scalars(
+                select(NotificationDelivery)
+                .where(NotificationDelivery.status.in_(("Pendiente", "Fallido")), NotificationDelivery.attempts < 5)
+                .order_by(NotificationDelivery.created_at, NotificationDelivery.id)
+                .limit(max(1, min(limit, 500)))
+            ))
+            pending.extend((item.id, studio_id) for item in rows)
+    pending = pending[:max(1, min(limit, 500))]
     sent = failed = 0
-    for delivery_id in ids:
-        if send_notification_delivery(delivery_id):
+    for delivery_id, studio_id in pending:
+        if send_notification_delivery(delivery_id, studio_id):
             sent += 1
         else:
             failed += 1
-    return {"sent": sent, "failed": failed, "checked": len(ids)}
+    return {"sent": sent, "failed": failed, "checked": len(pending)}

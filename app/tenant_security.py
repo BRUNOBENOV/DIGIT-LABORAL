@@ -10,6 +10,8 @@ DIRECT_POLICIES = {
     "security_events": "studio_id = digit_current_studio_id()",
     "studio_payments": "studio_id = digit_current_studio_id()",
     "integration_batches": "studio_id = digit_current_studio_id()",
+    "notifications": "studio_id = digit_current_studio_id()",
+    "notification_deliveries": "studio_id = digit_current_studio_id()",
 }
 
 COMPANY_POLICIES = {

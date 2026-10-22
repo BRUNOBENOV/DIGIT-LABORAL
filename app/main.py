@@ -1802,7 +1802,7 @@ def _create_in_app_notification(
         dedupe_key=dedupe_key,
     )
     if created and delivery is not None:
-        background_tasks.add_task(send_notification_delivery, delivery.id)
+        background_tasks.add_task(send_notification_delivery, delivery.id, recipient.studio_id)
 
 
 def _notify_studio_team(
@@ -2041,6 +2041,7 @@ def requests_page(request: Request, user: User = Depends(require_user), db: Sess
     company_ids = company_ids_for_user(db, user)
     items = list(db.scalars(select(CompanyRequest).where(CompanyRequest.company_id.in_(company_ids)).order_by(CompanyRequest.created_at.desc()))) if company_ids else []
     companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name))) if company_ids else []
+    employees = list(db.scalars(select(Employee).where(Employee.company_id.in_(company_ids)).order_by(Employee.full_name))) if company_ids else []
     request_ids = [item.id for item in items]
     workflows = list(db.scalars(select(RequestWorkflow).where(RequestWorkflow.request_id.in_(request_ids)))) if request_ids else []
     workflow_by_request = {item.request_id: item for item in workflows}
@@ -2049,7 +2050,7 @@ def requests_page(request: Request, user: User = Depends(require_user), db: Sess
         workflow.due_date and workflow.due_date < date.today() and next((item.status for item in items if item.id == workflow.request_id), "") not in {"Resuelta", "Rechazada", "Aplicada"}
         for workflow in workflows
     )
-    return render(request, "requests.html", db, user, items=items, companies=companies, workflow_by_request=workflow_by_request, pending=pending, overdue=overdue)
+    return render(request, "requests.html", db, user, items=items, companies=companies, employees=employees, workflow_by_request=workflow_by_request, pending=pending, overdue=overdue)
 
 
 @app.post("/app/requests")

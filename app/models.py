@@ -529,6 +529,7 @@ class NotificationDelivery(Base):
     __tablename__ = "notification_deliveries"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    studio_id: Mapped[Optional[int]] = mapped_column(ForeignKey("studios.id"), nullable=True, index=True)
     notification_id: Mapped[int] = mapped_column(ForeignKey("notifications.id"), index=True)
     channel: Mapped[str] = mapped_column(String(20), default="email")
     status: Mapped[str] = mapped_column(String(30), default="Pendiente", index=True)
