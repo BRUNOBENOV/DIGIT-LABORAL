@@ -24,7 +24,10 @@ def login(client: TestClient) -> str:
         follow_redirects=False,
     )
     assert response.status_code == 303
-    return match.group(1)
+    dashboard = client.get("/app")
+    dashboard_token = re.search(r'name="csrf_token" value="([^"]+)"', dashboard.text)
+    assert dashboard.status_code == 200 and dashboard_token
+    return dashboard_token.group(1)
 
 
 def test_new_automation_pages_render():
@@ -33,7 +36,7 @@ def test_new_automation_pages_render():
         for path, marker in (
             ("/app/reports", "Informes"),
             ("/app/ai", "Asistente IA"),
-            ("/app/calculations", "Centro de cálculos"),
+            ("/app/calculations", "Calculá con contexto"),
             ("/app/certificates", "Documentos laborales"),
         ):
             response = client.get(path)
@@ -93,6 +96,7 @@ def test_company_logo_upload_and_retrieval():
                 "show_contact": "on",
             },
             files={"logo": ("logo.png", io.BytesIO(png), "image/png")},
+            headers={"x-csrf-token": csrf},
             follow_redirects=False,
         )
         assert response.status_code == 303

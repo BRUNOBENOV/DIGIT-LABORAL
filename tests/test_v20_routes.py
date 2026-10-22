@@ -19,7 +19,10 @@ def _login(client: TestClient) -> str:
         follow_redirects=False,
     )
     assert response.status_code == 303
-    return match.group(1)
+    dashboard = client.get("/app")
+    dashboard_token = re.search(r'name="csrf_token" value="([^"]+)"', dashboard.text)
+    assert dashboard.status_code == 200 and dashboard_token
+    return dashboard_token.group(1)
 
 
 def test_critical_authenticated_pages_render_html():

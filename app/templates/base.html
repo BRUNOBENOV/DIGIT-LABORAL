@@ -12,7 +12,8 @@
   <link rel="stylesheet" href="{{ url_for('static', path='v22-dashboard.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', path='v23.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', path='v24.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', path='labor-suite.css') }}?v=20260929b">
+  <link rel="stylesheet" href="{{ url_for('static', path='notifications.css') }}?v=2">
+  <link rel="stylesheet" href="{{ url_for('static', path='labor-suite.css') }}?v=20260929b">
 </head>
 <body class="{% if user %}app-body{% else %}public-body{% endif %}">
 {% if user %}
@@ -91,7 +92,6 @@
 <script src="{{ url_for('static', path='v22-dashboard.js') }}"></script>
 <script src="{{ url_for('static', path='v23.js') }}"></script>
 <script src="{{ url_for('static', path='v24.js') }}"></script>
-<link rel="stylesheet" href="{{ url_for('static', path='notifications.css') }}?v=1">
 <script src="{{ url_for('static', path='labor-suite.js') }}?v=20260929b" defer></script>
 <script>
 (function () {
