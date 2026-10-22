@@ -20,3 +20,22 @@ def test_professional_list_filters_are_explicitly_local():
     assert 'installCardFilter(".request-grid"' in script
     assert 'installCardFilter(".notification-list"' in script
     assert "experience-filter-item-hidden" in script or "experience-filter-item-hidden" in (root / "app/static/experience.css").read_text(encoding="utf-8")
+
+
+def test_workspace_navigation_uses_five_accounting_areas():
+    root = Path(__file__).resolve().parents[1]
+    base = (root / "app/templates/base.html").read_text(encoding="utf-8")
+    dashboard = (root / "app/templates/dashboard.html").read_text(encoding="utf-8")
+
+    for area in ("Mantenimientos", "Cálculo", "Informes", "Certificados", "Utilitarios"):
+        assert area in base
+        assert area in dashboard
+
+    for route in (
+        "/app/companies", "/app/employees", "/app/calculations",
+        "/app/liquidaciones", "/app/payrolls", "/app/vacations",
+        "/app/aguinaldo", "/app/reports", "/app/compliance",
+        "/app/certificates", "/app/documents", "/app/requests",
+        "/app/notifications", "/app/security",
+    ):
+        assert route in base

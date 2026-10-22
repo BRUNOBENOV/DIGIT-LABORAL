@@ -21,69 +21,92 @@
   <header class="modern-topbar">
     <a class="modern-brand" href="{{ '/admin' if user.role == 'superadmin' else '/app' }}">
       <span class="modern-brand-mark">DL</span>
-      <span class="modern-brand-copy"><b>Digit Laboral</b><small>CONTROL LABORAL PY</small></span>
+      <span class="modern-brand-copy"><b>Digit Laboral</b><small>GESTIÓN LABORAL · PY</small></span>
     </a>
-
-    <nav class="modern-nav" aria-label="Navegación principal">
-      {% if user.role == 'superadmin' %}
-        <a class="{{ 'active' if active_path.startswith('/admin') else '' }}" href="/admin">Administración</a>
-      {% else %}
-        <a class="{{ 'active' if active_path == '/app' else '' }}" href="/app">Inicio</a>
-        <a class="{{ 'active' if active_path.startswith('/app/liquidaciones') else '' }}" href="/app/liquidaciones">Calcular y emitir</a>
-        <a class="{{ 'active' if active_path.startswith('/app/companies') else '' }}" href="/app/companies">Empresas</a>
-        <a class="{{ 'active' if active_path.startswith('/app/employees') else '' }}" href="/app/employees">Funcionarios</a>
-        {% if user.role != 'empresa' %}<a class="{{ 'active' if active_path.startswith('/app/payrolls') or active_path.startswith('/app/vacations') or active_path.startswith('/app/aguinaldo') or active_path.startswith('/app/calculations') else '' }}" href="/app/payrolls">Operaciones</a>{% endif %}
-        {% if user.role != 'empresa' %}<a class="{{ 'active' if active_path.startswith('/app/compliance') else '' }}" href="/app/compliance">Cumplimiento</a>{% endif %}
-        <a class="{{ 'active' if active_path.startswith('/app/documents') or active_path.startswith('/app/certificates') else '' }}" href="/app/documents">Documentos</a>
-        <details class="nav-more">
-          <summary>Más</summary>
-          <div class="nav-more-menu">
-            <a href="/app/guia">Guía de mi espacio</a>
-            <a class="{{ 'active' if active_path.startswith('/app/notifications') else '' }}" href="/app/notifications">Notificaciones <span class="notification-count" {% if not notification_unread_count %}hidden{% endif %}>{{ notification_unread_count if notification_unread_count < 100 else '99+' if notification_unread_count else '' }}</span></a>
-            <a href="/herramientas/comparar">Comparar escenarios</a>
-            <a class="{{ 'active' if active_path.startswith('/app/requests') else '' }}" href="/app/requests">Trámites y solicitudes</a>
-            {% if user.role != 'empresa' %}<a class="{{ 'active' if active_path.startswith('/app/reports') else '' }}" href="/app/reports">Reportes</a>{% endif %}
-            {% if user.role != 'empresa' %}<a class="{{ 'active' if active_path.startswith('/app/calendar') else '' }}" href="/app/calendar">Agenda laboral</a>{% endif %}
-            <a class="{{ 'active' if active_path.startswith('/app/labor-code') else '' }}" href="/app/labor-code">Código Laboral</a>
-            {% if user.role != 'empresa' %}<a class="{{ 'active' if active_path.startswith('/app/ai') else '' }}" href="/app/ai">Asistente</a>{% endif %}
-            {% if user.role == 'administrador' %}
-              <hr>
-              <a class="{{ 'active' if active_path.startswith('/app/users') else '' }}" href="/app/users">Usuarios y permisos</a>
-              <a class="{{ 'active' if active_path.startswith('/app/audit') else '' }}" href="/app/audit">Auditoría</a>
-              <a class="{{ 'active' if active_path.startswith('/app/parameters') else '' }}" href="/app/parameters">Parámetros</a>
-            {% endif %}
-          </div>
-        </details>
-      {% endif %}
-    </nav>
-
     <div class="modern-actions">
-      {% if studio %}<a class="workspace-pill" href="/app/companies" title="Abrir empresas del estudio"><small>{{ 'EMPRESA' if user.role == 'empresa' else 'ESTUDIO' }}</small><b>{{ studio.name }}</b></a>{% endif %}
+      {% if studio and user.role != 'superadmin' %}<a class="workspace-pill" href="/app/companies" title="Abrir empresas del estudio"><small>{{ 'EMPRESA' if user.role == 'empresa' else 'ESTUDIO' }}</small><b>{{ studio.name }}</b></a>{% endif %}
+      {% if user.role != 'superadmin' %}
+        <a class="workspace-notice" href="/app/notifications" aria-label="Notificaciones"><span aria-hidden="true">♢</span><span>Notificaciones</span><span class="notification-count" {% if not notification_unread_count %}hidden{% endif %}>{{ notification_unread_count if notification_unread_count < 100 else '99+' if notification_unread_count else '' }}</span></a>
+      {% endif %}
       <a class="modern-user" href="{{ '/admin' if user.role == 'superadmin' else '/app/security' }}" title="{{ 'Administración' if user.role == 'superadmin' else 'Seguridad de la cuenta' }}"><span class="avatar">{{ user.full_name[:2]|upper }}</span><span><b>{{ user.full_name }}</b><small>{{ user.role|replace('superadmin','Administrador general')|capitalize }}</small></span></a>
       <form method="post" action="/logout"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="modern-logout" type="submit">Salir</button></form>
-      <button class="modern-menu" type="button" data-modern-menu aria-label="Abrir menú">☰</button>
+      <button class="modern-menu" type="button" data-modern-menu aria-label="Abrir menú de navegación" aria-controls="modernMobileNav" aria-expanded="false">☰</button>
     </div>
   </header>
 
-  <nav class="modern-mobile-nav" id="modernMobileNav" aria-label="Navegación móvil">
-    {% if user.role == 'superadmin' %}
-      <a href="/admin">Administración</a>
-    {% else %}
-      <a href="/app">Inicio</a><a href="/app/liquidaciones">Calcular y emitir</a>
-      <a href="/app/companies">Empresas</a>
-      <a href="/app/employees">Funcionarios</a>
-      {% if user.role != 'empresa' %}<a href="/app/payrolls">Operaciones</a><a href="/app/compliance">Cumplimiento</a>{% endif %}
-      <a href="/app/documents">Documentos</a>
-      <a href="/app/notifications">Notificaciones <span class="notification-count" {% if not notification_unread_count %}hidden{% endif %}>{{ notification_unread_count if notification_unread_count < 100 else '99+' if notification_unread_count else '' }}</span></a>
-      <a href="/app/requests">Trámites</a>
-      {% if user.role != 'empresa' %}<a href="/app/reports">Reportes</a><a href="/app/calendar">Agenda</a>{% endif %}
-      <a href="/app/labor-code">Código Laboral</a>
-      {% if user.role == 'administrador' %}<a href="/app/users">Usuarios</a><a href="/app/audit">Auditoría</a>{% endif %}
-      <a href="/app/security">Mi seguridad</a>
-    {% endif %}
-  </nav>
+  <div class="app-shell">
+    <button class="workspace-sidebar-backdrop" type="button" data-sidebar-backdrop aria-label="Cerrar menú"></button>
+    <nav class="modern-mobile-nav workspace-sidebar" id="modernMobileNav" aria-label="Secciones de Digit Laboral">
+      <div class="workspace-sidebar-label">MENÚ PRINCIPAL</div>
+      {% if user.role == 'superadmin' %}
+        <a class="workspace-home-link {{ 'active' if active_path.startswith('/admin') else '' }}" href="/admin"><span class="workspace-home-symbol">⌂</span><span>Administración general</span></a>
+      {% else %}
+        <a class="workspace-home-link {{ 'active' if active_path == '/app' else '' }}" href="/app"><span class="workspace-home-symbol">⌂</span><span>Inicio</span></a>
 
-  <div class="app-shell"><main class="main-content">{% block content %}{% endblock %}</main></div>
+        <details class="workspace-nav-group" {% if active_path.startswith('/app/companies') or active_path.startswith('/app/employees') or active_path.startswith('/app/users') or active_path.startswith('/app/parameters') %}open{% endif %}>
+          <summary><span class="workspace-group-symbol">01</span><span class="workspace-group-name">Mantenimientos</span><span class="workspace-group-chevron">⌄</span></summary>
+          <div class="workspace-submenu">
+            <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/companies') else '' }}" href="/app/companies">{{ 'Mi empresa' if user.role == 'empresa' else 'Empresas' }}</a>
+            <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/employees') else '' }}" href="/app/employees">Funcionarios</a>
+            {% if user.role == 'administrador' %}
+              <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/users') else '' }}" href="/app/users">Usuarios y permisos</a>
+              <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/parameters') else '' }}" href="/app/parameters">Parámetros</a>
+            {% endif %}
+          </div>
+        </details>
+
+        {% if user.role != 'empresa' %}
+        <details class="workspace-nav-group" {% if active_path.startswith('/app/liquidaciones') or active_path.startswith('/app/payrolls') or active_path.startswith('/app/vacations') or active_path.startswith('/app/aguinaldo') or active_path.startswith('/app/calculations') %}open{% endif %}>
+          <summary><span class="workspace-group-symbol">02</span><span class="workspace-group-name">Cálculo</span><span class="workspace-group-chevron">⌄</span></summary>
+          <div class="workspace-submenu">
+            <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/calculations') else '' }}" href="/app/calculations">Centro de cálculos</a>
+            <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/liquidaciones') else '' }}" href="/app/liquidaciones">Calcular y emitir</a>
+            <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/payrolls') else '' }}" href="/app/payrolls">Liquidaciones mensuales</a>
+            <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/vacations') else '' }}" href="/app/vacations">Vacaciones</a>
+            <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/aguinaldo') else '' }}" href="/app/aguinaldo">Aguinaldo</a>
+          </div>
+        </details>
+
+        <details class="workspace-nav-group" {% if active_path.startswith('/app/reports') or active_path.startswith('/app/compliance') or active_path.startswith('/app/audit') %}open{% endif %}>
+          <summary><span class="workspace-group-symbol">03</span><span class="workspace-group-name">Informes</span><span class="workspace-group-chevron">⌄</span></summary>
+          <div class="workspace-submenu">
+            <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/reports') else '' }}" href="/app/reports">Informes laborales</a>
+            <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/compliance') else '' }}" href="/app/compliance">Cumplimiento REI / REOP</a>
+            {% if user.role == 'administrador' %}<a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/audit') else '' }}" href="/app/audit">Auditoría</a>{% endif %}
+          </div>
+        </details>
+        {% endif %}
+
+        <details class="workspace-nav-group" {% if active_path.startswith('/app/certificates') or active_path.startswith('/app/documents') %}open{% endif %}>
+          <summary><span class="workspace-group-symbol">04</span><span class="workspace-group-name">Certificados</span><span class="workspace-group-chevron">⌄</span></summary>
+          <div class="workspace-submenu">
+            <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/certificates') else '' }}" href="/app/certificates">Emitir certificados</a>
+            <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/documents') else '' }}" href="/app/documents">Archivo documental</a>
+          </div>
+        </details>
+
+        <details class="workspace-nav-group" {% if active_path.startswith('/app/requests') or active_path.startswith('/app/notifications') or active_path.startswith('/app/calendar') or active_path.startswith('/app/labor-code') or active_path.startswith('/app/ai') or active_path.startswith('/herramientas/comparar') or active_path.startswith('/app/security') or active_path.startswith('/app/guia') %}open{% endif %}>
+          <summary><span class="workspace-group-symbol">05</span><span class="workspace-group-name">Utilitarios</span><span class="workspace-group-chevron">⌄</span></summary>
+          <div class="workspace-submenu">
+            <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/requests') else '' }}" href="/app/requests">Solicitudes y trámites</a>
+            {% if user.role != 'empresa' %}<a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/calendar') else '' }}" href="/app/calendar">Agenda laboral</a>{% endif %}
+            <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/notifications') else '' }}" href="/app/notifications">Notificaciones <span class="notification-count" {% if not notification_unread_count %}hidden{% endif %}>{{ notification_unread_count if notification_unread_count < 100 else '99+' if notification_unread_count else '' }}</span></a>
+            <a class="workspace-nav-link {{ 'active' if active_path.startswith('/herramientas/comparar') else '' }}" href="/herramientas/comparar">Comparar escenarios</a>
+            <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/labor-code') else '' }}" href="/app/labor-code">Código Laboral</a>
+            {% if user.role != 'empresa' %}<a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/ai') else '' }}" href="/app/ai">Asistente laboral</a>{% endif %}
+            <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/guia') else '' }}" href="/app/guia">Guía de mi espacio</a>
+            <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/security') else '' }}" href="/app/security">Seguridad de la cuenta</a>
+            {% if user.role == 'administrador' %}<a class="workspace-nav-link" data-download-action href="/app/export/studio.zip">Respaldo del estudio</a>{% endif %}
+          </div>
+        </details>
+      {% endif %}
+
+      {% if user.role != 'superadmin' %}
+      <div class="workspace-sidebar-bottom"><span class="workspace-sidebar-bottom-mark">DL</span><div><b>Digit Laboral</b><small>Gestión laboral de Paraguay</small></div></div>
+      {% endif %}
+    </nav>
+    <main class="main-content">{% block content %}{% endblock %}</main>
+  </div>
 {% else %}
   {% block public_content %}{% endblock %}
 {% endif %}
