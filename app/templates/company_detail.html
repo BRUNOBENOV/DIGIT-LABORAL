@@ -115,7 +115,7 @@
         <div class="brand-upload-preview">
           {% if branding.logo_bytes %}<img id="companyLogoPreview" src="/app/companies/{{ company.id }}/logo?v={{ logo_version }}" alt="Logo actual de {{ company.legal_name }}"><div id="companyLogoPlaceholder" class="brand-upload-placeholder hidden">{{ branding.document_prefix }}</div>{% else %}<div id="companyLogoPlaceholder" class="brand-upload-placeholder">{{ branding.document_prefix }}</div><img id="companyLogoPreview" class="hidden" alt="Vista previa del logo">{% endif %}
         </div>
-        <div><b>Elegí o arrastrá el logo</b><span>PNG, JPG/JPEG o WEBP · hasta 2 MB. El sistema lo ajusta automáticamente sin deformarlo.</span><small id="companyLogoFileName">{% if branding.logo_filename %}Actual: {{ branding.logo_filename }}{% else %}Ningún archivo seleccionado{% endif %}</small></div>
+        <div><b>Elegí o arrastrá el logo</b><span>PNG, JPG/JPEG o WEBP · hasta 8 MB. El sistema lo ajusta automáticamente sin deformarlo.</span><small id="companyLogoFileName">{% if branding.logo_filename %}Actual: {{ branding.logo_filename }}{% else %}Ningún archivo seleccionado{% endif %}</small></div>
       </div>
       <div id="companyLogoClientError" class="logo-client-error" {% if not request.query_params.get('logo_error') %}hidden{% endif %}>{{ request.query_params.get('logo_error') or '' }}</div>
       <div class="form-actions"><button class="btn ghost" type="button" data-modal-close>Cancelar</button><button class="btn primary" type="submit">Guardar logo</button></div>

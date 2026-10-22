@@ -1173,45 +1173,35 @@ def company_logo(company_id: int, user: User = Depends(require_user), db: Sessio
 async def upload_company_logo(
     company_id: int,
     logo: UploadFile = File(...),
-    user: User = Depends(require_roles("administrador", "contador", "empresa")),
+    user: User = Depends(require_roles("administrador", "contador", "auxiliar", "empresa")),
     db: Session = Depends(get_db),
 ):
     company = company_allowed(db, user, company_id)
     target = f"/app/companies/{company.id}"
 
+    def upload_error(message: str) -> RedirectResponse:
+        return RedirectResponse(
+            f"{target}?logo_error={quote(message)}&open=brandingModal",
+            status_code=303,
+        )
+
     if not logo.filename:
-        return RedirectResponse(f"{target}?logo_error={quote('Seleccioná una imagen antes de guardar.')}", status_code=303)
+        return upload_error("Seleccioná una imagen antes de guardar.")
 
-    content = await logo.read(settings.max_logo_size + 1)
-    limit_mb = settings.max_logo_size / (1024 * 1024)
-    limit_label = f"{limit_mb:g} MB"
-    if len(content) > settings.max_logo_size:
-        return RedirectResponse(
-            f"{target}?logo_error={quote(f'El logo supera el límite permitido de {limit_label}.')}",
-            status_code=303,
-        )
+    upload_limit = max(settings.max_logo_size, 8 * 1024 * 1024)
+    content = await logo.read(upload_limit + 1)
     if not content:
-        return RedirectResponse(f"{target}?logo_error={quote('El archivo seleccionado está vacío.')}", status_code=303)
-
-    content_type = detect_logo_content_type(content)
-    if content_type is None:
-        return RedirectResponse(
-            f"{target}?logo_error={quote('El logo debe ser una imagen PNG, JPG/JPEG o WEBP válida.')}",
-            status_code=303,
-        )
+        return upload_error("El archivo seleccionado está vacío.")
+    if len(content) > upload_limit:
+        return upload_error(f"El logo supera el máximo permitido de {upload_limit / (1024 * 1024):g} MB.")
+    if detect_logo_content_type(content) is None:
+        return upload_error("El logo debe ser una imagen PNG, JPG/JPEG o WEBP válida.")
 
     try:
         optimized_bytes, optimized_type = smart_normalize_logo(content)
     except Exception as exc:
-        logger.warning(
-            "Company logo processing failed for company_id=%s (%s)",
-            company.id,
-            type(exc).__name__,
-        )
-        return RedirectResponse(
-            f"{target}?logo_error={quote('No se pudo procesar la imagen. Probá con un PNG, JPG o WEBP válido.')}",
-            status_code=303,
-        )
+        logger.warning("Company logo processing failed for company_id=%s (%s)", company.id, type(exc).__name__)
+        return upload_error("No se pudo procesar la imagen. Probá con un PNG, JPG o WEBP válido.")
 
     branding = get_or_create_branding(db, company)
     clean_name = safe_filename(logo.filename)
@@ -1220,16 +1210,14 @@ async def upload_company_logo(
     branding.logo_content_type = optimized_type
     branding.logo_filename = f"{base_name or 'logo'}-normalizado.png"
     branding.updated_at = datetime.now(UTC)
-    write_audit(db, user, "actualizar", "identidad_visual", str(company.id), company.legal_name)
+    write_audit(db, user, "actualizar", "logo_empresa", str(company.id), company.legal_name)
     try:
         db.commit()
     except Exception:
         db.rollback()
         logger.exception("Could not save company logo for company_id=%s", company.id)
-        return RedirectResponse(
-            f"{target}?logo_error={quote('No se pudo guardar el logo. Intentá nuevamente; si persiste, avisá al administrador.')}",
-            status_code=303,
-        )
+        return upload_error("No se pudo guardar el logo. Intentá nuevamente; si vuelve a fallar, avisá al administrador.")
+    logger.info("Company logo saved (company_id=%s, size_bytes=%s)", company.id, len(optimized_bytes))
     return RedirectResponse(f"{target}?logo_saved=1", status_code=303)
 
 
