@@ -2536,14 +2536,26 @@ def apply_request(
     return RedirectResponse(f"/app/requests/{item.id}", status_code=303)
 
 
+CALCULATION_MODULES = {
+    "salary": {"title": "Salarios", "eyebrow": "CÁLCULO DE SALARIOS", "description": "Ingresá haberes, descuentos y base de IPS para revisar el bruto, el aporte y el neto estimado."},
+    "hours": {"title": "Horas y recargos", "eyebrow": "CÁLCULO DE HORAS", "description": "Calculá el valor hora con una jornada y un multiplicador previamente revisados."},
+    "aguinaldo": {"title": "Cálculo de aguinaldo", "eyebrow": "AGUINALDO · ARTS. 243/244", "description": "Estimá la doceava parte de las remuneraciones computables del periodo."},
+    "vacation": {"title": "Cálculo de vacaciones", "eyebrow": "VACACIONES · ARTS. 218/220", "description": "Estimá la remuneración de vacaciones con base y días revisados."},
+    "notice": {"title": "Cálculo de preaviso", "eyebrow": "PREAVISO · ARTS. 87/90/92", "description": "Estimá el importe a partir de la base promedio y los días que correspondan al caso."},
+}
+
+
 @app.get("/app/calculations", response_class=HTMLResponse)
 def calculations_page(
     request: Request,
     company_id: OptionalQueryId = None,
     employee_id: OptionalQueryId = None,
+    tipo: str | None = None,
     user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ):
+    if tipo and tipo not in CALCULATION_MODULES:
+        raise HTTPException(404, "Calculadora no encontrada.")
     company_ids = company_ids_for_user(db, user)
     companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name))) if company_ids else []
     employees_query = select(Employee).where(Employee.company_id.in_(company_ids), Employee.status == "Activo") if company_ids else select(Employee).where(False)
@@ -2555,6 +2567,8 @@ def calculations_page(
         recent_query = recent_query.where(CalculationRecord.company_id == company_id)
     if employee_id:
         recent_query = recent_query.where(CalculationRecord.employee_id == employee_id)
+    if tipo:
+        recent_query = recent_query.where(CalculationRecord.calculation_type == tipo)
     recent_calculations = list(db.scalars(recent_query.order_by(CalculationRecord.created_at.desc()).limit(30)))
     return render(
         request,
@@ -2570,6 +2584,8 @@ def calculations_page(
         minimum_salary=get_parameter(db, "minimum_monthly_salary_general", 0),
         hourly_reference=get_parameter(db, "minimum_hourly_wage_general", 0),
         calculation_labels={key: calculation_label(key) for key in ("salary", "hours", "aguinaldo", "vacation", "notice")},
+        active_calculation_type=tipo or "",
+        calculation_module=CALCULATION_MODULES.get(tipo),
     )
 
 
@@ -2631,7 +2647,7 @@ def save_calculation(
     db.flush()
     write_audit(db, user, "guardar", "calculo", str(item.id), f"{calculation_label(calculation_type)} · Gs. {format_gs(amount)}")
     db.commit()
-    return RedirectResponse(f"/app/calculations?saved={item.id}&company_id={company.id}" + (f"&employee_id={employee.id}" if employee else ""), status_code=303)
+    return RedirectResponse(f"/app/calculations?tipo={quote(calculation_type)}&saved={item.id}&company_id={company.id}" + (f"&employee_id={employee.id}" if employee else ""), status_code=303)
 
 
 @app.post("/app/calculations/{calculation_id}/status")
@@ -2649,7 +2665,8 @@ def calculation_status(
     item.status = status_value
     write_audit(db, user, "actualizar_estado", "calculo", str(item.id), status_value)
     db.commit()
-    return RedirectResponse("/app/calculations", status_code=303)
+    target = f"/app/calculations?tipo={quote(item.calculation_type)}" if item.calculation_type in CALCULATION_MODULES else "/app/calculations"
+    return RedirectResponse(target, status_code=303)
 
 
 @app.get("/app/calculations/{calculation_id}/certificate")

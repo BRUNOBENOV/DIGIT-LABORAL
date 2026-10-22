@@ -100,7 +100,7 @@ def public_page(request: Request, tipo: str = "salary", ejemplo: bool = False):
 
 
 @router.get("/app/liquidaciones")
-def professional_page(request: Request, tipo: str = "salary", company_id: OptionalQueryId = None, employee_id: OptionalQueryId = None,
+def professional_page(request: Request, tipo: str = "settlement", company_id: OptionalQueryId = None, employee_id: OptionalQueryId = None,
                       user: User = Depends(core.require_user), db: Session = Depends(core.get_db)):
     values = dict(context(tipo)["values"], company_id=company_id or 0, employee_id=employee_id or 0, prepared_by=user.full_name)
     scoped = private_context(db, user, values)
