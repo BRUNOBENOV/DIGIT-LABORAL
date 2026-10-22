@@ -89,11 +89,21 @@
   const company = document.getElementById('requestCompany');
   const employee = document.getElementById('requestEmployee');
   if (!type || !company || !employee) return;
+  const requiredByType = {
+    'Cambio salarial': ['employee_id', 'amount', 'effective_date'],
+    'Vacaciones': ['employee_id', 'period_year', 'requested_days', 'start_date', 'end_date'],
+    'Permiso/licencia': ['employee_id', 'leave_type', 'start_date', 'end_date']
+  };
+  const conditionalRequired = new Set(['employee_id', 'amount', 'effective_date', 'period_year', 'requested_days', 'start_date', 'end_date', 'leave_type']);
   const updateFields = () => {
     document.querySelectorAll('.request-kind-fields').forEach(section => {
       const visible = (section.dataset.kinds || '').split(',').includes(type.value);
       section.hidden = !visible;
       section.querySelectorAll('input,select,textarea').forEach(control => { control.disabled = !visible; });
+    });
+    const requiredNames = new Set(requiredByType[type.value] || []);
+    document.querySelectorAll('#requestCreateForm [name]').forEach(control => {
+      if (conditionalRequired.has(control.name)) control.required = requiredNames.has(control.name);
     });
   };
   const filterEmployees = () => {

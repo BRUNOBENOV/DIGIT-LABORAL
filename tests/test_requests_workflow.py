@@ -124,6 +124,24 @@ def test_request_form_accepts_blank_optional_fields():
             assert item.employee_id is None and item.amount is None and item.requested_days is None
 
 
+def test_incomplete_vacation_request_is_rejected():
+    email, password, company_id, employee_id = ensure_admin()
+    with TestClient(app) as client:
+        csrf = login(client, email, password)
+        response = client.post(
+            "/app/requests",
+            data={
+                "csrf_token": csrf, "company_id": str(company_id), "request_type": "Vacaciones",
+                "subject": "Vacaciones sin fechas", "detail": "Debe requerir los datos del periodo.",
+                "priority": "Normal", "employee_id": str(employee_id), "period_year": "",
+                "requested_days": "", "start_date": "", "end_date": "",
+            },
+            follow_redirects=False,
+        )
+        assert response.status_code == 400
+        assert "requiere funcionario, periodo" in response.text
+
+
 def test_notification_reads_are_scoped_to_the_logged_in_user():
     email, password, _, _ = ensure_admin()
     with SessionLocal() as db:

@@ -2111,8 +2111,21 @@ def add_request(
         if not hours_requested.is_finite() or hours_requested <= 0 or hours_requested > Decimal("744"):
             raise HTTPException(400, "La cantidad de horas debe ser mayor que 0 y no superar 744.")
         hours_requested = hours_requested.quantize(Decimal("0.01"))
+    if period_year is not None and period_year > date.today().year + 2:
+        raise HTTPException(400, "El año del periodo está demasiado lejos.")
     if start_date and end_date and end_date < start_date:
         raise HTTPException(400, "La fecha final no puede ser anterior a la fecha inicial.")
+
+    request_kind = request_type_value.casefold()
+    if request_kind == "cambio salarial":
+        if not employee or amount is None or amount <= 0 or effective_date is None:
+            raise HTTPException(400, "Un cambio salarial requiere funcionario, salario mensual positivo y fecha efectiva.")
+    elif request_kind == "vacaciones":
+        if not employee or period_year is None or requested_days is None or not start_date or not end_date:
+            raise HTTPException(400, "Una solicitud de vacaciones requiere funcionario, periodo, días solicitados y fechas desde/hasta.")
+    elif request_kind in {"permiso/licencia", "permiso", "licencia"}:
+        if not employee or not leave_type_raw.strip() or not start_date or not end_date:
+            raise HTTPException(400, "Un permiso o licencia requiere funcionario, tipo de permiso y fechas desde/hasta.")
 
     item = CompanyRequest(
         company_id=company.id,
