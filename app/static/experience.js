@@ -64,7 +64,7 @@
     }, "table", rows, term => {
       let visible = 0;
       rows.forEach(row => {
-        const match = !term || normalize(row.innerText).includes(term);
+        const match = !term || normalize(row.textContent).includes(term);
         row.classList.toggle("experience-filter-item-hidden", !match);
         if (match) visible += 1;
       });
@@ -84,7 +84,7 @@
       }, kind, items, term => {
         let visible = 0;
         items.forEach(item => {
-          const match = !term || normalize(item.innerText).includes(term);
+          const match = !term || normalize(item.textContent).includes(term);
           item.classList.toggle("experience-filter-item-hidden", !match);
           if (match) visible += 1;
         });
