@@ -2047,8 +2047,11 @@ def requests_page(request: Request, user: User = Depends(require_user), db: Sess
     workflow_by_request = {item.request_id: item for item in workflows}
     pending = sum(item.status not in {"Resuelta", "Rechazada", "Aplicada"} for item in items)
     overdue = sum(
-        workflow.due_date and workflow.due_date < date.today() and next((item.status for item in items if item.id == workflow.request_id), "") not in {"Resuelta", "Rechazada", "Aplicada"}
+        1
         for workflow in workflows
+        if workflow.due_date
+        and workflow.due_date < date.today()
+        and next((item.status for item in items if item.id == workflow.request_id), "") not in {"Resuelta", "Rechazada", "Aplicada"}
     )
     return render(request, "requests.html", db, user, items=items, companies=companies, employees=employees, workflow_by_request=workflow_by_request, pending=pending, overdue=overdue)
 

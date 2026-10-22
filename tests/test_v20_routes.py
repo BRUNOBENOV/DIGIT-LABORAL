@@ -1,18 +1,23 @@
 from __future__ import annotations
 
+import re
 from bs4 import BeautifulSoup
 from fastapi.testclient import TestClient
 
 from app.main import app
 
 
-def _login(client: TestClient) -> None:
+def _login(client: TestClient) -> str:
+    page = client.get("/login")
+    match = re.search(r'name="csrf_token" value="([^"]+)"', page.text)
+    assert page.status_code == 200 and match
     response = client.post(
         "/login",
-        data={"email": "admin@digitlaboral.com.py", "password": "demo123"},
+        data={"email": "admin@digitlaboral.com.py", "password": "demo123", "csrf_token": match.group(1)},
         follow_redirects=False,
     )
     assert response.status_code == 303
+    return match.group(1)
 
 
 def test_critical_authenticated_pages_render_html():
@@ -82,10 +87,11 @@ def test_branch_compliance_profile_can_be_saved():
         branch_id = branch.id
 
     with TestClient(app) as client:
-        _login(client)
+        csrf = _login(client)
         response = client.post(
             "/app/compliance/branch-profile",
             data={
+                "csrf_token": csrf,
                 "company_id": str(company_id),
                 "branch_id": str(branch_id),
                 "ips_employer_number": "IPS-TEST-001",

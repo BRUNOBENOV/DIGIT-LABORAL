@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import io
 import uuid
 from datetime import date
@@ -20,13 +21,17 @@ from app.models import Branch, BranchComplianceProfile, Company, ComplianceEvent
 from app.storage_service import LocalStorage
 
 
-def _login(client: TestClient) -> None:
+def _login(client: TestClient) -> str:
+    page = client.get("/login")
+    match = re.search(r'name="csrf_token" value="([^"]+)"', page.text)
+    assert page.status_code == 200 and match
     response = client.post(
         "/login",
-        data={"email": "admin@digitlaboral.com.py", "password": "demo123"},
+        data={"email": "admin@digitlaboral.com.py", "password": "demo123", "csrf_token": match.group(1)},
         follow_redirects=False,
     )
     assert response.status_code == 303
+    return match.group(1)
 
 
 def test_v20_migrations_and_readiness():
@@ -60,10 +65,11 @@ def test_create_user_accepts_empty_company_id_without_422():
     unique = uuid.uuid4().hex[:10]
     email = f"auxiliar-v20-{unique}@example.test"
     with TestClient(app) as client:
-        _login(client)
+        csrf = _login(client)
         response = client.post(
             "/app/users",
             data={
+                "csrf_token": csrf,
                 "full_name": "Auxiliar Prueba V20",
                 "email": email,
                 "password": "Temporal#2026",
