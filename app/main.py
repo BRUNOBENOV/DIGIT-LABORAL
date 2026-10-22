@@ -2433,10 +2433,12 @@ def apply_request(
     if not item or item.company_id not in company_ids_for_user(db, user):
         raise HTTPException(404, "Solicitud no encontrada.")
     workflow = db.scalar(select(RequestWorkflow).where(RequestWorkflow.request_id == item.id))
+    # Idempotency check comes first: an already-applied operation remains a success
+    # response even though its status is no longer "Aprobada".
+    if workflow and workflow.applied:
+        return RedirectResponse(f"/app/requests/{item.id}", status_code=303)
     if item.status != "Aprobada" or not workflow or not workflow.approved_at:
         raise HTTPException(409, "El trámite debe estar aprobado antes de aplicarse.")
-    if workflow.applied:
-        return RedirectResponse(f"/app/requests/{item.id}", status_code=303)
     if item.request_type.strip().casefold() != "cambio salarial":
         raise HTTPException(400, "La aplicación automática está habilitada únicamente para cambios salariales. Los demás trámites deben completarse desde su módulo correspondiente.")
     employee = db.get(Employee, item.employee_id) if item.employee_id else None
