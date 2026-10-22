@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import io
+import re
 
 from fastapi.testclient import TestClient
+
+from app.config import settings
 from sqlalchemy import select
 
 from app.ai_service import generate_assistance
@@ -11,13 +14,20 @@ from app.main import app
 from app.models import CalculationRecord, Company, CompanyBranding, Employee
 
 
-def login(client: TestClient) -> None:
+def login(client: TestClient) -> str:
+    page = client.get("/login")
+    match = re.search(r'name="csrf_token" value="([^"]+)"', page.text)
+    assert page.status_code == 200 and match
     response = client.post(
         "/login",
-        data={"email": "admin@digitlaboral.com.py", "password": "demo123"},
+        data={"email": "admin@digitlaboral.com.py", "password": settings.demo_admin_password, "csrf_token": match.group(1)},
         follow_redirects=False,
     )
     assert response.status_code == 303
+    dashboard = client.get("/app")
+    dashboard_token = re.search(r'name="csrf_token" value="([^"]+)"', dashboard.text)
+    assert dashboard.status_code == 200 and dashboard_token
+    return dashboard_token.group(1)
 
 
 def test_new_automation_pages_render():
@@ -26,7 +36,7 @@ def test_new_automation_pages_render():
         for path, marker in (
             ("/app/reports", "Informes"),
             ("/app/ai", "Asistente IA"),
-            ("/app/calculations", "Centro de cálculos"),
+            ("/app/calculations", "Calculá con contexto"),
             ("/app/certificates", "Documentos laborales"),
         ):
             response = client.get(path)
@@ -36,13 +46,14 @@ def test_new_automation_pages_render():
 
 def test_saved_calculation_can_be_linked_to_certificate():
     with TestClient(app) as client:
-        login(client)
+        csrf = login(client)
         with SessionLocal() as db:
             company = db.scalar(select(Company).order_by(Company.id))
             employee = db.scalar(select(Employee).where(Employee.company_id == company.id).order_by(Employee.id))
         response = client.post(
             "/app/calculations",
             data={
+                "csrf_token": csrf,
                 "calculation_type": "aguinaldo",
                 "company_id": str(company.id),
                 "employee_id": str(employee.id),
@@ -68,12 +79,13 @@ def test_company_logo_upload_and_retrieval():
         b"\x00\x00\x00\x00IEND\xaeB`\x82"
     )
     with TestClient(app) as client:
-        login(client)
+        csrf = login(client)
         with SessionLocal() as db:
             company = db.scalar(select(Company).order_by(Company.id))
         response = client.post(
             f"/app/companies/{company.id}/branding",
             data={
+                "csrf_token": csrf,
                 "primary_color": "#173B86",
                 "secondary_color": "#0B1F48",
                 "document_footer": "Documento automatizado",
@@ -84,6 +96,7 @@ def test_company_logo_upload_and_retrieval():
                 "show_contact": "on",
             },
             files={"logo": ("logo.png", io.BytesIO(png), "image/png")},
+            headers={"x-csrf-token": csrf},
             follow_redirects=False,
         )
         assert response.status_code == 303

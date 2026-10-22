@@ -18,6 +18,10 @@ Digit Laboral 2.0 integra:
 
 La interoperabilidad REI/REOP funciona mediante archivos y revisión humana. Los conectores directos permanecen desactivados porque requieren documentación y autorización oficial.
 
+## Aplicación activa
+
+La URL principal de trabajo es **https://digit-laboral-app.onrender.com/**. La dirección `digit-laboral-py-demo.onrender.com` corresponde a una demo anterior y no debe usarse como URL principal. Configurá `PUBLIC_URL=https://digit-laboral-app.onrender.com` en Render para que los enlaces de correo y recuperación de contraseña apunten al servicio correcto.
+
 ## Inicio local
 
 ### Windows
@@ -100,6 +104,15 @@ El centro de cumplimiento permite:
 - conservar hash, usuario y trazabilidad.
 
 Documentación: `REI_REOP_INTEGRATION.md`.
+
+## Solicitudes y notificaciones
+
+- Las solicitudes admiten campos estructurados para funcionario, fecha efectiva, periodo, días, importe y permisos/licencias.
+- La bandeja de notificaciones es individual y persistente, con lectura/no lectura, filtros y enlaces al trámite.
+- La creación, asignación, comentarios, adjuntos y decisiones generan avisos según roles y visibilidad.
+- Los cambios salariales requieren aprobación explícita; su aplicación registra el historial salarial y la auditoría.
+- Si SMTP está configurado, los correos se registran en una cola persistente y se intentan enviar en segundo plano. Para recuperar entregas pendientes y generar recordatorios por vencimiento, ejecutá diariamente `python -m app.notification_worker` como Render Cron Job, con las mismas variables de entorno seguras del servicio web.
+- Si SMTP no está configurado, las notificaciones internas siguen funcionando.
 
 ## Seguridad
 

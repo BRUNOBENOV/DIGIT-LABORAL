@@ -46,7 +46,7 @@
 <section class="metrics-grid">
   <article><span>Funcionarios</span><b>{{ employees|length }}</b><small>Todos los estados</small></article>
   <article><span>Sucursales</span><b>{{ branches|length }}</b><small>Ubicaciones</small></article>
-  <article><span>Solicitudes abiertas</span><b>{{ requests_list|rejectattr('status','equalto','Resuelta')|list|length }}</b><small>Requieren seguimiento</small></article>
+  <article><span>Solicitudes abiertas</span><b>{{ requests_list|rejectattr('status','equalto','Resuelta')|rejectattr('status','equalto','Rechazada')|rejectattr('status','equalto','Aplicada')|list|length }}</b><small>Requieren seguimiento</small></article>
   <article><span>Expediente</span><b>{{ completeness_score }}%</b><small>{{ 'Completo' if not missing_fields else 'Faltan datos' }}</small></article>
 </section>
 

@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Notificaciones | Digit Laboral{% endblock %}
+{% block page_name %}Notificaciones{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div><span class="eyebrow">CENTRO DE AVISOS</span><h1>Notificaciones</h1><p>Seguimiento de asignaciones, respuestas, decisiones y plazos de los trámites.</p></div>
+  {% if unread_count %}<form method="post" action="/app/notifications/read-all"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn outline" type="submit">Marcar todas como leídas</button></form>{% endif %}
+</div>
+<div class="notification-toolbar">
+  <div class="notification-filters">
+    <a class="{{ 'active' if filter_value == 'all' else '' }}" href="/app/notifications?filter_value=all">Todas</a>
+    <a class="{{ 'active' if filter_value == 'unread' else '' }}" href="/app/notifications?filter_value=unread">No leídas ({{ unread_count }})</a>
+    <a class="{{ 'active' if filter_value == 'read' else '' }}" href="/app/notifications?filter_value=read">Leídas</a>
+  </div>
+  <span class="eyebrow">{{ items|length }} avisos mostrados</span>
+</div>
+<section class="notification-list">
+{% for item in items %}
+  <article class="notification-item {{ 'unread' if not item.read_at else '' }}">
+    <div class="notification-mark">{% if item.event_type in ['solicitud_creada','solicitud_asignada'] %}✉{% elif item.event_type in ['decision_solicitud','estado_solicitud','solicitud_aplicada'] %}✓{% elif item.event_type == 'adjunto_solicitud' %}▤{% else %}•{% endif %}</div>
+    <div>
+      <h3>{% if not item.read_at %}<span class="notification-unread-dot"></span>{% endif %}{{ item.title }}</h3>
+      <p>{{ item.body }}</p>
+      <time datetime="{{ item.created_at.isoformat() }}">{{ item.created_at.strftime('%d/%m/%Y %H:%M') }}{% if not item.read_at %} · No leída{% else %} · Leída{% endif %}</time>
+    </div>
+    <form method="post" action="/app/notifications/{{ item.id }}/open">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="btn outline" type="submit">{{ 'Abrir trámite' if item.related_request_id else 'Abrir' }}</button>
+    </form>
+  </article>
+{% else %}
+  <div class="notification-empty"><h2>No hay notificaciones en esta vista</h2><p>Los avisos nuevos aparecerán acá cuando haya actividad en tus trámites.</p></div>
+{% endfor %}
+</section>
+<script>
+(function () {
+  const badges = document.querySelectorAll('.notification-count');
+  if (!badges.length) return;
+  const refresh = async () => {
+    try {
+      const response = await fetch('/app/notifications/unread-count', { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' });
+      if (!response.ok) return;
+      const data = await response.json();
+      badges.forEach(badge => {
+        badge.textContent = data.count > 99 ? '99+' : String(data.count);
+        badge.hidden = !data.count;
+      });
+    } catch (_) { /* La bandeja continúa funcionando si falla el sondeo. */ }
+  };
+  window.setInterval(refresh, 60000);
+})();
+</script>
+{% endblock %}

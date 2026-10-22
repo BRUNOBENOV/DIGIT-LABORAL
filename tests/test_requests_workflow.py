@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import re
+
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.auth import hash_password
 from app.database import SessionLocal
 from app.main import app
-from app.models import Company, CompanyRequest, Employee, RequestWorkflow, Studio, User
+from app.models import Company, CompanyRequest, Employee, Notification, RequestWorkflow, Studio, User
 
 
 def ensure_admin() -> tuple[str, str, int, int]:
@@ -21,69 +23,171 @@ def ensure_admin() -> tuple[str, str, int, int]:
             db.add(user)
             db.commit()
         company = db.scalar(select(Company).where(Company.studio_id == studio.id).order_by(Company.id))
+        assert company is not None
         employee = db.scalar(select(Employee).where(Employee.company_id == company.id).order_by(Employee.id))
-        assert company is not None and employee is not None
+        assert employee is not None
+        company_email = "workflow-company@test.py"
+        company_user = db.scalar(select(User).where(User.email == company_email))
+        if company_user is None:
+            company_user = User(
+                studio_id=studio.id, company_id=company.id, full_name="Workflow Company",
+                email=company_email, password_hash=hash_password(password), role="empresa",
+                active=True, must_change_password=False,
+            )
+            db.add(company_user)
+            db.commit()
         return email, password, company.id, employee.id
 
 
-def test_salary_request_can_be_approved_and_applied():
+def token_from_page(client: TestClient, path: str) -> str:
+    response = client.get(path)
+    assert response.status_code == 200
+    match = re.search(r'name="csrf_token" value="([^"]+)"', response.text)
+    assert match, f"CSRF token not found in {path}"
+    return match.group(1)
+
+
+def login(client: TestClient, email: str, password: str) -> str:
+    token = token_from_page(client, "/login")
+    response = client.post("/login", data={"email": email, "password": password, "csrf_token": token}, follow_redirects=False)
+    assert response.status_code == 303
+    return token_from_page(client, "/app/requests")
+
+
+def test_salary_request_is_approved_applied_and_notified():
     email, password, company_id, employee_id = ensure_admin()
     with SessionLocal() as db:
         employee = db.get(Employee, employee_id)
         original_salary = employee.base_salary
     with TestClient(app) as client:
-        login = client.post("/login", data={"email": email, "password": password}, follow_redirects=False)
-        assert login.status_code == 303
+        csrf = login(client, email, password)
         response = client.post(
             "/app/requests",
             data={
-                "company_id": str(company_id),
-                "request_type": "Cambio salarial",
-                "subject": "Ajuste de prueba",
-                "detail": "Actualizar salario para comprobar el flujo.",
-                "priority": "Normal",
-                "employee_id": str(employee_id),
-                "effective_date": "2026-08-01",
+                "csrf_token": csrf, "company_id": str(company_id), "request_type": "Cambio salarial",
+                "subject": "Ajuste de prueba", "detail": "Actualizar salario para comprobar el flujo.",
+                "priority": "Normal", "employee_id": str(employee_id), "effective_date": "2026-08-01",
                 "amount": str(original_salary + 100000),
             },
             follow_redirects=False,
         )
         assert response.status_code == 303
-        request_id = int(response.headers["location"].split("/")[-1].split("?")[0])
-        review = client.post(f"/app/requests/{request_id}/review", data={"status": "Aprobada", "response": "Aprobado", "assigned_to": "Workflow Admin"}, follow_redirects=False)
+        request_id = int(response.headers["location"].rstrip("/").split("/")[-1])
+        with SessionLocal() as db:
+            item = db.get(CompanyRequest, request_id)
+            assert item is not None
+            assert item.requested_by_user_id is not None
+            assert item.employee_id == employee_id
+            assert item.effective_date.isoformat() == "2026-08-01"
+            assert item.amount == original_salary + 100000
+        csrf = token_from_page(client, f"/app/requests/{request_id}")
+        review = client.post(
+            f"/app/requests/{request_id}/review",
+            data={"csrf_token": csrf, "status": "Aprobada", "response": "Aprobado", "assigned_to": "Workflow Admin"},
+            follow_redirects=False,
+        )
         assert review.status_code == 303
-        apply_response = client.post(f"/app/requests/{request_id}/apply", follow_redirects=False)
-        assert apply_response.status_code == 303
+        csrf = token_from_page(client, f"/app/requests/{request_id}")
+        applied = client.post(f"/app/requests/{request_id}/apply", data={"csrf_token": csrf}, follow_redirects=False)
+        assert applied.status_code == 303
+        csrf = token_from_page(client, f"/app/requests/{request_id}")
+        locked = client.post(
+            f"/app/requests/{request_id}/status",
+            data={"csrf_token": csrf, "status": "Resuelta", "response": "Cambio posterior", "assigned_user_id": "", "due_date": "", "internal_notes": ""},
+            follow_redirects=False,
+        )
+        assert locked.status_code == 409
+        # Applying twice is idempotent and must never change the salary twice.
+        csrf = token_from_page(client, f"/app/requests/{request_id}")
+        applied_again = client.post(f"/app/requests/{request_id}/apply", data={"csrf_token": csrf}, follow_redirects=False)
+        assert applied_again.status_code == 303
+        assert client.get("/app/notifications").status_code == 200
     with SessionLocal() as db:
         item = db.get(CompanyRequest, request_id)
         workflow = db.scalar(select(RequestWorkflow).where(RequestWorkflow.request_id == request_id))
         employee = db.get(Employee, employee_id)
         assert item.status == "Aplicada"
-        assert workflow is not None and workflow.applied is True
+        assert workflow is not None and workflow.applied is True and workflow.applied_at is not None
         assert employee.base_salary == original_salary + 100000
+        assert db.scalar(select(Notification.id).where(Notification.related_request_id == request_id)) is not None
 
 
 def test_request_form_accepts_blank_optional_fields():
     email, password, company_id, _ = ensure_admin()
     with TestClient(app) as client:
-        login = client.post("/login", data={"email": email, "password": password}, follow_redirects=False)
-        assert login.status_code == 303
+        csrf = login(client, email, password)
         response = client.post(
             "/app/requests",
             data={
-                "company_id": str(company_id),
-                "request_type": "Otra consulta",
+                "csrf_token": csrf, "company_id": str(company_id), "request_type": "Otra consulta",
                 "subject": "Consulta con campos opcionales vacíos",
-                "detail": "Comprueba que FastAPI no devuelva 422 cuando el navegador envía cadenas vacías.",
-                "priority": "Normal",
-                "employee_id": "",
-                "effective_date": "",
-                "start_date": "",
-                "end_date": "",
-                "period_year": "",
-                "entitled_days": "",
+                "detail": "Comprueba el formulario con campos opcionales en blanco.", "priority": "Normal",
+                "employee_id": "", "effective_date": "", "start_date": "", "end_date": "",
+                "period_year": "", "requested_days": "", "entitled_days": "", "amount": "",
+                "leave_type": "", "hours_requested": "",
             },
             follow_redirects=False,
         )
         assert response.status_code == 303
-        assert response.headers["location"].startswith("/app/requests/")
+        request_id = int(response.headers["location"].rstrip("/").split("/")[-1])
+        with SessionLocal() as db:
+            item = db.get(CompanyRequest, request_id)
+            assert item.employee_id is None and item.amount is None and item.requested_days is None
+
+
+def test_incomplete_vacation_request_is_rejected():
+    email, password, company_id, employee_id = ensure_admin()
+    with TestClient(app) as client:
+        csrf = login(client, email, password)
+        response = client.post(
+            "/app/requests",
+            data={
+                "csrf_token": csrf, "company_id": str(company_id), "request_type": "Vacaciones",
+                "subject": "Vacaciones sin fechas", "detail": "Debe requerir los datos del periodo.",
+                "priority": "Normal", "employee_id": str(employee_id), "period_year": "",
+                "requested_days": "", "start_date": "", "end_date": "",
+            },
+            follow_redirects=False,
+        )
+        assert response.status_code == 400
+        assert "requiere funcionario, periodo" in response.text
+
+
+def test_notification_reads_are_scoped_to_the_logged_in_user():
+    email, password, _, _ = ensure_admin()
+    with SessionLocal() as db:
+        user = db.scalar(select(User).where(User.email == email))
+        assert user is not None
+        company_user = db.scalar(select(User).where(User.email == "workflow-company@test.py"))
+        assert company_user is not None
+        note = Notification(
+            studio_id=user.studio_id, recipient_user_id=user.id, event_type="prueba",
+            title="Aviso de prueba", body="Notificación privada.", target_url="/app/requests",
+        )
+        other_note = Notification(
+            studio_id=company_user.studio_id, recipient_user_id=company_user.id, event_type="prueba_privada",
+            title="Aviso privado de empresa", body="Solo para la empresa.", target_url="/app/requests",
+        )
+        db.add_all([note, other_note])
+        db.commit()
+        notification_id = note.id
+        other_notification_id = other_note.id
+    with TestClient(app) as client:
+        login(client, email, password)
+        page = client.get("/app/notifications")
+        assert page.status_code == 200 and "Aviso de prueba" in page.text
+        assert "Aviso privado de empresa" not in page.text
+        csrf = token_from_page(client, "/app/notifications")
+        forbidden = client.post(
+            f"/app/notifications/{other_notification_id}/read", data={"csrf_token": csrf}, follow_redirects=False,
+        )
+        assert forbidden.status_code == 404
+        marked = client.post(
+            f"/app/notifications/{notification_id}/read", data={"csrf_token": csrf}, follow_redirects=False,
+        )
+        assert marked.status_code == 303
+    with SessionLocal() as db:
+        note = db.get(Notification, notification_id)
+        other_note = db.get(Notification, other_notification_id)
+        assert note.read_at is not None
+        assert other_note.read_at is None

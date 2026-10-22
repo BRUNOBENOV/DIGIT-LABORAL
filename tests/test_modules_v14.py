@@ -1,15 +1,21 @@
+import re
 from datetime import date
 
 from fastapi.testclient import TestClient
+
+from app.config import settings
 
 from app.main import app, build_certificate_body
 
 
 def test_calculations_and_certificates_render_after_login():
     with TestClient(app) as client:
+        page = client.get("/login")
+        match = re.search(r'name="csrf_token" value="([^"]+)"', page.text)
+        assert page.status_code == 200 and match
         login = client.post(
             "/login",
-            data={"email": "admin@digitlaboral.com.py", "password": "demo123"},
+            data={"email": "admin@digitlaboral.com.py", "password": settings.demo_admin_password, "csrf_token": match.group(1)},
             follow_redirects=False,
         )
         assert login.status_code == 303

@@ -1,19 +1,29 @@
+import re
 from datetime import date
 from urllib.parse import parse_qs, urlparse
 
 from fastapi.testclient import TestClient
 
+from app.config import settings
+
 from app.document_export import build_document_body, guaranies_in_words
 from app.main import app
 
 
-def login(client: TestClient) -> None:
+def login(client: TestClient) -> str:
+    page = client.get("/login")
+    match = re.search(r'name="csrf_token" value="([^"]+)"', page.text)
+    assert page.status_code == 200 and match
     response = client.post(
         "/login",
-        data={"email": "admin@digitlaboral.com.py", "password": "demo123"},
+        data={"email": "admin@digitlaboral.com.py", "password": settings.demo_admin_password, "csrf_token": match.group(1)},
         follow_redirects=False,
     )
     assert response.status_code == 303
+    dashboard = client.get("/app")
+    dashboard_token = re.search(r'name="csrf_token" value="([^"]+)"', dashboard.text)
+    assert dashboard.status_code == 200 and dashboard_token
+    return dashboard_token.group(1)
 
 
 def test_amount_in_words_and_legal_basis():
@@ -42,10 +52,11 @@ def test_amount_in_words_and_legal_basis():
 
 def test_word_and_pdf_downloads():
     with TestClient(app) as client:
-        login(client)
+        csrf = login(client)
         response = client.post(
             "/app/certificates",
             data={
+                "csrf_token": csrf,
                 "company_id": 1,
                 "employee_id": 1,
                 "document_type": "constancia",

@@ -22,7 +22,7 @@ from urllib.parse import parse_qs, quote
 
 from PIL import Image, ImageChops, ImageOps
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile, status
+from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -79,6 +79,8 @@ from .models import (
     RequestAttachment,
     RequestComment,
     RequestWorkflow,
+    Notification,
+    NotificationDelivery,
     SalaryHistory,
     SecurityEvent,
     Studio,
@@ -87,6 +89,8 @@ from .models import (
     UserSecurity,
     Vacation,
 )
+from .notification_service import create_notification, send_notification_delivery
+
 from .report_export import build_employee_report_pdf
 from .backup_service import build_studio_export
 from .seed import seed_database
@@ -502,8 +506,16 @@ def render(request: Request, template: str, db: Session, user: User | None = Non
         "active_path": request.url.path,
         "today": date.today(),
         "environment": settings.environment,
+        "notification_unread_count": 0,
         **context,
     }
+    if user and user.role != "superadmin":
+        data["notification_unread_count"] = db.scalar(
+            select(func.count(Notification.id)).where(
+                Notification.recipient_user_id == user.id,
+                Notification.read_at.is_(None),
+            )
+        ) or 0
     if user and user.studio_id:
         data["studio"] = db.get(Studio, user.studio_id)
     return templates.TemplateResponse(request=request, name=template, context=data)
@@ -960,7 +972,7 @@ def dashboard(request: Request, user: User = Depends(require_user), db: Session 
     company_ids = company_ids_for_user(db, user)
     companies_count = len(company_ids)
     employee_count = db.scalar(select(func.count(Employee.id)).where(Employee.company_id.in_(company_ids), Employee.status == "Activo")) if company_ids else 0
-    pending_count = db.scalar(select(func.count(CompanyRequest.id)).where(CompanyRequest.company_id.in_(company_ids), CompanyRequest.status.in_(["Pendiente", "En revisión", "Falta información", "Procesando"]))) if company_ids else 0
+    pending_count = db.scalar(select(func.count(CompanyRequest.id)).where(CompanyRequest.company_id.in_(company_ids), CompanyRequest.status.in_(["Pendiente", "En revisión", "Falta información", "Procesando", "Aprobada"]))) if company_ids else 0
     payroll_count = db.scalar(select(func.count(Payroll.id)).where(Payroll.company_id.in_(company_ids), Payroll.status == "Borrador")) if company_ids else 0
     compliance_pending_count = db.scalar(
         select(func.count(ComplianceEvent.id)).where(
@@ -1741,39 +1753,418 @@ def calendar_ics(user: User = Depends(require_user), db: Session = Depends(get_d
     return Response("\r\n".join(lines) + "\r\n", media_type="text/calendar", headers={"Content-Disposition": "attachment; filename=agenda_digit_laboral.ics"})
 
 
+
+def _parse_optional_form_date(value: str, label: str) -> date | None:
+    value = (value or "").strip()
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError as exc:
+        raise HTTPException(400, f"La fecha de {label} no es válida.") from exc
+
+
+def _parse_optional_form_int(value: str, label: str, minimum: int = 0) -> int | None:
+    value = (value or "").strip()
+    if not value:
+        return None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(400, f"El campo {label} debe ser un número entero.") from exc
+    if parsed < minimum:
+        raise HTTPException(400, f"El campo {label} no puede ser menor que {minimum}.")
+    return parsed
+
+
+def _create_in_app_notification(
+    db: Session,
+    background_tasks: BackgroundTasks,
+    recipient: User,
+    *,
+    event_type: str,
+    title: str,
+    body: str,
+    target_url: str,
+    request_id: int | None = None,
+    dedupe_key: str | None = None,
+) -> None:
+    if not recipient.active:
+        return
+    _, delivery, created = create_notification(
+        db,
+        recipient=recipient,
+        event_type=event_type,
+        title=title,
+        body=body,
+        target_url=target_url,
+        request_id=request_id,
+        dedupe_key=dedupe_key,
+    )
+    if created and delivery is not None:
+        background_tasks.add_task(send_notification_delivery, delivery.id, recipient.studio_id)
+
+
+def _notify_studio_team(
+    db: Session,
+    background_tasks: BackgroundTasks,
+    company: Company,
+    actor: User | None,
+    *,
+    event_type: str,
+    title: str,
+    body: str,
+    target_url: str,
+    request_id: int | None = None,
+    only_user_id: int | None = None,
+) -> None:
+    query = select(User).where(
+        User.studio_id == company.studio_id,
+        User.active.is_(True),
+        User.role.in_(("administrador", "contador", "auxiliar")),
+    )
+    if only_user_id is not None:
+        query = query.where(User.id == only_user_id)
+    for recipient in db.scalars(query.order_by(User.id)):
+        if actor is not None and recipient.id == actor.id:
+            continue
+        _create_in_app_notification(
+            db, background_tasks, recipient,
+            event_type=event_type, title=title, body=body,
+            target_url=target_url, request_id=request_id,
+        )
+
+
+def _notify_company_contacts(
+    db: Session,
+    background_tasks: BackgroundTasks,
+    item: CompanyRequest,
+    actor: User | None,
+    *,
+    event_type: str,
+    title: str,
+    body: str,
+    target_url: str,
+) -> None:
+    company = db.get(Company, item.company_id)
+    recipients: dict[int, User] = {}
+    if company:
+        for recipient in db.scalars(select(User).where(
+            User.company_id == item.company_id,
+            User.studio_id == company.studio_id,
+            User.role == "empresa",
+            User.active.is_(True),
+        )):
+            recipients[recipient.id] = recipient
+    if item.requested_by_user_id:
+        requester = db.get(User, item.requested_by_user_id)
+        if requester and requester.active and requester.role != "empresa":
+            recipients[requester.id] = requester
+    for recipient in recipients.values():
+        if actor is not None and recipient.id == actor.id:
+            continue
+        _create_in_app_notification(
+            db, background_tasks, recipient,
+            event_type=event_type, title=title, body=body,
+            target_url=target_url, request_id=item.id,
+        )
+
+
+def _notify_request_counterpart(
+    db: Session,
+    background_tasks: BackgroundTasks,
+    item: CompanyRequest,
+    actor: User,
+    *,
+    event_type: str,
+    title: str,
+    body: str,
+    external_visible: bool = True,
+) -> None:
+    company = db.get(Company, item.company_id)
+    if not company:
+        return
+    target_url = f"/app/requests/{item.id}"
+    if actor.role == "empresa" or not external_visible:
+        workflow = db.scalar(select(RequestWorkflow).where(RequestWorkflow.request_id == item.id))
+        assigned_id = workflow.assigned_user_id if workflow else None
+        _notify_studio_team(
+            db, background_tasks, company, actor,
+            event_type=event_type, title=title, body=body,
+            target_url=target_url, request_id=item.id, only_user_id=assigned_id,
+        ) if assigned_id else _notify_studio_team(
+            db, background_tasks, company, actor,
+            event_type=event_type, title=title, body=body,
+            target_url=target_url, request_id=item.id,
+        )
+    else:
+        _notify_company_contacts(
+            db, background_tasks, item, actor,
+            event_type=event_type, title=title, body=body, target_url=target_url,
+        )
+
+
+def _sync_due_notifications_for_user(
+    db: Session, background_tasks: BackgroundTasks, user: User,
+) -> None:
+    if user.role not in {"administrador", "contador", "auxiliar"}:
+        return
+    today_value = date.today()
+    horizon = today_value + timedelta(days=3)
+    company_ids = company_ids_for_user(db, user)
+    if not company_ids:
+        return
+    open_statuses = ("Pendiente", "En revisión", "Falta información", "Procesando", "Aprobada")
+    due_rows = list(db.execute(
+        select(CompanyRequest, RequestWorkflow, Company)
+        .join(RequestWorkflow, RequestWorkflow.request_id == CompanyRequest.id)
+        .join(Company, Company.id == CompanyRequest.company_id)
+        .where(
+            CompanyRequest.company_id.in_(company_ids),
+            CompanyRequest.status.in_(open_statuses),
+            RequestWorkflow.due_date.is_not(None),
+            RequestWorkflow.due_date <= horizon,
+        )
+        .order_by(RequestWorkflow.due_date, CompanyRequest.id)
+    ))
+    for item, workflow, company in due_rows:
+        if workflow.assigned_user_id and workflow.assigned_user_id != user.id:
+            continue
+        dedupe_key = f"request-deadline:{item.id}:{workflow.due_date.isoformat()}:{user.id}"
+        due_text = workflow.due_date.strftime("%d/%m/%Y")
+        is_overdue = workflow.due_date < today_value
+        _create_in_app_notification(
+            db, background_tasks, user,
+            event_type="solicitud_vencimiento",
+            title=f"{'Plazo vencido' if is_overdue else 'Solicitud próxima a vencer'} · #{item.id}",
+            body=f"El trámite «{item.subject or item.request_type}» de {company.legal_name} "
+                 f"{'venció' if is_overdue else 'vence'} el {due_text}.",
+            target_url=f"/app/requests/{item.id}", request_id=item.id, dedupe_key=dedupe_key,
+        )
+
+
+
+@app.get("/app/notifications", response_class=HTMLResponse)
+def notifications_page(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    filter_value: str = "all",
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    if user.role == "superadmin":
+        return RedirectResponse("/admin", status_code=303)
+    # Materialize due-date notices when the recipient opens the inbox. A daily
+    # worker can do the same sweep proactively; dedupe keys prevent repeats.
+    _sync_due_notifications_for_user(db, background_tasks, user)
+    db.commit()
+    query = select(Notification).where(Notification.recipient_user_id == user.id)
+    if filter_value == "unread":
+        query = query.where(Notification.read_at.is_(None))
+    elif filter_value == "read":
+        query = query.where(Notification.read_at.is_not(None))
+    elif filter_value != "all":
+        filter_value = "all"
+    items = list(db.scalars(query.order_by(Notification.created_at.desc(), Notification.id.desc()).limit(100)))
+    unread_count = db.scalar(select(func.count(Notification.id)).where(
+        Notification.recipient_user_id == user.id, Notification.read_at.is_(None)
+    )) or 0
+    return render(
+        request, "notifications.html", db, user,
+        items=items, filter_value=filter_value, unread_count=unread_count,
+    )
+
+
+@app.get("/app/notifications/unread-count")
+def notifications_unread_count(user: User = Depends(require_user), db: Session = Depends(get_db)):
+    count = db.scalar(select(func.count(Notification.id)).where(
+        Notification.recipient_user_id == user.id,
+        Notification.read_at.is_(None),
+    )) or 0
+    return JSONResponse({"count": count})
+
+
+@app.post("/app/notifications/read-all")
+def notifications_read_all(user: User = Depends(require_user), db: Session = Depends(get_db)):
+    items = list(db.scalars(select(Notification).where(
+        Notification.recipient_user_id == user.id,
+        Notification.read_at.is_(None),
+    )))
+    now = datetime.now(UTC)
+    for item in items:
+        item.read_at = now
+    db.commit()
+    return RedirectResponse("/app/notifications", status_code=303)
+
+
+@app.post("/app/notifications/{notification_id}/open")
+def notification_open(
+    notification_id: int,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    item = db.scalar(select(Notification).where(
+        Notification.id == notification_id,
+        Notification.recipient_user_id == user.id,
+    ))
+    if not item:
+        raise HTTPException(404, "Notificación no encontrada.")
+    if item.read_at is None:
+        item.read_at = datetime.now(UTC)
+        db.commit()
+    target = item.target_url or "/app/notifications"
+    if not target.startswith("/") or target.startswith("//"):
+        target = "/app/notifications"
+    return RedirectResponse(target, status_code=303)
+
+
+@app.post("/app/notifications/{notification_id}/read")
+def notification_mark_read(
+    notification_id: int,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    item = db.scalar(select(Notification).where(
+        Notification.id == notification_id,
+        Notification.recipient_user_id == user.id,
+    ))
+    if not item:
+        raise HTTPException(404, "Notificación no encontrada.")
+    if item.read_at is None:
+        item.read_at = datetime.now(UTC)
+        db.commit()
+    return RedirectResponse("/app/notifications", status_code=303)
+
+
 @app.get("/app/requests", response_class=HTMLResponse)
 def requests_page(request: Request, user: User = Depends(require_user), db: Session = Depends(get_db)):
     company_ids = company_ids_for_user(db, user)
     items = list(db.scalars(select(CompanyRequest).where(CompanyRequest.company_id.in_(company_ids)).order_by(CompanyRequest.created_at.desc()))) if company_ids else []
     companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name))) if company_ids else []
+    employees = list(db.scalars(select(Employee).where(Employee.company_id.in_(company_ids)).order_by(Employee.full_name))) if company_ids else []
     request_ids = [item.id for item in items]
     workflows = list(db.scalars(select(RequestWorkflow).where(RequestWorkflow.request_id.in_(request_ids)))) if request_ids else []
     workflow_by_request = {item.request_id: item for item in workflows}
-    pending = sum(item.status not in {"Resuelta", "Rechazada"} for item in items)
+    pending = sum(item.status not in {"Resuelta", "Rechazada", "Aplicada"} for item in items)
     overdue = sum(
-        workflow.due_date and workflow.due_date < date.today() and next((item.status for item in items if item.id == workflow.request_id), "") not in {"Resuelta", "Rechazada"}
+        1
         for workflow in workflows
+        if workflow.due_date
+        and workflow.due_date < date.today()
+        and next((item.status for item in items if item.id == workflow.request_id), "") not in {"Resuelta", "Rechazada", "Aplicada"}
     )
-    return render(request, "requests.html", db, user, items=items, companies=companies, workflow_by_request=workflow_by_request, pending=pending, overdue=overdue)
+    return render(request, "requests.html", db, user, items=items, companies=companies, employees=employees, workflow_by_request=workflow_by_request, pending=pending, overdue=overdue)
 
 
 @app.post("/app/requests")
 def add_request(
+    background_tasks: BackgroundTasks,
     company_id: Annotated[int, Form()],
     request_type: Annotated[str, Form()],
     detail: Annotated[str, Form()],
     subject: Annotated[str, Form()] = "",
     priority: Annotated[str, Form()] = "Normal",
+    employee_id_raw: Annotated[str, Form(alias="employee_id")] = "",
+    effective_date_raw: Annotated[str, Form(alias="effective_date")] = "",
+    start_date_raw: Annotated[str, Form(alias="start_date")] = "",
+    end_date_raw: Annotated[str, Form(alias="end_date")] = "",
+    period_year_raw: Annotated[str, Form(alias="period_year")] = "",
+    requested_days_raw: Annotated[str, Form(alias="requested_days")] = "",
+    entitled_days_raw: Annotated[str, Form(alias="entitled_days")] = "",
+    amount_raw: Annotated[str, Form(alias="amount")] = "",
+    leave_type_raw: Annotated[str, Form(alias="leave_type")] = "",
+    hours_requested_raw: Annotated[str, Form(alias="hours_requested")] = "",
     user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ):
-    company_allowed(db, user, company_id)
-    item = CompanyRequest(company_id=company_id, request_type=request_type.strip(), subject=subject.strip(), detail=detail.strip(), priority=priority, status="Pendiente")
+    company = company_allowed(db, user, company_id)
+    request_type_value = request_type.strip()
+    subject_value = subject.strip()
+    detail_value = detail.strip()
+    priority_value = priority.strip()
+    if not request_type_value or len(request_type_value) > 100:
+        raise HTTPException(400, "Seleccioná un tipo de solicitud válido.")
+    if not detail_value:
+        raise HTTPException(400, "La descripción de la solicitud es obligatoria.")
+    if len(subject_value) > 180 or len(detail_value) > 10000:
+        raise HTTPException(400, "El asunto o el detalle supera el tamaño permitido.")
+    if priority_value not in {"Normal", "Alta", "Urgente"}:
+        raise HTTPException(400, "La prioridad seleccionada no es válida.")
+
+    employee_id = _parse_optional_form_int(employee_id_raw, "funcionario", 1)
+    employee = db.get(Employee, employee_id) if employee_id else None
+    if employee_id and (not employee or employee.company_id != company.id):
+        raise HTTPException(400, "El funcionario no pertenece a la empresa seleccionada.")
+    effective_date = _parse_optional_form_date(effective_date_raw, "fecha efectiva")
+    start_date = _parse_optional_form_date(start_date_raw, "fecha inicial")
+    end_date = _parse_optional_form_date(end_date_raw, "fecha final")
+    period_year = _parse_optional_form_int(period_year_raw, "año del periodo", 1900)
+    requested_days = _parse_optional_form_int(requested_days_raw or entitled_days_raw, "días solicitados", 1)
+    amount = _parse_optional_form_int(amount_raw, "importe", 0)
+    hours_raw = (hours_requested_raw or "").strip()
+    hours_requested = None
+    if hours_raw:
+        try:
+            hours_requested = Decimal(hours_raw)
+        except Exception as exc:
+            raise HTTPException(400, "La cantidad de horas no es válida.") from exc
+        if not hours_requested.is_finite() or hours_requested <= 0 or hours_requested > Decimal("744"):
+            raise HTTPException(400, "La cantidad de horas debe ser mayor que 0 y no superar 744.")
+        hours_requested = hours_requested.quantize(Decimal("0.01"))
+    if period_year is not None and period_year > date.today().year + 2:
+        raise HTTPException(400, "El año del periodo está demasiado lejos.")
+    if start_date and end_date and end_date < start_date:
+        raise HTTPException(400, "La fecha final no puede ser anterior a la fecha inicial.")
+
+    request_kind = request_type_value.casefold()
+    if request_kind == "cambio salarial":
+        if not employee or amount is None or amount <= 0 or effective_date is None:
+            raise HTTPException(400, "Un cambio salarial requiere funcionario, salario mensual positivo y fecha efectiva.")
+    elif request_kind == "vacaciones":
+        if not employee or period_year is None or requested_days is None or not start_date or not end_date:
+            raise HTTPException(400, "Una solicitud de vacaciones requiere funcionario, periodo, días solicitados y fechas desde/hasta.")
+    elif request_kind in {"permiso/licencia", "permiso", "licencia"}:
+        if not employee or not leave_type_raw.strip() or not start_date or not end_date:
+            raise HTTPException(400, "Un permiso o licencia requiere funcionario, tipo de permiso y fechas desde/hasta.")
+
+    item = CompanyRequest(
+        company_id=company.id,
+        request_type=request_type_value,
+        subject=subject_value,
+        detail=detail_value,
+        requested_by_user_id=user.id,
+        employee_id=employee.id if employee else None,
+        effective_date=effective_date,
+        start_date=start_date,
+        end_date=end_date,
+        period_year=period_year,
+        requested_days=requested_days,
+        amount=amount,
+        leave_type=leave_type_raw.strip()[:100],
+        hours_requested=hours_requested,
+        priority=priority_value,
+        status="Pendiente",
+    )
     db.add(item)
     db.flush()
-    write_audit(db, user, "crear", "solicitud", str(item.id), request_type)
+    write_audit(db, user, "crear", "solicitud", str(item.id), request_type_value)
+    title = f"Nueva solicitud #{item.id}"
+    body = f"{company.legal_name} registró {item.request_type.lower()}: {item.subject or item.request_type}."
+    if user.role == "empresa":
+        _notify_studio_team(
+            db, background_tasks, company, user,
+            event_type="solicitud_creada", title=title, body=body,
+            target_url=f"/app/requests/{item.id}", request_id=item.id,
+        )
+    else:
+        _notify_company_contacts(
+            db, background_tasks, item, user,
+            event_type="solicitud_creada", title=title,
+            body="El estudio registró una nueva gestión para tu empresa.",
+            target_url=f"/app/requests/{item.id}",
+        )
     db.commit()
-    return RedirectResponse("/app/requests", status_code=303)
+    return RedirectResponse(f"/app/requests/{item.id}", status_code=303)
 
 
 @app.get("/app/requests/{request_id}", response_class=HTMLResponse)
@@ -1795,7 +2186,8 @@ def request_detail_page(
 
 @app.post("/app/requests/{request_id}/comments")
 def add_request_comment(
-    request_id: int, body: Annotated[str, Form()], visibility: Annotated[str, Form()] = "Empresa",
+    request_id: int, background_tasks: BackgroundTasks,
+    body: Annotated[str, Form()], visibility: Annotated[str, Form()] = "Empresa",
     user: User = Depends(require_user), db: Session = Depends(get_db),
 ):
     item = db.get(CompanyRequest, request_id)
@@ -1806,14 +2198,31 @@ def add_request_comment(
         request_id=item.id, user_id=user.id, author_name=user.full_name, visibility=safe_visibility, body=body.strip(),
     )
     db.add(comment)
+    db.flush()
     write_audit(db, user, "comentar", "solicitud", str(item.id), safe_visibility)
+    if safe_visibility == "Interno":
+        company = db.get(Company, item.company_id)
+        if company:
+            _notify_studio_team(
+                db, background_tasks, company, user,
+                event_type="nota_interna", title=f"Nueva nota interna · Solicitud #{item.id}",
+                body="Se agregó una nota interna al trámite.",
+                target_url=f"/app/requests/{item.id}", request_id=item.id,
+            )
+    else:
+        _notify_request_counterpart(
+            db, background_tasks, item, user,
+            event_type="comentario_solicitud", title=f"Nueva respuesta · Solicitud #{item.id}",
+            body="Se agregó un comentario visible en el trámite.",
+        )
     db.commit()
     return RedirectResponse(f"/app/requests/{item.id}#conversation", status_code=303)
 
 
 @app.post("/app/requests/{request_id}/attachments")
 async def add_request_attachment(
-    request_id: int, file: UploadFile = File(), user: User = Depends(require_user), db: Session = Depends(get_db),
+    request_id: int, background_tasks: BackgroundTasks,
+    file: UploadFile = File(), user: User = Depends(require_user), db: Session = Depends(get_db),
 ):
     item = db.get(CompanyRequest, request_id)
     if not item or item.company_id not in company_ids_for_user(db, user):
@@ -1831,7 +2240,13 @@ async def add_request_attachment(
         content_type=content_type, uploaded_by=user.email,
     )
     db.add(attachment)
+    db.flush()
     write_audit(db, user, "adjuntar", "solicitud", str(item.id), attachment.original_name)
+    _notify_request_counterpart(
+        db, background_tasks, item, user,
+        event_type="adjunto_solicitud", title=f"Nuevo archivo · Solicitud #{item.id}",
+        body="Se adjuntó un archivo al trámite.",
+    )
     db.commit()
     return RedirectResponse(f"/app/requests/{item.id}#attachments", status_code=303)
 
@@ -1860,10 +2275,11 @@ def download_request_attachment(
 @app.post("/app/requests/{request_id}/status")
 def request_status(
     request_id: int,
+    background_tasks: BackgroundTasks,
     status_value: Annotated[str, Form(alias="status")],
     response: Annotated[str, Form()] = "",
-    assigned_user_id: Annotated[int | None, Form()] = None,
-    due_date: Annotated[date | None, Form()] = None,
+    assigned_user_id_raw: Annotated[str, Form(alias="assigned_user_id")] = "",
+    due_date_raw: Annotated[str, Form(alias="due_date")] = "",
     internal_notes: Annotated[str, Form()] = "",
     user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
     db: Session = Depends(get_db),
@@ -1871,33 +2287,190 @@ def request_status(
     item = db.get(CompanyRequest, request_id)
     if not item or item.company_id not in company_ids_for_user(db, user):
         raise HTTPException(404)
-    valid_statuses = {"Pendiente", "En revisión", "Falta información", "Procesando", "Resuelta", "Rechazada"}
+    existing_workflow = db.scalar(select(RequestWorkflow).where(RequestWorkflow.request_id == item.id))
+    if existing_workflow and existing_workflow.applied:
+        raise HTTPException(409, "Este trámite ya fue aplicado y su historial no puede modificarse.")
+    valid_statuses = {"Pendiente", "En revisión", "Falta información", "Procesando", "Aprobada", "Resuelta", "Rechazada"}
     if status_value not in valid_statuses:
         raise HTTPException(400, "Estado inválido.")
-    item.status = status_value
-    item.response = response.strip()
-    if status_value in {"Resuelta", "Rechazada"}:
-        item.resolved_at = datetime.now(UTC)
-    else:
-        item.resolved_at = None
+    if status_value in {"Aprobada", "Rechazada"} and user.role not in {"administrador", "contador"}:
+        raise HTTPException(403, "Solo un administrador o contador puede aprobar o rechazar un trámite.")
+    due_date = _parse_optional_form_date(due_date_raw, "fecha límite")
+    assigned_user_id = _parse_optional_form_int(assigned_user_id_raw, "responsable", 1)
+    company = db.get(Company, item.company_id)
+    previous_status = item.status
+    previous_response = item.response
     workflow = db.scalar(select(RequestWorkflow).where(RequestWorkflow.request_id == item.id))
     if not workflow:
         workflow = RequestWorkflow(request_id=item.id)
         db.add(workflow)
+        db.flush()
+    old_assigned_id = workflow.assigned_user_id
     if assigned_user_id:
         assigned = db.get(User, assigned_user_id)
-        if not assigned or assigned.studio_id != user.studio_id or assigned.role == "empresa":
+        if not assigned or not company or assigned.studio_id != company.studio_id or assigned.role == "empresa" or not assigned.active:
             raise HTTPException(400, "Responsable inválido.")
         workflow.assigned_user_id = assigned.id
     else:
         workflow.assigned_user_id = None
     workflow.due_date = due_date
     workflow.internal_notes = internal_notes.strip()
+    workflow.decision_notes = response.strip()
+    item.status = status_value
+    item.response = response.strip()
+    now = datetime.now(UTC)
+    if status_value in {"Resuelta", "Rechazada", "Aplicada"}:
+        item.resolved_at = now
+    else:
+        item.resolved_at = None
+    if status_value == "Aprobada":
+        workflow.approved_by_user_id = user.id
+        workflow.approved_at = now
+    elif previous_status == "Aprobada":
+        workflow.approved_by_user_id = None
+        workflow.approved_at = None
+    if response.strip() and response.strip() != previous_response:
+        db.add(RequestComment(
+            request_id=item.id, user_id=user.id, author_name=user.full_name,
+            visibility="Empresa", body=response.strip(),
+        ))
+    if company and old_assigned_id != workflow.assigned_user_id and workflow.assigned_user_id:
+        assigned = db.get(User, workflow.assigned_user_id)
+        if assigned and assigned.id != user.id:
+            _create_in_app_notification(
+                db, background_tasks, assigned,
+                event_type="solicitud_asignada", title=f"Solicitud asignada · #{item.id}",
+                body=f"Se te asignó el trámite «{item.subject or item.request_type}».",
+                target_url=f"/app/requests/{item.id}", request_id=item.id,
+            )
+    if previous_status != status_value or (response.strip() and response.strip() != previous_response):
+        _notify_request_counterpart(
+            db, background_tasks, item, user,
+            event_type="estado_solicitud", title=f"Actualización de solicitud #{item.id}",
+            body=f"El estado del trámite cambió a «{status_value}».",
+        )
+    write_audit(db, user, "actualizar_estado", "solicitud", str(item.id), status_value)
+    db.commit()
+    return RedirectResponse(f"/app/requests/{item.id}", status_code=303)
+
+
+@app.post("/app/requests/{request_id}/review")
+def review_request(
+    request_id: int,
+    background_tasks: BackgroundTasks,
+    status_value: Annotated[str, Form(alias="status")],
+    response: Annotated[str, Form()] = "",
+    assigned_to: Annotated[str, Form()] = "",
+    assigned_user_id_raw: Annotated[str, Form(alias="assigned_user_id")] = "",
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    item = db.get(CompanyRequest, request_id)
+    if not item or item.company_id not in company_ids_for_user(db, user):
+        raise HTTPException(404, "Solicitud no encontrada.")
+    if status_value not in {"Aprobada", "Rechazada", "En revisión", "Falta información"}:
+        raise HTTPException(400, "La decisión seleccionada no es válida.")
+    existing_workflow = db.scalar(select(RequestWorkflow).where(RequestWorkflow.request_id == item.id))
+    if existing_workflow and existing_workflow.applied:
+        raise HTTPException(409, "Este trámite ya fue aplicado y no admite nuevas decisiones.")
+    company = db.get(Company, item.company_id)
+    workflow = db.scalar(select(RequestWorkflow).where(RequestWorkflow.request_id == item.id))
+    if not workflow:
+        workflow = RequestWorkflow(request_id=item.id)
+        db.add(workflow)
+        db.flush()
+    assigned_id = _parse_optional_form_int(assigned_user_id_raw, "responsable", 1)
+    if not assigned_id and assigned_to.strip():
+        assigned = db.scalar(select(User).where(
+            User.studio_id == user.studio_id,
+            User.full_name == assigned_to.strip(),
+            User.active.is_(True),
+            User.role != "empresa",
+        ))
+        assigned_id = assigned.id if assigned else None
+        if not assigned_id:
+            raise HTTPException(400, "No se encontró el responsable indicado.")
+    if assigned_id:
+        assigned = db.get(User, assigned_id)
+        if not company or not assigned or not assigned.active or assigned.studio_id != company.studio_id or assigned.role == "empresa":
+            raise HTTPException(400, "Responsable inválido.")
+        workflow.assigned_user_id = assigned.id
+    now = datetime.now(UTC)
+    old_status = item.status
+    item.status = status_value
+    item.response = response.strip()
+    workflow.decision_notes = response.strip()
+    if status_value == "Aprobada":
+        workflow.approved_by_user_id = user.id
+        workflow.approved_at = now
+    else:
+        workflow.approved_by_user_id = None
+        workflow.approved_at = None
+    item.resolved_at = now if status_value == "Rechazada" else None
     if response.strip():
         db.add(RequestComment(
-            request_id=item.id, user_id=user.id, author_name=user.full_name, visibility="Empresa", body=response.strip(),
+            request_id=item.id, user_id=user.id, author_name=user.full_name,
+            visibility="Empresa", body=response.strip(),
         ))
-    write_audit(db, user, "actualizar_estado", "solicitud", str(item.id), status_value)
+    _notify_request_counterpart(
+        db, background_tasks, item, user,
+        event_type="decision_solicitud", title=f"Decisión sobre solicitud #{item.id}",
+        body=f"El estudio actualizó la solicitud a «{status_value}».",
+    )
+    write_audit(db, user, "revisar_solicitud", "solicitud", str(item.id), f"{old_status} → {status_value}")
+    db.commit()
+    return RedirectResponse(f"/app/requests/{item.id}", status_code=303)
+
+
+@app.post("/app/requests/{request_id}/apply")
+def apply_request(
+    request_id: int,
+    background_tasks: BackgroundTasks,
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    item = db.get(CompanyRequest, request_id)
+    if not item or item.company_id not in company_ids_for_user(db, user):
+        raise HTTPException(404, "Solicitud no encontrada.")
+    workflow = db.scalar(select(RequestWorkflow).where(RequestWorkflow.request_id == item.id))
+    # Idempotency check comes first: an already-applied operation remains a success
+    # response even though its status is no longer "Aprobada".
+    if workflow and workflow.applied:
+        return RedirectResponse(f"/app/requests/{item.id}", status_code=303)
+    if item.status != "Aprobada" or not workflow or not workflow.approved_at:
+        raise HTTPException(409, "El trámite debe estar aprobado antes de aplicarse.")
+    if item.request_type.strip().casefold() != "cambio salarial":
+        raise HTTPException(400, "La aplicación automática está habilitada únicamente para cambios salariales. Los demás trámites deben completarse desde su módulo correspondiente.")
+    employee = db.get(Employee, item.employee_id) if item.employee_id else None
+    if not employee or employee.company_id != item.company_id or item.amount is None or item.amount < 0:
+        raise HTTPException(400, "La solicitud salarial necesita un funcionario de la empresa y un importe válido.")
+    previous_salary = employee.base_salary
+    effective_from = item.effective_date or date.today()
+    employee.base_salary = item.amount
+    db.add(SalaryHistory(
+        employee_id=employee.id,
+        previous_salary=previous_salary,
+        new_salary=item.amount,
+        effective_from=effective_from,
+        reason=f"Cambio salarial aprobado mediante solicitud #{item.id}",
+        created_by=user.email,
+    ))
+    add_employee_event(
+        db, employee, user, "Salario",
+        f"Cambio salarial aplicado por solicitud #{item.id}",
+        f"Salario anterior: {previous_salary}; nuevo salario: {item.amount}.",
+        effective_from, item.amount,
+    )
+    workflow.applied = True
+    workflow.applied_at = datetime.now(UTC)
+    item.status = "Aplicada"
+    item.resolved_at = workflow.applied_at
+    write_audit(db, user, "aplicar_solicitud", "solicitud", str(item.id), f"{previous_salary} → {item.amount}")
+    _notify_request_counterpart(
+        db, background_tasks, item, user,
+        event_type="solicitud_aplicada", title=f"Trámite completado · Solicitud #{item.id}",
+        body="El cambio salarial aprobado fue aplicado al legajo del funcionario.",
+    )
     db.commit()
     return RedirectResponse(f"/app/requests/{item.id}", status_code=303)
 
