@@ -473,7 +473,7 @@ class RequestWorkflow(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
 
     request: Mapped[CompanyRequest] = relationship()
-    assigned_user: Mapped[Optional[User]] = relationship()
+    assigned_user: Mapped[Optional[User]] = relationship(foreign_keys=[assigned_user_id])
 
 
 class RequestComment(Base):

@@ -26,6 +26,16 @@ def ensure_admin() -> tuple[str, str, int, int]:
         assert company is not None
         employee = db.scalar(select(Employee).where(Employee.company_id == company.id).order_by(Employee.id))
         assert employee is not None
+        company_email = "workflow-company@test.py"
+        company_user = db.scalar(select(User).where(User.email == company_email))
+        if company_user is None:
+            company_user = User(
+                studio_id=studio.id, company_id=company.id, full_name="Workflow Company",
+                email=company_email, password_hash=hash_password(password), role="empresa",
+                active=True, must_change_password=False,
+            )
+            db.add(company_user)
+            db.commit()
         return email, password, company.id, employee.id
 
 

@@ -37,7 +37,7 @@
           <summary>Más</summary>
           <div class="nav-more-menu">
             <a href="/app/guia">Guía de mi espacio</a>
-            <a class="{{ 'active' if active_path.startswith('/app/notifications') else '' }}" href="/app/notifications">Notificaciones {% if notification_unread_count %}<span class="notification-count">{{ notification_unread_count if notification_unread_count < 100 else '99+' }}</span>{% endif %}</a>
+            <a class="{{ 'active' if active_path.startswith('/app/notifications') else '' }}" href="/app/notifications">Notificaciones <span class="notification-count" {% if not notification_unread_count %}hidden{% endif %}>{{ notification_unread_count if notification_unread_count < 100 else '99+' if notification_unread_count else '' }}</span></a>
             <a href="/herramientas/comparar">Comparar escenarios</a>
             <a class="{{ 'active' if active_path.startswith('/app/requests') else '' }}" href="/app/requests">Trámites y solicitudes</a>
             {% if user.role != 'empresa' %}<a class="{{ 'active' if active_path.startswith('/app/reports') else '' }}" href="/app/reports">Reportes</a>{% endif %}
@@ -72,7 +72,7 @@
       <a href="/app/employees">Funcionarios</a>
       {% if user.role != 'empresa' %}<a href="/app/payrolls">Operaciones</a><a href="/app/compliance">Cumplimiento</a>{% endif %}
       <a href="/app/documents">Documentos</a>
-      <a href="/app/notifications">Notificaciones {% if notification_unread_count %}({{ notification_unread_count if notification_unread_count < 100 else '99+' }}){% endif %}</a>
+      <a href="/app/notifications">Notificaciones <span class="notification-count" {% if not notification_unread_count %}hidden{% endif %}>{{ notification_unread_count if notification_unread_count < 100 else '99+' if notification_unread_count else '' }}</span></a>
       <a href="/app/requests">Trámites</a>
       {% if user.role != 'empresa' %}<a href="/app/reports">Reportes</a><a href="/app/calendar">Agenda</a>{% endif %}
       <a href="/app/labor-code">Código Laboral</a>
@@ -93,5 +93,23 @@
 <script src="{{ url_for('static', path='v24.js') }}"></script>
 <link rel="stylesheet" href="{{ url_for('static', path='notifications.css') }}?v=1">
 <script src="{{ url_for('static', path='labor-suite.js') }}?v=20260929b" defer></script>
+<script>
+(function () {
+  const badges = document.querySelectorAll('.notification-count');
+  if (!badges.length) return;
+  const refresh = async () => {
+    try {
+      const response = await fetch('/app/notifications/unread-count', { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' });
+      if (!response.ok) return;
+      const data = await response.json();
+      badges.forEach(badge => {
+        badge.textContent = data.count > 99 ? '99+' : (data.count ? String(data.count) : '');
+        badge.hidden = !data.count;
+      });
+    } catch (_) { /* Se mantiene el último contador si falla la consulta. */ }
+  };
+  window.setInterval(refresh, 60000);
+})();
+</script>
 </body>
 </html>

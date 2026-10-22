@@ -1947,8 +1947,8 @@ def _sync_due_notifications_for_user(
 @app.get("/app/notifications", response_class=HTMLResponse)
 def notifications_page(
     request: Request,
+    background_tasks: BackgroundTasks,
     filter_value: str = "all",
-    background_tasks: BackgroundTasks = None,
     user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ):
@@ -2044,9 +2044,9 @@ def requests_page(request: Request, user: User = Depends(require_user), db: Sess
     request_ids = [item.id for item in items]
     workflows = list(db.scalars(select(RequestWorkflow).where(RequestWorkflow.request_id.in_(request_ids)))) if request_ids else []
     workflow_by_request = {item.request_id: item for item in workflows}
-    pending = sum(item.status not in {"Resuelta", "Rechazada"} for item in items)
+    pending = sum(item.status not in {"Resuelta", "Rechazada", "Aplicada"} for item in items)
     overdue = sum(
-        workflow.due_date and workflow.due_date < date.today() and next((item.status for item in items if item.id == workflow.request_id), "") not in {"Resuelta", "Rechazada"}
+        workflow.due_date and workflow.due_date < date.today() and next((item.status for item in items if item.id == workflow.request_id), "") not in {"Resuelta", "Rechazada", "Aplicada"}
         for workflow in workflows
     )
     return render(request, "requests.html", db, user, items=items, companies=companies, workflow_by_request=workflow_by_request, pending=pending, overdue=overdue)
