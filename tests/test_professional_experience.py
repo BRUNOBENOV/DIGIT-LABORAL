@@ -39,3 +39,26 @@ def test_workspace_navigation_uses_five_accounting_areas():
         "/app/notifications", "/app/security",
     ):
         assert route in base
+
+
+def test_company_logo_upload_route_matches_company_detail_form():
+    root = Path(__file__).resolve().parents[1]
+    main = (root / "app/main.py").read_text(encoding="utf-8")
+    template = (root / "app/templates/company_detail.html").read_text(encoding="utf-8")
+    script = (root / "app/static/v23.js").read_text(encoding="utf-8")
+
+    assert '@app.post("/app/companies/{company_id}/logo")' in main
+    assert 'action="/app/companies/{{ company.id }}/logo"' in template
+    assert 'image/webp' in template
+    assert "const maxBytes = 2 * 1024 * 1024;" in script
+    assert "logo_saved=1" in main
+    assert "logo_error=" in main
+
+
+def test_logo_detector_supports_png_jpeg_and_webp():
+    root = Path(__file__).resolve().parents[1]
+    main = (root / "app/main.py").read_text(encoding="utf-8")
+
+    assert 'return "image/png"' in main
+    assert 'return "image/jpeg"' in main
+    assert 'return "image/webp"' in main
