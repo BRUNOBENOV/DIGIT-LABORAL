@@ -1173,45 +1173,35 @@ def company_logo(company_id: int, user: User = Depends(require_user), db: Sessio
 async def upload_company_logo(
     company_id: int,
     logo: UploadFile = File(...),
-    user: User = Depends(require_roles("administrador", "contador", "empresa")),
+    user: User = Depends(require_roles("administrador", "contador", "auxiliar", "empresa")),
     db: Session = Depends(get_db),
 ):
     company = company_allowed(db, user, company_id)
     target = f"/app/companies/{company.id}"
 
+    def upload_error(message: str) -> RedirectResponse:
+        return RedirectResponse(
+            f"{target}?logo_error={quote(message)}&open=brandingModal",
+            status_code=303,
+        )
+
     if not logo.filename:
-        return RedirectResponse(f"{target}?logo_error={quote('Seleccioná una imagen antes de guardar.')}", status_code=303)
+        return upload_error("Seleccioná una imagen antes de guardar.")
 
-    content = await logo.read(settings.max_logo_size + 1)
-    limit_mb = settings.max_logo_size / (1024 * 1024)
-    limit_label = f"{limit_mb:g} MB"
-    if len(content) > settings.max_logo_size:
-        return RedirectResponse(
-            f"{target}?logo_error={quote(f'El logo supera el límite permitido de {limit_label}.')}",
-            status_code=303,
-        )
+    upload_limit = max(settings.max_logo_size, 8 * 1024 * 1024)
+    content = await logo.read(upload_limit + 1)
     if not content:
-        return RedirectResponse(f"{target}?logo_error={quote('El archivo seleccionado está vacío.')}", status_code=303)
-
-    content_type = detect_logo_content_type(content)
-    if content_type is None:
-        return RedirectResponse(
-            f"{target}?logo_error={quote('El logo debe ser una imagen PNG, JPG/JPEG o WEBP válida.')}",
-            status_code=303,
-        )
+        return upload_error("El archivo seleccionado está vacío.")
+    if len(content) > upload_limit:
+        return upload_error(f"El logo supera el máximo permitido de {upload_limit / (1024 * 1024):g} MB.")
+    if detect_logo_content_type(content) is None:
+        return upload_error("El logo debe ser una imagen PNG, JPG/JPEG o WEBP válida.")
 
     try:
         optimized_bytes, optimized_type = smart_normalize_logo(content)
     except Exception as exc:
-        logger.warning(
-            "Company logo processing failed for company_id=%s (%s)",
-            company.id,
-            type(exc).__name__,
-        )
-        return RedirectResponse(
-            f"{target}?logo_error={quote('No se pudo procesar la imagen. Probá con un PNG, JPG o WEBP válido.')}",
-            status_code=303,
-        )
+        logger.warning("Company logo processing failed for company_id=%s (%s)", company.id, type(exc).__name__)
+        return upload_error("No se pudo procesar la imagen. Probá con un PNG, JPG o WEBP válido.")
 
     branding = get_or_create_branding(db, company)
     clean_name = safe_filename(logo.filename)
@@ -1220,16 +1210,14 @@ async def upload_company_logo(
     branding.logo_content_type = optimized_type
     branding.logo_filename = f"{base_name or 'logo'}-normalizado.png"
     branding.updated_at = datetime.now(UTC)
-    write_audit(db, user, "actualizar", "identidad_visual", str(company.id), company.legal_name)
+    write_audit(db, user, "actualizar", "logo_empresa", str(company.id), company.legal_name)
     try:
         db.commit()
     except Exception:
         db.rollback()
         logger.exception("Could not save company logo for company_id=%s", company.id)
-        return RedirectResponse(
-            f"{target}?logo_error={quote('No se pudo guardar el logo. Intentá nuevamente; si persiste, avisá al administrador.')}",
-            status_code=303,
-        )
+        return upload_error("No se pudo guardar el logo. Intentá nuevamente; si vuelve a fallar, avisá al administrador.")
+    logger.info("Company logo saved (company_id=%s, size_bytes=%s)", company.id, len(optimized_bytes))
     return RedirectResponse(f"{target}?logo_saved=1", status_code=303)
 
 
@@ -2548,14 +2536,26 @@ def apply_request(
     return RedirectResponse(f"/app/requests/{item.id}", status_code=303)
 
 
+CALCULATION_MODULES = {
+    "salary": {"title": "Salarios", "eyebrow": "CÁLCULO DE SALARIOS", "description": "Ingresá haberes, descuentos y base de IPS para revisar el bruto, el aporte y el neto estimado."},
+    "hours": {"title": "Horas y recargos", "eyebrow": "CÁLCULO DE HORAS", "description": "Calculá el valor hora con una jornada y un multiplicador previamente revisados."},
+    "aguinaldo": {"title": "Cálculo de aguinaldo", "eyebrow": "AGUINALDO · ARTS. 243/244", "description": "Estimá la doceava parte de las remuneraciones computables del periodo."},
+    "vacation": {"title": "Cálculo de vacaciones", "eyebrow": "VACACIONES · ARTS. 218/220", "description": "Estimá la remuneración de vacaciones con base y días revisados."},
+    "notice": {"title": "Cálculo de preaviso", "eyebrow": "PREAVISO · ARTS. 87/90/92", "description": "Estimá el importe a partir de la base promedio y los días que correspondan al caso."},
+}
+
+
 @app.get("/app/calculations", response_class=HTMLResponse)
 def calculations_page(
     request: Request,
     company_id: OptionalQueryId = None,
     employee_id: OptionalQueryId = None,
+    tipo: str | None = None,
     user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ):
+    if tipo and tipo not in CALCULATION_MODULES:
+        raise HTTPException(404, "Calculadora no encontrada.")
     company_ids = company_ids_for_user(db, user)
     companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name))) if company_ids else []
     employees_query = select(Employee).where(Employee.company_id.in_(company_ids), Employee.status == "Activo") if company_ids else select(Employee).where(False)
@@ -2567,6 +2567,8 @@ def calculations_page(
         recent_query = recent_query.where(CalculationRecord.company_id == company_id)
     if employee_id:
         recent_query = recent_query.where(CalculationRecord.employee_id == employee_id)
+    if tipo:
+        recent_query = recent_query.where(CalculationRecord.calculation_type == tipo)
     recent_calculations = list(db.scalars(recent_query.order_by(CalculationRecord.created_at.desc()).limit(30)))
     return render(
         request,
@@ -2582,6 +2584,8 @@ def calculations_page(
         minimum_salary=get_parameter(db, "minimum_monthly_salary_general", 0),
         hourly_reference=get_parameter(db, "minimum_hourly_wage_general", 0),
         calculation_labels={key: calculation_label(key) for key in ("salary", "hours", "aguinaldo", "vacation", "notice")},
+        active_calculation_type=tipo or "",
+        calculation_module=CALCULATION_MODULES.get(tipo),
     )
 
 
@@ -2643,7 +2647,7 @@ def save_calculation(
     db.flush()
     write_audit(db, user, "guardar", "calculo", str(item.id), f"{calculation_label(calculation_type)} · Gs. {format_gs(amount)}")
     db.commit()
-    return RedirectResponse(f"/app/calculations?saved={item.id}&company_id={company.id}" + (f"&employee_id={employee.id}" if employee else ""), status_code=303)
+    return RedirectResponse(f"/app/calculations?tipo={quote(calculation_type)}&saved={item.id}&company_id={company.id}" + (f"&employee_id={employee.id}" if employee else ""), status_code=303)
 
 
 @app.post("/app/calculations/{calculation_id}/status")
@@ -2661,7 +2665,8 @@ def calculation_status(
     item.status = status_value
     write_audit(db, user, "actualizar_estado", "calculo", str(item.id), status_value)
     db.commit()
-    return RedirectResponse("/app/calculations", status_code=303)
+    target = f"/app/calculations?tipo={quote(item.calculation_type)}" if item.calculation_type in CALCULATION_MODULES else "/app/calculations"
+    return RedirectResponse(target, status_code=303)
 
 
 @app.get("/app/calculations/{calculation_id}/certificate")

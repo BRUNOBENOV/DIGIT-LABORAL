@@ -23,7 +23,7 @@ class Settings:
     openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
     openai_model: str = os.getenv("OPENAI_MODEL", "gpt-5-mini")
     ai_store_responses: bool = _bool("AI_STORE_RESPONSES")
-    max_logo_size: int = int(os.getenv("MAX_LOGO_SIZE", str(2 * 1024 * 1024)))
+    max_logo_size: int = int(os.getenv("MAX_LOGO_SIZE", str(8 * 1024 * 1024)))
     max_upload_size: int = int(os.getenv("MAX_UPLOAD_SIZE", str(10 * 1024 * 1024)))
     max_import_rows: int = int(os.getenv("MAX_IMPORT_ROWS", "2000"))
     login_max_attempts: int = int(os.getenv("LOGIN_MAX_ATTEMPTS", "5"))

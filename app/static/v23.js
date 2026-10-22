@@ -22,7 +22,7 @@
   const form = zone?.closest('form');
   const submit = form?.querySelector('button[type="submit"]');
   const allowedExtensions = ['png', 'jpg', 'jpeg', 'webp'];
-  const maxBytes = 2 * 1024 * 1024;
+  const maxBytes = 8 * 1024 * 1024;
 
   const showError = message => {
     if (error) {
@@ -34,13 +34,14 @@
   const acceptableFile = file => {
     if (!file) return false;
     const ext = (file.name.split('.').pop() || '').toLowerCase();
+    const extensionOk = allowedExtensions.includes(ext);
     const typeOk = !file.type || ['image/png', 'image/jpeg', 'image/webp'].includes(file.type);
-    if (!allowedExtensions.includes(ext) && !typeOk) {
+    if (!extensionOk || !typeOk) {
       showError('Usá una imagen PNG, JPG/JPEG o WEBP.');
       return false;
     }
     if (file.size > maxBytes) {
-      showError('El logo supera 2 MB. Elegí una imagen más liviana.');
+      showError('El logo supera 8 MB. Elegí una imagen más liviana.');
       return false;
     }
     if (file.size === 0) {
@@ -65,6 +66,11 @@
       }
       placeholder?.classList.add('hidden');
       zone?.classList.add('has-file');
+    };
+    reader.onerror = () => {
+      showError('El navegador no pudo leer ese archivo. Probá con otra imagen PNG, JPG o WEBP.');
+      if (input) input.value = '';
+      zone?.classList.remove('has-file');
     };
     reader.readAsDataURL(file);
   };
@@ -115,7 +121,11 @@
   }
 
   const params = new URLSearchParams(window.location.search);
-  if (params.get('logo_error')) {
-    showError(params.get('logo_error'));
+  if (params.get('logo_error')) showError(params.get('logo_error'));
+  if (params.get('open') === 'brandingModal' || params.get('logo_error')) {
+    const modal = document.getElementById('brandingModal');
+    modal?.classList.add('show');
+    modal?.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('modal-open');
   }
 })();

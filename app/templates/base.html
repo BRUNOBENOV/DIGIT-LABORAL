@@ -10,11 +10,11 @@
   <link rel="stylesheet" href="{{ url_for('static', path='v17.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', path='v20.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', path='v22-dashboard.css') }}">
-  <link rel="stylesheet" href="{{ url_for('static', path='v23.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', path='v23.css') }}?v=20261022c">
   <link rel="stylesheet" href="{{ url_for('static', path='v24.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', path='notifications.css') }}?v=2">
   <link rel="stylesheet" href="{{ url_for('static', path='labor-suite.css') }}?v=20260929b">
-  <link rel="stylesheet" href="{{ url_for('static', path='experience.css') }}?v=20261022b">
+  <link rel="stylesheet" href="{{ url_for('static', path='experience.css') }}?v=20261022c">
 </head>
 <body class="{% if user %}app-body{% else %}public-body{% endif %}">
 {% if user %}
@@ -59,11 +59,16 @@
         <details class="workspace-nav-group" {% if active_path.startswith('/app/liquidaciones') or active_path.startswith('/app/payrolls') or active_path.startswith('/app/vacations') or active_path.startswith('/app/aguinaldo') or active_path.startswith('/app/calculations') %}open{% endif %}>
           <summary><span class="workspace-group-symbol">02</span><span class="workspace-group-name">Cálculo</span><span class="workspace-group-chevron">⌄</span></summary>
           <div class="workspace-submenu">
-            <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/calculations') else '' }}" href="/app/calculations">Centro de cálculos</a>
-            <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/liquidaciones') else '' }}" href="/app/liquidaciones">Calcular y emitir</a>
+            <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/calculations') and not request.query_params.get('tipo') else '' }}" href="/app/calculations">Calculadoras laborales</a>
+            <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/calculations') and request.query_params.get('tipo') == 'salary' else '' }}" href="/app/calculations?tipo=salary">Salarios</a>
+            <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/calculations') and request.query_params.get('tipo') == 'hours' else '' }}" href="/app/calculations?tipo=hours">Horas y recargos</a>
+            <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/calculations') and request.query_params.get('tipo') == 'aguinaldo' else '' }}" href="/app/calculations?tipo=aguinaldo">Cálculo de aguinaldo</a>
+            <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/calculations') and request.query_params.get('tipo') == 'vacation' else '' }}" href="/app/calculations?tipo=vacation">Cálculo de vacaciones</a>
+            <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/calculations') and request.query_params.get('tipo') == 'notice' else '' }}" href="/app/calculations?tipo=notice">Preaviso</a>
+            <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/liquidaciones') else '' }}" href="/app/liquidaciones?tipo=settlement">Liquidación final</a>
             <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/payrolls') else '' }}" href="/app/payrolls">Liquidaciones mensuales</a>
-            <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/vacations') else '' }}" href="/app/vacations">Vacaciones</a>
-            <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/aguinaldo') else '' }}" href="/app/aguinaldo">Aguinaldo</a>
+            <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/vacations') else '' }}" href="/app/vacations">Gestión de vacaciones</a>
+            <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/aguinaldo') else '' }}" href="/app/aguinaldo">Registro de aguinaldos</a>
           </div>
         </details>
 
@@ -114,7 +119,7 @@
 <script src="{{ url_for('static', path='v17.js') }}"></script>
 <script src="{{ url_for('static', path='v20.js') }}"></script>
 <script src="{{ url_for('static', path='v22-dashboard.js') }}"></script>
-<script src="{{ url_for('static', path='v23.js') }}"></script>
+<script src="{{ url_for('static', path='v23.js') }}?v=20261022c"></script>
 <script src="{{ url_for('static', path='v24.js') }}"></script>
 <script src="{{ url_for('static', path='labor-suite.js') }}?v=20260929b" defer></script>
 <script src="{{ url_for('static', path='experience.js') }}?v=20261022b"></script>

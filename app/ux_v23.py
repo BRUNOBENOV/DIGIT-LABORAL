@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import logging
 import re
 from datetime import UTC, datetime
 from typing import Annotated
@@ -24,6 +25,7 @@ from .main import (
 )
 from .models import CompanyBranding, User
 
+logger = logging.getLogger("digit.logo_upload")
 LOGO_UPLOAD_LIMIT = max(settings.max_logo_size, 8 * 1024 * 1024)
 ALLOWED_LOGO_FORMATS = {"PNG", "JPEG", "WEBP"}
 
@@ -63,6 +65,7 @@ def _validated_logo(content: bytes) -> tuple[bytes, str]:
 
 
 _remove_route("/app/companies/{company_id}/logo", "GET")
+_remove_route("/app/companies/{company_id}/logo", "POST")
 _remove_route("/app/companies/{company_id}/branding", "POST")
 
 
@@ -98,7 +101,7 @@ async def upload_company_logo_v23(
     if not content:
         return _logo_error(company.id, "El archivo seleccionado está vacío.")
     if len(content) > LOGO_UPLOAD_LIMIT:
-        return _logo_error(company.id, "El logo supera el máximo permitido de 8 MB.")
+        return _logo_error(company.id, f"El logo supera el máximo permitido de {LOGO_UPLOAD_LIMIT / (1024 * 1024):g} MB.")
 
     try:
         optimized_bytes, optimized_type = _validated_logo(content)
@@ -113,7 +116,13 @@ async def upload_company_logo_v23(
     branding.logo_filename = f"{base_name or 'logo'}-normalizado.png"
     branding.updated_at = datetime.now(UTC)
     write_audit(db, user, "actualizar", "logo_empresa", str(company.id), company.legal_name)
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception("Could not persist company logo (company_id=%s)", company.id)
+        return _logo_error(company.id, "No se pudo guardar el logo. Intentá nuevamente; si vuelve a fallar, avisá al administrador.")
+    logger.info("Company logo saved (company_id=%s, size_bytes=%s)", company.id, len(optimized_bytes))
     return RedirectResponse(f"/app/companies/{company.id}?logo_saved=1", status_code=303)
 
 
