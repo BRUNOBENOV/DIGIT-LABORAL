@@ -22,7 +22,7 @@
   const form = zone?.closest('form');
   const submit = form?.querySelector('button[type="submit"]');
   const allowedExtensions = ['png', 'jpg', 'jpeg', 'webp'];
-  const maxBytes = 8 * 1024 * 1024;
+  const maxBytes = 2 * 1024 * 1024;
 
   const showError = message => {
     if (error) {
@@ -40,7 +40,7 @@
       return false;
     }
     if (file.size > maxBytes) {
-      showError('El logo supera 8 MB. Elegí una imagen más liviana.');
+      showError('El logo supera 2 MB. Elegí una imagen más liviana.');
       return false;
     }
     if (file.size === 0) {

@@ -185,6 +185,17 @@ def smart_normalize_logo(content: bytes) -> tuple[bytes, str]:
     return output.getvalue(), "image/png"
 
 
+def detect_logo_content_type(content: bytes) -> str | None:
+    """Detect supported image types by file signature rather than browser MIME metadata."""
+    if content.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if content.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if len(content) >= 12 and content[:4] == b"RIFF" and content[8:12] == b"WEBP":
+        return "image/webp"
+    return None
+
+
 configure_logging(settings.json_logs)
 logger = logging.getLogger("digit.main")
 
@@ -1158,6 +1169,70 @@ def company_logo(company_id: int, user: User = Depends(require_user), db: Sessio
     )
 
 
+@app.post("/app/companies/{company_id}/logo")
+async def upload_company_logo(
+    company_id: int,
+    logo: UploadFile = File(...),
+    user: User = Depends(require_roles("administrador", "contador", "empresa")),
+    db: Session = Depends(get_db),
+):
+    company = company_allowed(db, user, company_id)
+    target = f"/app/companies/{company.id}"
+
+    if not logo.filename:
+        return RedirectResponse(f"{target}?logo_error={quote('Seleccioná una imagen antes de guardar.')}", status_code=303)
+
+    content = await logo.read(settings.max_logo_size + 1)
+    limit_mb = settings.max_logo_size / (1024 * 1024)
+    limit_label = f"{limit_mb:g} MB"
+    if len(content) > settings.max_logo_size:
+        return RedirectResponse(
+            f"{target}?logo_error={quote(f'El logo supera el límite permitido de {limit_label}.')}",
+            status_code=303,
+        )
+    if not content:
+        return RedirectResponse(f"{target}?logo_error={quote('El archivo seleccionado está vacío.')}", status_code=303)
+
+    content_type = detect_logo_content_type(content)
+    if content_type is None:
+        return RedirectResponse(
+            f"{target}?logo_error={quote('El logo debe ser una imagen PNG, JPG/JPEG o WEBP válida.')}",
+            status_code=303,
+        )
+
+    try:
+        optimized_bytes, optimized_type = smart_normalize_logo(content)
+    except Exception as exc:
+        logger.warning(
+            "Company logo processing failed for company_id=%s (%s)",
+            company.id,
+            type(exc).__name__,
+        )
+        return RedirectResponse(
+            f"{target}?logo_error={quote('No se pudo procesar la imagen. Probá con un PNG, JPG o WEBP válido.')}",
+            status_code=303,
+        )
+
+    branding = get_or_create_branding(db, company)
+    clean_name = safe_filename(logo.filename)
+    base_name = clean_name.rsplit(".", 1)[0] if "." in clean_name else clean_name
+    branding.logo_bytes = optimized_bytes
+    branding.logo_content_type = optimized_type
+    branding.logo_filename = f"{base_name or 'logo'}-normalizado.png"
+    branding.updated_at = datetime.now(UTC)
+    write_audit(db, user, "actualizar", "identidad_visual", str(company.id), company.legal_name)
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception("Could not save company logo for company_id=%s", company.id)
+        return RedirectResponse(
+            f"{target}?logo_error={quote('No se pudo guardar el logo. Intentá nuevamente; si persiste, avisá al administrador.')}",
+            status_code=303,
+        )
+    return RedirectResponse(f"{target}?logo_saved=1", status_code=303)
+
+
 @app.post("/app/companies/{company_id}/branding")
 async def update_company_branding(
     company_id: int,
@@ -1187,12 +1262,10 @@ async def update_company_branding(
     if logo and logo.filename:
         content = await logo.read(settings.max_logo_size + 1)
         if len(content) > settings.max_logo_size:
-            raise HTTPException(413, "El logo supera el máximo permitido de 2 MB.")
-        content_type = (logo.content_type or "").lower()
-        is_png = content.startswith(b"\x89PNG\r\n\x1a\n")
-        is_jpeg = content.startswith(b"\xff\xd8\xff")
-        if content_type not in {"image/png", "image/jpeg"} or not (is_png or is_jpeg):
-            raise HTTPException(415, "El logo debe ser PNG o JPG válido.")
+            raise HTTPException(413, f"El logo supera el máximo permitido de {settings.max_logo_size / (1024 * 1024):g} MB.")
+        detected_type = detect_logo_content_type(content)
+        if detected_type is None:
+            raise HTTPException(415, "El logo debe ser una imagen PNG, JPG/JPEG o WEBP válida.")
         try:
             optimized_bytes, optimized_type = smart_normalize_logo(content)
         except Exception as exc:
