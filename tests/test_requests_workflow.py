@@ -90,6 +90,17 @@ def test_salary_request_is_approved_applied_and_notified():
         csrf = token_from_page(client, f"/app/requests/{request_id}")
         applied = client.post(f"/app/requests/{request_id}/apply", data={"csrf_token": csrf}, follow_redirects=False)
         assert applied.status_code == 303
+        csrf = token_from_page(client, f"/app/requests/{request_id}")
+        locked = client.post(
+            f"/app/requests/{request_id}/status",
+            data={"csrf_token": csrf, "status": "Resuelta", "response": "Cambio posterior", "assigned_user_id": "", "due_date": "", "internal_notes": ""},
+            follow_redirects=False,
+        )
+        assert locked.status_code == 409
+        # Applying twice is idempotent and must never change the salary twice.
+        csrf = token_from_page(client, f"/app/requests/{request_id}")
+        applied_again = client.post(f"/app/requests/{request_id}/apply", data={"csrf_token": csrf}, follow_redirects=False)
+        assert applied_again.status_code == 303
         assert client.get("/app/notifications").status_code == 200
     with SessionLocal() as db:
         item = db.get(CompanyRequest, request_id)
@@ -146,22 +157,37 @@ def test_notification_reads_are_scoped_to_the_logged_in_user():
     email, password, _, _ = ensure_admin()
     with SessionLocal() as db:
         user = db.scalar(select(User).where(User.email == email))
+        assert user is not None
+        company_user = db.scalar(select(User).where(User.email == "workflow-company@test.py"))
+        assert company_user is not None
         note = Notification(
             studio_id=user.studio_id, recipient_user_id=user.id, event_type="prueba",
             title="Aviso de prueba", body="Notificación privada.", target_url="/app/requests",
         )
-        db.add(note)
+        other_note = Notification(
+            studio_id=company_user.studio_id, recipient_user_id=company_user.id, event_type="prueba_privada",
+            title="Aviso privado de empresa", body="Solo para la empresa.", target_url="/app/requests",
+        )
+        db.add_all([note, other_note])
         db.commit()
         notification_id = note.id
+        other_notification_id = other_note.id
     with TestClient(app) as client:
         login(client, email, password)
         page = client.get("/app/notifications")
         assert page.status_code == 200 and "Aviso de prueba" in page.text
+        assert "Aviso privado de empresa" not in page.text
         csrf = token_from_page(client, "/app/notifications")
+        forbidden = client.post(
+            f"/app/notifications/{other_notification_id}/read", data={"csrf_token": csrf}, follow_redirects=False,
+        )
+        assert forbidden.status_code == 404
         marked = client.post(
             f"/app/notifications/{notification_id}/read", data={"csrf_token": csrf}, follow_redirects=False,
         )
         assert marked.status_code == 303
     with SessionLocal() as db:
         note = db.get(Notification, notification_id)
+        other_note = db.get(Notification, other_notification_id)
         assert note.read_at is not None
+        assert other_note.read_at is None
