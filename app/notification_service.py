@@ -133,7 +133,7 @@ def send_notification_delivery(delivery_id: int, studio_id: int | None = None) -
 
 def dispatch_notification_outbox(limit: int = 100) -> dict[str, int]:
     """Retry pending or transiently failed SMTP messages across tenant scopes."""
-    pending: list[tuple[int, int | None]] = []
+    pending: list[tuple[datetime, int, int | None]] = []
     with SessionLocal() as db:
         # Studios are not row-level protected; set each tenant context before
         # touching tenant-scoped notification tables.
@@ -148,10 +148,11 @@ def dispatch_notification_outbox(limit: int = 100) -> dict[str, int]:
                 .order_by(NotificationDelivery.created_at, NotificationDelivery.id)
                 .limit(max(1, min(limit, 500)))
             ))
-            pending.extend((item.id, studio_id) for item in rows)
+            pending.extend((item.created_at, item.id, studio_id) for item in rows)
+    pending.sort(key=lambda row: (row[0], row[1]))
     pending = pending[:max(1, min(limit, 500))]
     sent = failed = 0
-    for delivery_id, studio_id in pending:
+    for _, delivery_id, studio_id in pending:
         if send_notification_delivery(delivery_id, studio_id):
             sent += 1
         else:

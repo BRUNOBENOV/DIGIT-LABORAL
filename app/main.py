@@ -2274,6 +2274,9 @@ def request_status(
     item = db.get(CompanyRequest, request_id)
     if not item or item.company_id not in company_ids_for_user(db, user):
         raise HTTPException(404)
+    existing_workflow = db.scalar(select(RequestWorkflow).where(RequestWorkflow.request_id == item.id))
+    if existing_workflow and existing_workflow.applied:
+        raise HTTPException(409, "Este trámite ya fue aplicado y su historial no puede modificarse.")
     valid_statuses = {"Pendiente", "En revisión", "Falta información", "Procesando", "Aprobada", "Resuelta", "Rechazada"}
     if status_value not in valid_statuses:
         raise HTTPException(400, "Estado inválido.")
@@ -2354,6 +2357,9 @@ def review_request(
         raise HTTPException(404, "Solicitud no encontrada.")
     if status_value not in {"Aprobada", "Rechazada", "En revisión", "Falta información"}:
         raise HTTPException(400, "La decisión seleccionada no es válida.")
+    existing_workflow = db.scalar(select(RequestWorkflow).where(RequestWorkflow.request_id == item.id))
+    if existing_workflow and existing_workflow.applied:
+        raise HTTPException(409, "Este trámite ya fue aplicado y no admite nuevas decisiones.")
     company = db.get(Company, item.company_id)
     workflow = db.scalar(select(RequestWorkflow).where(RequestWorkflow.request_id == item.id))
     if not workflow:

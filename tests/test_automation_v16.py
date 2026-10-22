@@ -4,6 +4,8 @@ import io
 import re
 
 from fastapi.testclient import TestClient
+
+from app.config import settings
 from sqlalchemy import select
 
 from app.ai_service import generate_assistance
@@ -18,7 +20,7 @@ def login(client: TestClient) -> str:
     assert page.status_code == 200 and match
     response = client.post(
         "/login",
-        data={"email": "admin@digitlaboral.com.py", "password": "demo123", "csrf_token": match.group(1)},
+        data={"email": "admin@digitlaboral.com.py", "password": settings.demo_admin_password, "csrf_token": match.group(1)},
         follow_redirects=False,
     )
     assert response.status_code == 303

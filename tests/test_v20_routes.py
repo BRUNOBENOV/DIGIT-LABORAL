@@ -4,6 +4,8 @@ import re
 from bs4 import BeautifulSoup
 from fastapi.testclient import TestClient
 
+from app.config import settings
+
 from app.main import app
 
 
@@ -13,7 +15,7 @@ def _login(client: TestClient) -> str:
     assert page.status_code == 200 and match
     response = client.post(
         "/login",
-        data={"email": "admin@digitlaboral.com.py", "password": "demo123", "csrf_token": match.group(1)},
+        data={"email": "admin@digitlaboral.com.py", "password": settings.demo_admin_password, "csrf_token": match.group(1)},
         follow_redirects=False,
     )
     assert response.status_code == 303
