@@ -972,7 +972,7 @@ def dashboard(request: Request, user: User = Depends(require_user), db: Session 
     company_ids = company_ids_for_user(db, user)
     companies_count = len(company_ids)
     employee_count = db.scalar(select(func.count(Employee.id)).where(Employee.company_id.in_(company_ids), Employee.status == "Activo")) if company_ids else 0
-    pending_count = db.scalar(select(func.count(CompanyRequest.id)).where(CompanyRequest.company_id.in_(company_ids), CompanyRequest.status.in_(["Pendiente", "En revisión", "Falta información", "Procesando"]))) if company_ids else 0
+    pending_count = db.scalar(select(func.count(CompanyRequest.id)).where(CompanyRequest.company_id.in_(company_ids), CompanyRequest.status.in_(["Pendiente", "En revisión", "Falta información", "Procesando", "Aprobada"]))) if company_ids else 0
     payroll_count = db.scalar(select(func.count(Payroll.id)).where(Payroll.company_id.in_(company_ids), Payroll.status == "Borrador")) if company_ids else 0
     compliance_pending_count = db.scalar(
         select(func.count(ComplianceEvent.id)).where(
