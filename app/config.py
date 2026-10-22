@@ -16,7 +16,7 @@ class Settings:
     secret_key: str = os.getenv("DIGIT_SECRET_KEY", "cambiar-esta-clave-en-produccion")
     database_url: str = os.getenv("DATABASE_URL", "sqlite:///./data/digit_laboral.db")
     migration_database_url: str = os.getenv("MIGRATION_DATABASE_URL", os.getenv("DATABASE_URL", "sqlite:///./data/digit_laboral.db"))
-    public_url: str = os.getenv("PUBLIC_URL", "http://127.0.0.1:8000").rstrip("/")
+    public_url: str = os.getenv("PUBLIC_URL", "https://digit-laboral-app.onrender.com").rstrip("/")
     secure_cookies: bool = _bool("SECURE_COOKIES")
     json_logs: bool = _bool("JSON_LOGS", "true")
     ai_enabled: bool = _bool("AI_ENABLED")

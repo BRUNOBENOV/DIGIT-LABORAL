@@ -149,6 +149,16 @@ class CompanyRequest(Base):
     request_type: Mapped[str] = mapped_column(String(100))
     subject: Mapped[str] = mapped_column(String(180), default="")
     detail: Mapped[str] = mapped_column(Text)
+    requested_by_user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    employee_id: Mapped[Optional[int]] = mapped_column(ForeignKey("employees.id"), nullable=True, index=True)
+    effective_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    start_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    end_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    period_year: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    requested_days: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    amount: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    leave_type: Mapped[str] = mapped_column(String(100), default="")
+    hours_requested: Mapped[Optional[Decimal]] = mapped_column(Numeric(6, 2), nullable=True)
     priority: Mapped[str] = mapped_column(String(30), default="Normal")
     status: Mapped[str] = mapped_column(String(30), default="Pendiente")
     response: Mapped[str] = mapped_column(Text, default="")
@@ -156,6 +166,8 @@ class CompanyRequest(Base):
     resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     company: Mapped[Company] = relationship(back_populates="requests")
+    requester: Mapped[Optional[User]] = relationship(foreign_keys=[requested_by_user_id])
+    employee: Mapped[Optional[Employee]] = relationship()
 
 
 class Payroll(Base):
@@ -453,6 +465,11 @@ class RequestWorkflow(Base):
     assigned_user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
     due_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True, index=True)
     internal_notes: Mapped[str] = mapped_column(Text, default="")
+    approved_by_user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    decision_notes: Mapped[str] = mapped_column(Text, default="")
+    applied: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    applied_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
 
     request: Mapped[CompanyRequest] = relationship()
@@ -486,6 +503,42 @@ class RequestAttachment(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
 
     request: Mapped[CompanyRequest] = relationship()
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+    __table_args__ = (UniqueConstraint("dedupe_key", name="uq_notifications_dedupe_key"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    studio_id: Mapped[Optional[int]] = mapped_column(ForeignKey("studios.id"), nullable=True, index=True)
+    recipient_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    event_type: Mapped[str] = mapped_column(String(80), index=True)
+    title: Mapped[str] = mapped_column(String(200))
+    body: Mapped[str] = mapped_column(Text, default="")
+    target_url: Mapped[str] = mapped_column(String(500), default="/app/notifications")
+    related_request_id: Mapped[Optional[int]] = mapped_column(ForeignKey("company_requests.id"), nullable=True, index=True)
+    dedupe_key: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC), index=True)
+    read_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    recipient: Mapped[User] = relationship()
+    request: Mapped[Optional[CompanyRequest]] = relationship()
+
+
+class NotificationDelivery(Base):
+    __tablename__ = "notification_deliveries"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    notification_id: Mapped[int] = mapped_column(ForeignKey("notifications.id"), index=True)
+    channel: Mapped[str] = mapped_column(String(20), default="email")
+    status: Mapped[str] = mapped_column(String(30), default="Pendiente", index=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    last_error: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
+    sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    notification: Mapped[Notification] = relationship()
 
 
 class UserSecurity(Base):
