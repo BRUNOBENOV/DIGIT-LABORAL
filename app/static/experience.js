@@ -48,7 +48,7 @@
   document.querySelectorAll(".table-panel").forEach(panel => {
     if (panel.querySelector(".experience-filter")) return;
     // Si ya hay un buscador de servidor en esta sección, evitamos duplicar controles.
-    if (document.querySelector("form.search-form")) return;
+    if (panel.querySelector("form.search-form")) return;
     const tables = [...panel.querySelectorAll(".table-wrap table")];
     const rows = tables.flatMap(table => [...table.querySelectorAll("tbody tr")])
       .filter(row => !row.querySelector(".empty-state"));
@@ -134,4 +134,25 @@
       }
     });
   }
+
+  // Sidebar responsive: sincroniza accesibilidad, permite cerrar con fondo y Escape.
+  const menuButton = document.querySelector("[data-modern-menu]");
+  const sidebarBackdrop = document.querySelector("[data-sidebar-backdrop]");
+  const syncSidebarState = () => {
+    const opened = Boolean(mobileNav?.classList.contains("open"));
+    menuButton?.setAttribute("aria-expanded", String(opened));
+  };
+  menuButton?.addEventListener("click", () => window.setTimeout(syncSidebarState, 0));
+  sidebarBackdrop?.addEventListener("click", () => {
+    mobileNav?.classList.remove("open");
+    syncSidebarState();
+  });
+  mobileNav?.querySelectorAll("a").forEach(link => link.addEventListener("click", () => {
+    mobileNav.classList.remove("open");
+    syncSidebarState();
+  }));
+  document.addEventListener("keydown", event => {
+    if (event.key === "Escape") syncSidebarState();
+  });
+
 })();
