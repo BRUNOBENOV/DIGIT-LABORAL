@@ -380,3 +380,39 @@ def test_integration_batch_and_receipt_survive_local_file_loss_and_backup():
         receipt_file = next(n for n in names if n.endswith(f"/comprobantes/{batch_id}_comprobante-test.pdf"))
         assert archive.read(batch_file) == workbook_content
         assert archive.read(receipt_file) == receipt_content
+
+
+
+def test_studio_backup_reads_configured_storage_when_binary_database_copy_is_missing(monkeypatch):
+    from app.models import Studio
+    email, _, company_id, employee_id = ensure_admin()
+    object_key = f"documents/backup-provider-test-{company_id}.pdf"
+    payload = b"%PDF-1.7\nstorage provider backup fallback\n"
+    with SessionLocal() as db:
+        user = db.scalar(select(User).where(User.email == email))
+        assert user is not None
+        document = Document(
+            company_id=company_id,
+            employee_id=employee_id,
+            category="Prueba",
+            title="Documento guardado en proveedor",
+            stored_name=object_key,
+            original_name="provider-document.pdf",
+            content_type="application/pdf",
+            content_bytes=None,
+            uploaded_by=email,
+        )
+        db.add(document)
+        db.commit()
+        studio = db.get(Studio, user.studio_id)
+        assert studio is not None
+        monkeypatch.setattr(storage, "exists", lambda key: key == object_key)
+        monkeypatch.setattr(storage, "get", lambda key: payload if key == object_key else b"")
+        archive_content = build_studio_export(db, studio, UPLOAD_DIR)
+
+    with zipfile.ZipFile(io.BytesIO(archive_content)) as archive:
+        saved = next(
+            name for name in archive.namelist()
+            if name.endswith("/provider-document.pdf")
+        )
+        assert archive.read(saved) == payload

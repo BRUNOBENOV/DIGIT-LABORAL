@@ -11,6 +11,7 @@ from typing import Any, Iterable
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .storage_service import storage
 from .models import (
     AuditLog,
     Company,
@@ -110,6 +111,9 @@ def build_studio_export(db: Session, studio: Studio, upload_dir: Path) -> bytes:
             if item.content_bytes is not None:
                 archive.writestr(archive_name, bytes(item.content_bytes))
                 continue
+            if storage.exists(item.stored_name):
+                archive.writestr(archive_name, storage.get(item.stored_name))
+                continue
             source = upload_dir / item.stored_name
             if source.is_file():
                 archive.write(source, archive_name)
@@ -117,6 +121,9 @@ def build_studio_export(db: Session, studio: Studio, upload_dir: Path) -> bytes:
             archive_name = f"archivos/solicitudes/{item.request_id}/{item.id}_{item.original_name}"
             if item.content_bytes is not None:
                 archive.writestr(archive_name, bytes(item.content_bytes))
+                continue
+            if storage.exists(item.stored_name):
+                archive.writestr(archive_name, storage.get(item.stored_name))
                 continue
             legacy_candidates = (
                 upload_dir / item.stored_name,
@@ -131,6 +138,8 @@ def build_studio_export(db: Session, studio: Studio, upload_dir: Path) -> bytes:
             archive_name = f"archivos/integraciones/{batch.company_id}/lotes/{batch.id}_{batch_name}"
             if batch.file_bytes is not None:
                 archive.writestr(archive_name, bytes(batch.file_bytes))
+            elif batch.storage_key and storage.exists(batch.storage_key):
+                archive.writestr(archive_name, storage.get(batch.storage_key))
             elif batch.storage_key:
                 source = upload_dir / batch.storage_key
                 if source.is_file():
@@ -145,6 +154,8 @@ def build_studio_export(db: Session, studio: Studio, upload_dir: Path) -> bytes:
             receipt_archive_name = f"archivos/integraciones/{batch.company_id}/comprobantes/{batch.id}_{receipt_name}"
             if batch.receipt_bytes is not None:
                 archive.writestr(receipt_archive_name, bytes(batch.receipt_bytes))
+            elif receipt_key and storage.exists(receipt_key):
+                archive.writestr(receipt_archive_name, storage.get(receipt_key))
             elif receipt_key:
                 source = upload_dir / receipt_key
                 if source.is_file():
