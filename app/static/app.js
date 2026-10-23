@@ -300,8 +300,12 @@ if (certificateForm) {
             (includeSalary ? '\nRemuneración mensual registrada: ' + money(salaryRaw) + '.' : '\nNo se incluye información salarial en esta constancia.')) +
         '\n\nSe expide a solicitud de la persona interesada y no sustituye certificados institucionales exigidos por una autoridad.',
       constancia: company + ' hace constar que ' + identity + ', de nacionalidad ' + (nationalityInput?.value || 'paraguaya') +
-        (civilStatusInput?.value ? ', de estado civil ' + civilStatusInput.value : '') + ', presta servicios en el cargo de ' + role + ' desde el ' + admission + '.' +
-        (includeSalary ? '\nRemuneración mensual registrada: ' + money(salaryRaw) + '.' : '') +
+        (civilStatusInput?.value ? ', de estado civil ' + civilStatusInput.value : '') +
+        (value('effective_date')
+          ? ', prestó servicios en el cargo de ' + role + ' desde el ' + admission + ' hasta el ' + longDate(value('effective_date')) +
+            '. Salario devengado durante el último período de pago: ' + money(num('last_period_salary_amount') || salaryRaw) + '.'
+          : ', presta servicios en el cargo de ' + role + ' desde el ' + admission + '.' +
+            (includeSalary ? '\nRemuneración mensual registrada: ' + money(salaryRaw) + '.' : '')) +
         '\n\nSe expide en ' + (cityInput.value || 'Ciudad del Este') + ', a los ' + longDate(issueDateInput.value) + ', para los fines indicados por la persona interesada.',
       aguinaldo_anual: 'RECIBO DE PAGO DE AGUINALDO\n\nEmpleador: ' + company + '\nTrabajador/a: ' + identity +
         '\nPeríodo considerado: ' + startPeriod + ' al ' + endPeriod + '\nFecha de pago: ' + shortDate(value('payment_date')) +
