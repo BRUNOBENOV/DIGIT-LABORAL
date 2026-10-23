@@ -413,6 +413,6 @@ def test_studio_backup_reads_configured_storage_when_binary_database_copy_is_mis
     with zipfile.ZipFile(io.BytesIO(archive_content)) as archive:
         saved = next(
             name for name in archive.namelist()
-            if name.endswith("/provider-document.pdf")
+            if name.endswith("_provider-document.pdf")
         )
         assert archive.read(saved) == payload
