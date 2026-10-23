@@ -39,7 +39,7 @@ OFFICIAL_CERTIFICATE_TYPES: dict[str, dict[str, Any]] = {
         "label": "Constancia de no estar inscripto (REOP)",
         "scope": "empresa",
         "validity_days": None,
-        "source_url": "https://www.mtess.gov.py/?page_id=24021",
+        "source_url": "https://www.mtess.gov.py/?page_id=24708",
         "portal_label": "Consultar servicios REOP",
         "description": (
             "Seguimiento documental de una constancia relacionada con la inscripción patronal. "
