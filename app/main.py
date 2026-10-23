@@ -3199,6 +3199,8 @@ async def update_official_certificate_record(
             raise HTTPException(400, "Adjuntá el original emitido por MTESS/IPS antes de marcarlo como Emitido.")
         if not uploaded and (not existing_document or existing_document.company_id != item.company_id):
             raise HTTPException(400, "El archivo original vinculado no está disponible para esta empresa.")
+        if not uploaded and not storage.exists(existing_document.stored_name):
+            raise HTTPException(400, "El archivo original no está disponible en el almacenamiento. Volvé a adjuntarlo antes de confirmar la emisión.")
         issue_date = issue_date or item.issue_date or date.today()
         fixed_expiry = default_expiry_date(item.certificate_type, issue_date)
         expiry_date = fixed_expiry if fixed_expiry else (expiry_date or item.expiry_date)
