@@ -8,6 +8,12 @@
 .inline-check{display:flex!important;align-items:center;gap:8px;flex-direction:row}
 .inline-check input{width:auto!important;min-width:16px;flex:0 0 auto}
 .certificate-form-card input[type="number"]{font-variant-numeric:tabular-nums}
+.official-model-sources{border:1px solid #dbe3ef;border-radius:11px;background:#fff;padding:12px 15px;margin:12px 0 18px}
+.official-model-sources>summary{cursor:pointer;font-size:.86rem;font-weight:750;color:#153b83}
+.official-model-sources>p{font-size:.8rem;color:#66758d;line-height:1.5;margin:10px 0}
+.official-model-links{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:9px}
+.official-model-links a{display:flex;flex-direction:column;gap:4px;text-decoration:none;border:1px solid #e3e9f2;border-radius:8px;padding:10px 11px;color:#173b86;font-size:.8rem}
+.official-model-links a span{color:#66758d;font-size:.75rem;line-height:1.4}
 </style>
 <div class="page-header certificates-header">
   <div><span class="eyebrow">GENERACIÓN DOCUMENTAL AUTOMATIZADA</span><h1>Certificados y documentos laborales</h1><p>Datos de empresa, funcionario, cálculos y membrete conectados en una única emisión.</p></div>
@@ -16,6 +22,17 @@
 {% if request.query_params.get('created') %}<div class="alert success">El documento fue guardado correctamente.</div>{% endif %}
 {% if selected_calculation %}<div class="linked-calculation-banner"><div><b>Cálculo vinculado N.º {{ selected_calculation.id }}</b><span>{{ selected_calculation.calculation_type|capitalize }} · Gs. {{ selected_calculation.amount|gs }} · {{ selected_calculation.reference_period or 'Sin periodo' }}</span></div><a href="/app/calculations">Cambiar cálculo</a></div>{% endif %}
 <div class="legal-warning"><b>Control profesional:</b> los datos y montos se completan automáticamente desde el expediente. Antes de firmar o entregar, revisá fechas, causales, periodos, montos y el texto final.</div>
+<details class="official-model-sources">
+  <summary>Referencias oficiales utilizadas para mejorar los modelos</summary>
+  <p>Los textos se adaptan a los datos del legajo y a los campos publicados por las fuentes oficiales. Los documentos internos de la empresa no se presentan como certificados emitidos por el MTESS o el IPS.</p>
+  <div class="official-model-links">
+    <a href="https://www.mtess.gov.py/?page_id=35828" target="_blank" rel="noopener noreferrer"><b>Modelos oficiales de contratos MTESS</b><span>Contrato individual y contrato a tiempo parcial editables en Word.</span></a>
+    <a href="https://www.mtess.gov.py/?page_id=31365" target="_blank" rel="noopener noreferrer"><b>Recibo salarial, aguinaldo y vacaciones (REOP)</b><span>Campos y documentos de respaldo para liquidación de salario, pago de aguinaldo y vacaciones.</span></a>
+    <a href="https://www.mtess.gov.py/wp-content/uploads/2025/10/Resolucion_MTESS_N_1163.pdf" target="_blank" rel="noopener noreferrer"><b>Resolución MTESS N.º 1163/2025</b><span>Modelos oficiales de recibos de salario, vacaciones y aguinaldo.</span></a>
+    <a href="https://www.bacn.gov.py/leyes-paraguayas/2608/ley-n-213-establece-" target="_blank" rel="noopener noreferrer"><b>Código del Trabajo — Ley N.º 213</b><span>Referencia para los requisitos legales de documentos laborales, incluido el certificado de trabajo al término de la relación.</span></a>
+    <a href="https://www.mtess.gov.py/wp-content/uploads/2026/03/Resolucion-MTESS-N%C2%B0-220-REGLAMENTACION-MIPYMES-1.pdf" target="_blank" rel="noopener noreferrer"><b>Resolución MTESS N.º 220/2026</b><span>Condiciones operativas y registro de contratos especiales para MIPYMES.</span></a>
+  </div>
+</details>
 
 {% if user.role == 'empresa' %}
 <section class="panel empty-certificate-state"><h2>Consulta de documentos</h2><p>Tu acceso permite consultar documentos generados por el estudio. Para solicitar uno nuevo, utilizá Trámites.</p><a class="btn primary" href="/app/requests">Enviar solicitud</a></section>
@@ -38,6 +55,7 @@
 
     <fieldset class="document-specific-fields" id="documentSpecificFields"><legend>Datos específicos del documento</legend>
       <label class="specific-field" data-specific="all">Número interno<input name="document_number" id="certificateDocumentNumber" placeholder="Se asignará automáticamente"></label>
+      <label class="specific-field" data-specific="aguinaldo_anual aguinaldo_proporcional">Fecha de pago del aguinaldo<input type="date" name="payment_date" id="certificateBonusPaymentDate"></label>
       <div class="document-form-grid specific-field" data-specific="aguinaldo_anual aguinaldo_proporcional recibo_salario liquidacion_final"><label>Periodo desde<input name="period_start" id="certificatePeriodStart" type="date" value="{{ calculation_inputs.get('period_start','') }}"></label><label>Periodo hasta<input name="period_end" id="certificatePeriodEnd" type="date" value="{{ calculation_inputs.get('period_end','') }}"></label></div>
       <label class="specific-field" data-specific="aguinaldo_anual aguinaldo_proporcional recibo_salario liquidacion_final cambio_salarial">Monto relacionado (Gs.)<input name="amount" id="certificateAmount" type="number" min="0" value="{{ selected_calculation.amount if selected_calculation else 0 }}"></label>
       <label class="specific-field" data-specific="certificado_trabajo_a certificado_trabajo_b constancia notificacion_preaviso renuncia despido cambio_salarial baja_funcionario liquidacion_final">Fecha efectiva / conclusión laboral<input name="effective_date" id="certificateEffectiveDate" type="date"></label>
