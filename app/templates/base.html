@@ -70,7 +70,7 @@
             <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/employees') else '' }}" href="/app/employees">Funcionarios</a>
             {% if user.role == 'administrador' %}
               <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/users') else '' }}" href="/app/users">Usuarios y permisos</a>
-              <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/parameters') else '' }}" href="/app/parameters">Parámetros</a>
+              <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/parameters') else '' }}" href="/app/parameters">Referencias laborales</a>
             {% endif %}
           </div>
         </details>
