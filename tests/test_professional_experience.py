@@ -118,3 +118,27 @@ def test_module_navigation_and_assets_are_versioned():
     assert "v23.css') }}?v=20261022c" in base
     assert "experience.css') }}?v=20261022c" in base
     assert ".calculation-index-card" in css
+
+
+def test_official_brand_identity_assets_are_used_across_the_product():
+    root = Path(__file__).resolve().parents[1]
+    static = root / "app/static/branding"
+    base = (root / "app/templates/base.html").read_text(encoding="utf-8")
+    login = (root / "app/templates/login.html").read_text(encoding="utf-8")
+    public_nav = (root / "app/templates/labor_public_nav.html").read_text(encoding="utf-8")
+    public_footer = (root / "app/templates/labor_public_footer.html").read_text(encoding="utf-8")
+    css = (root / "app/static/brand-identity.css").read_text(encoding="utf-8")
+
+    mark = (static / "digit-laboral-mark.webp").read_bytes()
+    wordmark = (static / "digit-laboral-wordmark.webp").read_bytes()
+    favicon = (static / "digit-laboral-favicon.svg").read_text(encoding="utf-8")
+
+    assert mark.startswith(b"RIFF") and mark[8:12] == b"WEBP"
+    assert wordmark.startswith(b"RIFF") and wordmark[8:12] == b"WEBP"
+    assert "#0B2D78" in favicon
+    assert "brand-identity.css" in base and "v=20261023a" in base
+    assert "digit-laboral-mark.webp" in base
+    assert "digit-laboral-wordmark.webp" in login
+    assert "digit-laboral-mark.webp" in public_nav
+    assert "digit-laboral-mark.webp" in public_footer
+    assert ".official-wordmark" in css and "--accent:#0B2D78" in css
