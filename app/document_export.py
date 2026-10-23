@@ -487,7 +487,6 @@ def build_document_body(
 
     bodies: dict[str, str] = {
         "certificado_trabajo_a": (
-            f"CONSTANCIA DE TRABAJO / CERTIFICADO AL TÉRMINO DE LA RELACIÓN\n\n"
             f"{company_name} certifica que {identity} se "
             + (
                 f"desempeñó en la empresa desde el {admission} hasta el {employment_end}, "
