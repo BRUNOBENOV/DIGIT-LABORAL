@@ -486,32 +486,41 @@ def build_document_body(
     settlement_incomes, settlement_deductions, settlement_gross, settlement_deduction_total, settlement_net = _settlement_totals(metadata)
 
     bodies: dict[str, str] = {
-        "certificado_trabajo_a": (
-            f"{company_name} certifica que {identity} se "
+                "certificado_trabajo_a": (
+            f"Por medio de la presente, {company_name} certifica que {identity} "
             + (
-                f"desempeñó en la empresa desde el {admission} hasta el {employment_end}, "
+                f"prestó servicios en la empresa desde el {admission} hasta el {employment_end}, "
+                f"desempeñándose en la clase de trabajo/cargo de {role}. "
+                f"Salario devengado durante el último período de pago: {last_period_salary_display}."
+                if effective_date else
+                f"presta servicios en la empresa desde el {admission}, desempeñándose en el cargo de {role}."
+                + (
+                    f" Percibe una remuneración mensual registrada de {salary_display}."
+                    if str(metadata.get("include_salary", "on") or "").lower() in {"on", "true", "1"}
+                    else ""
+                )
+            )
+            + "\n\n"
+            f"Se expide el presente certificado en {city}, a los {format_date_long_es(issue_date)}, "
+            "a solicitud de la persona interesada, para los fines que estime pertinentes."
+        ),
+        "certificado_trabajo_b": (
+            f"Se deja constancia de que {identity} "
+            + (
+                f"prestó servicios en {company_name} desde el {admission} hasta el {employment_end}, "
                 f"en la clase de trabajo/cargo de {role}. "
                 f"Salario devengado durante el último período de pago: {last_period_salary_display}."
                 if effective_date else
-                f"desempeña tareas en la empresa en el cargo de {role}, desde el {admission}. "
-                f"{'Remuneración mensual registrada: ' + salary_display + '.' if str(metadata.get('include_salary', 'on') or '').lower() in {'on', 'true', '1'} else 'No se incluye remuneración en esta constancia de relación vigente.'}"
+                f"forma parte del plantel de {company_name}, desempeñándose como {role} desde el {admission}."
+                + (
+                    f" La remuneración mensual registrada es de {salary_display}."
+                    if str(metadata.get("include_salary", "on") or "").lower() in {"on", "true", "1"}
+                    else ""
+                )
             )
             + "\n\n"
-            "El presente documento se basa en los datos registrados en el legajo. Si se utiliza al término de la relación, verificar que la fecha de inicio y conclusión, la clase de trabajo y el salario devengado en el último período de pago coincidan con los registros. "
-            "La mención a desempeño o causa de terminación solo debe incluirse cuando la persona trabajadora lo solicite y exista información revisada."
-        ),
-        "certificado_trabajo_b": (
-            f"CONSTANCIA LABORAL\n\n"
-            f"Se deja constancia de que {identity} "
-            + (
-                f"prestó servicios en {company_name} desde el {admission} hasta el {employment_end}, desempeñándose como {role}. "
-                f"Salario devengado durante el último período de pago: {last_period_salary_display}."
-                if effective_date else
-                f"forma parte del plantel de {company_name}, desempeñándose como {role} desde el {admission}. "
-                f"{'La remuneración mensual registrada es de ' + salary_display + '.' if str(metadata.get('include_salary', 'on') or '').lower() in {'on', 'true', '1'} else 'No se incluye información salarial en esta constancia.'}"
-            )
-            + "\n\n"
-            "La presente se emite a solicitud de la persona interesada para los fines que correspondan. No sustituye certificados institucionales exigidos por un organismo público."
+            f"La presente constancia se expide en {city}, a los {format_date_long_es(issue_date)}, "
+            "a solicitud de la persona interesada, para los fines que correspondan."
         ),
         "constancia": (
             f"{company_name} hace constar que {identity}, de nacionalidad {nationality}"
@@ -847,7 +856,8 @@ def _docx_header(document: Document, data: ExportData) -> None:
     p.paragraph_format.space_after = Pt(2)
     r = p.add_run(data.company_name.upper())
     r.bold = True
-    r.font.size = Pt(16)
+    r.font.name = "Aptos Display"
+    r.font.size = Pt(15.5)
     r.font.color.rgb = RGBColor.from_string(data.primary_color.lstrip("#") or "173B86")
     details = []
     if data.company_ruc:
@@ -869,9 +879,10 @@ def _docx_header(document: Document, data: ExportData) -> None:
     border = document.add_paragraph()
     border.paragraph_format.space_before = Pt(2)
     border.paragraph_format.space_after = Pt(12)
-    run = border.add_run("━" * 82)
+    run = border.add_run("─" * 82)
+    run.font.name = "Aptos"
     run.font.color.rgb = RGBColor.from_string(data.primary_color.lstrip("#") or "173B86")
-    run.font.size = Pt(6)
+    run.font.size = Pt(4.5)
 
 
 def _requires_both_signatures(document_type: str) -> bool:
@@ -1030,15 +1041,16 @@ def build_docx_bytes(data: ExportData) -> bytes:
     section.right_margin = Cm(2.1)
 
     styles = document.styles
-    styles["Normal"].font.name = "Arial"
+    styles["Normal"].font.name = "Aptos"
     styles["Normal"].font.size = Pt(11)
-    styles["Normal"].paragraph_format.line_spacing = 1.25
+    styles["Normal"].paragraph_format.line_spacing = 1.35
 
     _docx_header(document, data)
 
     date_p = document.add_paragraph(f"{data.city}, {format_date_long_es(data.issue_date)}")
     date_p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
     date_p.paragraph_format.space_after = Pt(18)
+    date_p.runs[0].font.name = "Aptos"
     date_p.runs[0].font.size = Pt(10.5)
 
     title = document.add_paragraph()
@@ -1046,7 +1058,8 @@ def build_docx_bytes(data: ExportData) -> bytes:
     title.paragraph_format.space_after = Pt(18)
     run = title.add_run(data.title.upper())
     run.bold = True
-    run.font.size = Pt(15)
+    run.font.name = "Aptos Display"
+    run.font.size = Pt(17)
     run.font.color.rgb = RGBColor.from_string(data.secondary_color.lstrip("#") or "0B1F48")
 
     meta = data.metadata or {}
@@ -1067,6 +1080,7 @@ def build_docx_bytes(data: ExportData) -> bytes:
             if index:
                 p.add_run().add_break()
             run = p.add_run(line)
+            run.font.name = "Aptos"
             run.font.size = Pt(11)
             if line.lower().startswith("ref.:") or line.lower().startswith("ref:"):
                 run.bold = True
@@ -1081,6 +1095,7 @@ def build_docx_bytes(data: ExportData) -> bytes:
     fr = fp.add_run(
         f"{data.document_footer} · {format_date_short(data.created_at or datetime.now())} · Estado: {data.status}"
     )
+    fr.font.name = "Aptos"
     fr.font.size = Pt(7.5)
     fr.font.color.rgb = RGBColor(120, 130, 145)
 
@@ -1116,10 +1131,10 @@ def build_pdf_bytes(data: ExportData) -> bytes:
     doc = SimpleDocTemplate(
         stream,
         pagesize=A4,
-        rightMargin=20 * mm,
-        leftMargin=20 * mm,
-        topMargin=16 * mm,
-        bottomMargin=18 * mm,
+        rightMargin=21 * mm,
+        leftMargin=21 * mm,
+        topMargin=17 * mm,
+        bottomMargin=20 * mm,
         title=data.title,
         author="Digit Laboral",
     )
@@ -1128,8 +1143,8 @@ def build_pdf_bytes(data: ExportData) -> bytes:
         "Company",
         parent=styles["Heading1"],
         fontName="Helvetica-Bold",
-        fontSize=15,
-        leading=17,
+        fontSize=15.5,
+        leading=18,
         textColor=colors.HexColor(data.primary_color),
         spaceAfter=2,
     )
@@ -1141,13 +1156,13 @@ def build_pdf_bytes(data: ExportData) -> bytes:
         leading=10,
         textColor=colors.HexColor("#556174"),
     )
-    date_style = ParagraphStyle("Date", parent=styles["Normal"], fontName="Helvetica", fontSize=10, alignment=TA_RIGHT, spaceAfter=14)
+    date_style = ParagraphStyle("Date", parent=styles["Normal"], fontName="Helvetica", fontSize=10.5, leading=14, textColor=colors.HexColor("#4E5B70"), alignment=TA_RIGHT, spaceAfter=16)
     title_style = ParagraphStyle(
         "Title",
         parent=styles["Heading1"],
         fontName="Helvetica-Bold",
-        fontSize=14,
-        leading=17,
+        fontSize=16,
+        leading=20,
         alignment=TA_CENTER,
         textColor=colors.HexColor(data.secondary_color),
         spaceAfter=16,
@@ -1156,10 +1171,10 @@ def build_pdf_bytes(data: ExportData) -> bytes:
         "Body",
         parent=styles["BodyText"],
         fontName="Helvetica",
-        fontSize=10.5,
-        leading=16,
+        fontSize=11,
+        leading=17,
         alignment=TA_JUSTIFY,
-        spaceAfter=9,
+        spaceAfter=11,
     )
     left_style = ParagraphStyle("Left", parent=body_style, alignment=TA_LEFT)
     small_style = ParagraphStyle("Small", parent=styles["Normal"], fontName="Helvetica", fontSize=8.5, leading=11)
@@ -1208,7 +1223,7 @@ def build_pdf_bytes(data: ExportData) -> bytes:
             ]
         )
     )
-    story.extend([header, Spacer(1, 9 * mm)])
+    story.extend([header, Spacer(1, 10 * mm)])
     story.append(Paragraph(f"{escape(data.city)}, {escape(format_date_long_es(data.issue_date))}", date_style))
     story.append(Paragraph(escape(data.title.upper()), title_style))
     document_number = str((data.metadata or {}).get("document_number") or "").strip()
