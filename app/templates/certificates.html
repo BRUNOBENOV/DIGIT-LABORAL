@@ -100,8 +100,8 @@
       <label class="specific-field" data-specific="recibo_salario">Salario básico del período (Gs.)<input type="number" min="0" name="salary_basic_amount" id="certificateSalaryBasic" value="{{ selected_employee.base_salary if selected_employee else 0 }}"></label>
       <div class="document-form-grid specific-field" data-specific="recibo_salario">
         <label>Recargo nocturno (Gs.)<input type="number" min="0" name="night_surcharge_amount" id="certificateNightSurcharge" value="0"></label>
-        <label>Horas extras diurnas (Gs.)<input type="number" min="0" name="overtime_day_amount" id="certificateOvertimeDay" value="0"></label>
-        <label>Horas extras nocturnas (Gs.)<input type="number" min="0" name="overtime_night_amount" id="certificateOvertimeNight" value="0"></label>
+        <label>Horas extras diurnas (50%) (Gs.)<input type="number" min="0" name="overtime_day_amount" id="certificateOvertimeDay" value="0"></label>
+        <label>Horas extras nocturnas (100%) (Gs.)<input type="number" min="0" name="overtime_night_amount" id="certificateOvertimeNight" value="0"></label>
         <label>Feriados trabajados (Gs.)<input type="number" min="0" name="holiday_amount" id="certificateHolidayAmount" value="0"></label>
         <label>Vacaciones pagadas (Gs.)<input type="number" min="0" name="vacation_pay_amount" id="certificateVacationPay" value="0"></label>
         <label>Asignación familiar (Gs.)<input type="number" min="0" name="family_allowance_amount" id="certificateFamilyAllowance" value="0"></label>
