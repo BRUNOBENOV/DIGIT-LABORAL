@@ -3137,6 +3137,8 @@ async def update_official_certificate_record(
     if info.get("has_result"):
         if result_status not in {"", "CUMPLE", "NO CUMPLE"}:
             raise HTTPException(400, "Resultado inválido para el Certificado Laboral del MTESS.")
+        if status_value == "Emitido" and not result_status:
+            raise HTTPException(400, "Registrá el resultado exacto indicado en el Certificado Laboral oficial.")
     elif result_status not in {"", "No aplica"}:
         raise HTTPException(400, "Este documento no utiliza un resultado CUMPLE/NO CUMPLE.")
     else:
@@ -3195,7 +3197,10 @@ async def update_official_certificate_record(
         if not uploaded and (not existing_document or existing_document.company_id != item.company_id):
             raise HTTPException(400, "El archivo original vinculado no está disponible para esta empresa.")
         issue_date = issue_date or item.issue_date or date.today()
-        expiry_date = expiry_date or default_expiry_date(item.certificate_type, issue_date) or item.expiry_date
+        fixed_expiry = default_expiry_date(item.certificate_type, issue_date)
+        expiry_date = fixed_expiry if fixed_expiry else (expiry_date or item.expiry_date)
+        if expiry_date and expiry_date < issue_date:
+            raise HTTPException(400, "La fecha de vencimiento no puede ser anterior a la fecha de emisión.")
     else:
         issue_date = issue_date or item.issue_date
         expiry_date = expiry_date or item.expiry_date
