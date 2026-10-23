@@ -31,7 +31,8 @@
   <section class="panel">
     <div class="panel-head"><div><span>PORTALES Y TRÁMITES</span><h2>Catálogo oficial</h2></div></div>
     <div class="official-links">
-      {% for key, info in official_certificate_types.items() %}
+      {% for key in ['mtess_certificado_laboral', 'ips_constancia_no_inscripto', 'ips_certificado_cumplimiento', 'ips_certificado_trabajo'] %}
+      {% set info = official_certificate_types[key] %}
       <article class="official-source">
         <div><span class="eyebrow">{{ info.institution }}</span><h3>{{ info.label }}</h3></div>
         <p>{{ info.description }}</p>
@@ -139,7 +140,7 @@
                 <input type="date" name="issue_date" value="{{ item.issue_date.isoformat() if item.issue_date else '' }}">
               </label>
               <label>Fecha de vencimiento
-                <input type="date" name="expiry_date" value="{{ item.expiry_date.isoformat() if item.expiry_date else '' }}">
+                <input type="date" name="expiry_date" value="{{ item.expiry_date.isoformat() if item.expiry_date else '' }}" {% if info.validity_days %}readonly aria-label="Vencimiento calculado automáticamente por el sistema"{% endif %}>
               </label>
               {% if info.has_result %}
               <label>Resultado indicado por MTESS
