@@ -58,10 +58,16 @@ DOCUMENT_LABELS: dict[str, str] = {
     "aguinaldo_anual": "Recibo de Pago de Aguinaldo",
     "aguinaldo_proporcional": "Liquidación de Aguinaldo Proporcional",
     "permiso_paternidad": "Solicitud de Permiso por Paternidad",
-    "contrato_trabajo": "Contrato de Trabajo",
+    "contrato_trabajo": "Contrato Individual de Trabajo",
+    "contrato_tiempo_parcial": "Contrato Individual de Trabajo a Tiempo Parcial",
+    "contrato_mipymes_plazo_determinado": "Contrato a Plazo Determinado para MIE / PE",
+    "contrato_mipymes_80": "Contrato a Plazo Determinado MIE — Régimen Salarial Especial",
+    "adenda_prorroga_contrato": "Adenda o Prórroga de Contrato de Trabajo",
     "ficha_empleado": "Ficha de Empleado",
     "solicitud_vacacion": "Solicitud de Vacaciones",
+    "notificacion_vacaciones": "Notificación de Vacaciones al Trabajador",
     "usufructo_vacaciones": "Constancia de Usufructo de Vacaciones",
+    "recibo_vacaciones": "Recibo de Pago de Vacaciones",
     "notificacion_preaviso": "Notificación de Preaviso",
     "renuncia": "Nota de Renuncia",
     "despido": "Comunicación de Despido",
@@ -241,6 +247,150 @@ def optional_date(value: Any) -> date | None:
     return None
 
 
+def _metadata_money(metadata: dict[str, Any], key: str, fallback: int = 0) -> int:
+    value = metadata.get(key, fallback)
+    try:
+        return max(0, int(round(float(value or 0))))
+    except (TypeError, ValueError, OverflowError):
+        return max(0, int(fallback or 0))
+
+
+def _salary_receipt_totals(metadata: dict[str, Any], salary: int) -> tuple[list[tuple[str, int]], list[tuple[str, int]], int, int, int]:
+    incomes = [
+        ("Salario básico", _metadata_money(metadata, "salary_basic_amount", salary)),
+        ("Recargo nocturno", _metadata_money(metadata, "night_surcharge_amount")),
+        ("Horas extras diurnas", _metadata_money(metadata, "overtime_day_amount")),
+        ("Horas extras nocturnas", _metadata_money(metadata, "overtime_night_amount")),
+        ("Trabajo en feriados", _metadata_money(metadata, "holiday_amount")),
+        ("Remuneración por vacaciones", _metadata_money(metadata, "vacation_pay_amount")),
+        ("Asignación familiar", _metadata_money(metadata, "family_allowance_amount")),
+        ("Comisiones", _metadata_money(metadata, "commission_amount")),
+        ("Gratificaciones", _metadata_money(metadata, "gratification_amount")),
+        ("Premios", _metadata_money(metadata, "prize_amount")),
+        ("Bonificaciones", _metadata_money(metadata, "bonus_amount")),
+        (str(metadata.get("other_income_description") or "Otros ingresos").strip(), _metadata_money(metadata, "other_income_amount")),
+    ]
+    incomes = [(label, value) for label, value in incomes if value > 0 or label == "Salario básico"]
+    deductions = [
+        ("Aporte al seguro social (IPS)", _metadata_money(metadata, "ips_deduction_amount")),
+        ("Anticipo de salario", _metadata_money(metadata, "advance_deduction_amount")),
+        ("Cuotas autorizadas por escrito", _metadata_money(metadata, "authorized_deduction_amount")),
+        ("Orden de autoridad competente", _metadata_money(metadata, "authority_deduction_amount")),
+        (str(metadata.get("other_deduction_description") or "Otros descuentos permitidos").strip(), _metadata_money(metadata, "other_deduction_amount")),
+    ]
+    deductions = [(label, value) for label, value in deductions if value > 0]
+    total_income = sum(value for _, value in incomes)
+    total_deductions = sum(value for _, value in deductions)
+    return incomes, deductions, total_income, total_deductions, total_income - total_deductions
+
+
+def _settlement_totals(metadata: dict[str, Any]) -> tuple[list[tuple[str, int]], list[tuple[str, int]], int, int, int]:
+    incomes = [
+        ("Salarios pendientes", _metadata_money(metadata, "settlement_salary_due")),
+        ("Preaviso, si corresponde", _metadata_money(metadata, "settlement_notice_amount")),
+        ("Indemnización, si corresponde", _metadata_money(metadata, "settlement_indemnity_amount")),
+        ("Vacaciones pendientes o proporcionales", _metadata_money(metadata, "settlement_vacation_amount")),
+        ("Aguinaldo devengado o proporcional", _metadata_money(metadata, "settlement_bonus_amount")),
+        (str(metadata.get("settlement_other_income_description") or "Otros haberes").strip(), _metadata_money(metadata, "settlement_other_income_amount")),
+    ]
+    incomes = [(label, value) for label, value in incomes if value > 0]
+    deductions = [
+        ("Aporte u otros descuentos legalmente procedentes", _metadata_money(metadata, "settlement_ips_deduction")),
+        (str(metadata.get("settlement_other_deduction_description") or "Otros descuentos sujetos a validación").strip(), _metadata_money(metadata, "settlement_other_deduction")),
+    ]
+    deductions = [(label, value) for label, value in deductions if value > 0]
+    total_income = sum(value for _, value in incomes)
+    total_deductions = sum(value for _, value in deductions)
+    return incomes, deductions, total_income, total_deductions, total_income - total_deductions
+
+
+def document_detail_table_data(document_type: str, metadata: dict[str, Any] | None = None, salary: int = 0) -> dict[str, Any] | None:
+    """Structured detail used by the live print, Word and PDF views."""
+    meta = metadata or {}
+    if document_type == "recibo_salario":
+        incomes, deductions, total_income, total_deductions, net = _salary_receipt_totals(meta, salary)
+        rows: list[dict[str, Any]] = [{"cells": ["INGRESOS", "", ""], "style": "section"}]
+        rows.extend({"cells": [label, format_gs(value), ""], "style": "normal"} for label, value in incomes)
+        rows.append({"cells": ["TOTAL INGRESOS", format_gs(total_income), ""], "style": "total"})
+        rows.append({"cells": ["DESCUENTOS", "", ""], "style": "section"})
+        if deductions:
+            rows.extend({"cells": [label, "", format_gs(value)], "style": "normal"} for label, value in deductions)
+        else:
+            rows.append({"cells": ["Sin descuentos registrados", "", "0"], "style": "normal"})
+        rows.append({"cells": ["TOTAL DESCUENTOS", "", format_gs(total_deductions)], "style": "total"})
+        rows.append({"cells": ["NETO A PERCIBIR", format_gs(net), ""], "style": "grand"})
+        return {
+            "title": "DETALLE DE LA LIQUIDACIÓN DE SALARIO",
+            "headers": ["Concepto", "Haberes (Gs.)", "Descuentos (Gs.)"],
+            "rows": rows,
+        }
+
+    if document_type == "liquidacion_final":
+        incomes, deductions, total_income, total_deductions, net = _settlement_totals(meta)
+        if not incomes and _metadata_money(meta, "amount") > 0:
+            incomes = [("Importe total consignado para revisión", _metadata_money(meta, "amount"))]
+            total_income = incomes[0][1]
+            net = total_income - total_deductions
+        rows = [{"cells": ["HABERES", "", ""], "style": "section"}]
+        rows.extend({"cells": [label, format_gs(value), ""], "style": "normal"} for label, value in incomes)
+        rows.append({"cells": ["TOTAL HABERES", format_gs(total_income), ""], "style": "total"})
+        rows.append({"cells": ["DESCUENTOS (verificar procedencia)", "", ""], "style": "section"})
+        rows.extend({"cells": [label, "", format_gs(value)], "style": "normal"} for label, value in deductions)
+        if not deductions:
+            rows.append({"cells": ["Sin descuentos consignados", "", "0"], "style": "normal"})
+        rows.append({"cells": ["TOTAL DESCUENTOS", "", format_gs(total_deductions)], "style": "total"})
+        rows.append({"cells": ["NETO A LIQUIDAR", format_gs(net), ""], "style": "grand"})
+        return {
+            "title": "CUADRO DE HABERES Y DESCUENTOS — SUJETO A REVISIÓN",
+            "headers": ["Concepto", "Haberes (Gs.)", "Descuentos (Gs.)"],
+            "rows": rows,
+        }
+
+    if document_type in {"aguinaldo_anual", "aguinaldo_proporcional"}:
+        period_start = format_date_short(optional_date(meta.get("period_start"))) or "A completar"
+        period_end = format_date_short(optional_date(meta.get("period_end"))) or "A completar"
+        amount = _metadata_money(meta, "amount", salary)
+        date_paid = format_date_short(optional_date(meta.get("payment_date"))) or "A completar"
+        return {
+            "title": "DETALLE DEL AGUINALDO",
+            "headers": ["Concepto", "Detalle"],
+            "rows": [
+                {"cells": ["Período considerado", f"{period_start} al {period_end}"], "style": "normal"},
+                {"cells": ["Fecha de pago", date_paid], "style": "normal"},
+                {"cells": ["Importe abonado (Gs.)", format_gs(amount)], "style": "grand"},
+            ],
+        }
+
+    if document_type in {"notificacion_vacaciones", "usufructo_vacaciones", "recibo_vacaciones"}:
+        period_start = format_date_short(optional_date(meta.get("leave_start"))) or "A completar"
+        period_end = format_date_short(optional_date(meta.get("leave_end"))) or "A completar"
+        amount = _metadata_money(meta, "vacation_amount", _metadata_money(meta, "amount"))
+        year_value = str(meta.get("vacation_period_year") or "A completar")
+        request_date = format_date_short(optional_date(meta.get("vacation_request_date"))) or "A completar"
+        notice_date = format_date_short(optional_date(meta.get("vacation_notice_date"))) or "A completar"
+        days = str(meta.get("vacation_days") or "A completar")
+        rows = [
+            {"cells": ["Período de vacaciones", f"{period_start} al {period_end}"], "style": "normal"},
+            {"cells": ["Período anual al que corresponden", year_value], "style": "normal"},
+            {"cells": ["Días consignados", days], "style": "normal"},
+            {"cells": ["Fecha de solicitud", request_date], "style": "normal"},
+            {"cells": ["Fecha de comunicación al trabajador", notice_date], "style": "normal"},
+        ]
+        if document_type == "recibo_vacaciones":
+            rows.extend([
+                {"cells": ["Fecha de pago", format_date_short(optional_date(meta.get("payment_date"))) or "A completar"], "style": "normal"},
+                {"cells": ["Remuneración abonada (Gs.)", format_gs(amount)], "style": "grand"},
+            ])
+        elif amount > 0:
+            rows.append({"cells": ["Remuneración asociada (Gs.)", format_gs(amount)], "style": "total"})
+        return {
+            "title": "DATOS DEL PERÍODO DE VACACIONES",
+            "headers": ["Dato", "Detalle"],
+            "rows": rows,
+        }
+    return None
+
+
 def build_document_body(
     document_type: str,
     *,
@@ -253,6 +403,15 @@ def build_document_body(
     issue_date: date,
     city: str,
     metadata: dict[str, Any],
+    company_ruc: str = "",
+    company_address: str = "",
+    company_phone: str = "",
+    company_email: str = "",
+    legal_representative: str = "",
+    employee_address: str = "",
+    employee_phone: str = "",
+    employee_email: str = "",
+    employee_birth_date: date | None = None,
 ) -> tuple[str, str]:
     if document_type not in DOCUMENT_LABELS:
         raise ValueError("Tipo de documento no soportado")
@@ -264,119 +423,293 @@ def build_document_body(
         identity += f", con C.I. N.º {employee_document}"
     role = position or "el cargo registrado en su legajo"
     admission = format_date_long_es(admission_date) or "la fecha registrada en su legajo"
-    salary_words = guaranies_in_words(salary)
-    salary_display = f"Gs. {format_gs(salary)} ({salary_words})" if salary else "la remuneración registrada en su legajo"
+    salary_display = f"Gs. {format_gs(salary)} ({guaranies_in_words(salary)})" if salary else "la remuneración registrada en su legajo"
     period_start = optional_date(metadata.get("period_start"))
     period_end = optional_date(metadata.get("period_end"))
     effective_date = optional_date(metadata.get("effective_date"))
     leave_start = optional_date(metadata.get("leave_start"))
     leave_end = optional_date(metadata.get("leave_end"))
-    amount = int(metadata.get("amount") or salary or 0)
+    amount = _metadata_money(metadata, "amount", salary)
+    amount_words = guaranies_in_words(amount)
     recipient = str(metadata.get("recipient") or "Encargado/a de Recursos Humanos").strip()
     nationality = str(metadata.get("nationality") or "paraguaya").strip()
     civil_status = str(metadata.get("civil_status") or "").strip()
+    modality = str(metadata.get("contract_modality") or "").strip()
+    modality_labels = {
+        "indefinido": "por tiempo indefinido",
+        "plazo_fijo": "a plazo determinado, sujeto a causa temporal lícita y verificable",
+        "tiempo_parcial": "a tiempo parcial, con la jornada específica consignada en este instrumento",
+        "mipyme_plazo_fijo": "a plazo determinado en el marco del régimen aplicable a MIE/PE, sujeto a la verificación de elegibilidad",
+        "mipyme_80": "a plazo determinado con base salarial especial del 80%, exclusivamente sujeto a los requisitos legales vigentes para MIE",
+        "prorroga": "por prórroga o adenda al contrato anterior expresamente identificado",
+    }
+    modality_label = modality_labels.get(modality, "según la modalidad seleccionada y validada por las partes")
+    contract_end = format_date_long_es(optional_date(metadata.get("contract_end_date"))) or "la fecha de finalización que debe completarse"
+    functions = str(metadata.get("job_functions") or "").strip() or "COMPLETAR: detallar las tareas y responsabilidades principales"
+    workplace = str(metadata.get("workplace") or "").strip() or "COMPLETAR: indicar el establecimiento o lugar de prestación"
+    schedule = str(metadata.get("work_schedule") or "").strip() or "COMPLETAR: indicar días, horario y descansos aplicables"
+    weekly_rest = str(metadata.get("weekly_rest") or "").strip() or "según la jornada y descansos legalmente aplicables"
+    pay_frequency = str(metadata.get("payment_frequency") or "Mensual").strip()
+    probation = str(metadata.get("probation_period") or "").strip() or "según procedencia legal y acuerdo escrito"
+    contract_cause = str(metadata.get("contract_cause") or "").strip() or "COMPLETAR: describir y documentar la causa objetiva que justifica el plazo"
+    contract_reference = str(metadata.get("previous_contract_number") or "").strip() or "COMPLETAR: identificar contrato anterior, fecha y vigencia"
+    end_date_text = format_date_long_es(optional_date(metadata.get("contract_end_date"))) or "A completar"
+    payment_date = format_date_short(optional_date(metadata.get("payment_date"))) or "A completar"
+    vacation_start = format_date_short(leave_start) or "A completar"
+    vacation_end = format_date_short(leave_end) or "A completar"
+    termination_reason = str(metadata.get("termination_reason") or "").strip() or "COMPLETAR: indicar el motivo específico y la documentación de respaldo"
+    incident_details = str(metadata.get("incident_details") or "").strip() or notes or "COMPLETAR: describir los hechos concretos, fecha, lugar y antecedentes"
+    disciplinary_action = str(metadata.get("disciplinary_action") or "Amonestación escrita").strip()
+    sanction_start = format_date_short(optional_date(metadata.get("sanction_start_date"))) or "No aplica / completar"
+    sanction_end = format_date_short(optional_date(metadata.get("sanction_end_date"))) or "No aplica / completar"
+    employee_address_text = employee_address or "domicilio no consignado en el legajo"
+    employer_id = company_name
+    if company_ruc:
+        employer_id += f", RUC {company_ruc}"
+    if company_address:
+        employer_id += f", con domicilio en {company_address}"
+    if legal_representative:
+        employer_id += f", representada por {legal_representative}"
+    employee_detail = employee_name
+    if employee_document:
+        employee_detail += f", C.I. N.º {employee_document}"
+    if employee_address:
+        employee_detail += f", domiciliado/a en {employee_address}"
+
+    payroll_incomes, payroll_deductions, payroll_gross, payroll_deduction_total, payroll_net = _salary_receipt_totals(metadata, salary)
+    settlement_incomes, settlement_deductions, settlement_gross, settlement_deduction_total, settlement_net = _settlement_totals(metadata)
 
     bodies: dict[str, str] = {
         "certificado_trabajo_a": (
             f"Por medio de la presente, {company_name} certifica que {identity} presta servicios en la empresa "
-            f"en el cargo de {role}, desde el {admission}, percibiendo actualmente una remuneración mensual de {salary_display}.\n\n"
-            "Se expide el presente certificado a solicitud de la persona interesada, para los fines que estime convenientes."
+            f"en el cargo de {role}, desde el {admission}, percibiendo una remuneración mensual registrada de {salary_display}.\n\n"
+            "Se expide a solicitud de la persona interesada para los fines que correspondan. La información refleja los datos disponibles en el legajo a la fecha de emisión."
         ),
         "certificado_trabajo_b": (
-            f"Se deja constancia de que {identity} forma parte del plantel de {company_name}, desempeñándose como {role} "
-            f"desde el {admission}. La remuneración mensual registrada es de {salary_display}.\n\n"
-            "La presente constancia se emite a pedido de la persona interesada."
+            f"Se deja constancia de que {identity} forma parte del plantel de {company_name}, desempeñándose como {role} desde el {admission}.\n\n"
+            f"{'La remuneración mensual registrada es de ' + salary_display + '.' if str(metadata.get('include_salary') or '') in {'on', 'true', '1'} else 'No se incluye información salarial en esta constancia.'}\n\n"
+            "La presente se emite a pedido de la persona interesada y no sustituye el certificado institucional que corresponda, cuando sea exigido por un organismo público."
         ),
         "constancia": (
             f"{company_name} hace constar que {identity}, de nacionalidad {nationality}"
             + (f", de estado civil {civil_status}" if civil_status else "")
-            + f", presta servicios en la empresa en el cargo de {role}, desde el {admission}, y percibe una remuneración mensual de {salary_display}.\n\n"
-            f"Se expide la presente constancia en {city}, a los {format_date_long_es(issue_date)}, para los fines que correspondan."
+            + f", presta servicios en la empresa en el cargo de {role}, desde el {admission}."
+            + (f" La remuneración mensual registrada es de {salary_display}." if str(metadata.get("include_salary") or "") in {"on", "true", "1"} else "")
+            + f"\n\nSe expide la presente en {city}, a los {format_date_long_es(issue_date)}, para los fines indicados por la persona interesada."
         ),
         "aguinaldo_anual": (
             f"El empleador {company_name} deja constancia de haber abonado a {identity} la suma de Gs. {format_gs(amount)} "
-            f"({guaranies_in_words(amount)}), en concepto de aguinaldo correspondiente al período comprendido entre el "
-            f"{format_date_short(period_start)} y el {format_date_short(period_end)}, calculado conforme al artículo 243 del Código del Trabajo.\n\n"
-            "Con la firma del presente documento, el trabajador declara haber recibido el importe indicado."
+            f"({amount_words}), en concepto de aguinaldo correspondiente al período comprendido entre el "
+            f"{format_date_short(period_start) or 'A completar'} y el {format_date_short(period_end) or 'A completar'}, "
+            "conforme al régimen legal aplicable al aguinaldo. El cálculo debe guardar correspondencia con las remuneraciones computables del período.\n\n"
+            f"Fecha de pago consignada: {payment_date}. La firma acredita recepción del importe indicado, sin implicar renuncia a otros derechos legalmente reconocidos."
         ),
         "aguinaldo_proporcional": (
-            f"El empleador {company_name} deja constancia de haber abonado a {identity} la suma de Gs. {format_gs(amount)} "
-            f"({guaranies_in_words(amount)}), en concepto de aguinaldo proporcional devengado desde el "
-            f"{format_date_short(period_start)} hasta el {format_date_short(period_end)}, conforme al artículo 244 del Código del Trabajo.\n\n"
-            "Con la firma del presente documento, el trabajador declara haber recibido el importe indicado."
+            f"Se consigna una liquidación de aguinaldo proporcional a favor de {identity}, correspondiente al período comprendido entre "
+            f"el {format_date_short(period_start) or 'A completar'} y el {format_date_short(period_end) or 'A completar'}, por Gs. {format_gs(amount)} "
+            f"({amount_words}).\n\nEl importe y las remuneraciones computables deberán coincidir con el cálculo vinculado y revisarse antes del pago. "
+            f"Fecha de pago consignada: {payment_date}."
         ),
         "permiso_paternidad": (
             f"Señor/a\n{recipient}\n{company_name}\n\nRef.: Solicitud de permiso por paternidad\n\n"
-            f"Yo, {identity}, trabajador de la empresa, solicito el permiso por paternidad correspondiente a dos semanas posteriores al parto, "
-            f"con goce de sueldo, desde el {format_date_short(leave_start)} hasta el {format_date_short(leave_end)}, de conformidad con el artículo 13, inciso b), de la Ley N.º 5508/2015.\n\n"
-            "Me comprometo a presentar la documentación respaldatoria requerida para el registro del permiso. Solicito se deje constancia de la recepción de esta nota."
+            f"Yo, {identity}, trabajador/a de la empresa, solicito el permiso por paternidad que corresponda conforme a la normativa vigente, "
+            f"desde el {vacation_start} hasta el {vacation_end}. "
+            f"{'Fecha del nacimiento o hecho generador: ' + format_date_short(optional_date(metadata.get('birth_event_date'))) + '.' if optional_date(metadata.get('birth_event_date')) else 'Se adjuntará o indicará la documentación que acredite el hecho generador, según corresponda.'}\n\n"
+            "La aprobación, el cómputo y el registro del permiso deberán ajustarse a la legislación vigente y a la documentación respaldatoria."
         ),
         "contrato_trabajo": (
-            f"BORRADOR PARA REVISIÓN PROFESIONAL.\n\nEntre {company_name}, en carácter de empleador, y {identity}, en carácter de trabajador/a, "
-            f"se prepara el presente borrador de contrato para el cargo de {role}, con inicio el {admission} y remuneración mensual de {salary_display}.\n\n"
-            "Las condiciones de jornada, funciones, lugar de trabajo, descansos, beneficios, duración y terminación deberán completarse y revisarse antes de la firma."
+            "BORRADOR CONTRACTUAL — REVISAR Y COMPLETAR ANTES DE FIRMAR.\n\n"
+            f"En {city}, a los {format_date_long_es(issue_date)}, comparecen {employer_id}, en adelante EL EMPLEADOR, "
+            f"y {employee_detail}, en adelante EL TRABAJADOR/A, y acuerdan celebrar un contrato individual de trabajo {modality_label}, bajo las cláusulas siguientes.\n\n"
+            f"PRIMERA — FUNCIONES Y LUGAR DE TRABAJO. EL TRABAJADOR/A prestará servicios en el cargo de {role}. Funciones principales: {functions}. "
+            f"Lugar o establecimiento: {workplace}.\n\n"
+            f"SEGUNDA — INICIO, DURACIÓN Y PRUEBA. La relación inicia el {admission}. La modalidad acordada es {modality_label}. "
+            f"{'La fecha de finalización prevista es ' + contract_end + '. ' if modality in {'plazo_fijo', 'mipyme_plazo_fijo', 'mipyme_80', 'prorroga'} else ''}"
+            f"Período de prueba: {probation}. La duración y la causa del plazo deben ser compatibles con la modalidad y legislación aplicable.\n\n"
+            f"TERCERA — JORNADA Y DESCANSOS. Jornada y horario: {schedule}. Descanso semanal: {weekly_rest}. Las partes deberán respetar los límites legales de jornada, descansos y recargos.\n\n"
+            f"CUARTA — REMUNERACIÓN Y PAGO. La remuneración consignada es de {salary_display}, con periodicidad de pago {pay_frequency}. "
+            "El salario no podrá ser inferior al mínimo legal aplicable, salvo régimen especial que resulte legalmente procedente y esté debidamente acreditado. "
+            "Los descuentos se limitarán a los permitidos por la legislación vigente.\n\n"
+            f"QUINTA — SEGURIDAD SOCIAL Y REGISTRO. El empleador realizará los registros y comunicaciones que correspondan ante las instituciones competentes. "
+            "Este documento no sustituye las altas, comunicaciones ni registros requeridos por MTESS o IPS.\n\n"
+            "SEXTA — DERECHOS Y OBLIGACIONES. Ambas partes cumplirán el Código del Trabajo, las normas de seguridad social, el reglamento interno vigente y las condiciones aquí consignadas. "
+            "Las modificaciones se documentarán por escrito cuando corresponda.\n\n"
+            "SÉPTIMA — TERMINACIÓN. La terminación de la relación se regirá por la legislación aplicable, sus causas, procedimientos, preavisos y liquidaciones correspondientes. "
+            "Ninguna cláusula se interpretará como renuncia anticipada a derechos irrenunciables.\n\n"
+            f"CONDICIONES ESPECÍFICAS / CAUSA DEL PLAZO: {contract_cause}\n\n"
+            f"REFERENCIA DE CONTRATO ANTERIOR, SI ES ADENDA: {contract_reference}\n\n"
+            "Las partes declaran haber leído el documento y recibir un ejemplar. Antes de firmar, completar campos pendientes, verificar la modalidad elegida y contrastar el texto con el modelo oficial vigente del MTESS."
+        ),
+        "contrato_tiempo_parcial": (
+            "BORRADOR DE CONTRATO A TIEMPO PARCIAL — REVISIÓN PROFESIONAL OBLIGATORIA.\n\n"
+            f"En {city}, a los {format_date_long_es(issue_date)}, entre {employer_id} y {employee_detail}, se acuerda la prestación de servicios a tiempo parcial.\n\n"
+            f"Cargo y tareas: {role}. Funciones: {functions}. Lugar de trabajo: {workplace}. Inicio: {admission}.\n\n"
+            f"Jornada parcial pactada: {schedule}. Descanso semanal: {weekly_rest}. Remuneración pactada: {salary_display}; forma y periodicidad de pago: {pay_frequency}.\n\n"
+            f"El contrato, la jornada y la remuneración deben verificarse frente a la regulación vigente del trabajo a tiempo parcial, incluidos los registros y aportes correspondientes. Período de prueba, si procede: {probation}.\n\n"
+            "Las partes se obligan a cumplir la legislación laboral y de seguridad social aplicable. Debe utilizarse como base de trabajo y cotejarse con el modelo oficial vigente del MTESS antes de la firma."
+        ),
+        "contrato_mipymes_plazo_determinado": (
+            "BORRADOR ADAPTADO — CONTRATO A PLAZO DETERMINADO PARA MIE / PE. REQUIERE VERIFICACIÓN DE ELEGIBILIDAD.\n\n"
+            f"En {city}, a los {format_date_long_es(issue_date)}, comparecen {employer_id}, y {employee_detail}, quienes celebran el presente contrato bajo la modalidad temporal aplicable a MIE/PE, si reúnen los requisitos previstos en la Ley N.º 7444/2025, el Decreto N.º 4535/2025 y la Resolución MTESS N.º 220/2026.\n\n"
+            f"Cargo y funciones: {role}. {functions}. Lugar de prestación: {workplace}. Fecha de inicio: {admission}. Fecha de finalización prevista: {contract_end}.\n\n"
+            f"Jornada y horario: {schedule}. Descanso semanal: {weekly_rest}. Remuneración: {salary_display}. Periodicidad de pago: {pay_frequency}.\n\n"
+            f"Causa objetiva y verificable que justifica el plazo determinado: {contract_cause}.\n\n"
+            "La empresa debe confirmar su categorización como MIE/PE, los límites de duración y la procedencia de esta modalidad, registrar y validar el contrato por el procedimiento vigente, y entregar copia a la persona trabajadora. "
+            "Este borrador no acredita por sí solo la elegibilidad ni sustituye el registro oficial."
+        ),
+        "contrato_mipymes_80": (
+            "BORRADOR ADAPTADO — MODELO MIE A PLAZO DETERMINADO CON RÉGIMEN SALARIAL ESPECIAL. USO RESTRINGIDO.\n\n"
+            f"En {city}, a los {format_date_long_es(issue_date)}, comparecen {employer_id}, y {employee_detail}, bajo la modalidad temporal y la base salarial especial que solo podrá utilizarse si se verifican los presupuestos legales aplicables a microempresas.\n\n"
+            f"Cargo y funciones: {role}. {functions}. Lugar: {workplace}. Inicio: {admission}. Finalización prevista: {contract_end}.\n\n"
+            f"Jornada y horario: {schedule}. Descanso semanal: {weekly_rest}. Remuneración consignada: {salary_display}. Periodicidad: {pay_frequency}.\n\n"
+            f"Causa temporal documentada: {contract_cause}.\n\n"
+            "Antes de utilizar este instrumento se deberá confirmar la categorización, los requisitos del régimen del ochenta por ciento, el salario mínimo aplicable, el límite temporal y el procedimiento de registro conforme a la Ley N.º 7444/2025, el Decreto N.º 4535/2025 y la Resolución MTESS N.º 220/2026. "
+            "No aplicar este régimen por defecto ni sin acreditación documental."
+        ),
+        "adenda_prorroga_contrato": (
+            "BORRADOR DE ADENDA / PRÓRROGA DE CONTRATO — REVISAR EL CONTRATO BASE.\n\n"
+            f"En {city}, a los {format_date_long_es(issue_date)}, comparecen {employer_id}, y {employee_detail}, y dejan constancia de que el contrato anterior identificado como {contract_reference} "
+            f"se modifica exclusivamente para extender o precisar la vigencia hasta el {contract_end}.\n\n"
+            f"Cargo y funciones: {role}. Lugar de trabajo: {workplace}. Jornada y horario: {schedule}. Remuneración vigente: {salary_display}. Periodicidad: {pay_frequency}.\n\n"
+            f"Motivo y condiciones de la prórroga: {contract_cause}.\n\n"
+            "Las cláusulas no modificadas conservan su vigencia siempre que sean compatibles con la normativa aplicable. La adenda no debe utilizarse para eludir los límites legales de contratación a plazo fijo. "
+            "Adjuntar e identificar el contrato original, verificar los requisitos y registrar el instrumento cuando corresponda."
         ),
         "ficha_empleado": (
-            f"EMPRESA: {company_name}\nFUNCIONARIO/A: {employee_name}\nCÉDULA: {employee_document or '—'}\nCARGO: {role}\n"
-            f"FECHA DE INGRESO: {admission}\nSALARIO REGISTRADO: {salary_display}"
+            f"FICHA INDIVIDUAL DE PERSONAL\n\nEMPRESA: {company_name}\nRUC: {company_ruc or 'No consignado'}\n"
+            f"FUNCIONARIO/A: {employee_name}\nCÉDULA: {employee_document or 'No consignada'}\n"
+            f"FECHA DE NACIMIENTO: {format_date_short(employee_birth_date) or 'No consignada'}\n"
+            f"NACIONALIDAD: {nationality}\nESTADO CIVIL: {civil_status or 'No consignado'}\n"
+            f"DOMICILIO: {employee_address_text}\nTELÉFONO: {employee_phone or 'No consignado'}\nCORREO: {employee_email or 'No consignado'}\n"
+            f"CARGO: {role}\nFECHA DE INGRESO: {admission}\nSALARIO REGISTRADO: {salary_display}\n"
+            f"TIPO DE CONTRATO: {getattr(metadata, 'contract_type', '') or metadata.get('contract_type') or 'Ver legajo'}\n"
+            f"OBSERVACIONES DEL LEGAJO: {notes or 'Sin observaciones'}\n\n"
+            "Documento interno de administración de personal. Mantener actualizado y resguardar el acceso a los datos personales."
         ),
         "solicitud_vacacion": (
-            f"Yo, {identity}, solicito a {company_name} el usufructo de mis vacaciones desde el {format_date_short(leave_start)} "
-            f"hasta el {format_date_short(leave_end)}. Las fechas quedarán sujetas a aprobación y constancia escrita de la empresa."
+            f"Señor/a\n{recipient}\n{company_name}\n\nRef.: Solicitud de vacaciones\n\n"
+            f"Yo, {identity}, solicito el usufructo de vacaciones correspondiente al período {metadata.get('vacation_period_year') or 'A completar'}, "
+            f"desde el {vacation_start} hasta el {vacation_end}. Días solicitados: {metadata.get('vacation_days') or 'A completar'}.\n\n"
+            f"Fecha de solicitud: {format_date_short(optional_date(metadata.get('vacation_request_date'))) or format_date_short(issue_date)}. "
+            "La solicitud queda sujeta a revisión del saldo de días, aprobación y comunicación escrita de la empresa.\n\n"
+            "Firma de la persona trabajadora y constancia de recepción/aprobación de la empresa."
+        ),
+        "notificacion_vacaciones": (
+            f"NOTIFICACIÓN AL TRABAJADOR/A\n\nA: {identity}\nDe: {company_name}\n\n"
+            f"Por la presente se comunica la concesión/programación de vacaciones correspondientes al período {metadata.get('vacation_period_year') or 'A completar'}, "
+            f"desde el {vacation_start} hasta el {vacation_end}, por {metadata.get('vacation_days') or 'A completar'} día(s) consignado(s).\n\n"
+            f"Fecha de solicitud registrada: {format_date_short(optional_date(metadata.get('vacation_request_date'))) or 'A completar'}. "
+            f"Fecha de comunicación: {format_date_short(optional_date(metadata.get('vacation_notice_date'))) or format_date_short(issue_date)}.\n\n"
+            f"Remuneración por vacaciones consignada, si corresponde: Gs. {format_gs(_metadata_money(metadata, 'vacation_amount'))}. "
+            "La empresa debe comprobar saldo, remuneración, fechas y registro laboral antes de emitir esta notificación. La firma de recepción no implica renuncia a derechos."
         ),
         "usufructo_vacaciones": (
-            f"{company_name} deja constancia de que {identity}, quien se desempeña como {role}, usufructará o ha usufructuado "
-            f"sus vacaciones desde el {format_date_short(leave_start)} hasta el {format_date_short(leave_end)}."
+            f"{company_name} deja constancia de que {identity}, quien se desempeña como {role}, usufructó o usufructará vacaciones correspondientes al período "
+            f"{metadata.get('vacation_period_year') or 'A completar'}, desde el {vacation_start} hasta el {vacation_end}.\n\n"
+            f"Días consignados: {metadata.get('vacation_days') or 'A completar'}. Fecha de solicitud: "
+            f"{format_date_short(optional_date(metadata.get('vacation_request_date'))) or 'A completar'}. Fecha de comunicación: "
+            f"{format_date_short(optional_date(metadata.get('vacation_notice_date'))) or 'A completar'}.\n\n"
+            "La empresa deberá conservar la anotación del período, duración y remuneración correspondiente en los registros laborales pertinentes."
+        ),
+        "recibo_vacaciones": (
+            f"RECIBO DE PAGO DE VACACIONES\n\nEl empleador {company_name} declara haber abonado a {identity} la suma de "
+            f"Gs. {format_gs(_metadata_money(metadata, 'vacation_amount', amount))} "
+            f"({guaranies_in_words(_metadata_money(metadata, 'vacation_amount', amount)}), en concepto de remuneración por vacaciones del período "
+            f"{metadata.get('vacation_period_year') or 'A completar'}, a usufructuarse desde el {vacation_start} hasta el {vacation_end}.\n\n"
+            f"Fecha de pago consignada: {payment_date}. El recibo debe reflejar el importe realmente abonado y entregarse en ejemplares para ambas partes."
         ),
         "notificacion_preaviso": (
-            f"Señor/a\n{employee_name}\nC.I. N.º {employee_document}\nPresente\n\n"
-            f"Por medio de la presente, {company_name} le comunica el preaviso de terminación de la relación laboral, con fecha efectiva "
-            f"{format_date_long_es(effective_date)}. La notificación se cursa por escrito conforme a los artículos 87 y 88 del Código del Trabajo.\n\n"
-            "Durante el período de preaviso, y sin disminución de salario, podrá optar por una licencia diaria de dos horas dentro de la jornada legal, "
-            "por un día a la semana o por el uso continuado del tiempo correspondiente, para buscar un nuevo empleo, conforme al artículo 89 del Código del Trabajo.\n\n"
-            "Se solicita firmar la recepción de la presente, sin que ello implique conformidad con su contenido."
+            f"NOTIFICACIÓN DE PREAVISO\n\nA: {employee_detail}\nEmpleador: {employer_id}\n\n"
+            f"Por medio de la presente, se notifica el preaviso relacionado con la terminación de la relación laboral, con fecha efectiva consignada para el "
+            f"{format_date_long_es(effective_date) or 'A completar'}. Fecha de inicio del preaviso: "
+            f"{format_date_short(optional_date(metadata.get('notice_start_date'))) or format_date_short(issue_date)}. "
+            f"Plazo informado: {metadata.get('notice_days') or 'A completar'} día(s).\n\n"
+            f"Motivo o contexto que debe ser revisado antes de la entrega: {termination_reason}.\n\n"
+            "El empleador debe comprobar los plazos, supuestos legales, medio de comunicación y efectos aplicables al caso concreto. "
+            "La firma del destinatario acredita únicamente recepción, no conformidad con el contenido."
         ),
         "renuncia": (
             f"Señor/a\n{recipient}\n{company_name}\n\nRef.: Comunicación de renuncia\n\n"
-            f"Yo, {identity}, comunico mi decisión de dar por terminada la relación laboral con fecha efectiva "
-            f"{format_date_long_es(effective_date)}. Solicito se practique la liquidación final y se expida la constancia de trabajo correspondiente."
+            f"Yo, {identity}, comunico mi decisión de renunciar al puesto de {role}, con fecha efectiva o último día de trabajo consignado para el "
+            f"{format_date_long_es(effective_date) or 'A completar'}.\n\n"
+            "Solicito la liquidación de los haberes que legalmente correspondan y la entrega de los documentos de cierre de la relación laboral. "
+            "La recepción de esta nota debe dejar constancia de la fecha en que fue presentada."
         ),
         "despido": (
-            f"BORRADOR PARA REVISIÓN PROFESIONAL.\n\nPor medio de la presente, {company_name} comunica a {identity} la terminación de la relación laboral "
-            f"con fecha efectiva {format_date_long_es(effective_date)}. La causa, liquidación, preaviso y documentación respaldatoria deben revisarse y detallarse antes de su entrega."
+            "BORRADOR DE COMUNICACIÓN DE TERMINACIÓN — REVISIÓN LEGAL OBLIGATORIA.\n\n"
+            f"A: {employee_detail}\nEmpleador: {employer_id}\n\n"
+            f"Se comunica la decisión de terminar la relación laboral con fecha efectiva consignada para el {format_date_long_es(effective_date) or 'A completar'}.\n\n"
+            f"Motivo y circunstancias: {termination_reason}.\n\n"
+            "Antes de emitir, verificar causal invocada, antecedentes y pruebas, procedimiento, preaviso, estabilidad especial si existiere y liquidación completa. "
+            "No utilizar este borrador como una calificación automática de justa causa ni como sustituto de revisión jurídica individual."
         ),
         "permiso_laboral": (
             f"Señor/a\n{recipient}\n{company_name}\n\nRef.: Solicitud de permiso laboral\n\n"
-            f"Yo, {identity}, solicito permiso laboral desde el {format_date_short(leave_start)} hasta el {format_date_short(leave_end)}. "
-            "La autorización, modalidad de compensación y documentación respaldatoria quedarán sujetas a la decisión de la empresa."
+            f"Yo, {identity}, solicito permiso de tipo «{metadata.get('leave_type') or 'A especificar'}» "
+            f"desde el {vacation_start} hasta el {vacation_end}. Cantidad consignada: {metadata.get('leave_quantity') or 'A completar'} "
+            f"{metadata.get('leave_unit') or 'unidad(es)'}.\n\n"
+            f"Modalidad propuesta: {metadata.get('paid_leave') or 'A resolver'}; compensación o recuperación de horas, si procede: "
+            f"{metadata.get('compensation_method') or 'A resolver'}.\n\n"
+            "La autorización debe quedar documentada por la empresa y comunicarse según el tipo de licencia o permiso."
         ),
         "amonestacion": (
-            f"BORRADOR PARA REVISIÓN PROFESIONAL.\n\n{company_name} comunica a {identity} una amonestación escrita relacionada con los hechos que deberán detallarse en las observaciones. "
-            "La empresa deberá verificar antecedentes, proporcionalidad, derecho de defensa y reglamentos internos antes de la entrega."
+            "BORRADOR DE SANCIÓN DISCIPLINARIA — REVISIÓN PROFESIONAL OBLIGATORIA.\n\n"
+            f"A: {employee_detail}\nEmpleador: {employer_id}\nMedida consignada: {disciplinary_action}.\n"
+            f"Fecha del hecho: {format_date_short(optional_date(metadata.get('incident_date'))) or 'A completar'}.\n"
+            f"Período de la medida, si corresponde: {sanction_start} al {sanction_end}.\n\n"
+            f"Descripción objetiva de los hechos: {incident_details}.\n\n"
+            "Antes de la entrega, comprobar el reglamento interno aplicable, la tipificación de la falta, antecedentes, proporcionalidad y derecho de defensa. "
+            "La constancia de recepción no debe presentarse como admisión de responsabilidad."
         ),
         "cambio_salarial": (
-            f"{company_name} comunica a {identity} que, a partir del {format_date_long_es(effective_date)}, la remuneración mensual registrada será de "
-            f"Gs. {format_gs(amount)} ({guaranies_in_words(amount)}). Las demás condiciones laborales permanecen vigentes salvo comunicación escrita en contrario."
+            f"{company_name} comunica a {identity} que, a partir del {format_date_long_es(effective_date) or 'A completar'}, "
+            f"la remuneración mensual consignada será de Gs. {format_gs(amount)} ({amount_words}). "
+            f"Remuneración anterior, si aplica: Gs. {format_gs(_metadata_money(metadata, 'previous_salary'))}.\n\n"
+            "La modificación debe documentarse de forma consistente con el acuerdo de las partes, los registros de nómina y las comunicaciones aplicables. "
+            "Esta nota no autoriza descuentos ni renuncia a derechos adquiridos."
         ),
         "alta_funcionario": (
-            f"{company_name} deja constancia del alta laboral de {identity}, para desempeñarse como {role}, con fecha de ingreso {admission} y remuneración registrada de {salary_display}."
+            f"CONSTANCIA INTERNA DE ALTA\n\n{company_name} deja constancia, para fines administrativos internos, del ingreso de {identity} "
+            f"al cargo de {role}, a partir del {admission}, con remuneración registrada de {salary_display}.\n\n"
+            "Esta constancia interna no sustituye la comunicación de entrada ni la documentación exigida por MTESS, IPS u otra institución."
         ),
         "baja_funcionario": (
-            f"{company_name} deja constancia de la baja laboral de {identity}, con fecha efectiva {format_date_long_es(effective_date)}. "
-            "La causa y los conceptos de la liquidación deberán constar en la documentación complementaria correspondiente."
+            f"CONSTANCIA INTERNA DE BAJA\n\n{company_name} deja constancia, para fines administrativos internos, del cese de servicios de {identity}, "
+            f"con fecha efectiva consignada para el {format_date_long_es(effective_date) or 'A completar'}.\n\n"
+            f"Motivo registrado: {termination_reason}. Último día trabajado consignado: "
+            f"{format_date_short(optional_date(metadata.get('last_worked_date'))) or 'A completar'}.\n\n"
+            "Esta constancia no sustituye la comunicación de salida ni la liquidación final que correspondan ante los organismos y según la normativa."
         ),
         "recibo_salario": (
-            f"{company_name} deja constancia del pago a {identity} de la suma de Gs. {format_gs(amount)} ({guaranies_in_words(amount)}), "
-            "en concepto de salario y demás rubros detallados en el periodo indicado. La firma acredita la recepción del importe, sin renuncia a derechos legalmente reconocidos."
+            f"LIQUIDACIÓN DE SALARIO — DETALLE DEL PERÍODO\n\nEmpleador: {employer_id}\nTrabajador/a: {employee_detail}\n"
+            f"Período liquidado: {format_date_short(period_start) or 'A completar'} al {format_date_short(period_end) or 'A completar'}.\n"
+            f"Fecha de pago: {payment_date}. Medio de pago: {metadata.get('payment_method') or 'A completar'}.\n"
+            f"Jornadas trabajadas y pagadas: {metadata.get('days_worked') or 'A completar'}. "
+            f"Horas trabajadas: {metadata.get('hours_worked') or 'A completar'}. "
+            f"Piezas o tareas, si corresponde: {metadata.get('units_worked') or 'No aplica / completar'}.\n\n"
+            f"Total de haberes consignados: Gs. {format_gs(payroll_gross)}. Total de descuentos consignados: Gs. {format_gs(payroll_deduction_total)}. "
+            f"Neto a percibir: Gs. {format_gs(payroll_net)} ({guaranies_in_words(max(payroll_net, 0))}).\n\n"
+            "La liquidación debe identificar cada concepto de ingreso y cada descuento. Solo deben incluirse descuentos admitidos por la legislación aplicable y debidamente respaldados. "
+            "La firma del trabajador acredita la recepción del importe efectivamente pagado; el original se conserva por el empleador y el duplicado se entrega al trabajador."
         ),
         "liquidacion_final": (
-            f"BORRADOR PARA REVISIÓN PROFESIONAL.\n\nSe prepara la liquidación final de {identity}, con fecha de terminación {format_date_long_es(effective_date)} "
-            f"y total referencial de Gs. {format_gs(amount)} ({guaranies_in_words(amount)}). Los rubros, descuentos, preaviso, vacaciones, aguinaldo e indemnizaciones deben verificarse antes de su firma."
+            "BORRADOR DE LIQUIDACIÓN FINAL — REVISIÓN DE CÁLCULO OBLIGATORIA.\n\n"
+            f"Trabajador/a: {employee_detail}\nEmpleador: {employer_id}\nFecha de terminación consignada: "
+            f"{format_date_long_es(effective_date) or 'A completar'}.\nÚltimo día trabajado: "
+            f"{format_date_short(optional_date(metadata.get('last_worked_date'))) or 'A completar'}.\n\n"
+            f"El cuadro adjunto detalla los haberes consignados por Gs. {format_gs(settlement_gross)}, "
+            f"descuentos por Gs. {format_gs(settlement_deduction_total)} y neto referencial por Gs. {format_gs(settlement_net)}.\n\n"
+            "Cada rubro debe derivar del cálculo o antecedente correspondiente. Verificar salario pendiente, preaviso, indemnización si procede, vacaciones causadas/proporcionales, aguinaldo, descuentos legalmente admisibles y cualquier régimen especial aplicable antes de su firma o pago."
         ),
     }
+
     body = bodies[document_type]
-    if notes:
+    if notes and document_type not in {"certificado_trabajo_b", "constancia", "ficha_empleado", "amonestacion"}:
         body += f"\n\nObservaciones: {notes}"
+    elif notes:
+        body += f"\n\nObservaciones complementarias: {notes}"
+    if document_type in {"contrato_trabajo", "contrato_tiempo_parcial", "contrato_mipymes_plazo_determinado", "contrato_mipymes_80", "adenda_prorroga_contrato", "despido", "amonestacion", "liquidacion_final"}:
+        body += "\n\nBORRADOR PARA VALIDACIÓN PROFESIONAL. Revisar todos los datos, la modalidad y el encuadre legal antes de entregar o firmar."
     return title, body
 
 
