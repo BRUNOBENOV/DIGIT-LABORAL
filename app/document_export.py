@@ -843,32 +843,128 @@ def _docx_header(document: Document, data: ExportData) -> None:
     run.font.size = Pt(6)
 
 
+def _requires_both_signatures(document_type: str) -> bool:
+    return document_type in {
+        "contrato_trabajo", "contrato_tiempo_parcial", "contrato_mipymes_plazo_determinado",
+        "contrato_mipymes_80", "adenda_prorroga_contrato", "notificacion_preaviso",
+        "despido", "amonestacion", "cambio_salarial", "alta_funcionario", "baja_funcionario",
+        "aguinaldo_anual", "aguinaldo_proporcional", "recibo_salario", "liquidacion_final",
+        "notificacion_vacaciones", "usufructo_vacaciones", "recibo_vacaciones",
+    }
+
+
+def _add_document_detail_table_docx(document: Document, data: ExportData) -> None:
+    detail = document_detail_table_data(data.document_type, data.metadata, data.salary)
+    if not detail:
+        return
+    heading = document.add_paragraph()
+    heading.paragraph_format.space_before = Pt(8)
+    heading.paragraph_format.space_after = Pt(5)
+    run = heading.add_run(str(detail["title"]))
+    run.bold = True
+    run.font.size = Pt(9)
+    run.font.color.rgb = RGBColor.from_string(data.secondary_color.lstrip("#") or "0B1F48")
+
+    headers = detail["headers"]
+    table = document.add_table(rows=1, cols=len(headers))
+    table.style = "Table Grid"
+    table.alignment = WD_TABLE_ALIGNMENT.CENTER
+    table.autofit = False
+    if len(headers) == 3:
+        widths = [Cm(9.2), Cm(3.6), Cm(3.6)]
+    else:
+        widths = [Cm(5.4), Cm(11.0)]
+    for index, label in enumerate(headers):
+        cell = table.rows[0].cells[index]
+        _set_cell_shading(cell, data.primary_color.lstrip("#") or "173B86")
+        cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+        cell.width = widths[index]
+        paragraph = cell.paragraphs[0]
+        paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT if index == 0 else WD_ALIGN_PARAGRAPH.RIGHT
+        run = paragraph.add_run(str(label))
+        run.bold = True
+        run.font.size = Pt(8)
+        run.font.color.rgb = RGBColor(255, 255, 255)
+
+    for row_data in detail["rows"]:
+        cells_data = row_data["cells"]
+        row = table.add_row()
+        style = row_data.get("style", "normal")
+        if style == "section" and len(headers) == 3:
+            cell = row.cells[0].merge(row.cells[-1])
+            _set_cell_shading(cell, "EAF0FC")
+            cell.text = str(cells_data[0])
+            for run in cell.paragraphs[0].runs:
+                run.bold = True
+                run.font.size = Pt(8)
+                run.font.color.rgb = RGBColor.from_string(data.secondary_color.lstrip("#") or "0B1F48")
+            continue
+        for index, value in enumerate(cells_data):
+            cell = row.cells[index]
+            cell.width = widths[index]
+            cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+            if style == "total":
+                _set_cell_shading(cell, "F1F4F9")
+            elif style == "grand":
+                _set_cell_shading(cell, "EAF0FC")
+            paragraph = cell.paragraphs[0]
+            paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT if index > 0 else WD_ALIGN_PARAGRAPH.LEFT
+            run = paragraph.add_run(str(value or ""))
+            run.font.size = Pt(8)
+            if style in {"total", "grand"}:
+                run.bold = True
+                if style == "grand":
+                    run.font.color.rgb = RGBColor.from_string(data.secondary_color.lstrip("#") or "0B1F48")
+
+
 def _add_signature_table_docx(document: Document, data: ExportData) -> None:
-    document.add_paragraph().paragraph_format.space_after = Pt(18)
-    if data.document_type in {"notificacion_preaviso", "aguinaldo_anual", "aguinaldo_proporcional"}:
+    document.add_paragraph().paragraph_format.space_after = Pt(10)
+    document_type = data.document_type
+    if _requires_both_signatures(document_type):
         table = document.add_table(rows=1, cols=2)
         table.alignment = WD_TABLE_ALIGNMENT.CENTER
-        for idx, label in enumerate(("Firma del trabajador/a", "Firma del empleador/a")):
+        if document_type in {
+            "notificacion_preaviso", "despido", "amonestacion", "notificacion_vacaciones",
+            "baja_funcionario", "alta_funcionario",
+        }:
+            labels = ("Firma / recepción del trabajador/a", "Firma del empleador/a")
+        elif document_type in {"solicitud_vacacion", "permiso_laboral", "permiso_paternidad"}:
+            labels = ("Firma del solicitante", "Autorización de la empresa")
+        else:
+            labels = ("Firma del trabajador/a", "Firma del empleador/a")
+        for idx, label in enumerate(labels):
             cell = table.cell(0, idx)
             p = cell.paragraphs[0]
             p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            p.add_run("\n\n_______________________________\n").bold = False
+            p.add_run("\n\n_______________________________\n")
             r = p.add_run(label)
             r.bold = True
-            r.font.size = Pt(9)
+            r.font.size = Pt(8.5)
             if idx == 0 and data.employee_name:
                 rr = p.add_run(f"\n{data.employee_name}")
                 rr.font.size = Pt(8.5)
                 if data.employee_document:
-                    p.add_run(f"\nC.I. N.º {data.employee_document}").font.size = Pt(8.5)
-            if idx == 1 and data.legal_representative:
-                p.add_run(f"\n{data.legal_representative}").font.size = Pt(8.5)
-                p.add_run(f"\n{data.signature_title}").font.size = Pt(8)
-        if data.document_type == "notificacion_preaviso":
+                    p.add_run(f"\nC.I. N.º {data.employee_document}").font.size = Pt(8)
+            if idx == 1:
+                if data.legal_representative:
+                    p.add_run(f"\n{data.legal_representative}").font.size = Pt(8.5)
+                if data.signature_title:
+                    p.add_run(f"\n{data.signature_title}").font.size = Pt(8)
+                p.add_run(f"\n{data.company_name}").font.size = Pt(8)
+        if document_type in {
+            "notificacion_preaviso", "despido", "amonestacion", "notificacion_vacaciones",
+            "baja_funcionario", "alta_funcionario", "cambio_salarial",
+        }:
             p = document.add_paragraph("Fecha de recepción: ____/____/________")
-            p.paragraph_format.space_before = Pt(14)
-            p.runs[0].font.size = Pt(9)
-    elif data.document_type in {"permiso_paternidad", "renuncia", "solicitud_vacacion"}:
+            p.paragraph_format.space_before = Pt(10)
+            p.runs[0].font.size = Pt(8.5)
+            if document_type in {"notificacion_preaviso", "despido", "amonestacion"}:
+                p2 = document.add_paragraph("La firma acredita recepción y no necesariamente conformidad con el contenido.")
+                p2.paragraph_format.space_before = Pt(2)
+                for run in p2.runs:
+                    run.italic = True
+                    run.font.size = Pt(8)
+    elif document_type in {"permiso_paternidad", "renuncia", "solicitud_vacacion", "permiso_laboral"}:
         p = document.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         p.add_run("\n\n_______________________________\n")
@@ -876,19 +972,20 @@ def _add_signature_table_docx(document: Document, data: ExportData) -> None:
         r.bold = True
         if data.employee_document:
             p.add_run(f"\nC.I. N.º {data.employee_document}")
-        p2 = document.add_paragraph("RECIBIDO: ____________________    FECHA: ____/____/________")
-        p2.paragraph_format.space_before = Pt(14)
-        p2.runs[0].font.size = Pt(9)
+        p2 = document.add_paragraph("RECIBIDO / AUTORIZACIÓN: ____________________    FECHA: ____/____/________")
+        p2.paragraph_format.space_before = Pt(12)
+        p2.runs[0].font.size = Pt(8.5)
     else:
         p = document.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        p.paragraph_format.space_before = Pt(28)
+        p.paragraph_format.space_before = Pt(22)
         p.add_run("_______________________________\n")
         r = p.add_run(data.legal_representative or "Firma autorizada")
         r.bold = True
         if data.signature_title:
             p.add_run(f"\n{data.signature_title}")
         p.add_run(f"\n{data.company_name}")
+
 
 
 def build_docx_bytes(data: ExportData) -> bytes:
@@ -944,6 +1041,7 @@ def build_docx_bytes(data: ExportData) -> bytes:
                 run.bold = True
                 run.italic = True
 
+    _add_document_detail_table_docx(document, data)
     _add_signature_table_docx(document, data)
 
     footer = section.footer
@@ -1091,9 +1189,64 @@ def build_pdf_bytes(data: ExportData) -> bytes:
         content = "<br/>".join(escape(line) for line in lines)
         story.append(Paragraph(content, left_style if len(lines) > 1 else body_style))
 
-    story.append(Spacer(1, 17 * mm))
-    if data.document_type in {"notificacion_preaviso", "aguinaldo_anual", "aguinaldo_proporcional"}:
-        left = "______________________________<br/><b>Firma del trabajador/a</b>"
+    story.append(Spacer(1, 8 * mm))
+    detail = document_detail_table_data(data.document_type, data.metadata, data.salary)
+    if detail:
+        story.append(Paragraph(escape(str(detail["title"])), ParagraphStyle(
+            "DetailHeading", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=8.5,
+            leading=11, textColor=colors.HexColor(data.secondary_color), spaceBefore=4, spaceAfter=5,
+        )))
+        table_data = [[Paragraph(f"<b>{escape(str(value))}</b>", small_style) for value in detail["headers"]]]
+        for row_data in detail["rows"]:
+            cells = [str(value or "") for value in row_data["cells"]]
+            style = row_data.get("style", "normal")
+            if style == "section":
+                row = [Paragraph(f"<b>{escape(cells[0])}</b>", small_style)] + ["" for _ in cells[1:]]
+            else:
+                row = [Paragraph(escape(value), small_style) for value in cells]
+            table_data.append(row)
+        col_widths = [95 * mm, 35 * mm, 35 * mm] if len(detail["headers"]) == 3 else [48 * mm, 117 * mm]
+        detail_table = Table(table_data, colWidths=col_widths, repeatRows=1, hAlign="CENTER")
+        commands = [
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(data.primary_color)),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#CBD4E2")),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 5),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ]
+        for row_index, row_data in enumerate(detail["rows"], start=1):
+            row_style = row_data.get("style", "normal")
+            if row_style == "section":
+                commands.append(("BACKGROUND", (0, row_index), (-1, row_index), colors.HexColor("#EAF0FC")))
+                if len(detail["headers"]) == 3:
+                    commands.append(("SPAN", (0, row_index), (-1, row_index)))
+            elif row_style == "total":
+                commands.extend([
+                    ("BACKGROUND", (0, row_index), (-1, row_index), colors.HexColor("#F1F4F9")),
+                    ("FONTNAME", (0, row_index), (-1, row_index), "Helvetica-Bold"),
+                ])
+            elif row_style == "grand":
+                commands.extend([
+                    ("BACKGROUND", (0, row_index), (-1, row_index), colors.HexColor("#EAF0FC")),
+                    ("FONTNAME", (0, row_index), (-1, row_index), "Helvetica-Bold"),
+                    ("TEXTCOLOR", (0, row_index), (-1, row_index), colors.HexColor(data.secondary_color)),
+                ])
+        detail_table.setStyle(TableStyle(commands))
+        story.append(detail_table)
+        story.append(Spacer(1, 8 * mm))
+
+    signature_types = {
+        "contrato_trabajo", "contrato_tiempo_parcial", "contrato_mipymes_plazo_determinado",
+        "contrato_mipymes_80", "adenda_prorroga_contrato", "notificacion_preaviso",
+        "despido", "amonestacion", "cambio_salarial", "alta_funcionario", "baja_funcionario",
+        "aguinaldo_anual", "aguinaldo_proporcional", "recibo_salario", "liquidacion_final",
+        "notificacion_vacaciones", "usufructo_vacaciones", "recibo_vacaciones",
+    }
+    if data.document_type in signature_types:
+        left = "______________________________<br/><b>Firma / recepción del trabajador/a</b>"
         if data.employee_name:
             left += f"<br/>{escape(data.employee_name)}"
         if data.employee_document:
@@ -1103,23 +1256,30 @@ def build_pdf_bytes(data: ExportData) -> bytes:
             right += f"<br/>{escape(data.legal_representative)}"
         if data.signature_title:
             right += f"<br/>{escape(data.signature_title)}"
+        right += f"<br/>{escape(data.company_name)}"
         signatures = Table(
-            [[Paragraph(left, ParagraphStyle("SigL", parent=small_style, alignment=TA_CENTER)), Paragraph(right, ParagraphStyle("SigR", parent=small_style, alignment=TA_CENTER))]],
+            [[Paragraph(left, ParagraphStyle("SigL", parent=small_style, alignment=TA_CENTER)),
+              Paragraph(right, ParagraphStyle("SigR", parent=small_style, alignment=TA_CENTER))]],
             colWidths=[83 * mm, 83 * mm],
         )
         signatures.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
         story.append(signatures)
-        if data.document_type == "notificacion_preaviso":
-            story.append(Spacer(1, 9 * mm))
+        if data.document_type in {
+            "notificacion_preaviso", "despido", "amonestacion", "notificacion_vacaciones",
+            "baja_funcionario", "alta_funcionario", "cambio_salarial",
+        }:
+            story.append(Spacer(1, 5 * mm))
             story.append(Paragraph("Fecha de recepción: ____/____/________", small_style))
-    elif data.document_type in {"permiso_paternidad", "renuncia", "solicitud_vacacion"}:
+            if data.document_type in {"notificacion_preaviso", "despido", "amonestacion"}:
+                story.append(Paragraph("La firma acredita recepción y no necesariamente conformidad con el contenido.", small_style))
+    elif data.document_type in {"permiso_paternidad", "renuncia", "solicitud_vacacion", "permiso_laboral"}:
         sig = "______________________________<br/>"
         sig += f"<b>{escape(data.employee_name or 'Firma del trabajador/a')}</b>"
         if data.employee_document:
             sig += f"<br/>C.I. N.º {escape(data.employee_document)}"
         story.append(Paragraph(sig, ParagraphStyle("EmployeeSig", parent=small_style, alignment=TA_CENTER)))
-        story.append(Spacer(1, 9 * mm))
-        story.append(Paragraph("RECIBIDO: ____________________    FECHA: ____/____/________", small_style))
+        story.append(Spacer(1, 6 * mm))
+        story.append(Paragraph("RECIBIDO / AUTORIZACIÓN: ____________________    FECHA: ____/____/________", small_style))
     else:
         sig = "______________________________<br/>"
         sig += f"<b>{escape(data.legal_representative or 'Firma autorizada')}</b>"
