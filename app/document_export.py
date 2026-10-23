@@ -494,7 +494,7 @@ def build_document_body(
                 f"Salario devengado durante el último período de pago: {last_period_salary_display}."
                 if effective_date else
                 f"desempeña tareas en la empresa en el cargo de {role}, desde el {admission}. "
-                f"{'Remuneración mensual registrada: ' + salary_display + '.' if str(metadata.get('include_salary') or '').lower() in {'on', 'true', '1'} else 'No se incluye remuneración en esta constancia de relación vigente.'}"
+                f"{'Remuneración mensual registrada: ' + salary_display + '.' if str(metadata.get('include_salary', 'on') or '').lower() in {'on', 'true', '1'} else 'No se incluye remuneración en esta constancia de relación vigente.'}"
             )
             + "\n\n"
             "El presente documento se basa en los datos registrados en el legajo. Si se utiliza al término de la relación, verificar que la fecha de inicio y conclusión, la clase de trabajo y el salario devengado en el último período de pago coincidan con los registros. "
@@ -508,7 +508,7 @@ def build_document_body(
                 f"Salario devengado durante el último período de pago: {last_period_salary_display}."
                 if effective_date else
                 f"forma parte del plantel de {company_name}, desempeñándose como {role} desde el {admission}. "
-                f"{'La remuneración mensual registrada es de ' + salary_display + '.' if str(metadata.get('include_salary') or '').lower() in {'on', 'true', '1'} else 'No se incluye información salarial en esta constancia.'}"
+                f"{'La remuneración mensual registrada es de ' + salary_display + '.' if str(metadata.get('include_salary', 'on') or '').lower() in {'on', 'true', '1'} else 'No se incluye información salarial en esta constancia.'}"
             )
             + "\n\n"
             "La presente se emite a solicitud de la persona interesada para los fines que correspondan. No sustituye certificados institucionales exigidos por un organismo público."
@@ -521,20 +521,20 @@ def build_document_body(
                 if effective_date else
                 f", presta servicios en el cargo de {role} desde el {admission}."
             )
-            + (f" La remuneración mensual registrada es de {salary_display}." if str(metadata.get("include_salary") or "").lower() in {"on", "true", "1"} else "")
+            + (f" La remuneración mensual registrada es de {salary_display}." if str(metadata.get("include_salary", "on") or "").lower() in {"on", "true", "1"} else "")
             + f"\n\nSe expide la presente en {city}, a los {format_date_long_es(issue_date)}, para los fines indicados por la persona interesada."
         ),
         "aguinaldo_anual": (
             f"El empleador {company_name} deja constancia de haber abonado a {identity} la suma de Gs. {format_gs(amount)} "
             f"({amount_words}), en concepto de aguinaldo correspondiente al período comprendido entre el "
             f"{format_date_short(period_start) or 'A completar'} y el {format_date_short(period_end) or 'A completar'}, "
-            "conforme al régimen legal aplicable al aguinaldo. El cálculo debe guardar correspondencia con las remuneraciones computables del período.\n\n"
+            "conforme al artículo 243 del Código del Trabajo. El cálculo debe guardar correspondencia con las remuneraciones computables del período.\n\n"
             f"Fecha de pago consignada: {payment_date}. La firma acredita recepción del importe indicado, sin implicar renuncia a otros derechos legalmente reconocidos."
         ),
         "aguinaldo_proporcional": (
             f"Se consigna una liquidación de aguinaldo proporcional a favor de {identity}, correspondiente al período comprendido entre "
             f"el {format_date_short(period_start) or 'A completar'} y el {format_date_short(period_end) or 'A completar'}, por Gs. {format_gs(amount)} "
-            f"({amount_words}).\n\nEl importe y las remuneraciones computables deberán coincidir con el cálculo vinculado y revisarse antes del pago. "
+            f"({amount_words}).\n\nEl importe y las remuneraciones computables deberán coincidir con el cálculo vinculado y revisarse antes del pago, conforme al artículo 244 del Código del Trabajo. "
             f"Fecha de pago consignada: {payment_date}."
         ),
         "permiso_paternidad": (
@@ -597,7 +597,7 @@ def build_document_body(
             "BORRADOR DE ADENDA / PRÓRROGA DE CONTRATO — REVISAR EL CONTRATO BASE.\n\n"
             f"En {city}, a los {format_date_long_es(issue_date)}, comparecen {employer_id}, y {employee_detail}, y dejan constancia de que el contrato anterior identificado como {contract_reference} "
             f"se modifica exclusivamente para extender o precisar la vigencia hasta el {contract_end}.\n\n"
-            f"Cargo y funciones: {role}. Lugar de trabajo: {workplace}. Jornada y horario: {schedule}. Remuneración vigente: {salary_display}. Periodicidad: {pay_frequency}.\n\n"
+            f"Cargo: {role}. Funciones/tareas vigentes o modificadas: {functions}. Lugar de trabajo: {workplace}. Jornada y horario: {schedule}. Descanso semanal: {weekly_rest}. Remuneración vigente: {salary_display}. Periodicidad: {pay_frequency}.\n\n"
             f"Motivo y condiciones de la prórroga: {contract_cause}.\n\n"
             "Las cláusulas no modificadas conservan su vigencia siempre que sean compatibles con la normativa aplicable. La adenda no debe utilizarse para eludir los límites legales de contratación a plazo fijo. "
             "Adjuntar e identificar el contrato original, verificar los requisitos y registrar el instrumento cuando corresponda."
