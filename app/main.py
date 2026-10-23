@@ -3188,6 +3188,7 @@ async def update_official_certificate_record(
             stored_name=stored_name,
             original_name=original_name,
             content_type=content_type,
+            content_bytes=payload if settings.storage_backend == "local" else None,
             uploaded_by=user.email,
         )
         db.add(document)
@@ -3704,7 +3705,11 @@ def download_document(document_id: int, user: User = Depends(require_user), db: 
     document = db.get(Document, document_id)
     if not document or document.company_id not in company_ids_for_user(db, user):
         raise HTTPException(404)
-    if storage.exists(document.stored_name):
+    if document.content_bytes is not None:
+        # Official certificate originals use PostgreSQL as a durable fallback when
+        # the deployment's local filesystem is ephemeral.
+        content = bytes(document.content_bytes)
+    elif storage.exists(document.stored_name):
         content = storage.get(document.stored_name)
     else:
         legacy = UPLOAD_DIR / document.stored_name
