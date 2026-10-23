@@ -4695,10 +4695,104 @@ def parameters_page(request: Request, user: User = Depends(require_user), db: Se
     return render(request, "parameters.html", db, user, parameters=parameters)
 
 
+def _audit_conditions(
+    studio_id: int | None,
+    q: str = "",
+    user_email: str = "",
+    action: str = "",
+    entity: str = "",
+    start_date: date | None = None,
+    end_date: date | None = None,
+):
+    # A missing tenant must not expose audit rows that have no tenant attached.
+    conditions = [AuditLog.studio_id == (studio_id if studio_id is not None else -1)]
+    query = q.strip()
+    if query:
+        pattern = f"%{query}%"
+        conditions.append(or_(
+            AuditLog.user_email.ilike(pattern),
+            AuditLog.action.ilike(pattern),
+            AuditLog.entity.ilike(pattern),
+            AuditLog.entity_id.ilike(pattern),
+            AuditLog.detail.ilike(pattern),
+        ))
+    if user_email.strip():
+        conditions.append(AuditLog.user_email.ilike(f"%{user_email.strip()}%"))
+    if action.strip():
+        conditions.append(AuditLog.action == action.strip())
+    if entity.strip():
+        conditions.append(AuditLog.entity == entity.strip())
+    if start_date:
+        conditions.append(AuditLog.created_at >= datetime.combine(start_date, datetime.min.time()))
+    if end_date:
+        conditions.append(AuditLog.created_at < datetime.combine(end_date + timedelta(days=1), datetime.min.time()))
+    return conditions
+
+
 @app.get("/app/audit", response_class=HTMLResponse)
-def audit_page(request: Request, user: User = Depends(require_roles("administrador")), db: Session = Depends(get_db)):
-    logs = list(db.scalars(select(AuditLog).where(AuditLog.studio_id == user.studio_id).order_by(AuditLog.created_at.desc()).limit(300)))
-    return render(request, "audit.html", db, user, logs=logs)
+def audit_page(
+    request: Request,
+    q: str = "",
+    user_email: str = "",
+    action: str = "",
+    entity: str = "",
+    start_date: date | None = None,
+    end_date: date | None = None,
+    page: int = 1,
+    user: User = Depends(require_roles("administrador")),
+    db: Session = Depends(get_db),
+):
+    if start_date and end_date and start_date > end_date:
+        raise HTTPException(400, "La fecha inicial no puede ser posterior a la fecha final.")
+    conditions = _audit_conditions(user.studio_id, q, user_email, action, entity, start_date, end_date)
+    total = db.scalar(select(func.count(AuditLog.id)).where(*conditions)) or 0
+    page_size = 50
+    page_count = max(1, (total + page_size - 1) // page_size)
+    page = min(max(1, page), page_count)
+    logs = list(db.scalars(
+        select(AuditLog).where(*conditions)
+        .order_by(AuditLog.created_at.desc(), AuditLog.id.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    ))
+    tenant_scope = AuditLog.studio_id == (user.studio_id if user.studio_id is not None else -1)
+    actions = list(db.scalars(select(AuditLog.action).where(tenant_scope).distinct().order_by(AuditLog.action)))
+    entities = list(db.scalars(select(AuditLog.entity).where(tenant_scope).distinct().order_by(AuditLog.entity)))
+    return render(
+        request, "audit.html", db, user, logs=logs, q=q, user_email=user_email,
+        action=action, entity=entity, start_date=start_date, end_date=end_date,
+        page=page, page_count=page_count, total=total, actions=actions, entities=entities,
+    )
+
+
+@app.get("/app/audit.csv")
+def export_audit_csv(
+    q: str = "",
+    user_email: str = "",
+    action: str = "",
+    entity: str = "",
+    start_date: date | None = None,
+    end_date: date | None = None,
+    user: User = Depends(require_roles("administrador")),
+    db: Session = Depends(get_db),
+):
+    if start_date and end_date and start_date > end_date:
+        raise HTTPException(400, "La fecha inicial no puede ser posterior a la fecha final.")
+    conditions = _audit_conditions(user.studio_id, q, user_email, action, entity, start_date, end_date)
+    logs = db.scalars(select(AuditLog).where(*conditions).order_by(AuditLog.created_at.desc(), AuditLog.id.desc()))
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Fecha", "Usuario", "Acción", "Entidad", "ID", "Detalle"])
+    for item in logs:
+        writer.writerow([
+            item.created_at.strftime("%Y-%m-%d %H:%M:%S") if item.created_at else "",
+            item.user_email, item.action, item.entity, item.entity_id, item.detail,
+        ])
+    payload = output.getvalue().encode("utf-8-sig")
+    return StreamingResponse(
+        io.BytesIO(payload), media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=digit_laboral_auditoria.csv"},
+    )
 
 
 @app.get("/app/export/studio.zip")
