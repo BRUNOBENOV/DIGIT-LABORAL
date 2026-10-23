@@ -266,6 +266,7 @@ class Document(Base):
     stored_name: Mapped[str] = mapped_column(String(260))
     original_name: Mapped[str] = mapped_column(String(260))
     content_type: Mapped[str] = mapped_column(String(100), default="application/octet-stream")
+    content_bytes: Mapped[Optional[bytes]] = mapped_column(LargeBinary, nullable=True)
     uploaded_by: Mapped[str] = mapped_column(String(180), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
 
