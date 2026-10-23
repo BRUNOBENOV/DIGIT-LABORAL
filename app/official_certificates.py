@@ -57,6 +57,7 @@ OFFICIAL_CERTIFICATE_TYPES: dict[str, dict[str, Any]] = {
         "scope": "empresa",
         "validity_days": None,
         "source_url": IPS_COMPLIANCE_URL,
+        "verification_url": "https://servicios.ips.gov.py/constancia/",
         "portal_label": "Ver información del IPS",
         "description": (
             "Certificado para empresas al día con sus obligaciones frente al IPS. Su vigencia se "
@@ -76,6 +77,7 @@ OFFICIAL_CERTIFICATE_TYPES: dict[str, dict[str, Any]] = {
         "scope": "empresa",
         "validity_days": 30,
         "source_url": IPS_AOP_URL,
+        "verification_url": "https://servicios.ips.gov.py/constancias_aop/?constancia=validarempleador",
         "portal_label": "Abrir Constancias AOP",
         "description": (
             "Constancia AOP para empleadores que no están registrados como patronales. "
@@ -93,6 +95,7 @@ OFFICIAL_CERTIFICATE_TYPES: dict[str, dict[str, Any]] = {
         "scope": "empresa",
         "validity_days": 30,
         "source_url": IPS_AOP_URL,
+        "verification_url": "https://servicios.ips.gov.py/constancias_aop/?constancia=validarempleador",
         "portal_label": "Abrir Constancias AOP",
         "description": (
             "Consulta/constancia de empleador del portal AOP. Las constancias publicadas por el IPS "
@@ -110,6 +113,7 @@ OFFICIAL_CERTIFICATE_TYPES: dict[str, dict[str, Any]] = {
         "scope": "persona",
         "validity_days": 30,
         "source_url": IPS_AOP_URL,
+        "verification_url": "https://servicios.ips.gov.py/constancias_aop/?constancia=validarasegurado",
         "portal_label": "Abrir Constancias AOP",
         "description": (
             "Constancia individual disponible en el portal AOP. El portal informa una validez de "
