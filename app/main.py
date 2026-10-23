@@ -1524,11 +1524,22 @@ def employee_import_preview_page(
     if preview.user_id != user.id or preview.studio_id != (user.studio_id or 0):
         raise HTTPException(403)
     company = company_allowed(db, user, preview.company_id)
-    existing_documents = set(db.scalars(select(Employee.document_number).where(Employee.company_id == company.id)))
+    existing_employees = {
+        item.document_number: item
+        for item in db.scalars(select(Employee).where(Employee.company_id == company.id))
+    }
+    existing_documents = set(existing_employees)
     duplicate_count = sum(row.data.get("document_number") in existing_documents for row in preview.rows if row.valid)
+    salary_change_count = sum(
+        1 for row in preview.rows
+        if row.valid
+        and row.data.get("document_number") in existing_employees
+        and int(row.data.get("base_salary") or 0) != existing_employees[row.data["document_number"]].base_salary
+    )
     return render(
         request, "employee_import_preview.html", db, user, token=token, preview=preview, company=company,
         duplicate_count=duplicate_count, existing_documents=existing_documents,
+        salary_change_count=salary_change_count,
     )
 
 
@@ -1546,7 +1557,7 @@ def employee_import_confirm(
     if preview.user_id != user.id or preview.studio_id != (user.studio_id or 0):
         raise HTTPException(403)
     company = company_allowed(db, user, preview.company_id)
-    created = updated = skipped = 0
+    created = updated = skipped = salary_changes_requires_request = 0
     for row in preview.rows:
         if not row.valid:
             skipped += 1
@@ -1564,24 +1575,21 @@ def employee_import_confirm(
         admission = date.fromisoformat(data["admission_date"])
         birth = date.fromisoformat(data["birth_date"]) if data.get("birth_date") else None
         if employee:
-            old_salary = employee.base_salary
+            # Bulk imports may update profile data, but must never change an existing salary.
+            # Salary differences are reported for manual processing through the approval workflow.
+            if int(data.get("base_salary") or 0) != employee.base_salary:
+                salary_changes_requires_request += 1
             employee.full_name = data["full_name"]
             employee.position = data["position"]
             employee.admission_date = admission
             employee.birth_date = birth
             employee.contract_type = data["contract_type"]
             employee.payment_frequency = data["payment_frequency"]
-            employee.base_salary = data["base_salary"]
             employee.ips_contributor = data["ips_contributor"]
             employee.email = data["email"]
             employee.phone = data["phone"]
             employee.address = data["address"]
             employee.notes = data["notes"]
-            if old_salary != employee.base_salary:
-                db.add(SalaryHistory(
-                    employee_id=employee.id, previous_salary=old_salary, new_salary=employee.base_salary,
-                    effective_from=date.today(), reason="Actualización por importación", created_by=user.email,
-                ))
             add_employee_event(db, employee, user, "Importación", "Datos actualizados por importación", f"Archivo: {preview.filename}")
             updated += 1
         else:
@@ -1600,10 +1608,18 @@ def employee_import_confirm(
                 effective_from=admission, reason="Salario inicial importado", created_by=user.email,
             ))
             created += 1
-    write_audit(db, user, "confirmar", "importacion_funcionarios", token, f"{company.legal_name}: {created} creados, {updated} actualizados, {skipped} omitidos")
+    write_audit(
+        db, user, "confirmar", "importacion_funcionarios", token,
+        f"{company.legal_name}: {created} creados, {updated} actualizados, {skipped} omitidos, "
+        f"{salary_changes_requires_request} cambios salariales derivados a solicitud",
+    )
     db.commit()
     (IMPORT_DIR / f"{token}.json").unlink(missing_ok=True)
-    return RedirectResponse(f"/app/employees?imported={created}&updated={updated}&skipped={skipped}&company_id={company.id}", status_code=303)
+    return RedirectResponse(
+        f"/app/employees?imported={created}&updated={updated}&skipped={skipped}"
+        f"&salary_changes={salary_changes_requires_request}&company_id={company.id}",
+        status_code=303,
+    )
 
 
 @app.post("/app/employees")
