@@ -259,8 +259,8 @@ def _salary_receipt_totals(metadata: dict[str, Any], salary: int) -> tuple[list[
     incomes = [
         ("Salario básico", _metadata_money(metadata, "salary_basic_amount", salary)),
         ("Recargo nocturno", _metadata_money(metadata, "night_surcharge_amount")),
-        ("Horas extras diurnas", _metadata_money(metadata, "overtime_day_amount")),
-        ("Horas extras nocturnas", _metadata_money(metadata, "overtime_night_amount")),
+        ("Horas extras diurnas (50%)", _metadata_money(metadata, "overtime_day_amount")),
+        ("Horas extras nocturnas (100%)", _metadata_money(metadata, "overtime_night_amount")),
         ("Trabajo en feriados", _metadata_money(metadata, "holiday_amount")),
         ("Remuneración por vacaciones", _metadata_money(metadata, "vacation_pay_amount")),
         ("Asignación familiar", _metadata_money(metadata, "family_allowance_amount")),
