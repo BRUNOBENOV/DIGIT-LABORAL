@@ -49,16 +49,17 @@ def test_official_catalog_has_official_sources_and_no_issued_document_templates(
         assert item["requirements"]
 
 
-def test_primary_certificates_page_highlights_official_mtess_ips_workflows():
+def test_primary_certificates_page_remains_the_internal_document_generator():
     with TestClient(app) as client:
         _login(client)
         page = client.get("/app/certificates")
         assert page.status_code == 200
-        assert "CENTRO DE CERTIFICADOS" in page.text
-        assert "Trámites más utilizados" in page.text
-        assert "Certificado Laboral (REOP)" in page.text
-        assert "Generación de documentos laborales internos" in page.text
-        assert "/app/certificates/official" in page.text
+        assert "Certificados y documentos laborales" in page.text
+        assert "Modelo seleccionado" in page.text
+        assert "certificateLastPeriodSalary" in page.text
+        assert "Recibo de Salario" in page.text
+        assert "CENTRO DE CERTIFICADOS" not in page.text
+        assert "Trámites más utilizados" not in page.text
 
 
 def test_official_catalog_is_searchable_and_supports_preselected_type():
