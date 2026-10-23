@@ -21,6 +21,8 @@ from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT, TA_RIGHT
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
+from .logo_presentation import prepare_company_logo
+
 from reportlab.platypus import (
     Image,
     KeepTogether,
@@ -394,7 +396,13 @@ def export_data_from_certificate(certificate: Any) -> ExportData:
         company_email=getattr(company, "email", "") or "",
         legal_representative=(getattr(branding, "signature_name", "") if branding else "") or getattr(company, "legal_representative", "") or getattr(company, "responsible_name", "") or "",
         signature_title=(getattr(branding, "signature_title", "") if branding else "") or "Representante legal",
-        logo_bytes=getattr(branding, "logo_bytes", None) if branding else None,
+        logo_bytes=prepare_company_logo(
+            getattr(branding, "logo_bytes", None) if branding else None,
+            fit=getattr(branding, "logo_fit", "contain") if branding else "contain",
+            scale=getattr(branding, "logo_scale", 100) if branding else 100,
+            alignment=getattr(branding, "logo_alignment", "center") if branding else "center",
+            background=getattr(branding, "logo_background", "white") if branding else "white",
+        ),
         logo_content_type=getattr(branding, "logo_content_type", "") if branding else "",
         primary_color=getattr(branding, "primary_color", "#173B86") if branding else "#173B86",
         secondary_color=getattr(branding, "secondary_color", "#0B1F48") if branding else "#0B1F48",
