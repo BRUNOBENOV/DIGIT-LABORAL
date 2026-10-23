@@ -487,14 +487,14 @@ def build_document_body(
         ),
         "certificado_trabajo_b": (
             f"Se deja constancia de que {identity} forma parte del plantel de {company_name}, desempeñándose como {role} desde el {admission}.\n\n"
-            f"{'La remuneración mensual registrada es de ' + salary_display + '.' if str(metadata.get('include_salary') or '') in {'on', 'true', '1'} else 'No se incluye información salarial en esta constancia.'}\n\n"
+            f"{'La remuneración mensual registrada es de ' + salary_display + '.' if str(metadata.get('include_salary') or '').lower() in {'on', 'true', '1'} else 'No se incluye información salarial en esta constancia.'}\n\n"
             "La presente se emite a pedido de la persona interesada y no sustituye el certificado institucional que corresponda, cuando sea exigido por un organismo público."
         ),
         "constancia": (
             f"{company_name} hace constar que {identity}, de nacionalidad {nationality}"
             + (f", de estado civil {civil_status}" if civil_status else "")
             + f", presta servicios en la empresa en el cargo de {role}, desde el {admission}."
-            + (f" La remuneración mensual registrada es de {salary_display}." if str(metadata.get("include_salary") or "") in {"on", "true", "1"} else "")
+            + (f" La remuneración mensual registrada es de {salary_display}." if str(metadata.get("include_salary") or "").lower() in {"on", "true", "1"} else "")
             + f"\n\nSe expide la presente en {city}, a los {format_date_long_es(issue_date)}, para los fines indicados por la persona interesada."
         ),
         "aguinaldo_anual": (
