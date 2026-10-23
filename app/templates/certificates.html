@@ -8,35 +8,18 @@
 .inline-check{display:flex!important;align-items:center;gap:8px;flex-direction:row}
 .inline-check input{width:auto!important;min-width:16px;flex:0 0 auto}
 .certificate-form-card input[type="number"]{font-variant-numeric:tabular-nums}
-.official-model-sources{border:1px solid #dbe3ef;border-radius:11px;background:#fff;padding:12px 15px;margin:12px 0 18px}
-.official-model-sources>summary{cursor:pointer;font-size:.86rem;font-weight:750;color:#153b83}
-.official-model-sources>p{font-size:.8rem;color:#66758d;line-height:1.5;margin:10px 0}
-.official-model-links{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:9px}
-.official-model-links a{display:flex;flex-direction:column;gap:4px;text-decoration:none;border:1px solid #e3e9f2;border-radius:8px;padding:10px 11px;color:#173b86;font-size:.8rem}
-.official-model-links a span{color:#66758d;font-size:.75rem;line-height:1.4}
+.certificate-form-card{font-family:"Aptos","Segoe UI",Arial,sans-serif}
+.certificate-type-button{letter-spacing:.005em}
+.document-format-badge{font-variant-numeric:tabular-nums}
+@media(max-width:760px){.certificate-type-menu{max-height:42vh;overflow:auto}}
 </style>
 <div class="page-header certificates-header">
-  <div><span class="eyebrow">GENERACIÓN DOCUMENTAL AUTOMATIZADA</span><h1>Certificados y documentos laborales</h1><p>Datos de empresa, funcionario, cálculos y membrete conectados en una única emisión.</p></div>
+  <div><span class="eyebrow">GENERACIÓN DOCUMENTAL AUTOMATIZADA</span><h1>Certificados y documentos laborales</h1><p>Modelos laborales propios, datos del legajo y numeración automática, con descarga profesional en Word o PDF.</p></div>
   <div class="header-actions"><a class="btn ghost" href="/app/reports">Informes</a><a class="btn ghost" href="/app/ai{% if selected_company %}?company_id={{ selected_company.id }}{% endif %}">Revisar con IA</a><a class="btn ghost" href="/app/documents">Archivo digital</a></div>
 </div>
 {% if request.query_params.get('created') %}<div class="alert success">El documento fue guardado correctamente.</div>{% endif %}
 {% if selected_calculation %}<div class="linked-calculation-banner"><div><b>Cálculo vinculado N.º {{ selected_calculation.id }}</b><span>{{ selected_calculation.calculation_type|capitalize }} · Gs. {{ selected_calculation.amount|gs }} · {{ selected_calculation.reference_period or 'Sin periodo' }}</span></div><a href="/app/calculations">Cambiar cálculo</a></div>{% endif %}
 <div class="legal-warning"><b>Control profesional:</b> los datos y montos se completan automáticamente desde el expediente. Antes de firmar o entregar, revisá fechas, causales, periodos, montos y el texto final.</div>
-<details class="official-model-sources">
-  <summary>Referencias oficiales utilizadas para mejorar los modelos</summary>
-  <p>Los textos se adaptan a los datos del legajo y a los campos publicados por las fuentes oficiales. Los documentos internos de la empresa no se presentan como certificados emitidos por el MTESS o el IPS.</p>
-  <div class="official-model-links">
-    <a href="https://www.mtess.gov.py/?page_id=35828" target="_blank" rel="noopener noreferrer"><b>Modelos oficiales de contratos MTESS</b><span>Contrato individual y contrato a tiempo parcial editables en Word.</span></a>
-    <a href="https://www.mtess.gov.py/wp-content/uploads/2026/01/Contrato-Individual-de-Trabajo_20260107.docx" target="_blank" rel="noopener noreferrer"><b>Contrato individual de trabajo — Word oficial</b><span>Descarga directa del modelo editable publicado por el MTESS.</span></a>
-    <a href="https://www.mtess.gov.py/wp-content/uploads/2026/01/Contrato-Individual-de-Trabajo_Tiempo-Parcial_20260107.docx" target="_blank" rel="noopener noreferrer"><b>Contrato a tiempo parcial — Word oficial</b><span>Modelo editable oficial para la modalidad de tiempo parcial.</span></a>
-    <a href="https://www.mtess.gov.py/wp-content/uploads/2026/06/Contrato-Individual-de-Trabajo_Articulo-45-Ley-7445.docx" target="_blank" rel="noopener noreferrer"><b>Contrato especial — Word oficial</b><span>Modelo de contratación especial según el archivo publicado por el MTESS.</span></a>
-    <a href="https://www.mtess.gov.py/wp-content/uploads/2026/06/Contrato-Individual-de-Trabajo_MICROEMPRESAS-80.docx" target="_blank" rel="noopener noreferrer"><b>Contrato para microempresa con régimen especial — Word</b><span>Plantilla oficial; confirmar los requisitos legales vigentes antes de utilizarla.</span></a>
-    <a href="https://www.mtess.gov.py/?page_id=31365" target="_blank" rel="noopener noreferrer"><b>Recibo salarial, aguinaldo y vacaciones (REOP)</b><span>Campos y documentos de respaldo para liquidación de salario, pago de aguinaldo y vacaciones.</span></a>
-    <a href="https://www.mtess.gov.py/wp-content/uploads/2025/10/Resolucion_MTESS_N_1163.pdf" target="_blank" rel="noopener noreferrer"><b>Resolución MTESS N.º 1163/2025</b><span>Modelos oficiales de recibos de salario, vacaciones y aguinaldo.</span></a>
-    <a href="https://www.bacn.gov.py/leyes-paraguayas/2608/ley-n-213-establece-" target="_blank" rel="noopener noreferrer"><b>Código del Trabajo — Ley N.º 213</b><span>Referencia para los requisitos legales de documentos laborales, incluido el certificado de trabajo al término de la relación.</span></a>
-    <a href="https://www.mtess.gov.py/wp-content/uploads/2026/03/Resolucion-MTESS-N%C2%B0-220-REGLAMENTACION-MIPYMES-1.pdf" target="_blank" rel="noopener noreferrer"><b>Resolución MTESS N.º 220/2026</b><span>Condiciones operativas y registro de contratos especiales para MIPYMES.</span></a>
-  </div>
-</details>
 
 {% if user.role == 'empresa' %}
 <section class="panel empty-certificate-state"><h2>Consulta de documentos</h2><p>Tu acceso permite consultar documentos generados por el estudio. Para solicitar uno nuevo, utilizá Trámites.</p><a class="btn primary" href="/app/requests">Enviar solicitud</a></section>
