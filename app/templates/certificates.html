@@ -1,6 +1,14 @@
 {% extends "base.html" %}
 {% block title %}Documentos laborales | Digit Laboral{% endblock %}
 {% block content %}
+<style>
+.document-field-section{grid-column:1/-1;display:grid;gap:4px;margin:10px 0 0;padding:10px 12px;border-left:3px solid #173b86;border-radius:0 8px 8px 0;background:#f3f6fb}
+.document-field-section b{font-size:.82rem;letter-spacing:.02em;color:#102b63}
+.document-field-section span,.field-hint{font-size:.77rem;color:#64748b;line-height:1.45}
+.inline-check{display:flex!important;align-items:center;gap:8px;flex-direction:row}
+.inline-check input{width:auto!important;min-width:16px;flex:0 0 auto}
+.certificate-form-card input[type="number"]{font-variant-numeric:tabular-nums}
+</style>
 <div class="page-header certificates-header">
   <div><span class="eyebrow">GENERACIÓN DOCUMENTAL AUTOMATIZADA</span><h1>Certificados y documentos laborales</h1><p>Datos de empresa, funcionario, cálculos y membrete conectados en una única emisión.</p></div>
   <div class="header-actions"><a class="btn ghost" href="/app/reports">Informes</a><a class="btn ghost" href="/app/ai{% if selected_company %}?company_id={{ selected_company.id }}{% endif %}">Revisar con IA</a><a class="btn ghost" href="/app/documents">Archivo digital</a></div>
@@ -126,7 +134,7 @@
       </div>
       <div class="document-form-grid specific-field" data-specific="notificacion_vacaciones recibo_vacaciones">
         <label>Pago por vacaciones (Gs.)<input type="number" min="0" name="vacation_amount" id="certificateVacationAmount" value="0"></label>
-        <label>Fecha efectiva de pago<input type="date" name="payment_date" id="certificateVacationPaymentDate"></label>
+        <label>Fecha efectiva de pago<input type="date" name="vacation_payment_date" id="certificateVacationPaymentDate"></label>
       </div>
 
       <div class="document-field-section specific-field" data-specific="permiso_laboral permiso_paternidad"><b>Datos de licencia o permiso</b><span>Seleccioná el tipo de permiso y consigná el período y unidad correspondiente.</span></div>
