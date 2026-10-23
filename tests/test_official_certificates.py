@@ -138,7 +138,7 @@ def test_official_certificate_workflow_requires_original_and_calculates_expiry()
         # The configured Render-like local-storage mode keeps the official original
         # in PostgreSQL too, so a transient file-system loss does not erase it.
         if settings.storage_backend == "local":
-            assert original_bytes == b"%PDF-1.7\\noriginal de prueba"
+            assert original_bytes == b"%PDF-1.7" + bytes([10]) + b"original de prueba"
             storage.delete(stored_key)
             recovered = client.get(f"/app/documents/{document_id}/download")
             assert recovered.status_code == 200
