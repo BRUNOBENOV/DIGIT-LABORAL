@@ -26,8 +26,13 @@ def _indexes(table: str) -> set[str]:
 
 def upgrade() -> None:
     # The application's legacy-schema reconciliation calls metadata.create_all()
-    # before Alembic upgrades. Make this revision safe if that has already created
-    # the table and its indexes.
+    # before Alembic upgrades. Existing tables are not altered by create_all(), so
+    # add this optional BLOB column explicitly for durable official originals when
+    # the installation uses local/ephemeral file storage.
+    if "documents" in _tables() and "content_bytes" not in _columns("documents"):
+        op.add_column("documents", sa.Column("content_bytes", sa.LargeBinary(), nullable=True))
+
+    # Make this revision safe if create_all() has already created the tracker table.
     if "official_certificates" not in _tables():
         op.create_table(
             "official_certificates",
@@ -68,3 +73,5 @@ def upgrade() -> None:
 def downgrade() -> None:
     if "official_certificates" in _tables():
         op.drop_table("official_certificates")
+    if "documents" in _tables() and "content_bytes" in _columns("documents"):
+        op.drop_column("documents", "content_bytes")
