@@ -62,7 +62,7 @@
           {% endfor %}
         </select>
       </label>
-      <label>Funcionario relacionado (opcional)
+      <label>Funcionario relacionado
         <select name="employee_id" id="officialCertificateEmployee">
           <option value="">Sin funcionario asociado / trámite patronal</option>
           {% for employee in employees %}
@@ -77,6 +77,7 @@
         <textarea name="notes" rows="2" maxlength="5000" placeholder="Ej.: responsable del trámite, documentación pendiente o referencia administrativa. No incluyas contraseñas de los portales."></textarea>
       </label>
       <div class="official-hint span-2" id="officialCertificateTypeHint">La validez se calculará solo cuando la fuente oficial establece un plazo fijo.</div>
+      <div class="span-2"><b>Checklist previo</b><ul class="official-hint" id="officialCertificateRequirements"><li>Seleccioná el tipo de certificado para ver sus requisitos publicados.</li></ul></div>
       <div class="form-actions span-2"><button class="btn primary" type="submit">Registrar seguimiento</button></div>
     </form>
   </section>
@@ -120,6 +121,7 @@
           <div class="official-record-actions">
             <a href="{{ info.source_url }}" target="_blank" rel="noopener noreferrer">Abrir portal oficial ↗</a>
             {% if item.document_id %}<a href="/app/documents/{{ item.document_id }}/download">Descargar original archivado</a>{% else %}<span class="official-hint">Original todavía no adjuntado</span>{% endif %}
+            {% if view.verification_url %}<a href="{{ view.verification_url }}" target="_blank" rel="noopener noreferrer">Validar certificado en IPS ↗</a>{% endif %}
             {% if view.days_remaining is not none %}<span class="official-hint">{% if view.days_remaining < 0 %}Venció hace {{ -view.days_remaining }} día(s).{% elif view.days_remaining == 0 %}Vence hoy.{% else %}{{ view.days_remaining }} día(s) restantes.{% endif %}</span>{% endif %}
           </div>
 
@@ -140,7 +142,7 @@
                 <input type="date" name="issue_date" value="{{ item.issue_date.isoformat() if item.issue_date else '' }}">
               </label>
               <label>Fecha de vencimiento
-                <input type="date" name="expiry_date" value="{{ item.expiry_date.isoformat() if item.expiry_date else '' }}" {% if info.validity_days %}readonly aria-label="Vencimiento calculado automáticamente por el sistema"{% endif %}>
+                <input type="date" name="expiry_date" value="{{ item.expiry_date.isoformat() if item.expiry_date else '' }}" {% if info.validity_days %}readonly aria-label="Vencimiento calculado automáticamente por el sistema" title="Se recalcula automáticamente según el plazo oficial"{% endif %}>
               </label>
               {% if info.has_result %}
               <label>Resultado indicado por MTESS
@@ -179,6 +181,7 @@
   const employee = document.querySelector('#officialCertificateEmployee');
   const type = document.querySelector('#officialCertificateType');
   const hint = document.querySelector('#officialCertificateTypeHint');
+  const requirementList = document.querySelector('#officialCertificateRequirements');
   const catalog = {{ official_certificate_types|tojson }};
   const filterEmployees = () => {
     if (!company || !employee) return;
@@ -197,6 +200,15 @@
     if (!info) return;
     const validity = info.validity_days ? ' La fuente oficial establece ' + info.validity_days + ' días de validez; DIGIT-LABORAL calculará esa fecha al registrar la emisión.' : ' La vigencia debe confirmarse en el documento original o el canal oficial.';
     hint.textContent = info.institution + ': ' + info.description + validity;
+    if (employee) employee.required = info.scope === 'persona';
+    if (requirementList) {
+      requirementList.replaceChildren();
+      (info.requirements || []).forEach(requirement => {
+        const item = document.createElement('li');
+        item.textContent = requirement;
+        requirementList.appendChild(item);
+      });
+    }
   };
   company?.addEventListener('change', filterEmployees);
   type?.addEventListener('change', updateHint);
