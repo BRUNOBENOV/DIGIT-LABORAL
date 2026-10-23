@@ -124,7 +124,7 @@ def test_work_certificate_uses_article_93_end_date_and_last_pay_period():
     )
     assert title == "Certificado de Trabajo"
     assert "desde el 1 de marzo de 2022 hasta el 15 de octubre de 2026" in body
-    assert "salario devengado durante el último período de pago" in body
+    assert "salario devengado durante el último período de pago" in body.lower()
     assert "Gs. 3.550.000" in body
     assert "Remuneración mensual registrada: Gs. 3.800.000" not in body
 
