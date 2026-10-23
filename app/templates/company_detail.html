@@ -5,7 +5,7 @@
 {% set logo_version = branding.updated_at.isoformat() if branding and branding.updated_at else '0' %}
 
 {% if request.query_params.get('logo_saved') %}<div class="alert success branding-status-alert">Logo guardado correctamente. Ya está disponible para el expediente y los documentos.</div>{% endif %}
-{% if request.query_params.get('branding_saved') %}<div class="alert success branding-status-alert">Configuración documental guardada.</div>{% endif %}
+{% if request.query_params.get('branding_saved') %}<div class="alert success branding-status-alert">Personalización guardada. Los ajustes del logo y del membrete se aplicaron a esta empresa.</div>{% endif %}
 {% if request.query_params.get('logo_deleted') %}<div class="alert warning branding-status-alert">Se eliminó el logo de la empresa.</div>{% endif %}
 {% if request.query_params.get('logo_error') %}<div class="alert danger branding-status-alert">{{ request.query_params.get('logo_error') }}</div>{% endif %}
 
@@ -172,7 +172,7 @@
         <label class="span-2">Pie de página<input name="document_footer" value="{{ branding.document_footer }}"></label>
         <label class="check-line"><input type="checkbox" name="show_ruc" {{ 'checked' if branding.show_ruc }}> Mostrar RUC</label>
         <label class="check-line"><input type="checkbox" name="show_contact" {{ 'checked' if branding.show_contact }}> Mostrar dirección y contacto</label>
-        <div class="form-actions span-2"><button class="btn primary" type="submit">Guardar membrete</button></div>
+        <div class="form-actions span-2"><button class="btn primary" type="submit">Guardar ajustes de logo y membrete</button></div>
       </form>
     </details>
 
