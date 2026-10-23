@@ -216,9 +216,6 @@ OFFICIAL_CERTIFICATE_TYPES: dict[str, dict[str, Any]] = {
         ),
         "has_result": False,
     },
-}
-
-
     "mtess_constancia_inscripcion_empleado": {
         "institution": "MTESS",
         "label": "Constancia de inscripción de empleado",
@@ -273,6 +270,9 @@ OFFICIAL_CERTIFICATE_TYPES: dict[str, dict[str, Any]] = {
         ),
         "has_result": False,
     },
+
+}
+
 
 OFFICIAL_CERTIFICATE_STATUSES = ("Pendiente", "En trámite", "Emitido", "Observado", "Cancelado")
 OFFICIAL_CERTIFICATE_RESULTS = ("", "CUMPLE", "NO CUMPLE", "No aplica")
