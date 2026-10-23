@@ -2969,11 +2969,6 @@ def create_certificate(
             if not contract_end_date or not contract_cause.strip():
                 raise HTTPException(400, "Para un contrato a plazo determinado, indicá fecha final y causa documentada.")
 
-    if document_type in {"solicitud_vacacion", "notificacion_vacaciones", "usufructo_vacaciones", "recibo_vacaciones"}:
-        if not leave_start or not leave_end:
-            raise HTTPException(400, "Completá las fechas de inicio y término del período de vacaciones.")
-        if leave_end < leave_start:
-            raise HTTPException(400, "La fecha final de vacaciones no puede ser anterior a la fecha inicial.")
     if document_type == "recibo_salario" and (not period_start or not period_end):
         raise HTTPException(400, "El recibo de salario requiere el período de liquidación desde/hasta.")
     if document_type == "recibo_salario" and period_end < period_start:
@@ -3015,15 +3010,23 @@ def create_certificate(
             period_start = period_start or date(latest_aguinaldo.year, 1, 1)
             period_end = period_end or date(latest_aguinaldo.year, 12, 31)
             observations = observations or f"Importe tomado del registro de aguinaldo {latest_aguinaldo.year}, estado {latest_aguinaldo.status}."
-    if not calculation and document_type in {"solicitud_vacacion", "usufructo_vacaciones"}:
+    if not calculation and document_type in {"solicitud_vacacion", "notificacion_vacaciones", "usufructo_vacaciones", "recibo_vacaciones"}:
         latest_vacation = db.scalar(
             select(Vacation).where(Vacation.employee_id == employee.id).order_by(Vacation.created_at.desc())
         )
         if latest_vacation:
             leave_start = leave_start or latest_vacation.start_date
             leave_end = leave_end or latest_vacation.end_date
+            vacation_period_year = vacation_period_year or str(latest_vacation.period_year)
+            if not vacation_days and latest_vacation.used_days:
+                vacation_days = str(latest_vacation.used_days)
             if not observations:
                 observations = f"Periodo {latest_vacation.period_year}: {latest_vacation.used_days} de {latest_vacation.entitled_days} días registrados, estado {latest_vacation.status}."
+    if document_type in {"solicitud_vacacion", "notificacion_vacaciones", "usufructo_vacaciones", "recibo_vacaciones"}:
+        if not leave_start or not leave_end:
+            raise HTTPException(400, "Completá las fechas de inicio y término del período de vacaciones.")
+        if leave_end < leave_start:
+            raise HTTPException(400, "La fecha final de vacaciones no puede ser anterior a la fecha inicial.")
     if document_type in {"aguinaldo_anual", "aguinaldo_proporcional"} and amount <= 0:
         raise HTTPException(400, "El recibo de aguinaldo requiere un cálculo o importe registrado.")
     # Evitar confundir un recibo con una cifra única: calcular subtotales a partir
