@@ -68,7 +68,8 @@ def test_word_and_pdf_downloads():
         assert generator_page.status_code == 200
         assert "certificateLastPeriodSalary" in generator_page.text
         assert "certificateSalaryBasic" in generator_page.text
-        assert "Resolución MTESS N.º 1163/2025" in generator_page.text
+        assert "Certificado de Trabajo" in generator_page.text
+        assert "Referencias oficiales utilizadas" not in generator_page.text
         assert "notificacion_vacaciones" in generator_page.text
         response = client.post(
             "/app/certificates",
