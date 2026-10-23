@@ -521,7 +521,11 @@ def build_document_body(
                 if effective_date else
                 f", presta servicios en el cargo de {role} desde el {admission}."
             )
-            + (f" La remuneración mensual registrada es de {salary_display}." if str(metadata.get("include_salary", "on") or "").lower() in {"on", "true", "1"} else "")
+            + (
+                f" Salario devengado durante el último período de pago: {last_period_salary_display}."
+                if effective_date else
+                (f" Remuneración mensual registrada es de {salary_display}." if str(metadata.get("include_salary", "on") or "").lower() in {"on", "true", "1"} else "")
+            )
             + f"\n\nSe expide la presente en {city}, a los {format_date_long_es(issue_date)}, para los fines indicados por la persona interesada."
         ),
         "aguinaldo_anual": (
