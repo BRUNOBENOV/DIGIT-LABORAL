@@ -137,6 +137,10 @@ def update_company_branding_v23(
     document_prefix: Annotated[str, Form()] = "DL",
     show_ruc: Annotated[str | None, Form()] = None,
     show_contact: Annotated[str | None, Form()] = None,
+    logo_fit: Annotated[str, Form()] = "contain",
+    logo_scale: Annotated[int, Form()] = 100,
+    logo_alignment: Annotated[str, Form()] = "center",
+    logo_background: Annotated[str, Form()] = "white",
     user: User = Depends(require_roles("administrador", "contador", "empresa")),
     db: Session = Depends(get_db),
 ):
@@ -151,6 +155,10 @@ def update_company_branding_v23(
     branding.document_prefix = re.sub(r"[^A-Za-z0-9]", "", (document_prefix or "").upper())[:12] or "DL"
     branding.show_ruc = show_ruc == "on"
     branding.show_contact = show_contact == "on"
+    branding.logo_fit = logo_fit if logo_fit in {"contain", "cover"} else "contain"
+    branding.logo_scale = max(60, min(140, int(logo_scale or 100)))
+    branding.logo_alignment = logo_alignment if logo_alignment in {"left", "center", "right"} else "center"
+    branding.logo_background = logo_background if logo_background in {"white", "transparent", "soft", "navy"} else "white"
     branding.updated_at = datetime.now(UTC)
     write_audit(db, user, "actualizar", "identidad_visual", str(company.id), company.legal_name)
     db.commit()
