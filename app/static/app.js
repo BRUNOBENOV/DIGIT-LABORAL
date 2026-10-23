@@ -225,8 +225,8 @@ if (certificateForm) {
     const salaryIncomes = [
       ['Salario básico', num('salary_basic_amount') || salaryRaw],
       ['Recargo nocturno', num('night_surcharge_amount')],
-      ['Horas extras diurnas', num('overtime_day_amount')],
-      ['Horas extras nocturnas', num('overtime_night_amount')],
+      ['Horas extras diurnas (50%)', num('overtime_day_amount')],
+      ['Horas extras nocturnas (100%)', num('overtime_night_amount')],
       ['Feriados trabajados', num('holiday_amount')],
       ['Vacaciones pagadas', num('vacation_pay_amount')],
       ['Asignación familiar', num('family_allowance_amount')],
