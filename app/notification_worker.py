@@ -6,7 +6,8 @@ from datetime import date, timedelta
 from sqlalchemy import select
 
 from .database import SessionLocal, apply_session_tenant_context
-from .models import Company, CompanyRequest, RequestWorkflow, Studio, User
+from .models import Company, CompanyRequest, OfficialCertificateRecord, RequestWorkflow, Studio, User
+from .official_certificates import OFFICIAL_CERTIFICATE_TYPES, official_certificate_state
 from .notification_service import create_notification, dispatch_notification_outbox
 
 logger = logging.getLogger("digit.notification_worker")
@@ -71,11 +72,68 @@ def create_due_request_notifications(today: date | None = None) -> int:
     return created
 
 
+
+def create_due_official_certificate_notifications(today: date | None = None) -> int:
+    """Create idempotent reminders for official certificates nearing expiry."""
+    today = today or date.today()
+    horizon = today + timedelta(days=15)
+    created = 0
+    with SessionLocal() as db:
+        studio_ids = list(db.scalars(select(Studio.id).order_by(Studio.id)))
+        for studio_id in studio_ids:
+            db.info["studio_id"] = studio_id
+            db.info["is_superadmin"] = False
+            apply_session_tenant_context(db)
+            records = list(db.scalars(
+                select(OfficialCertificateRecord)
+                .join(Company, Company.id == OfficialCertificateRecord.company_id)
+                .where(
+                    Company.studio_id == studio_id,
+                    OfficialCertificateRecord.status == "Emitido",
+                    OfficialCertificateRecord.expiry_date.is_not(None),
+                    OfficialCertificateRecord.expiry_date <= horizon,
+                )
+                .order_by(OfficialCertificateRecord.expiry_date, OfficialCertificateRecord.id)
+            ))
+            recipients = list(db.scalars(select(User).where(
+                User.studio_id == studio_id,
+                User.active.is_(True),
+                User.role.in_(("administrador", "contador", "auxiliar")),
+            ).order_by(User.id)))
+            for item in records:
+                state = official_certificate_state(item.status, item.expiry_date, today)
+                if state not in {"Vencido", "Por vencer"}:
+                    continue
+                company = db.get(Company, item.company_id)
+                if not company or not item.expiry_date:
+                    continue
+                info = OFFICIAL_CERTIFICATE_TYPES.get(item.certificate_type, {})
+                label = info.get("label", "Certificado oficial")
+                due_text = item.expiry_date.strftime("%d/%m/%Y")
+                overdue = item.expiry_date < today
+                for recipient in recipients:
+                    _, _, was_created = create_notification(
+                        db,
+                        recipient=recipient,
+                        event_type="certificado_oficial_vencimiento",
+                        title=f"{'Certificado oficial vencido' if overdue else 'Certificado oficial por vencer'} · {label}",
+                        body=f"{label} de {company.legal_name} {'venció' if overdue else 'vence'} el {due_text}. Revisá el original y gestioná la renovación en el portal oficial.",
+                        target_url="/app/certificates/official",
+                        dedupe_key=f"official-certificate:{item.id}:{item.expiry_date.isoformat()}:{recipient.id}",
+                    )
+                    created += int(was_created)
+        db.commit()
+    return created
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO)
     created = create_due_request_notifications()
+    certificate_created = create_due_official_certificate_notifications()
     delivered = dispatch_notification_outbox()
-    logger.info("Notification sweep done: created=%s deliveries=%s", created, delivered)
+    logger.info(
+        "Notification sweep done: requests=%s official_certificates=%s deliveries=%s",
+        created, certificate_created, delivered,
+    )
 
 
 if __name__ == "__main__":
