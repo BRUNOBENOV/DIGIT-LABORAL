@@ -49,6 +49,35 @@ def test_official_catalog_has_official_sources_and_no_issued_document_templates(
         assert item["requirements"]
 
 
+def test_primary_certificates_page_highlights_official_mtess_ips_workflows():
+    with TestClient(app) as client:
+        _login(client)
+        page = client.get("/app/certificates")
+        assert page.status_code == 200
+        assert "CENTRO DE CERTIFICADOS" in page.text
+        assert "Trámites más utilizados" in page.text
+        assert "Certificado Laboral (REOP)" in page.text
+        assert "Generación de documentos laborales internos" in page.text
+        assert "/app/certificates/official" in page.text
+
+
+def test_official_catalog_is_searchable_and_supports_preselected_type():
+    with TestClient(app) as client:
+        _login(client)
+        page = client.get(
+            "/app/certificates/official",
+            params={"certificate_type": "ips_constancia_salario_asegurado"},
+        )
+        assert page.status_code == 200
+        assert "officialCatalogSearch" in page.text
+        assert "Constancia de salario de asegurado" in page.text
+        assert re.search(
+            r'<option value="ips_constancia_salario_asegurado" selected(?:\\s|>)',
+            page.text,
+        )
+        assert "Constancia de no adeudar (IPS)" in page.text
+
+
 def _login(client: TestClient) -> str:
     page = client.get("/login")
     match = re.search(r'name="csrf_token" value="([^"]+)"', page.text)
