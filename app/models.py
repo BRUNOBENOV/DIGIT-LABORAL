@@ -91,6 +91,7 @@ class Company(Base):
     payrolls: Mapped[list["Payroll"]] = relationship(back_populates="company", cascade="all, delete-orphan")
     documents: Mapped[list["Document"]] = relationship(back_populates="company", cascade="all, delete-orphan")
     generated_certificates: Mapped[list["GeneratedCertificate"]] = relationship(back_populates="company", cascade="all, delete-orphan")
+    official_certificates: Mapped[list["OfficialCertificateRecord"]] = relationship(back_populates="company", cascade="all, delete-orphan")
     branding: Mapped[Optional["CompanyBranding"]] = relationship(back_populates="company", cascade="all, delete-orphan", uselist=False)
     calculations: Mapped[list["CalculationRecord"]] = relationship(back_populates="company", cascade="all, delete-orphan")
     ai_interactions: Mapped[list["AIInteraction"]] = relationship(back_populates="company", cascade="all, delete-orphan")
@@ -137,6 +138,7 @@ class Employee(Base):
     branch: Mapped[Optional[Branch]] = relationship()
     payroll_lines: Mapped[list["PayrollLine"]] = relationship(back_populates="employee")
     generated_certificates: Mapped[list["GeneratedCertificate"]] = relationship(back_populates="employee")
+    official_certificates: Mapped[list["OfficialCertificateRecord"]] = relationship(back_populates="employee")
     calculations: Mapped[list["CalculationRecord"]] = relationship(back_populates="employee")
     ai_interactions: Mapped[list["AIInteraction"]] = relationship(back_populates="employee")
 
@@ -295,6 +297,39 @@ class GeneratedCertificate(Base):
 
     company: Mapped[Company] = relationship(back_populates="generated_certificates")
     employee: Mapped[Optional[Employee]] = relationship(back_populates="generated_certificates")
+
+
+class OfficialCertificateRecord(Base):
+    """Internal tracker for a certificate issued by MTESS or IPS.
+
+    The attached file, when present, is the original institution-issued document.
+    This table never generates or impersonates an official certificate.
+    """
+    __tablename__ = "official_certificates"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    employee_id: Mapped[Optional[int]] = mapped_column(ForeignKey("employees.id"), nullable=True, index=True)
+    institution: Mapped[str] = mapped_column(String(10), index=True)
+    certificate_type: Mapped[str] = mapped_column(String(80), index=True)
+    status: Mapped[str] = mapped_column(String(30), default="Pendiente", index=True)
+    request_date: Mapped[date] = mapped_column(Date, default=date.today)
+    issue_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    expiry_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True, index=True)
+    official_number: Mapped[str] = mapped_column(String(120), default="")
+    result_status: Mapped[str] = mapped_column(String(30), default="")
+    document_id: Mapped[Optional[int]] = mapped_column(ForeignKey("documents.id"), nullable=True, index=True)
+    notes: Mapped[str] = mapped_column(Text, default="")
+    created_by: Mapped[str] = mapped_column(String(180), default="")
+    updated_by: Mapped[str] = mapped_column(String(180), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC)
+    )
+
+    company: Mapped[Company] = relationship(back_populates="official_certificates")
+    employee: Mapped[Optional[Employee]] = relationship(back_populates="official_certificates")
+    document: Mapped[Optional[Document]] = relationship()
 
 
 class CompanyBranding(Base):
