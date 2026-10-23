@@ -612,3 +612,30 @@ def test_legacy_calculator_rejects_negative_net_and_unknown_employee(web_case):
     assert client.post("/app/calculations",data=data).status_code == 404
     data.update(employee_id=str(employee.id),gross="NaN")
     assert client.post("/app/calculations",data=data).status_code == 422
+
+
+def test_company_logo_upload_succeeds_end_to_end(web_case):
+    from io import BytesIO
+
+    from PIL import Image
+    from app.models import CompanyBranding
+
+    client, db, _, company, _, _ = web_case
+    csrf = token(client, f"/app/companies/{company.id}")
+    image = Image.new("RGB", (128, 64), (24, 72, 140))
+    buffer = BytesIO()
+    image.save(buffer, format="PNG")
+
+    response = client.post(
+        f"/app/companies/{company.id}/logo",
+        data={"csrf_token": csrf},
+        files={"logo": ("company-logo.png", buffer.getvalue(), "image/png")},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303, response.text
+    assert "logo_saved=1" in response.headers["location"]
+    branding = db.query(CompanyBranding).filter_by(company_id=company.id).one()
+    assert branding.logo_bytes and branding.logo_bytes.startswith(b"\x89PNG\r\n\x1a\n")
+    assert branding.logo_content_type == "image/png"
+    assert branding.logo_filename == "company-logo-normalizado.png"
