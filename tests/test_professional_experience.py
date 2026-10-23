@@ -114,7 +114,7 @@ def test_module_navigation_and_assets_are_versioned():
     base = (root / "app/templates/base.html").read_text(encoding="utf-8")
     css = (root / "app/static/experience.css").read_text(encoding="utf-8")
 
-    assert "v23.js') }}?v=20261022c" in base
+    assert "v23.js') }}?v=20261023b" in base
     assert "v23.css') }}?v=20261022c" in base
     assert "experience.css') }}?v=20261022c" in base
     assert ".calculation-index-card" in css
@@ -136,9 +136,32 @@ def test_official_brand_identity_assets_are_used_across_the_product():
     assert mark.startswith(b"RIFF") and mark[8:12] == b"WEBP"
     assert wordmark.startswith(b"RIFF") and wordmark[8:12] == b"WEBP"
     assert "#0B2D78" in favicon
-    assert "brand-identity.css" in base and "v=20261023a" in base
+    assert "brand-identity.css" in base and "v=20261023b" in base
     assert "digit-laboral-mark.webp" in base
     assert "digit-laboral-wordmark.webp" in login
     assert "digit-laboral-mark.webp" in public_nav
     assert "digit-laboral-mark.webp" in public_footer
     assert ".official-wordmark" in css and "--accent:#0B2D78" in css
+
+
+def test_company_logo_adjustment_controls_are_persistent_and_previewed():
+    root = Path(__file__).resolve().parents[1]
+    model = (root / "app/models.py").read_text(encoding="utf-8")
+    migration = (root / "alembic/versions/0008_company_logo_presentation.py").read_text(encoding="utf-8")
+    handler = (root / "app/ux_v23.py").read_text(encoding="utf-8")
+    template = (root / "app/templates/company_detail.html").read_text(encoding="utf-8")
+    script = (root / "app/static/v23.js").read_text(encoding="utf-8")
+    css = (root / "app/static/brand-identity.css").read_text(encoding="utf-8")
+
+    for setting in ("logo_fit", "logo_scale", "logo_alignment", "logo_background"):
+        assert setting in model
+        assert setting in migration
+        assert setting in handler
+        assert f'name="{setting}"' in template
+
+    assert "data-logo-settings-form" in template
+    assert "data-logo-reset" in template
+    assert "updateLogoPreviews" in script
+    assert ".logo-adjuster-preview" in css
+    assert ".home-module-card:nth-child(5n+2)" in css
+    assert ".page-header{" in css

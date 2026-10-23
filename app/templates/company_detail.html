@@ -5,7 +5,7 @@
 {% set logo_version = branding.updated_at.isoformat() if branding and branding.updated_at else '0' %}
 
 {% if request.query_params.get('logo_saved') %}<div class="alert success branding-status-alert">Logo guardado correctamente. Ya está disponible para el expediente y los documentos.</div>{% endif %}
-{% if request.query_params.get('branding_saved') %}<div class="alert success branding-status-alert">Configuración documental guardada.</div>{% endif %}
+{% if request.query_params.get('branding_saved') %}<div class="alert success branding-status-alert">Personalización guardada. Los ajustes del logo y del membrete se aplicaron a esta empresa.</div>{% endif %}
 {% if request.query_params.get('logo_deleted') %}<div class="alert warning branding-status-alert">Se eliminó el logo de la empresa.</div>{% endif %}
 {% if request.query_params.get('logo_error') %}<div class="alert danger branding-status-alert">{{ request.query_params.get('logo_error') }}</div>{% endif %}
 
@@ -13,7 +13,7 @@
 
 <section class="company-profile">
   {% if branding and branding.logo_bytes %}
-    <span class="company-profile-logo-frame"><img class="company-profile-logo" src="/app/companies/{{ company.id }}/logo?v={{ logo_version }}" alt="Logo de {{ company.legal_name }}"></span>
+    <span class="company-profile-logo-frame logo-fit-{{ branding.logo_fit or 'contain' }} logo-align-{{ branding.logo_alignment or 'center' }} logo-bg-{{ branding.logo_background or 'white' }}" data-logo-display style="--logo-scale: {{ (branding.logo_scale or 100) / 100 }}; --logo-transform-origin: {{ 'left center' if branding.logo_alignment == 'left' else 'right center' if branding.logo_alignment == 'right' else 'center center' }}"><img class="company-profile-logo" src="/app/companies/{{ company.id }}/logo?v={{ logo_version }}" alt="Logo de {{ company.legal_name }}"></span>
   {% else %}
     <div class="company-avatar xl">{{ company.legal_name[:2]|upper }}</div>
   {% endif %}
@@ -69,7 +69,7 @@
   <article class="panel branding-preview-card" style="--brand-primary: {{ branding.primary_color }}; --brand-secondary: {{ branding.secondary_color }}">
     <div class="panel-head"><div><span>LOGO Y DOCUMENTOS</span><h2>Identidad de la empresa</h2></div><span class="status-pill {{ 'activa' if branding.logo_bytes else 'pendiente' }}">{{ 'Logo cargado' if branding.logo_bytes else 'Sin logo' }}</span></div>
     <div class="branding-letterhead-preview">
-      <div class="branding-logo-shell">{% if branding.logo_bytes %}<img src="/app/companies/{{ company.id }}/logo?v={{ logo_version }}" alt="Logo">{% else %}<span>{{ branding.document_prefix }}</span>{% endif %}</div>
+      <div class="branding-logo-shell logo-fit-{{ branding.logo_fit or 'contain' }} logo-align-{{ branding.logo_alignment or 'center' }} logo-bg-{{ branding.logo_background or 'white' }}" data-logo-display style="--logo-scale: {{ (branding.logo_scale or 100) / 100 }}; --logo-transform-origin: {{ 'left center' if branding.logo_alignment == 'left' else 'right center' if branding.logo_alignment == 'right' else 'center center' }}">{% if branding.logo_bytes %}<img src="/app/companies/{{ company.id }}/logo?v={{ logo_version }}" alt="Logo">{% else %}<span>{{ branding.document_prefix }}</span>{% endif %}</div>
       <div><b>{{ company.legal_name }}</b><small>{% if branding.show_ruc %}RUC {{ company.ruc }}{% endif %}{% if branding.show_contact and company.address %} · {{ company.address }}{% endif %}</small></div>
     </div>
     <dl class="info-list"><div><dt>Firma autorizada</dt><dd>{{ branding.signature_name or company.legal_representative or 'No configurada' }}</dd></div><div><dt>Prefijo documental</dt><dd>{{ branding.document_prefix }}</dd></div></dl>
@@ -122,9 +122,48 @@
     </form>
 
     <details class="brand-advanced">
-      <summary>Ajustes opcionales del membrete</summary>
-      <form method="post" action="/app/companies/{{ company.id }}/branding" class="form-grid">
+      <summary>Personalizar logo y membrete</summary>
+      <form method="post" action="/app/companies/{{ company.id }}/branding" class="form-grid" data-logo-settings-form>
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <section class="logo-adjuster span-2" aria-label="Ajustes visuales del logo">
+          <div class="logo-adjuster-intro"><span class="eyebrow">PERSONALIZACIÓN DEL LOGO</span><b>Ajustá cómo se presenta esta empresa</b><small>Los cambios se guardan por empresa y no afectan los logos de otros clientes.</small></div>
+          <div class="logo-adjuster-preview-area">
+            <div class="logo-adjuster-preview-label"><span>VISTA PREVIA</span><small>{{ company.trade_name or company.legal_name }}</small></div>
+            <div id="companyLogoSettingsPreview" class="logo-adjuster-preview logo-fit-{{ branding.logo_fit or 'contain' }} logo-align-{{ branding.logo_alignment or 'center' }} logo-bg-{{ branding.logo_background or 'white' }}" data-logo-display style="--logo-scale: {{ (branding.logo_scale or 100) / 100 }}; --logo-transform-origin: {{ 'left center' if branding.logo_alignment == 'left' else 'right center' if branding.logo_alignment == 'right' else 'center center' }}">
+              {% if branding.logo_bytes %}<img src="/app/companies/{{ company.id }}/logo?v={{ logo_version }}" alt="Vista previa del logo de {{ company.legal_name }}">{% else %}<span class="logo-adjuster-placeholder">{{ branding.document_prefix }}<small>El logo aparecerá aquí</small></span>{% endif %}
+            </div>
+          </div>
+          <div class="logo-adjuster-fields">
+            <label>Ajuste de imagen
+              <select name="logo_fit" data-logo-fit>
+                <option value="contain" {{ 'selected' if (branding.logo_fit or 'contain') == 'contain' }}>Mostrar logo completo</option>
+                <option value="cover" {{ 'selected' if branding.logo_fit == 'cover' }}>Ampliar para llenar el espacio</option>
+              </select>
+              <small>Usá “Mostrar logo completo” para evitar recortes.</small>
+            </label>
+            <label>Tamaño del logo <output id="logoScaleValue" for="logoScaleControl">{{ branding.logo_scale or 100 }}%</output>
+              <input type="range" id="logoScaleControl" name="logo_scale" data-logo-scale min="60" max="140" step="5" value="{{ branding.logo_scale or 100 }}">
+              <small>Podés hacerlo más discreto o más protagonista.</small>
+            </label>
+            <label>Posición
+              <select name="logo_alignment" data-logo-alignment>
+                <option value="left" {{ 'selected' if branding.logo_alignment == 'left' }}>Izquierda</option>
+                <option value="center" {{ 'selected' if (branding.logo_alignment or 'center') == 'center' }}>Centro</option>
+                <option value="right" {{ 'selected' if branding.logo_alignment == 'right' }}>Derecha</option>
+              </select>
+            </label>
+            <label>Fondo del recuadro
+              <select name="logo_background" data-logo-background>
+                <option value="white" {{ 'selected' if (branding.logo_background or 'white') == 'white' }}>Blanco</option>
+                <option value="transparent" {{ 'selected' if branding.logo_background == 'transparent' }}>Transparente</option>
+                <option value="soft" {{ 'selected' if branding.logo_background == 'soft' }}>Azul muy suave</option>
+                <option value="navy" {{ 'selected' if branding.logo_background == 'navy' }}>Azul marino</option>
+              </select>
+            </label>
+          </div>
+          <div class="logo-adjuster-actions"><button type="button" class="btn ghost" data-logo-reset>Restablecer ajustes</button><span>La vista previa se actualiza al mover los controles.</span></div>
+        </section>
+        <div class="logo-branding-divider span-2"><span>IDENTIDAD DEL MEMBRETE</span><small>Colores y datos que acompañan al logo en los documentos.</small></div>
         <label>Color principal<input type="color" name="primary_color" value="{{ branding.primary_color }}"></label>
         <label>Color secundario<input type="color" name="secondary_color" value="{{ branding.secondary_color }}"></label>
         <label>Firma autorizada<input name="signature_name" value="{{ branding.signature_name or company.legal_representative }}"></label>
@@ -133,7 +172,7 @@
         <label class="span-2">Pie de página<input name="document_footer" value="{{ branding.document_footer }}"></label>
         <label class="check-line"><input type="checkbox" name="show_ruc" {{ 'checked' if branding.show_ruc }}> Mostrar RUC</label>
         <label class="check-line"><input type="checkbox" name="show_contact" {{ 'checked' if branding.show_contact }}> Mostrar dirección y contacto</label>
-        <div class="form-actions span-2"><button class="btn primary" type="submit">Guardar membrete</button></div>
+        <div class="form-actions span-2"><button class="btn primary" type="submit">Guardar ajustes de logo y membrete</button></div>
       </form>
     </details>
 

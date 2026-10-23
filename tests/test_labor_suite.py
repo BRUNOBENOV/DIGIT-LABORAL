@@ -639,3 +639,96 @@ def test_company_logo_upload_succeeds_end_to_end(web_case):
     assert branding.logo_bytes and branding.logo_bytes.startswith(b"\x89PNG\r\n\x1a\n")
     assert branding.logo_content_type == "image/png"
     assert branding.logo_filename == "company-logo-normalizado.png"
+
+
+def test_company_logo_presentation_preferences_are_saved_per_company(web_case):
+    from app.models import CompanyBranding
+
+    client, db, _, company, _, _ = web_case
+    response = client.post(
+        f"/app/companies/{company.id}/branding",
+        data={
+            "csrf_token": token(client, f"/app/companies/{company.id}"),
+            "logo_fit": "cover",
+            "logo_scale": "135",
+            "logo_alignment": "right",
+            "logo_background": "soft",
+            "primary_color": "#0B2D78",
+            "secondary_color": "#17191F",
+            "document_footer": "Documento del cliente",
+            "signature_name": "Representante de prueba",
+            "signature_title": "Gerencia",
+            "document_prefix": "CL",
+            "show_ruc": "on",
+            "show_contact": "on",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303, response.text
+    assert "branding_saved=1" in response.headers["location"]
+    db.expire_all()
+    branding = db.query(CompanyBranding).filter_by(company_id=company.id).one()
+    assert branding.logo_fit == "cover"
+    assert branding.logo_scale == 135
+    assert branding.logo_alignment == "right"
+    assert branding.logo_background == "soft"
+
+
+def test_company_logo_presentation_migration_backfills_existing_rows(tmp_path):
+    from sqlalchemy import create_engine, inspect, text
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'branding.db'}")
+    with engine.begin() as conn:
+        conn.execute(text("CREATE TABLE company_branding (id INTEGER PRIMARY KEY, company_id INTEGER NOT NULL)"))
+        conn.execute(text("INSERT INTO company_branding (id, company_id) VALUES (1, 10)"))
+        spec = importlib.util.spec_from_file_location(
+            "migration8_company_logo_presentation",
+            "alembic/versions/0008_company_logo_presentation.py",
+        )
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        with Operations.context(MigrationContext.configure(conn)):
+            module.upgrade()
+        columns = {column["name"] for column in inspect(conn).get_columns("company_branding")}
+        assert {"logo_fit", "logo_scale", "logo_alignment", "logo_background"} <= columns
+        row = conn.execute(
+            text("SELECT logo_fit, logo_scale, logo_alignment, logo_background FROM company_branding WHERE id = 1")
+        ).one()
+        assert tuple(row) == ("contain", 100, "center", "white")
+    engine.dispose()
+
+
+def test_company_logo_renderer_respects_saved_presentation_preferences():
+    from io import BytesIO
+
+    from PIL import Image, ImageDraw
+
+    from app.logo_presentation import prepare_company_logo
+
+    source = Image.new("RGBA", (1100, 360), (255, 255, 255, 0))
+    draw = ImageDraw.Draw(source)
+    draw.rectangle((220, 100, 880, 260), fill=(220, 20, 30, 255))
+    buffer = BytesIO()
+    source.save(buffer, format="PNG")
+    original = buffer.getvalue()
+
+    centered_bytes = prepare_company_logo(
+        original, fit="contain", scale=100, alignment="center", background="transparent"
+    )
+    left_bytes = prepare_company_logo(
+        original, fit="contain", scale=100, alignment="left", background="navy"
+    )
+    small_bytes = prepare_company_logo(
+        original, fit="contain", scale=60, alignment="center", background="white"
+    )
+
+    with Image.open(BytesIO(centered_bytes)) as centered, Image.open(BytesIO(left_bytes)) as left, Image.open(BytesIO(small_bytes)) as small:
+        assert centered.size == (1100, 360)
+        assert left.getpixel((0, 0)) == (11, 45, 120, 255)
+        assert centered.getchannel("A").getbbox()[0] > left.getchannel("A").getbbox()[0]
+        centered_red = sum(1 for r, g, b, a in centered.getdata() if r > 180 and g < 60 and b < 60 and a > 0)
+        small_red = sum(1 for r, g, b, a in small.getdata() if r > 180 and g < 60 and b < 60 and a > 0)
+        assert small_red < centered_red

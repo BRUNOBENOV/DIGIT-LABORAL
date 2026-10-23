@@ -12,6 +12,8 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
+from .logo_presentation import prepare_company_logo
+
 
 def _gs(value: Any) -> str:
     return f"{int(value or 0):,}".replace(",", ".")
@@ -44,8 +46,15 @@ def build_employee_report_pdf(
 
     primary = getattr(branding, "primary_color", "#173B86") or "#173B86"
     header_cells: list[Any] = []
-    if branding and getattr(branding, "logo_bytes", None):
-        logo_stream = io.BytesIO(branding.logo_bytes)
+    logo_bytes = prepare_company_logo(
+        getattr(branding, "logo_bytes", None) if branding else None,
+        fit=getattr(branding, "logo_fit", "contain") if branding else "contain",
+        scale=getattr(branding, "logo_scale", 100) if branding else 100,
+        alignment=getattr(branding, "logo_alignment", "center") if branding else "center",
+        background=getattr(branding, "logo_background", "white") if branding else "white",
+    )
+    if logo_bytes:
+        logo_stream = io.BytesIO(logo_bytes)
         header_cells.append(Image(logo_stream, width=22 * mm, height=22 * mm, kind="proportional"))
     else:
         header_cells.append(Paragraph("<b>DL</b>", ParagraphStyle("DL", parent=styles["Normal"], fontSize=18, textColor=colors.white, alignment=TA_CENTER)))
