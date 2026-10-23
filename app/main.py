@@ -2825,6 +2825,7 @@ def create_certificate(
     civil_status: Annotated[str, Form()] = "",
     recipient: Annotated[str, Form()] = "Encargado/a de Recursos Humanos",
     include_salary: Annotated[str, Form()] = "",
+    last_period_salary_amount: Annotated[str, Form()] = "",
     contract_modality: Annotated[str, Form()] = "",
     contract_end_date: Annotated[date | None, Form()] = None,
     contract_cause: Annotated[str, Form()] = "",
@@ -2909,6 +2910,7 @@ def create_certificate(
 
     field_amounts = {
         "salary_basic_amount": nonnegative_amount(salary_basic_amount, "Salario básico del período"),
+        "last_period_salary_amount": nonnegative_amount(last_period_salary_amount, "Salario del último período de pago"),
         "night_surcharge_amount": nonnegative_amount(night_surcharge_amount, "Recargo nocturno"),
         "overtime_day_amount": nonnegative_amount(overtime_day_amount, "Horas extras diurnas"),
         "overtime_night_amount": nonnegative_amount(overtime_night_amount, "Horas extras nocturnas"),
@@ -2984,6 +2986,9 @@ def create_certificate(
     calc_results = json_dict(calculation.result_json) if calculation else {}
     position_value = position.strip() or employee.position
     admission_value = admission_date or employee.admission_date
+    if document_type in {"certificado_trabajo_a", "certificado_trabajo_b", "constancia"} and not effective_date:
+        if (employee.status or "").strip().lower() not in {"activo", "active"} and employee.termination_date:
+            effective_date = employee.termination_date
     salary_value = max(0, salary or employee.base_salary)
     if calculation:
         if document_type in {"aguinaldo_anual", "aguinaldo_proporcional", "usufructo_vacaciones", "notificacion_preaviso"}:
@@ -3061,6 +3066,7 @@ def create_certificate(
         "civil_status": civil_status.strip(),
         "recipient": recipient.strip(),
         "include_salary": include_salary.strip().lower() in {"on", "true", "1", "yes"},
+        "last_period_salary_amount": field_amounts["last_period_salary_amount"],
         "contract_modality": contract_modality_value,
         "contract_end_date": contract_end_date.isoformat() if contract_end_date else "",
         "contract_cause": contract_cause.strip(),
