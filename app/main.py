@@ -328,7 +328,12 @@ class CSRFMiddleware:
         await self.app(scope, replay_receive, send)
 
 
-app = FastAPI(title="Digit Laboral", version="2.0.0", lifespan=lifespan)
+APP_VERSION = (os.getenv("DIGIT_APP_VERSION", "2.2.0").strip() or "2.2.0")
+APP_COMMIT = os.getenv("RENDER_GIT_COMMIT", os.getenv("GITHUB_SHA", "")).strip()
+APP_BUILD = APP_COMMIT[:7] if APP_COMMIT else "LOCAL"
+APP_BRANCH = os.getenv("RENDER_GIT_BRANCH", os.getenv("GITHUB_REF_NAME", "")).strip() or "local"
+
+app = FastAPI(title="Digit Laboral", version=APP_VERSION, lifespan=lifespan)
 app.add_middleware(CSRFMiddleware)
 app.add_middleware(
     SessionMiddleware,
@@ -567,6 +572,10 @@ def render(request: Request, template: str, db: Session, user: User | None = Non
         "environment": settings.environment,
         "notification_unread_count": 0,
         **context,
+        "app_version": APP_VERSION,
+        "app_build": APP_BUILD,
+        "app_commit": APP_COMMIT,
+        "app_branch": APP_BRANCH,
     }
     if user and user.role != "superadmin":
         data["notification_unread_count"] = db.scalar(
