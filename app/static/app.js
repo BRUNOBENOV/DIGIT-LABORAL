@@ -411,6 +411,12 @@ if (certificateForm) {
   }));
   companySelect.addEventListener('change', filterEmployees);
   employeeSelect.addEventListener('change', loadEmployee);
+  const includeSalaryCheckbox = document.querySelector('#certificateIncludeSalary');
+  includeSalaryCheckbox?.addEventListener('change', () => {
+    const hiddenSalaryState = document.querySelector('#certificateIncludeSalaryValue');
+    if (hiddenSalaryState) hiddenSalaryState.value = includeSalaryCheckbox.checked ? 'on' : 'off';
+    updatePreview();
+  });
   certificateForm.querySelectorAll('input,select,textarea').forEach(input => {
     input.addEventListener('input', updatePreview);
     input.addEventListener('change', updatePreview);
