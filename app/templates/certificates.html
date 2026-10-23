@@ -1,75 +1,9 @@
 {% extends "base.html" %}
 {% block title %}Documentos laborales | Digit Laboral{% endblock %}
 {% block content %}
-<style>
-.cert-center{display:grid;gap:16px;margin-bottom:26px}
-.cert-center-hero{display:flex;justify-content:space-between;align-items:center;gap:24px;flex-wrap:wrap;padding:28px;border:1px solid #d8e1ef;border-left:4px solid #0b2d78;border-radius:16px;background:linear-gradient(135deg,#fff 0%,#f4f7fc 100%)}
-.cert-center-hero h1{font-size:clamp(1.8rem,3vw,2.45rem);line-height:1.1;letter-spacing:-.035em;margin:9px 0}
-.cert-center-hero p{max-width:760px;margin:0;color:#596a84;line-height:1.6}
-.cert-center-actions{display:flex;gap:10px;flex-wrap:wrap}
-.cert-center-note{padding:13px 16px;border:1px solid #d8e1ee;border-radius:11px;background:#f8fafc;color:#34445d;line-height:1.55;font-size:.9rem}
-.cert-center-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
-.cert-center-stat{display:flex;align-items:center;gap:13px;padding:15px 17px;border:1px solid #dce4ef;border-radius:12px;background:#fff}
-.cert-center-stat strong{font-size:1.25rem;letter-spacing:-.03em;color:#102b63;white-space:nowrap}
-.cert-center-stat span{font-size:.82rem;line-height:1.4;color:#687891}
-.cert-center-section-head{display:flex;justify-content:space-between;align-items:end;gap:16px;flex-wrap:wrap}
-.cert-center-section-head h2{font-size:1.15rem;margin:3px 0 0}
-.cert-center-section-head p{margin:4px 0 0;color:#65748b;font-size:.88rem}
-.cert-center-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px}
-.cert-center-card{min-width:0;display:flex;flex-direction:column;gap:11px;padding:17px;border:1px solid #dce4ef;border-radius:14px;background:#fff;box-shadow:0 4px 16px rgba(20,41,78,.035)}
-.cert-center-card h3{font-size:1rem;line-height:1.35;margin:0}
-.cert-center-card p{font-size:.86rem;line-height:1.55;color:#63728a;margin:0;flex:1}
-.cert-center-chip{align-self:flex-start;padding:5px 8px;border-radius:6px;background:#eaf0fc;color:#133d8d;font-size:.7rem;font-weight:800;letter-spacing:.04em}
-.cert-center-chip.ips{background:#e8f4ee;color:#176247}
-.cert-center-validity{padding-top:10px;border-top:1px solid #edf0f5;color:#45556f;font-size:.78rem;font-weight:700;line-height:1.4}
-.cert-center-card-actions{display:flex;gap:13px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-top:2px}
-.cert-center-card-actions a{font-size:.82rem;font-weight:750;text-decoration:none}
-.cert-center-card-actions a:first-child{color:#164397}
-.cert-center-card-actions a:last-child{border-radius:7px;padding:8px 10px;background:#12377f;color:#fff}
-@media(max-width:1000px){.cert-center-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.cert-center-hero{align-items:flex-start}}
-@media(max-width:620px){.cert-center-grid,.cert-center-stats{grid-template-columns:1fr}.cert-center-hero{padding:20px}.cert-center-actions{width:100%}.cert-center-actions .btn{flex:1;text-align:center;justify-content:center}}
-</style>
-<section class="cert-center" aria-labelledby="certCenterTitle">
-  <header class="cert-center-hero">
-    <div>
-      <span class="eyebrow">CENTRO DE CERTIFICADOS · PARAGUAY</span>
-      <h1 id="certCenterTitle">Certificados laborales</h1>
-      <p>Accedé a los trámites oficiales del MTESS y del IPS, consultá requisitos, registrá solicitudes y controlá vencimientos. Los documentos emitidos por la empresa se mantienen en un generador separado.</p>
-    </div>
-    <div class="cert-center-actions">
-      <a class="btn primary" href="/app/certificates/official">Abrir centro MTESS / IPS</a>
-      <a class="btn ghost" href="#internal-certs">Generar documento interno ↓</a>
-    </div>
-  </header>
-  <div class="cert-center-note"><b>Separación importante:</b> los certificados oficiales solo los emite el organismo correspondiente. DIGIT-LABORAL facilita el acceso, seguimiento, archivo del original y control de vigencia; no imita sus sellos, firmas, códigos ni resultados.</div>
-  <div class="cert-center-stats" aria-label="Resumen del catálogo">
-    <div class="cert-center-stat"><strong>{{ official_certificate_types|length }}</strong><span>tipos de constancias y certificados en el catálogo oficial</span></div>
-    <div class="cert-center-stat"><strong>MTESS</strong><span>REOP · certificado laboral y constancias del trabajador</span></div>
-    <div class="cert-center-stat"><strong>IPS</strong><span>AOP · cumplimiento patronal y certificados personales</span></div>
-  </div>
-  <div class="cert-center-section-head">
-    <div><span class="eyebrow">ACCESOS DIRECTOS</span><h2>Trámites más utilizados</h2><p>Seleccioná el trámite para abrir el canal oficial o iniciar su seguimiento.</p></div>
-    <a href="/app/certificates/official">Ver catálogo completo →</a>
-  </div>
-  <div class="cert-center-grid">
-    {% for key in ['mtess_certificado_laboral', 'mtess_constancia_no_inscripto', 'ips_certificado_cumplimiento', 'ips_constancia_no_inscripto', 'ips_constancia_no_asegurado', 'ips_constancia_salario_asegurado'] %}
-    {% set info = official_certificate_types[key] %}
-    <article class="cert-center-card">
-      <span class="cert-center-chip {{ 'ips' if info.institution == 'IPS' else '' }}">{{ info.institution }} · {{ 'PATRONAL' if info.scope == 'empresa' else 'PERSONAL' }}</span>
-      <h3>{{ info.label }}</h3>
-      <p>{{ info.description }}</p>
-      <div class="cert-center-validity">{% if info.validity_days %}Vigencia informada: {{ info.validity_days }} días{% elif key == 'ips_certificado_cumplimiento' %}Vigencia: hasta el próximo vencimiento de pago{% else %}Vigencia: confirmar en la fuente oficial{% endif %}</div>
-      <div class="cert-center-card-actions">
-        <a href="{{ info.source_url }}" target="_blank" rel="noopener noreferrer">{{ info.portal_label }} ↗</a>
-        <a href="/app/certificates/official?certificate_type={{ key }}#officialCertificateCreateForm">Registrar trámite</a>
-      </div>
-    </article>
-    {% endfor %}
-  </div>
-</section>
-<div class="page-header certificates-header" id="internal-certs">
-  <div><span class="eyebrow">DOCUMENTOS EMITIDOS POR LA EMPRESA</span><h1>Generación de documentos laborales internos</h1><p>Certificados de trabajo, constancias, recibos y otros documentos de RR. HH. con datos del legajo, membrete y numeración interna.</p></div>
-  <div class="header-actions"><a class="btn primary" href="/app/certificates/official">Certificados oficiales MTESS / IPS</a><a class="btn ghost" href="/app/reports">Informes</a><a class="btn ghost" href="/app/ai{% if selected_company %}?company_id={{ selected_company.id }}{% endif %}">Revisar con IA</a><a class="btn ghost" href="/app/documents">Archivo digital</a></div>
+<div class="page-header certificates-header">
+  <div><span class="eyebrow">GENERACIÓN DOCUMENTAL AUTOMATIZADA</span><h1>Certificados y documentos laborales</h1><p>Datos de empresa, funcionario, cálculos y membrete conectados en una única emisión.</p></div>
+  <div class="header-actions"><a class="btn ghost" href="/app/reports">Informes</a><a class="btn ghost" href="/app/ai{% if selected_company %}?company_id={{ selected_company.id }}{% endif %}">Revisar con IA</a><a class="btn ghost" href="/app/documents">Archivo digital</a></div>
 </div>
 {% if request.query_params.get('created') %}<div class="alert success">El documento fue guardado correctamente.</div>{% endif %}
 {% if selected_calculation %}<div class="linked-calculation-banner"><div><b>Cálculo vinculado N.º {{ selected_calculation.id }}</b><span>{{ selected_calculation.calculation_type|capitalize }} · Gs. {{ selected_calculation.amount|gs }} · {{ selected_calculation.reference_period or 'Sin periodo' }}</span></div><a href="/app/calculations">Cambiar cálculo</a></div>{% endif %}
