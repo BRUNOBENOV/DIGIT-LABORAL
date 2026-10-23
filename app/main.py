@@ -3182,7 +3182,12 @@ def get_allowed_certificate(certificate_id: int, user: User, db: Session) -> Gen
 @app.get("/app/certificates/{certificate_id}/print", response_class=HTMLResponse)
 def print_certificate(certificate_id: int, request: Request, user: User = Depends(require_user), db: Session = Depends(get_db)):
     item = get_allowed_certificate(certificate_id, user, db)
-    return render(request, "certificate_print.html", db, user, certificate=item, metadata=decode_metadata(item.observations))
+    metadata = decode_metadata(item.observations)
+    detail_table = document_detail_table_data(item.document_type, metadata, item.salary_snapshot)
+    return render(
+        request, "certificate_print.html", db, user,
+        certificate=item, metadata=metadata, detail_table=detail_table,
+    )
 
 
 @app.get("/app/certificates/{certificate_id}/download.docx")
