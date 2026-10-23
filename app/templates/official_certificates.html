@@ -2,7 +2,7 @@
 {% block title %}Certificados oficiales MTESS / IPS | Digit Laboral{% endblock %}
 {% block content %}
 <style>
-.official-certs{display:grid;gap:18px}.official-certs .official-intro{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;flex-wrap:wrap}.official-certs .official-intro p{max-width:780px}.official-certs .official-callout{border:1px solid #d6e0ef;border-left:4px solid #2563eb;border-radius:12px;padding:14px 16px;background:var(--panel, #fff)}.official-certs .official-links{display:grid;grid-template-columns:repeat(auto-fit,minmax(245px,1fr));gap:12px}.official-certs .official-source{display:flex;flex-direction:column;gap:9px;padding:16px;border:1px solid var(--border, #dce2eb);border-radius:12px;background:var(--surface, #fff);min-width:0}.official-certs .official-source h3{margin:0;font-size:1rem}.official-certs .official-source p{font-size:.9rem;margin:0;line-height:1.5}.official-certs .official-source a{font-weight:700;align-self:flex-start}.official-certs .official-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.official-certs .span-2{grid-column:1/-1}.official-certs .official-records{display:grid;gap:14px}.official-certs .official-record{border:1px solid var(--border, #dce2eb);border-radius:14px;padding:18px;display:grid;gap:16px;background:var(--surface, #fff)}.official-certs .official-record-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}.official-certs .official-record-head h3{margin:0 0 5px;font-size:1.05rem}.official-certs .official-meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:10px}.official-certs .official-meta div{padding:10px 12px;border-radius:9px;background:var(--panel-soft, #f6f8fb);min-width:0}.official-certs .official-meta small,.official-certs .official-meta b{display:block;overflow-wrap:anywhere}.official-certs .official-meta small{color:var(--muted, #65748b);font-size:.76rem;margin-bottom:4px}.official-certs .official-record-actions{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.official-certs .official-record-form{border-top:1px solid var(--border, #dce2eb);padding-top:15px;display:grid;gap:12px}.official-certs .official-record-form summary{font-weight:700;cursor:pointer}.official-certs .official-hint{color:var(--muted, #65748b);font-size:.85rem;line-height:1.5}.official-certs .official-state{display:inline-flex;align-items:center;padding:5px 9px;border-radius:999px;background:#edf2f8;color:#263b58;font-size:.78rem;font-weight:700}.official-certs .official-state.expired{background:#fff0f0;color:#9b2226}.official-certs .official-state.near{background:#fff5df;color:#885400}.official-certs .official-state.valid{background:#eaf7ef;color:#22643b}@media(max-width:680px){.official-certs .official-form-grid{grid-template-columns:1fr}.official-certs .span-2{grid-column:auto}.official-certs .official-record{padding:14px}}
+.official-certs{display:grid;gap:18px}.official-certs .official-intro{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;flex-wrap:wrap}.official-certs .official-intro p{max-width:780px}.official-certs .official-callout{border:1px solid #d6e0ef;border-left:4px solid #2563eb;border-radius:12px;padding:14px 16px;background:var(--panel, #fff)}.official-certs .official-links{display:grid;grid-template-columns:repeat(auto-fit,minmax(245px,1fr));gap:12px}.official-certs .official-catalog-toolbar{display:grid;grid-template-columns:minmax(0,2fr) minmax(180px,1fr);gap:12px;margin-top:14px}.official-certs .official-catalog-toolbar label{display:grid;gap:6px;font-size:.82rem;font-weight:700}.official-certs .official-source{display:flex;flex-direction:column;gap:10px;padding:17px;border:1px solid var(--border, #dce2eb);border-radius:13px;background:var(--surface, #fff);min-width:0;box-shadow:0 4px 16px rgba(20,41,78,.035)}.official-certs .official-source h3{margin:7px 0 0;font-size:1rem;line-height:1.35}.official-certs .official-source p{font-size:.88rem;margin:0;line-height:1.5;color:var(--muted, #65748b);flex:1}.official-certs .official-source-tag{display:inline-flex;align-self:flex-start;padding:5px 8px;border-radius:6px;background:#eaf0fc;color:#153d86;font-size:.68rem;font-weight:800;letter-spacing:.04em}.official-certs .official-source-tag.ips{background:#e8f4ee;color:#176247}.official-certs .official-validity{padding-top:10px;border-top:1px solid var(--border, #dce2eb);font-size:.78rem;font-weight:750;color:var(--text, #25354e);line-height:1.4}.official-certs .official-requirements{font-size:.8rem;color:var(--muted, #65748b)}.official-certs .official-requirements summary{cursor:pointer;font-weight:700;color:var(--text, #25354e)}.official-certs .official-requirements ul{padding-left:18px;line-height:1.5}.official-certs .official-source-actions{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.official-certs .official-source-actions a{font-size:.8rem;font-weight:750;color:var(--link, #174395);align-self:flex-start}.official-certs .official-source-actions a:last-child{border-radius:7px;padding:8px 10px;background:#12377f;color:#fff;text-decoration:none}.official-certs .official-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.official-certs .span-2{grid-column:1/-1}.official-certs .official-records{display:grid;gap:14px}.official-certs .official-record{border:1px solid var(--border, #dce2eb);border-radius:14px;padding:18px;display:grid;gap:16px;background:var(--surface, #fff)}.official-certs .official-record-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}.official-certs .official-record-head h3{margin:0 0 5px;font-size:1.05rem}.official-certs .official-meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:10px}.official-certs .official-meta div{padding:10px 12px;border-radius:9px;background:var(--panel-soft, #f6f8fb);min-width:0}.official-certs .official-meta small,.official-certs .official-meta b{display:block;overflow-wrap:anywhere}.official-certs .official-meta small{color:var(--muted, #65748b);font-size:.76rem;margin-bottom:4px}.official-certs .official-record-actions{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.official-certs .official-record-form{border-top:1px solid var(--border, #dce2eb);padding-top:15px;display:grid;gap:12px}.official-certs .official-record-form summary{font-weight:700;cursor:pointer}.official-certs .official-hint{color:var(--muted, #65748b);font-size:.85rem;line-height:1.5}.official-certs .official-state{display:inline-flex;align-items:center;padding:5px 9px;border-radius:999px;background:#edf2f8;color:#263b58;font-size:.78rem;font-weight:700}.official-certs .official-state.expired{background:#fff0f0;color:#9b2226}.official-certs .official-state.near{background:#fff5df;color:#885400}.official-certs .official-state.valid{background:#eaf7ef;color:#22643b}@media(max-width:680px){.official-certs .official-catalog-toolbar{grid-template-columns:1fr}.official-certs .official-form-grid{grid-template-columns:1fr}.official-certs .span-2{grid-column:auto}.official-certs .official-record{padding:14px}}
 </style>
 <div class="official-certs">
   <div class="page-header official-intro">
@@ -12,7 +12,7 @@
       <p>Registrá los trámites, controlá vencimientos y archivá los documentos originales emitidos por cada institución desde un solo lugar.</p>
     </div>
     <div class="header-actions">
-      <a class="btn ghost" href="/app/certificates">Documentos laborales internos</a>
+      <a class="btn ghost" href="/app/certificates">Centro de certificados</a>
       <a class="btn ghost" href="/app/documents">Archivo documental</a>
     </div>
   </div>
@@ -30,16 +30,42 @@
 
   <section class="panel">
     <div class="panel-head"><div><span>PORTALES Y TRÁMITES</span><h2>Catálogo oficial</h2></div></div>
-    <div class="official-links">
-      {% for key in ['mtess_certificado_laboral', 'ips_constancia_no_inscripto', 'ips_certificado_cumplimiento', 'ips_certificado_trabajo'] %}
-      {% set info = official_certificate_types[key] %}
-      <article class="official-source">
-        <div><span class="eyebrow">{{ info.institution }}</span><h3>{{ info.label }}</h3></div>
+    <div class="official-catalog-toolbar">
+      <label>Buscar certificado o constancia
+        <input type="search" id="officialCatalogSearch" placeholder="Ej.: cumplimiento, asegurado, jubilación…" autocomplete="off">
+      </label>
+      <label>Institución
+        <select id="officialInstitutionFilter">
+          <option value="">Todas las instituciones</option>
+          <option value="MTESS">MTESS</option>
+          <option value="IPS">IPS</option>
+        </select>
+      </label>
+    </div>
+    <p class="official-hint">El catálogo combina los trámites patronales y personales publicados por los organismos. Los requisitos son una guía de preparación; la fuente oficial prevalece ante cualquier cambio.</p>
+    <div class="official-links" id="officialCatalogGrid">
+      {% for key, info in official_certificate_types.items() %}
+      <article class="official-source" data-institution="{{ info.institution }}" data-search="{{ (info.label ~ ' ' ~ info.description ~ ' ' ~ info.institution)|lower }}">
+        <div class="official-source-heading">
+          <span class="official-source-tag {{ 'ips' if info.institution == 'IPS' else 'mtess' }}">{{ info.institution }} · {{ 'PATRONAL' if info.scope == 'empresa' else 'PERSONAL' }}</span>
+          <h3>{{ info.label }}</h3>
+        </div>
         <p>{{ info.description }}</p>
-        <a href="{{ info.source_url }}" target="_blank" rel="noopener noreferrer">{{ info.portal_label }} ↗</a>
+        <div class="official-validity">
+          {% if info.validity_days %}Vigencia oficial informada: {{ info.validity_days }} días{% elif key == 'ips_certificado_cumplimiento' %}Vigencia hasta el vencimiento del próximo pago{% else %}Vigencia: confirmar en el documento o portal oficial{% endif %}
+        </div>
+        <details class="official-requirements">
+          <summary>Requisitos y preparación</summary>
+          <ul>{% for requirement in info.requirements %}<li>{{ requirement }}</li>{% endfor %}</ul>
+        </details>
+        <div class="official-source-actions">
+          <a href="{{ info.source_url }}" target="_blank" rel="noopener noreferrer">{{ info.portal_label }} ↗</a>
+          <a href="/app/certificates/official?certificate_type={{ key }}#officialCertificateCreateForm">Registrar seguimiento</a>
+        </div>
       </article>
       {% endfor %}
     </div>
+    <div id="officialCatalogEmpty" class="empty-state" hidden>No se encontraron certificados con esos filtros.</div>
   </section>
 
   {% if user.role != 'empresa' %}
@@ -58,7 +84,7 @@
       <label>Tipo de certificado
         <select name="certificate_type" id="officialCertificateType" required>
           {% for key, info in official_certificate_types.items() %}
-          <option value="{{ key }}" data-institution="{{ info.institution }}" data-scope="{{ info.scope }}" data-validity="{{ info.validity_days if info.validity_days else '' }}">{{ info.institution }} · {{ info.label }}</option>
+          <option value="{{ key }}" {{ 'selected' if key == selected_certificate_type }} data-institution="{{ info.institution }}" data-scope="{{ info.scope }}" data-validity="{{ info.validity_days if info.validity_days else '' }}">{{ info.institution }} · {{ info.label }}</option>
           {% endfor %}
         </select>
       </label>
@@ -183,6 +209,22 @@
   const hint = document.querySelector('#officialCertificateTypeHint');
   const requirementList = document.querySelector('#officialCertificateRequirements');
   const catalog = {{ official_certificate_types|tojson }};
+  const catalogSearch = document.querySelector('#officialCatalogSearch');
+  const institutionFilter = document.querySelector('#officialInstitutionFilter');
+  const catalogCards = [...document.querySelectorAll('#officialCatalogGrid .official-source')];
+  const catalogEmpty = document.querySelector('#officialCatalogEmpty');
+  const filterCatalog = () => {
+    const query = (catalogSearch?.value || '').trim().toLocaleLowerCase('es');
+    const institution = institutionFilter?.value || '';
+    let visible = 0;
+    catalogCards.forEach(card => {
+      const matchesText = !query || (card.dataset.search || '').includes(query);
+      const matchesInstitution = !institution || card.dataset.institution === institution;
+      card.hidden = !(matchesText && matchesInstitution);
+      if (!card.hidden) visible += 1;
+    });
+    if (catalogEmpty) catalogEmpty.hidden = visible > 0;
+  };
   const filterEmployees = () => {
     if (!company || !employee) return;
     const current = employee.value;
@@ -212,8 +254,11 @@
   };
   company?.addEventListener('change', filterEmployees);
   type?.addEventListener('change', updateHint);
+  catalogSearch?.addEventListener('input', filterCatalog);
+  institutionFilter?.addEventListener('change', filterCatalog);
   filterEmployees();
   updateHint();
+  filterCatalog();
 })();
 </script>
 {% endblock %}
