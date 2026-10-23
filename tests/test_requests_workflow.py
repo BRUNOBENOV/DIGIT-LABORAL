@@ -6,9 +6,11 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.auth import hash_password
+from app.config import settings
+from app.storage_service import storage
 from app.database import SessionLocal
 from app.main import app
-from app.models import Company, CompanyRequest, Employee, Notification, RequestWorkflow, Studio, User
+from app.models import Company, CompanyRequest, Document, Employee, Notification, RequestAttachment, RequestWorkflow, Studio, User
 
 
 def ensure_admin() -> tuple[str, str, int, int]:
@@ -73,6 +75,34 @@ def test_salary_request_is_approved_applied_and_notified():
         )
         assert response.status_code == 303
         request_id = int(response.headers["location"].rstrip("/").split("/")[-1])
+
+        # Request attachments retain a PostgreSQL copy in local-storage mode.
+        attachment_content = b"%PDF-1.7\nrequest attachment durability test\n"
+        uploaded_attachment = client.post(
+            f"/app/requests/{request_id}/attachments",
+            data={"csrf_token": csrf},
+            files={"file": ("workflow-attachment.pdf", attachment_content, "application/pdf")},
+            follow_redirects=False,
+        )
+        assert uploaded_attachment.status_code == 303
+        with SessionLocal() as db:
+            attachment = db.scalar(
+                select(RequestAttachment).where(RequestAttachment.request_id == request_id)
+                .order_by(RequestAttachment.id.desc())
+            )
+            assert attachment is not None
+            attachment_id = attachment.id
+            stored_key = attachment.stored_name
+            if settings.storage_backend == "local":
+                assert bytes(attachment.content_bytes) == attachment_content
+        if settings.storage_backend == "local":
+            storage.delete(stored_key)
+        downloaded_attachment = client.get(
+            f"/app/requests/{request_id}/attachments/{attachment_id}/download"
+        )
+        assert downloaded_attachment.status_code == 200
+        assert downloaded_attachment.content == attachment_content
+
         with SessionLocal() as db:
             item = db.get(CompanyRequest, request_id)
             assert item is not None
@@ -191,3 +221,88 @@ def test_notification_reads_are_scoped_to_the_logged_in_user():
         other_note = db.get(Notification, other_notification_id)
         assert note.read_at is not None
         assert other_note.read_at is None
+
+
+
+def test_direct_employee_edit_cannot_bypass_salary_approval():
+    email, password, _, employee_id = ensure_admin()
+    with SessionLocal() as db:
+        employee = db.get(Employee, employee_id)
+        assert employee is not None
+        original_salary = employee.base_salary
+        original_name = employee.full_name
+        original_position = employee.position
+
+    with TestClient(app) as client:
+        csrf = login(client, email, password)
+        rejected = client.post(
+            f"/app/employees/{employee_id}/edit",
+            data={
+                "csrf_token": csrf,
+                "full_name": original_name,
+                "position": original_position,
+                "base_salary": str(original_salary + 150000),
+                "email": "",
+                "phone": "",
+                "address": "",
+                "notes": "",
+            },
+            follow_redirects=False,
+        )
+        assert rejected.status_code == 409
+        updated = client.post(
+            f"/app/employees/{employee_id}/edit",
+            data={
+                "csrf_token": csrf,
+                "full_name": original_name,
+                "position": original_position,
+                "email": "",
+                "phone": "",
+                "address": "",
+                "notes": "Prueba de actualización no salarial.",
+            },
+            follow_redirects=False,
+        )
+        assert updated.status_code == 303
+
+    with SessionLocal() as db:
+        employee = db.get(Employee, employee_id)
+        assert employee is not None
+        assert employee.base_salary == original_salary
+        assert employee.notes == "Prueba de actualización no salarial."
+
+
+def test_general_document_upload_survives_loss_of_local_file_copy():
+    email, password, company_id, employee_id = ensure_admin()
+    content = b"%PDF-1.7\ngeneral document durability test\n"
+    title = "Respaldo de documento automatizado"
+    with TestClient(app) as client:
+        csrf = login(client, email, password)
+        uploaded = client.post(
+            "/app/documents",
+            data={
+                "csrf_token": csrf,
+                "company_id": str(company_id),
+                "employee_id": str(employee_id),
+                "title": title,
+                "category": "Prueba",
+            },
+            files={"file": ("document-durability-test.pdf", content, "application/pdf")},
+            follow_redirects=False,
+        )
+        assert uploaded.status_code == 303
+        with SessionLocal() as db:
+            document = db.scalar(
+                select(Document).where(Document.company_id == company_id, Document.title == title)
+                .order_by(Document.id.desc())
+            )
+            assert document is not None
+            document_id = document.id
+            stored_key = document.stored_name
+            if settings.storage_backend == "local":
+                assert bytes(document.content_bytes) == content
+        if settings.storage_backend == "local":
+            storage.delete(stored_key)
+        downloaded = client.get(f"/app/documents/{document_id}/download")
+        assert downloaded.status_code == 200
+        assert downloaded.content == content
