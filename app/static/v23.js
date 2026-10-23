@@ -120,6 +120,52 @@
     });
   }
 
+
+  // Company-specific logo presentation controls with immediate visual preview.
+  const logoSettingsForm = document.querySelector('[data-logo-settings-form]');
+  if (logoSettingsForm) {
+    const fitField = logoSettingsForm.querySelector('[data-logo-fit]');
+    const scaleField = logoSettingsForm.querySelector('[data-logo-scale]');
+    const alignmentField = logoSettingsForm.querySelector('[data-logo-alignment]');
+    const backgroundField = logoSettingsForm.querySelector('[data-logo-background]');
+    const scaleOutput = document.getElementById('logoScaleValue');
+    const displays = [...document.querySelectorAll('[data-logo-display]')];
+    const fitValues = ['contain', 'cover'];
+    const alignmentValues = ['left', 'center', 'right'];
+    const backgroundValues = ['white', 'transparent', 'soft', 'navy'];
+    const updateLogoPreviews = () => {
+      const fit = fitValues.includes(fitField?.value) ? fitField.value : 'contain';
+      const scale = Math.max(60, Math.min(140, Number(scaleField?.value) || 100));
+      const alignment = alignmentValues.includes(alignmentField?.value) ? alignmentField.value : 'center';
+      const background = backgroundValues.includes(backgroundField?.value) ? backgroundField.value : 'white';
+      const origin = alignment === 'left' ? 'left center' : alignment === 'right' ? 'right center' : 'center center';
+      displays.forEach(display => {
+        display.classList.remove(
+          ...fitValues.map(value => 'logo-fit-' + value),
+          ...alignmentValues.map(value => 'logo-align-' + value),
+          ...backgroundValues.map(value => 'logo-bg-' + value)
+        );
+        display.classList.add('logo-fit-' + fit, 'logo-align-' + alignment, 'logo-bg-' + background);
+        display.style.setProperty('--logo-scale', String(scale / 100));
+        display.style.setProperty('--logo-transform-origin', origin);
+      });
+      if (scaleOutput) scaleOutput.value = scale + '%';
+      if (scaleOutput) scaleOutput.textContent = scale + '%';
+    };
+    [fitField, scaleField, alignmentField, backgroundField].forEach(field => {
+      field?.addEventListener('input', updateLogoPreviews);
+      field?.addEventListener('change', updateLogoPreviews);
+    });
+    logoSettingsForm.querySelector('[data-logo-reset]')?.addEventListener('click', () => {
+      if (fitField) fitField.value = 'contain';
+      if (scaleField) scaleField.value = '100';
+      if (alignmentField) alignmentField.value = 'center';
+      if (backgroundField) backgroundField.value = 'white';
+      updateLogoPreviews();
+    });
+    updateLogoPreviews();
+  }
+
   const params = new URLSearchParams(window.location.search);
   if (params.get('logo_error')) showError(params.get('logo_error'));
   if (params.get('open') === 'brandingModal' || params.get('logo_error')) {
