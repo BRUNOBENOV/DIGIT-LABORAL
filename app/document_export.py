@@ -431,6 +431,12 @@ def build_document_body(
     leave_end = optional_date(metadata.get("leave_end"))
     amount = _metadata_money(metadata, "amount", salary)
     amount_words = guaranies_in_words(amount)
+    last_period_salary = _metadata_money(metadata, "last_period_salary_amount", salary)
+    last_period_salary_display = (
+        f"Gs. {format_gs(last_period_salary)} ({guaranies_in_words(last_period_salary)})"
+        if last_period_salary > 0 else "importe a completar según el último período de pago"
+    )
+    employment_end = format_date_long_es(effective_date)
     recipient = str(metadata.get("recipient") or "Encargado/a de Recursos Humanos").strip()
     nationality = str(metadata.get("nationality") or "paraguaya").strip()
     civil_status = str(metadata.get("civil_status") or "").strip()
@@ -481,19 +487,41 @@ def build_document_body(
 
     bodies: dict[str, str] = {
         "certificado_trabajo_a": (
-            f"Por medio de la presente, {company_name} certifica que {identity} presta servicios en la empresa "
-            f"en el cargo de {role}, desde el {admission}, percibiendo una remuneración mensual registrada de {salary_display}.\n\n"
-            "Se expide a solicitud de la persona interesada para los fines que correspondan. La información refleja los datos disponibles en el legajo a la fecha de emisión."
+            f"CONSTANCIA DE TRABAJO / CERTIFICADO AL TÉRMINO DE LA RELACIÓN\n\n"
+            f"{company_name} certifica que {identity} se "
+            + (
+                f"desempeñó en la empresa desde el {admission} hasta el {employment_end}, "
+                f"en la clase de trabajo/cargo de {role}. "
+                f"Salario devengado durante el último período de pago: {last_period_salary_display}."
+                if effective_date else
+                f"desempeña tareas en la empresa en el cargo de {role}, desde el {admission}. "
+                f"{'Remuneración mensual registrada: ' + salary_display + '.' if str(metadata.get('include_salary') or '').lower() in {'on', 'true', '1'} else 'No se incluye remuneración en esta constancia de relación vigente.'}"
+            )
+            + "\n\n"
+            "El presente documento se basa en los datos registrados en el legajo. Si se utiliza al término de la relación, verificar que la fecha de inicio y conclusión, la clase de trabajo y el salario devengado en el último período de pago coincidan con los registros. "
+            "La mención a desempeño o causa de terminación solo debe incluirse cuando la persona trabajadora lo solicite y exista información revisada."
         ),
         "certificado_trabajo_b": (
-            f"Se deja constancia de que {identity} forma parte del plantel de {company_name}, desempeñándose como {role} desde el {admission}.\n\n"
-            f"{'La remuneración mensual registrada es de ' + salary_display + '.' if str(metadata.get('include_salary') or '').lower() in {'on', 'true', '1'} else 'No se incluye información salarial en esta constancia.'}\n\n"
-            "La presente se emite a pedido de la persona interesada y no sustituye el certificado institucional que corresponda, cuando sea exigido por un organismo público."
+            f"CONSTANCIA LABORAL\n\n"
+            f"Se deja constancia de que {identity} "
+            + (
+                f"prestó servicios en {company_name} desde el {admission} hasta el {employment_end}, desempeñándose como {role}. "
+                f"Salario devengado durante el último período de pago: {last_period_salary_display}."
+                if effective_date else
+                f"forma parte del plantel de {company_name}, desempeñándose como {role} desde el {admission}. "
+                f"{'La remuneración mensual registrada es de ' + salary_display + '.' if str(metadata.get('include_salary') or '').lower() in {'on', 'true', '1'} else 'No se incluye información salarial en esta constancia.'}"
+            )
+            + "\n\n"
+            "La presente se emite a solicitud de la persona interesada para los fines que correspondan. No sustituye certificados institucionales exigidos por un organismo público."
         ),
         "constancia": (
             f"{company_name} hace constar que {identity}, de nacionalidad {nationality}"
             + (f", de estado civil {civil_status}" if civil_status else "")
-            + f", presta servicios en la empresa en el cargo de {role}, desde el {admission}."
+            + (
+                f", prestó servicios en el cargo de {role} desde el {admission} hasta el {employment_end}."
+                if effective_date else
+                f", presta servicios en el cargo de {role} desde el {admission}."
+            )
             + (f" La remuneración mensual registrada es de {salary_display}." if str(metadata.get("include_salary") or "").lower() in {"on", "true", "1"} else "")
             + f"\n\nSe expide la presente en {city}, a los {format_date_long_es(issue_date)}, para los fines indicados por la persona interesada."
         ),
