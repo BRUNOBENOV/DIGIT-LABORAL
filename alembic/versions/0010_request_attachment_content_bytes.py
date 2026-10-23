@@ -7,7 +7,7 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision = "0010_request_attachment_content_bytes"
+revision = "0010_req_attach_bytes"
 down_revision = "0009_official_certificates"
 branch_labels = None
 depends_on = None
@@ -27,5 +27,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    if "request_attachments" in _tables() and "content_bytes" in _columns("request_attachments"):
-        op.drop_column("request_attachments", "content_bytes")
+    # Intentionally retain this nullable data column on downgrade. Dropping it
+    # would permanently delete uploaded request attachment bytes.
+    pass
