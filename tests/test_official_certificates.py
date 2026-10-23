@@ -55,7 +55,7 @@ def test_primary_certificates_page_remains_the_internal_document_generator():
         page = client.get("/app/certificates")
         assert page.status_code == 200
         assert "Certificados y documentos laborales" in page.text
-        assert "Modelo seleccionado" in page.text
+        assert "MODELO SELECCIONADO" in page.text
         assert "certificateLastPeriodSalary" in page.text
         assert "Recibo de Salario" in page.text
         assert "CENTRO DE CERTIFICADOS" not in page.text
