@@ -1667,7 +1667,7 @@ def edit_employee(
     employee_id: int,
     full_name: Annotated[str, Form()],
     position_name: Annotated[str, Form(alias="position")],
-    base_salary: Annotated[int, Form()],
+    base_salary: Annotated[int | None, Form()] = None,
     email: Annotated[str, Form()] = "",
     phone: Annotated[str, Form()] = "",
     address: Annotated[str, Form()] = "",
@@ -1678,26 +1678,20 @@ def edit_employee(
     employee = db.get(Employee, employee_id)
     if not employee or employee.company_id not in company_ids_for_user(db, user):
         raise HTTPException(404)
-    previous_salary = employee.base_salary
+    # Do not allow profile-edit requests to bypass the approved salary-request workflow.
+    # Keep the optional form field for stale clients and reject a changed value server-side.
+    if base_salary is not None and max(0, base_salary) != employee.base_salary:
+        raise HTTPException(
+            409,
+            "El salario vigente solo puede modificarse mediante una solicitud salarial aprobada.",
+        )
     employee.full_name = full_name.strip()
     employee.position = position_name.strip()
-    employee.base_salary = max(0, base_salary)
     employee.email = email.strip()
     employee.phone = phone.strip()
     employee.address = address.strip()
     employee.notes = notes.strip()
-    if previous_salary != employee.base_salary:
-        db.add(SalaryHistory(
-            employee_id=employee.id, previous_salary=previous_salary, new_salary=employee.base_salary,
-            effective_from=date.today(), reason="Actualización desde expediente", created_by=user.email,
-        ))
-        add_employee_event(
-            db, employee, user, "Cambio salarial", "Actualización salarial",
-            f"De Gs. {format_gs(previous_salary)} a Gs. {format_gs(employee.base_salary)}",
-            date.today(), employee.base_salary,
-        )
-    else:
-        add_employee_event(db, employee, user, "Actualización", "Datos del funcionario actualizados")
+    add_employee_event(db, employee, user, "Actualización", "Datos del funcionario actualizados")
     write_audit(db, user, "editar", "funcionario", str(employee.id), employee.full_name)
     db.commit()
     return RedirectResponse(f"/app/employees/{employee.id}", status_code=303)
@@ -2355,7 +2349,9 @@ async def add_request_attachment(
     storage.put(stored_name, content, content_type)
     attachment = RequestAttachment(
         request_id=item.id, stored_name=stored_name, original_name=safe_filename(file.filename or "archivo"),
-        content_type=content_type, uploaded_by=user.email,
+        content_type=content_type,
+        content_bytes=content if settings.storage_backend == "local" else None,
+        uploaded_by=user.email,
     )
     db.add(attachment)
     db.flush()
@@ -2378,13 +2374,19 @@ def download_request_attachment(
     if not item or item.company_id not in company_ids_for_user(db, user) or not attachment or attachment.request_id != item.id:
         raise HTTPException(404)
     storage_key = attachment.stored_name
-    if not storage.exists(storage_key):
-        legacy = UPLOAD_DIR / "requests" / str(item.id) / attachment.stored_name
-        if not legacy.exists():
+    if attachment.content_bytes is not None:
+        content = bytes(attachment.content_bytes)
+    elif storage.exists(storage_key):
+        content = storage.get(storage_key)
+    else:
+        legacy_candidates = (
+            UPLOAD_DIR / storage_key,
+            UPLOAD_DIR / "requests" / str(item.id) / Path(storage_key).name,
+        )
+        legacy = next((candidate for candidate in legacy_candidates if candidate.is_file()), None)
+        if legacy is None:
             raise HTTPException(404, "Archivo no encontrado.")
         content = legacy.read_bytes()
-    else:
-        content = storage.get(storage_key)
     write_audit(db, user, "descargar", "adjunto_solicitud", str(attachment.id), attachment.original_name)
     db.commit()
     return StreamingResponse(io.BytesIO(content), media_type=attachment.content_type, headers={"Content-Disposition": f'attachment; filename="{attachment.original_name}"'})
@@ -3893,7 +3895,18 @@ async def upload_document(
     original = safe_filename(file.filename or "archivo")
     stored = f"documents/{company_id}/{uuid.uuid4().hex}_{original}"
     storage.put(stored, content, file.content_type or "application/octet-stream")
-    document = Document(company_id=company_id, employee_id=employee_id or None, category=category.strip(), title=title.strip(), stored_name=stored, original_name=original, content_type=file.content_type or "application/octet-stream", uploaded_by=user.email)
+    document = Document(
+        company_id=company_id,
+        employee_id=employee_id or None,
+        category=category.strip(),
+        title=title.strip(),
+        stored_name=stored,
+        original_name=original,
+        content_type=file.content_type or "application/octet-stream",
+        # Local filesystem storage may be ephemeral; keep a durable copy in PostgreSQL.
+        content_bytes=content if settings.storage_backend == "local" else None,
+        uploaded_by=user.email,
+    )
     db.add(document)
     db.flush()
     write_audit(db, user, "subir", "documento", str(document.id), original)
