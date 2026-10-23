@@ -303,8 +303,8 @@ tbody tr:hover td{background:#EEF3FD}
 .company-profile-logo-frame.logo-align-left,.branding-logo-shell.logo-align-left,.logo-adjuster-preview.logo-align-left{justify-content:flex-start}
 .company-profile-logo-frame.logo-align-center,.branding-logo-shell.logo-align-center,.logo-adjuster-preview.logo-align-center{justify-content:center}
 .company-profile-logo-frame.logo-align-right,.branding-logo-shell.logo-align-right,.logo-adjuster-preview.logo-align-right{justify-content:flex-end}
-.company-profile-logo-frame .company-profile-logo{transform:scale(var(--logo-scale,1));transform-origin:var(--logo-transform-origin,center center)}
-.branding-logo-shell>img{max-width:100%;max-height:56px;object-fit:contain;transform:scale(var(--logo-scale,1));transform-origin:var(--logo-transform-origin,center center)}
+.company-profile-logo-frame .company-profile-logo{object-position:center}
+.branding-logo-shell>img{object-fit:contain}
 .company-profile-logo-frame.logo-bg-white,.branding-logo-shell.logo-bg-white{background:#fff}
 .company-profile-logo-frame.logo-bg-transparent,.branding-logo-shell.logo-bg-transparent{background:transparent}
 .company-profile-logo-frame.logo-bg-soft,.branding-logo-shell.logo-bg-soft{background:#E8EFFC}
