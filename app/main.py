@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import csv
 import calendar
 import hmac
@@ -81,6 +82,7 @@ from .models import (
     RequestWorkflow,
     Notification,
     NotificationDelivery,
+    OfficialCertificateRecord,
     SalaryHistory,
     SecurityEvent,
     Studio,
@@ -90,6 +92,18 @@ from .models import (
     Vacation,
 )
 from .notification_service import create_notification, send_notification_delivery
+from .official_certificates import (
+    OFFICIAL_CERTIFICATE_RESULTS,
+    OFFICIAL_CERTIFICATE_STATUSES,
+    OFFICIAL_CERTIFICATE_TYPES,
+    days_until_expiry,
+    default_expiry_date,
+    official_certificate_state,
+)
+from .notification_worker import (
+    create_due_official_certificate_notifications,
+    create_due_request_notifications,
+)
 
 from .report_export import build_employee_report_pdf
 from .backup_service import build_studio_export
@@ -200,6 +214,18 @@ configure_logging(settings.json_logs)
 logger = logging.getLogger("digit.main")
 
 
+async def _periodic_notification_sweep() -> None:
+    """Run durable reminder sweeps daily without requiring a paid Render Cron service."""
+    await asyncio.sleep(60)
+    while True:
+        try:
+            await asyncio.to_thread(create_due_request_notifications)
+            await asyncio.to_thread(create_due_official_certificate_notifications)
+        except Exception:
+            logger.exception("Scheduled notification sweep failed")
+        await asyncio.sleep(24 * 60 * 60)
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     run_migrations()
@@ -209,7 +235,15 @@ async def lifespan(_: FastAPI):
     issues = settings.production_issues()
     if issues:
         logger.warning("Production readiness issues: %s", " | ".join(issues))
-    yield
+    reminder_task = asyncio.create_task(_periodic_notification_sweep())
+    try:
+        yield
+    finally:
+        reminder_task.cancel()
+        try:
+            await reminder_task
+        except asyncio.CancelledError:
+            pass
 
 
 if settings.is_production and settings.secret_key == "cambiar-esta-clave-en-produccion":
@@ -2940,6 +2974,249 @@ def download_certificate_pdf(certificate_id: int, user: User = Depends(require_u
         media_type="application/pdf",
         headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
     )
+
+
+
+def get_allowed_official_certificate(record_id: int, user: User, db: Session) -> OfficialCertificateRecord:
+    item = db.get(OfficialCertificateRecord, record_id)
+    if not item or item.company_id not in company_ids_for_user(db, user):
+        raise HTTPException(404, "Registro de certificado oficial no encontrado.")
+    return item
+
+
+@app.get("/app/certificates/official", response_class=HTMLResponse)
+def official_certificates_page(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    company_id: OptionalQueryId = None,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    if user.role == "superadmin":
+        return RedirectResponse("/admin", status_code=303)
+    company_ids = company_ids_for_user(db, user)
+    companies = list(db.scalars(
+        select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name)
+    )) if company_ids else []
+    employees = list(db.scalars(
+        select(Employee).where(Employee.company_id.in_(company_ids)).order_by(Employee.full_name)
+    )) if company_ids else []
+    if company_id is not None and company_id not in company_ids:
+        raise HTTPException(404, "Empresa no encontrada.")
+    query = select(OfficialCertificateRecord).where(OfficialCertificateRecord.company_id.in_(company_ids)) if company_ids else select(OfficialCertificateRecord).where(False)
+    if company_id:
+        query = query.where(OfficialCertificateRecord.company_id == company_id)
+    records = list(db.scalars(query.order_by(OfficialCertificateRecord.created_at.desc()).limit(200)))
+    today_value = date.today()
+    record_views = []
+    for item in records:
+        info = OFFICIAL_CERTIFICATE_TYPES.get(item.certificate_type, {})
+        view_state = official_certificate_state(item.status, item.expiry_date, today_value)
+        remaining = days_until_expiry(item.expiry_date, today_value)
+        record_views.append({
+            "record": item,
+            "info": info,
+            "state": view_state,
+            "days_remaining": remaining,
+            "source_url": info.get("source_url", ""),
+            "label": info.get("label", "Certificado oficial"),
+        })
+        # Materialize a persistent alert immediately when a team member visits
+        # this screen; the daily maintenance task also runs when the app is idle.
+        if (
+            user.role in {"administrador", "contador", "auxiliar"}
+            and item.status == "Emitido"
+            and item.expiry_date
+            and item.expiry_date <= today_value + timedelta(days=15)
+        ):
+            overdue = item.expiry_date < today_value
+            due_text = item.expiry_date.strftime("%d/%m/%Y")
+            company = db.get(Company, item.company_id)
+            label = info.get("label", "Certificado oficial")
+            if company:
+                _create_in_app_notification(
+                    db,
+                    background_tasks,
+                    user,
+                    event_type="certificado_oficial_vencimiento",
+                    title=f"{'Certificado oficial vencido' if overdue else 'Certificado oficial por vencer'} · {label}",
+                    body=f"{label} de {company.legal_name} {'venció' if overdue else 'vence'} el {due_text}. Revisá el original y gestioná la renovación en el portal oficial.",
+                    target_url="/app/certificates/official",
+                    dedupe_key=f"official-certificate:{item.id}:{item.expiry_date.isoformat()}:{user.id}",
+                )
+    db.commit()
+    return render(
+        request,
+        "official_certificates.html",
+        db,
+        user,
+        companies=companies,
+        employees=employees,
+        record_views=record_views,
+        selected_company_id=company_id,
+        official_certificate_types=OFFICIAL_CERTIFICATE_TYPES,
+        official_certificate_statuses=OFFICIAL_CERTIFICATE_STATUSES,
+        official_certificate_results=OFFICIAL_CERTIFICATE_RESULTS,
+        today=today_value,
+    )
+
+
+@app.post("/app/certificates/official")
+def create_official_certificate_record(
+    company_id: Annotated[int, Form()],
+    certificate_type: Annotated[str, Form()],
+    employee_id: Annotated[int | None, Form()] = None,
+    request_date: Annotated[date | None, Form()] = None,
+    notes: Annotated[str, Form()] = "",
+    user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
+    db: Session = Depends(get_db),
+):
+    info = OFFICIAL_CERTIFICATE_TYPES.get(certificate_type)
+    if not info:
+        raise HTTPException(400, "Tipo de certificado oficial inválido.")
+    company = company_allowed(db, user, company_id)
+    employee = None
+    if employee_id:
+        employee = db.get(Employee, employee_id)
+        if not employee or employee.company_id != company.id:
+            raise HTTPException(400, "El funcionario no pertenece a la empresa seleccionada.")
+    item = OfficialCertificateRecord(
+        company_id=company.id,
+        employee_id=employee.id if employee else None,
+        institution=info["institution"],
+        certificate_type=certificate_type,
+        status="Pendiente",
+        request_date=request_date or date.today(),
+        notes=notes.strip()[:5000],
+        created_by=user.email,
+        updated_by=user.email,
+    )
+    db.add(item)
+    db.flush()
+    write_audit(
+        db, user, "crear", "certificado_oficial", str(item.id),
+        f"{info['institution']} / {info['label']} / {company.legal_name}",
+    )
+    _notify_studio_team(
+        db, BackgroundTasks(), company, user,
+        event_type="certificado_oficial_creado",
+        title=f"Seguimiento de certificado oficial creado · {info['label']}",
+        body=f"Se registró el seguimiento de {info['label']} para {company.legal_name}.",
+        target_url="/app/certificates/official",
+    )
+    db.commit()
+    return RedirectResponse(f"/app/certificates/official?created={item.id}", status_code=303)
+
+
+@app.post("/app/certificates/official/{record_id}/update")
+async def update_official_certificate_record(
+    record_id: int,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    status_value: Annotated[str, Form(alias="status")],
+    issue_date: Annotated[date | None, Form()] = None,
+    expiry_date: Annotated[date | None, Form()] = None,
+    official_number: Annotated[str, Form()] = "",
+    result_status: Annotated[str, Form()] = "",
+    notes: Annotated[str, Form()] = "",
+    file: UploadFile | None = File(default=None),
+    user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
+    db: Session = Depends(get_db),
+):
+    if status_value not in OFFICIAL_CERTIFICATE_STATUSES:
+        raise HTTPException(400, "Estado de certificado inválido.")
+    item = get_allowed_official_certificate(record_id, user, db)
+    company = company_allowed(db, user, item.company_id)
+    info = OFFICIAL_CERTIFICATE_TYPES.get(item.certificate_type, {})
+    if not info:
+        raise HTTPException(400, "El tipo de certificado no existe en el catálogo.")
+    if result_status not in OFFICIAL_CERTIFICATE_RESULTS:
+        raise HTTPException(400, "Resultado del certificado inválido.")
+    if info.get("has_result"):
+        if result_status not in {"", "CUMPLE", "NO CUMPLE"}:
+            raise HTTPException(400, "Resultado inválido para el Certificado Laboral del MTESS.")
+    elif result_status not in {"", "No aplica"}:
+        raise HTTPException(400, "Este documento no utiliza un resultado CUMPLE/NO CUMPLE.")
+    else:
+        result_status = ""
+
+    existing_document = db.get(Document, item.document_id) if item.document_id else None
+    if existing_document and existing_document.company_id != item.company_id:
+        raise HTTPException(409, "El archivo vinculado no corresponde a la empresa.")
+
+    uploaded = file is not None and bool(file.filename)
+    if uploaded:
+        payload = await file.read(MAX_UPLOAD_SIZE + 1)
+        if len(payload) > MAX_UPLOAD_SIZE:
+            raise HTTPException(413, "El archivo supera el límite de tamaño permitido.")
+        if not payload:
+            raise HTTPException(400, "El archivo está vacío.")
+        if payload.startswith(b"%PDF-"):
+            content_type = "application/pdf"
+            extension = ".pdf"
+        elif payload.startswith(b"\x89PNG\r\n\x1a\n"):
+            content_type = "image/png"
+            extension = ".png"
+        elif payload.startswith(b"\xff\xd8\xff"):
+            content_type = "image/jpeg"
+            extension = ".jpg"
+        else:
+            raise HTTPException(400, "Adjuntá un PDF o una imagen PNG/JPG válida del original oficial.")
+        original_name = safe_filename(file.filename or f"certificado-oficial{extension}")
+        if not original_name.lower().endswith(extension):
+            original_name = f"{Path(original_name).stem}{extension}"
+        stored_name = f"documents/{company.id}/{uuid.uuid4().hex}_{original_name}"
+        storage.put(stored_name, payload, content_type)
+        document = Document(
+            company_id=company.id,
+            employee_id=item.employee_id,
+            category="Certificado oficial",
+            title=f"{info.get('label', 'Certificado oficial')} · {company.legal_name}",
+            stored_name=stored_name,
+            original_name=original_name,
+            content_type=content_type,
+            uploaded_by=user.email,
+        )
+        db.add(document)
+        db.flush()
+        item.document_id = document.id
+
+    if status_value == "Emitido":
+        if not uploaded and not existing_document:
+            raise HTTPException(400, "Adjuntá el original emitido por MTESS/IPS antes de marcarlo como Emitido.")
+        if not uploaded and (not existing_document or existing_document.company_id != item.company_id):
+            raise HTTPException(400, "El archivo original vinculado no está disponible para esta empresa.")
+        issue_date = issue_date or item.issue_date or date.today()
+        expiry_date = expiry_date or default_expiry_date(item.certificate_type, issue_date) or item.expiry_date
+        if item.certificate_type == "ips_certificado_cumplimiento" and not expiry_date:
+            raise HTTPException(400, "Para el Certificado de Cumplimiento IPS ingresá el vencimiento indicado por el IPS (próximo pago).")
+    else:
+        issue_date = issue_date or item.issue_date
+        expiry_date = expiry_date or item.expiry_date
+
+    previous_status = item.status
+    item.status = status_value
+    item.issue_date = issue_date
+    item.expiry_date = expiry_date
+    item.official_number = official_number.strip()[:120]
+    item.result_status = result_status
+    item.notes = notes.strip()[:5000]
+    item.updated_by = user.email
+    item.updated_at = datetime.now(UTC)
+    write_audit(
+        db, user, "actualizar", "certificado_oficial", str(item.id),
+        f"{info.get('label', item.certificate_type)}: {previous_status} → {item.status}",
+    )
+    if previous_status != item.status:
+        _notify_studio_team(
+            db, background_tasks, company, user,
+            event_type="certificado_oficial_estado",
+            title=f"Estado de certificado actualizado · {info.get('label', item.certificate_type)}",
+            body=f"El seguimiento de {info.get('label', item.certificate_type)} para {company.legal_name} cambió de {previous_status} a {item.status}.",
+            target_url="/app/certificates/official",
+        )
+    db.commit()
+    return RedirectResponse(f"/app/certificates/official?updated={item.id}", status_code=303)
 
 
 @app.get("/app/reports", response_class=HTMLResponse)
