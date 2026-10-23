@@ -2798,6 +2798,7 @@ def certificates_page(
         calculation_inputs=calculation_inputs,
         calculation_results=calculation_results,
         branding=branding,
+        official_certificate_types=OFFICIAL_CERTIFICATE_TYPES,
     )
 
 
@@ -2990,6 +2991,7 @@ def official_certificates_page(
     request: Request,
     background_tasks: BackgroundTasks,
     company_id: OptionalQueryId = None,
+    certificate_type: str = "",
     user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ):
@@ -3056,6 +3058,10 @@ def official_certificates_page(
         employees=employees,
         record_views=record_views,
         selected_company_id=company_id,
+        selected_certificate_type=(
+            certificate_type if certificate_type in OFFICIAL_CERTIFICATE_TYPES
+            else "mtess_certificado_laboral"
+        ),
         official_certificate_types=OFFICIAL_CERTIFICATE_TYPES,
         official_certificate_statuses=OFFICIAL_CERTIFICATE_STATUSES,
         official_certificate_results=OFFICIAL_CERTIFICATE_RESULTS,
