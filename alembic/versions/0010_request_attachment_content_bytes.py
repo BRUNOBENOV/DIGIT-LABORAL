@@ -1,6 +1,6 @@
 """Store a durable database fallback for uploaded request attachments.
 
-Revision ID: 0010_request_attachment_content_bytes
+Revision ID: 0010_req_attach_bytes
 Revises: 0009_official_certificates
 """
 from alembic import op
