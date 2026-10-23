@@ -19,6 +19,7 @@ from .models import (
     Employee,
     EmployeeEvent,
     LaborDeadline,
+    OfficialCertificateRecord,
     RequestAttachment,
     RequestComment,
     RequestWorkflow,
@@ -55,6 +56,7 @@ def build_studio_export(db: Session, studio: Studio, upload_dir: Path) -> bytes:
     comments = list(db.scalars(select(RequestComment).where(RequestComment.request_id.in_(request_ids)))) if request_ids else []
     attachments = list(db.scalars(select(RequestAttachment).where(RequestAttachment.request_id.in_(request_ids)))) if request_ids else []
     documents = list(db.scalars(select(Document).where(Document.company_id.in_(company_ids)))) if company_ids else []
+    official_certificates = list(db.scalars(select(OfficialCertificateRecord).where(OfficialCertificateRecord.company_id.in_(company_ids)).order_by(OfficialCertificateRecord.id))) if company_ids else []
     events = list(db.scalars(select(EmployeeEvent).where(EmployeeEvent.employee_id.in_(employee_ids)))) if employee_ids else []
     salaries = list(db.scalars(select(SalaryHistory).where(SalaryHistory.employee_id.in_(employee_ids)))) if employee_ids else []
     deadlines = list(db.scalars(select(LaborDeadline).where(LaborDeadline.company_id.in_(company_ids)))) if company_ids else []
@@ -71,7 +73,7 @@ def build_studio_export(db: Session, studio: Studio, upload_dir: Path) -> bytes:
                     "studio": {"id": studio.id, "name": studio.name, "ruc": studio.ruc, "plan": studio.plan_name},
                     "counts": {
                         "companies": len(companies), "employees": len(employees), "users": len(users),
-                        "requests": len(requests), "documents": len(documents), "deadlines": len(deadlines),
+                        "requests": len(requests), "documents": len(documents), "official_certificates": len(official_certificates), "deadlines": len(deadlines),
                     },
                     "note": "No incluye contraseñas, secretos de doble factor ni tokens.",
                 },
@@ -87,6 +89,7 @@ def build_studio_export(db: Session, studio: Studio, upload_dir: Path) -> bytes:
         _write_csv(archive, "datos/comentarios_solicitudes.csv", ["solicitud_id", "autor", "visibilidad", "comentario", "fecha"], ((x.request_id, x.author_name, x.visibility, x.body, x.created_at) for x in comments))
         _write_csv(archive, "datos/eventos_funcionarios.csv", ["funcionario_id", "tipo", "titulo", "detalle", "fecha_efectiva", "monto", "creado_por"], ((x.employee_id, x.event_type, x.title, x.detail, x.effective_date, x.amount, x.created_by) for x in events))
         _write_csv(archive, "datos/historial_salarial.csv", ["funcionario_id", "salario_anterior", "salario_nuevo", "vigente_desde", "motivo", "creado_por"], ((x.employee_id, x.previous_salary, x.new_salary, x.effective_from, x.reason, x.created_by) for x in salaries))
+        _write_csv(archive, "datos/certificados_oficiales.csv", ["id", "empresa_id", "funcionario_id", "institucion", "tipo", "estado", "fecha_solicitud", "fecha_emision", "fecha_vencimiento", "numero_oficial", "resultado", "documento_id", "notas", "creado_por", "actualizado_por", "creado", "actualizado"], ((x.id, x.company_id, x.employee_id, x.institution, x.certificate_type, x.status, x.request_date, x.issue_date, x.expiry_date, x.official_number, x.result_status, x.document_id, x.notes, x.created_by, x.updated_by, x.created_at, x.updated_at) for x in official_certificates))
         _write_csv(archive, "datos/agenda.csv", ["id", "empresa_id", "funcionario_id", "titulo", "tipo", "fecha", "prioridad", "estado", "notas"], ((x.id, x.company_id, x.employee_id, x.title, x.deadline_type, x.due_date, x.priority, x.status, x.notes) for x in deadlines))
         _write_csv(archive, "datos/auditoria.csv", ["fecha", "usuario", "accion", "entidad", "entidad_id", "detalle"], ((x.created_at, x.user_email, x.action, x.entity, x.entity_id, x.detail) for x in audit))
 
