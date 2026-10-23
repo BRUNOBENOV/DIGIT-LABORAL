@@ -18,7 +18,7 @@ from app.document_export import (
 from docx import Document as WordDocument
 from pypdf import PdfReader
 import io
-from app.main import app
+from app.main import APP_BUILD, APP_VERSION, app
 
 
 def login(client: TestClient) -> str:
@@ -35,6 +35,17 @@ def login(client: TestClient) -> str:
     dashboard_token = re.search(r'name="csrf_token" value="([^"]+)"', dashboard.text)
     assert dashboard.status_code == 200 and dashboard_token
     return dashboard_token.group(1)
+
+
+def test_app_version_and_build_are_visible_in_the_global_header():
+    with TestClient(app) as client:
+        login(client)
+        response = client.get("/app")
+        assert response.status_code == 200
+        assert "app-version-indicator" in response.text
+        assert f"v{APP_VERSION}" in response.text
+        assert f"BUILD {APP_BUILD}" in response.text
+        assert app.version == APP_VERSION
 
 
 def test_amount_in_words_and_legal_basis():
