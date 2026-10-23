@@ -72,7 +72,7 @@ def test_official_catalog_is_searchable_and_supports_preselected_type():
         assert "officialCatalogSearch" in page.text
         assert "Constancia de salario de asegurado" in page.text
         assert re.search(
-            r'<option value="ips_constancia_salario_asegurado" selected(?:\\s|>)',
+            r'<option value="ips_constancia_salario_asegurado" selected(?:\s|>)',
             page.text,
         )
         assert "Constancia de no adeudar (IPS)" in page.text
