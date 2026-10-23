@@ -257,13 +257,25 @@ class CSRFMiddleware:
             parsed = parse_qs(body.decode("utf-8", errors="replace"))
             supplied = (parsed.get("csrf_token") or [""])[0]
         elif not supplied and content_type.startswith("multipart/form-data"):
+            # Bind the token to its own multipart field. The previous expression
+            # could cross the blank separator and match later binary file bytes;
+            # compare_digest(str, str) then raised TypeError on non-ASCII bytes,
+            # turning image uploads into HTTP 500 responses.
             match = re.search(
-                rb'name="csrf_token"\r?\n(?:[^\r\n]*\r?\n)*\r?\n([^\r\n]+)',
+                rb'Content-Disposition:\s*form-data;\s*name="csrf_token"[^\r\n]*\r?\n\r?\n([A-Za-z0-9_-]{20,256})\r?\n',
                 body,
             )
             if match:
-                supplied = match.group(1).decode("utf-8", errors="replace")
-        if not expected or not supplied or not hmac.compare_digest(str(expected), str(supplied)):
+                supplied = match.group(1).decode("ascii")
+        expected_token = str(expected or "")
+        supplied_token = str(supplied or "")
+        if (
+            not expected_token
+            or not supplied_token
+            or not expected_token.isascii()
+            or not supplied_token.isascii()
+            or not hmac.compare_digest(expected_token, supplied_token)
+        ):
             response = Response("Solicitud rechazada por protección CSRF.", status_code=403)
             await response(scope, receive, send)
             return
