@@ -233,3 +233,28 @@ def test_payroll_detail_table_appears_in_generated_word_and_pdf():
     pdf_text = "\n".join(page.extract_text() or "" for page in pdf.pages)
     assert "TOTAL INGRESOS" in pdf_text
     assert "NETO A PERCIBIR" in pdf_text
+
+
+
+def test_work_constancia_uses_last_pay_period_for_termination():
+    title, body = build_document_body(
+        "constancia",
+        company_name="Empresa Demo S.A.",
+        employee_name="María González",
+        employee_document="1.234.567",
+        position="Auxiliar administrativa",
+        admission_date=date(2022, 3, 1),
+        salary=3_800_000,
+        issue_date=date(2026, 10, 23),
+        city="Ciudad del Este",
+        metadata={
+            "effective_date": "2026-10-15",
+            "last_period_salary_amount": 3_550_000,
+            "include_salary": "off",
+        },
+    )
+    assert title == "Constancia de Trabajo"
+    assert "15 de octubre de 2026" in body
+    assert "Salario devengado durante el último período de pago" in body
+    assert "3.550.000" in body
+    assert "3.800.000" not in body
