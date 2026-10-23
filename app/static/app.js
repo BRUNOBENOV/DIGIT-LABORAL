@@ -215,6 +215,10 @@ if (certificateForm) {
     const startPeriod = shortDate(periodStartInput?.value);
     const endPeriod = shortDate(periodEndInput?.value);
     const amount = num('amount') || salaryRaw;
+    const lastPeriodSalary = num('last_period_salary_amount');
+    const lastPeriodSalaryDisplay = lastPeriodSalary > 0
+      ? money(lastPeriodSalary)
+      : 'A COMPLETAR CON EL ÚLTIMO RECIBO DE PAGO';
     const includeSalary = Boolean(document.querySelector('#certificateIncludeSalary')?.checked);
     const extra = observationsInput.value.trim();
     const notes = extra ? '\n\nObservaciones: ' + extra : '';
@@ -288,14 +292,14 @@ if (certificateForm) {
       certificado_trabajo_a: 'CERTIFICADO DE TRABAJO\n\n' + company + ' certifica que ' + identity +
         (value('effective_date')
           ? ' prestó servicios como ' + role + ' desde el ' + admission + ' hasta el ' + longDate(value('effective_date')) +
-            '. Salario devengado en el último período de pago: ' + money(num('last_period_salary_amount') || salaryRaw) + '.'
+            '. Salario devengado en el último período de pago: ' + lastPeriodSalaryDisplay + '.'
           : ' presta servicios como ' + role + ' desde el ' + admission + '.' +
             (includeSalary ? '\nRemuneración mensual registrada: ' + money(salaryRaw) + '.' : '\nNo se incluye remuneración en esta constancia de relación vigente.')) +
         '\n\nLa constancia al término de la relación refleja inicio y conclusión, clase de trabajo y salario devengado en el último período de pago conforme al artículo 93 del Código del Trabajo.',
       certificado_trabajo_b: 'CONSTANCIA LABORAL\n\nSe deja constancia de que ' + identity +
         (value('effective_date')
           ? ' prestó servicios en ' + company + ' desde el ' + admission + ' hasta el ' + longDate(value('effective_date')) +
-            ', desempeñándose como ' + role + '. Salario devengado en el último período de pago: ' + money(num('last_period_salary_amount') || salaryRaw) + '.'
+            ', desempeñándose como ' + role + '. Salario devengado en el último período de pago: ' + lastPeriodSalaryDisplay + '.'
           : ' forma parte del plantel de ' + company + ', desempeñándose como ' + role + ' desde el ' + admission + '.' +
             (includeSalary ? '\nRemuneración mensual registrada: ' + money(salaryRaw) + '.' : '\nNo se incluye información salarial en esta constancia.')) +
         '\n\nSe expide a solicitud de la persona interesada y no sustituye certificados institucionales exigidos por una autoridad.',
@@ -303,7 +307,7 @@ if (certificateForm) {
         (civilStatusInput?.value ? ', de estado civil ' + civilStatusInput.value : '') +
         (value('effective_date')
           ? ', prestó servicios en el cargo de ' + role + ' desde el ' + admission + ' hasta el ' + longDate(value('effective_date')) +
-            '. Salario devengado durante el último período de pago: ' + money(num('last_period_salary_amount') || salaryRaw) + '.'
+            '. Salario devengado durante el último período de pago: ' + lastPeriodSalaryDisplay + '.'
           : ', presta servicios en el cargo de ' + role + ' desde el ' + admission + '.' +
             (includeSalary ? '\nRemuneración mensual registrada: ' + money(salaryRaw) + '.' : '')) +
         '\n\nSe expide en ' + (cityInput.value || 'Ciudad del Este') + ', a los ' + longDate(issueDateInput.value) + ', para los fines indicados por la persona interesada.',
