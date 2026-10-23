@@ -94,9 +94,13 @@ def build_studio_export(db: Session, studio: Studio, upload_dir: Path) -> bytes:
         _write_csv(archive, "datos/auditoria.csv", ["fecha", "usuario", "accion", "entidad", "entidad_id", "detalle"], ((x.created_at, x.user_email, x.action, x.entity, x.entity_id, x.detail) for x in audit))
 
         for item in documents:
+            archive_name = f"archivos/documentos/{item.company_id}/{item.id}_{item.original_name}"
+            if item.content_bytes is not None:
+                archive.writestr(archive_name, bytes(item.content_bytes))
+                continue
             source = upload_dir / item.stored_name
             if source.is_file():
-                archive.write(source, f"archivos/documentos/{item.company_id}/{item.id}_{item.original_name}")
+                archive.write(source, archive_name)
         for item in attachments:
             source = upload_dir / "requests" / str(item.request_id) / item.stored_name
             if source.is_file():
