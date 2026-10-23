@@ -614,7 +614,7 @@ def build_document_body(
         "recibo_vacaciones": (
             f"RECIBO DE PAGO DE VACACIONES\n\nEl empleador {company_name} declara haber abonado a {identity} la suma de "
             f"Gs. {format_gs(_metadata_money(metadata, 'vacation_amount', amount))} "
-            f"({guaranies_in_words(_metadata_money(metadata, 'vacation_amount', amount)}), en concepto de remuneración por vacaciones del período "
+            f"({guaranies_in_words(_metadata_money(metadata, 'vacation_amount', amount))}), en concepto de remuneración por vacaciones del período "
             f"{metadata.get('vacation_period_year') or 'A completar'}, a usufructuarse desde el {vacation_start} hasta el {vacation_end}.\n\n"
             f"Fecha de pago consignada: {payment_date}. El recibo debe reflejar el importe realmente abonado y entregarse en ejemplares para ambas partes."
         ),
