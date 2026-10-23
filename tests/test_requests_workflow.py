@@ -474,7 +474,7 @@ def test_employee_bulk_import_cannot_bypass_salary_approval():
         assert "salary_changes=1" in confirm.headers["location"]
         result_page = client.get(confirm.headers["location"])
         assert result_page.status_code == 200
-        assert "1 cambios salariales no se aplicaron" in result_page.text or "1 cambio salarial no se aplicaron" in result_page.text
+        assert "1 cambio salarial no se aplicó" in result_page.text
 
     with SessionLocal() as db:
         employee = db.get(Employee, employee_id)
