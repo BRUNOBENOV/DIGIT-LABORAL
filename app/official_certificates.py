@@ -28,7 +28,8 @@ OFFICIAL_CERTIFICATE_TYPES: dict[str, dict[str, Any]] = {
         ),
         "requirements": (
             "RUC de la empresa y acceso autorizado al sistema REOP.",
-            "Revisar inscripción patronal, planillas, comunicaciones y multas antes de solicitarlo.",
+            "Verificar inscripción patronal de matriz y sucursales, planillas, comunicaciones y multas antes de solicitarlo.",
+            "Desde el 1 de junio de 2026, confirmar también los Libros de Información Laboral digitales mensuales exigidos para la expedición, según la información vigente del MTESS.",
             "Guardar aquí el PDF original descargado del MTESS.",
         ),
         "has_result": True,
@@ -38,8 +39,8 @@ OFFICIAL_CERTIFICATE_TYPES: dict[str, dict[str, Any]] = {
         "label": "Constancia de no estar inscripto (REOP)",
         "scope": "empresa",
         "validity_days": None,
-        "source_url": "https://www.mtess.gov.py/servicios/servicio-de-impresion",
-        "portal_label": "Consultar servicio MTESS",
+        "source_url": "https://www.mtess.gov.py/?page_id=24021",
+        "portal_label": "Consultar servicios REOP",
         "description": (
             "Seguimiento documental de una constancia relacionada con la inscripción patronal. "
             "Confirmá la disponibilidad y el procedimiento vigente en el canal oficial antes de tramitar."
