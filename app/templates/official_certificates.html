@@ -46,7 +46,7 @@
   <section class="panel">
     <div class="panel-head"><div><span>NUEVO SEGUIMIENTO</span><h2>Registrar certificado o constancia</h2></div></div>
     <p class="official-hint">El registro comienza en estado Pendiente. Después de tramitarlo en el portal institucional, actualizá el estado y adjuntá el original emitido.</p>
-    <form method="post" action="/app/certificates/official" class="form-grid" id="officialCertificateCreateForm">
+    <form method="post" action="/app/certificates/official" class="form-grid official-form-grid" id="officialCertificateCreateForm">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <label>Empresa
         <select name="company_id" id="officialCertificateCompany" required>
@@ -128,7 +128,7 @@
           {% if user.role != 'empresa' %}
           <details class="official-record-form">
             <summary>Actualizar trámite, adjuntar original o registrar vencimiento</summary>
-            <form method="post" action="/app/certificates/official/{{ item.id }}/update" enctype="multipart/form-data" class="form-grid">
+            <form method="post" action="/app/certificates/official/{{ item.id }}/update" enctype="multipart/form-data" class="form-grid official-form-grid">
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
               <label>Estado
                 <select name="status" required>
