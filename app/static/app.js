@@ -271,13 +271,20 @@ if (certificateForm) {
     const settlementDiscounts = settlementDeductions.reduce((sum, item) => sum + item[1], 0);
 
     const bodies = {
-      certificado_trabajo_a: 'CERTIFICADO DE TRABAJO\n\n' + company + ' certifica que ' + identity + ' presta servicios como ' + role +
-        ' desde el ' + admission + '.' + (includeSalary ? '\n\nRemuneración mensual registrada: ' + money(salaryRaw) + '.' : '\n\nNo se incluye información salarial en esta constancia.') +
-        '\n\nLa constancia legal al término de la relación debe reflejar el inicio y conclusión de labores, clase de trabajo y salario devengado en el último período de pago conforme al alcance del artículo 93 del Código del Trabajo.',
-      certificado_trabajo_b: 'CONSTANCIA LABORAL\n\nSe deja constancia de que ' + identity + ' forma parte del plantel de ' + company +
-        ', desempeñándose como ' + role + ' desde el ' + admission + '.' +
-        (includeSalary ? '\n\nRemuneración mensual registrada: ' + money(salaryRaw) + '.' : '\n\nNo se incluye información salarial en esta constancia.') +
-        '\n\nSe expide a solicitud de la persona interesada y no sustituye certificados institucionales cuando sean exigidos por una autoridad.',
+      certificado_trabajo_a: 'CERTIFICADO DE TRABAJO\n\n' + company + ' certifica que ' + identity +
+        (value('effective_date')
+          ? ' prestó servicios como ' + role + ' desde el ' + admission + ' hasta el ' + longDate(value('effective_date')) +
+            '. Salario devengado en el último período de pago: ' + money(num('last_period_salary_amount') || salaryRaw) + '.'
+          : ' presta servicios como ' + role + ' desde el ' + admission + '.' +
+            (includeSalary ? '\nRemuneración mensual registrada: ' + money(salaryRaw) + '.' : '\nNo se incluye remuneración en esta constancia de relación vigente.')) +
+        '\n\nLa constancia al término de la relación refleja inicio y conclusión, clase de trabajo y salario devengado en el último período de pago conforme al artículo 93 del Código del Trabajo.',
+      certificado_trabajo_b: 'CONSTANCIA LABORAL\n\nSe deja constancia de que ' + identity +
+        (value('effective_date')
+          ? ' prestó servicios en ' + company + ' desde el ' + admission + ' hasta el ' + longDate(value('effective_date')) +
+            ', desempeñándose como ' + role + '. Salario devengado en el último período de pago: ' + money(num('last_period_salary_amount') || salaryRaw) + '.'
+          : ' forma parte del plantel de ' + company + ', desempeñándose como ' + role + ' desde el ' + admission + '.' +
+            (includeSalary ? '\nRemuneración mensual registrada: ' + money(salaryRaw) + '.' : '\nNo se incluye información salarial en esta constancia.')) +
+        '\n\nSe expide a solicitud de la persona interesada y no sustituye certificados institucionales exigidos por una autoridad.',
       constancia: company + ' hace constar que ' + identity + ', de nacionalidad ' + (nationalityInput?.value || 'paraguaya') +
         (civilStatusInput?.value ? ', de estado civil ' + civilStatusInput.value : '') + ', presta servicios en el cargo de ' + role + ' desde el ' + admission + '.' +
         (includeSalary ? '\nRemuneración mensual registrada: ' + money(salaryRaw) + '.' : '') +
