@@ -2997,6 +2997,8 @@ def create_certificate(
     if document_type in {"certificado_trabajo_a", "certificado_trabajo_b", "constancia"} and not effective_date:
         if (employee.status or "").strip().lower() not in {"activo", "active"} and employee.termination_date:
             effective_date = employee.termination_date
+    if document_type in {"certificado_trabajo_a", "certificado_trabajo_b"} and effective_date and field_amounts["last_period_salary_amount"] <= 0:
+        raise HTTPException(400, "Para un certificado al término de la relación, consigná el salario efectivamente devengado en el último período de pago, según nómina o recibo.")
     salary_value = max(0, salary or employee.base_salary)
     if calculation:
         if document_type in {"aguinaldo_anual", "aguinaldo_proporcional", "usufructo_vacaciones", "notificacion_preaviso"}:
