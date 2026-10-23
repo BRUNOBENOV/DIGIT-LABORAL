@@ -119,15 +119,32 @@ if (certificateForm) {
   };
   const selectedOption = select => select?.options[select.selectedIndex];
   const labels = {
-    certificado_trabajo_a: 'Certificado de Trabajo', certificado_trabajo_b: 'Constancia Laboral',
-    constancia: 'Constancia de Trabajo', aguinaldo_anual: 'Recibo de Pago de Aguinaldo',
-    aguinaldo_proporcional: 'Liquidación de Aguinaldo Proporcional', permiso_paternidad: 'Solicitud de Permiso por Paternidad',
-    contrato_trabajo: 'Contrato de Trabajo', ficha_empleado: 'Ficha de Empleado',
-    solicitud_vacacion: 'Solicitud de Vacaciones', usufructo_vacaciones: 'Constancia de Usufructo de Vacaciones',
-    notificacion_preaviso: 'Notificación de Preaviso', renuncia: 'Nota de Renuncia', despido: 'Comunicación de Despido',
-    permiso_laboral: 'Solicitud de Permiso Laboral', amonestacion: 'Amonestación Escrita',
-    cambio_salarial: 'Comunicación de Cambio Salarial', alta_funcionario: 'Constancia de Alta de Funcionario',
-    baja_funcionario: 'Constancia de Baja de Funcionario', recibo_salario: 'Recibo de Salario', liquidacion_final: 'Liquidación Final'
+    certificado_trabajo_a: 'Certificado de Trabajo',
+    certificado_trabajo_b: 'Constancia Laboral',
+    constancia: 'Constancia de Trabajo',
+    aguinaldo_anual: 'Recibo de Pago de Aguinaldo',
+    aguinaldo_proporcional: 'Liquidación de Aguinaldo Proporcional',
+    permiso_paternidad: 'Solicitud de Permiso por Paternidad',
+    contrato_trabajo: 'Contrato Individual de Trabajo',
+    contrato_tiempo_parcial: 'Contrato Individual de Trabajo a Tiempo Parcial',
+    contrato_mipymes_plazo_determinado: 'Contrato a Plazo Determinado para MIE / PE',
+    contrato_mipymes_80: 'Contrato a Plazo Determinado MIE — Régimen Salarial Especial',
+    adenda_prorroga_contrato: 'Adenda o Prórroga de Contrato de Trabajo',
+    ficha_empleado: 'Ficha de Empleado',
+    solicitud_vacacion: 'Solicitud de Vacaciones',
+    notificacion_vacaciones: 'Notificación de Vacaciones al Trabajador',
+    usufructo_vacaciones: 'Constancia de Usufructo de Vacaciones',
+    recibo_vacaciones: 'Recibo de Pago de Vacaciones',
+    notificacion_preaviso: 'Notificación de Preaviso',
+    renuncia: 'Nota de Renuncia',
+    despido: 'Comunicación de Despido',
+    permiso_laboral: 'Solicitud de Permiso Laboral',
+    amonestacion: 'Amonestación Escrita',
+    cambio_salarial: 'Comunicación de Cambio Salarial',
+    alta_funcionario: 'Constancia de Alta de Funcionario',
+    baja_funcionario: 'Constancia de Baja de Funcionario',
+    recibo_salario: 'Recibo de Salario',
+    liquidacion_final: 'Liquidación Final'
   };
 
   const filterEmployees = () => {
@@ -150,6 +167,8 @@ if (certificateForm) {
     positionInput.value = employee.dataset.position || '';
     admissionInput.value = employee.dataset.admission || '';
     salaryInput.value = employee.dataset.salary || '0';
+    const salaryBasic = document.querySelector('#certificateSalaryBasic');
+    if (salaryBasic) salaryBasic.value = employee.dataset.salary || '0';
     if (!amountInput.value) amountInput.value = employee.dataset.salary || '0';
     updatePreview();
   };
