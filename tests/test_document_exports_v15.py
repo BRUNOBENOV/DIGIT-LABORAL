@@ -115,6 +115,13 @@ def test_word_and_pdf_downloads():
         assert pdf.headers["content-type"].startswith("application/pdf")
         assert pdf.content.startswith(b"%PDF")
 
+        print_version = client.get(f"/app/certificates/{certificate_id}/print")
+        assert print_version.status_code == 200
+        employee_detail = client.get("/app/employees/1")
+        assert employee_detail.status_code == 200
+        assert f'href="/app/certificates/{certificate_id}/download.pdf"' in employee_detail.text
+        assert f'href="/app/certificates/{certificate_id}/pdf"' not in employee_detail.text
+
 
 
 def test_work_certificate_uses_article_93_end_date_and_last_pay_period():
