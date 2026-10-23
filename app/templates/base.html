@@ -87,7 +87,8 @@
         <details class="workspace-nav-group" {% if active_path.startswith('/app/certificates') or active_path.startswith('/app/documents') %}open{% endif %}>
           <summary><span class="workspace-group-symbol">04</span><span class="workspace-group-name">Certificados</span><span class="workspace-group-chevron">⌄</span></summary>
           <div class="workspace-submenu">
-            <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/certificates') else '' }}" href="/app/certificates">Emitir certificados</a>
+            <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/certificates/official') else '' }}" href="/app/certificates/official">MTESS / IPS oficiales</a>
+            <a class="workspace-nav-link {{ 'active' if active_path == '/app/certificates' else '' }}" href="/app/certificates">Documentos laborales internos</a>
             <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/documents') else '' }}" href="/app/documents">Archivo documental</a>
           </div>
         </details>
