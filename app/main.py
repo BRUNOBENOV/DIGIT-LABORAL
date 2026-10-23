@@ -91,7 +91,7 @@ from .models import (
     UserSecurity,
     Vacation,
 )
-from .notification_service import create_notification, send_notification_delivery
+from .notification_service import create_notification, dispatch_notification_outbox, send_notification_delivery
 from .official_certificates import (
     OFFICIAL_CERTIFICATE_RESULTS,
     OFFICIAL_CERTIFICATE_STATUSES,
@@ -221,6 +221,7 @@ async def _periodic_notification_sweep() -> None:
         try:
             await asyncio.to_thread(create_due_request_notifications)
             await asyncio.to_thread(create_due_official_certificate_notifications)
+            await asyncio.to_thread(dispatch_notification_outbox)
         except Exception:
             logger.exception("Scheduled notification sweep failed")
         await asyncio.sleep(24 * 60 * 60)
@@ -3063,6 +3064,7 @@ def official_certificates_page(
 
 @app.post("/app/certificates/official")
 def create_official_certificate_record(
+    background_tasks: BackgroundTasks,
     company_id: Annotated[int, Form()],
     certificate_type: Annotated[str, Form()],
     employee_id: Annotated[int | None, Form()] = None,
@@ -3098,7 +3100,7 @@ def create_official_certificate_record(
         f"{info['institution']} / {info['label']} / {company.legal_name}",
     )
     _notify_studio_team(
-        db, BackgroundTasks(), company, user,
+        db, background_tasks, company, user,
         event_type="certificado_oficial_creado",
         title=f"Seguimiento de certificado oficial creado · {info['label']}",
         body=f"Se registró el seguimiento de {info['label']} para {company.legal_name}.",
@@ -3143,6 +3145,12 @@ async def update_official_certificate_record(
     existing_document = db.get(Document, item.document_id) if item.document_id else None
     if existing_document and existing_document.company_id != item.company_id:
         raise HTTPException(409, "El archivo vinculado no corresponde a la empresa.")
+    if (
+        status_value == "Emitido"
+        and item.certificate_type == "ips_certificado_cumplimiento"
+        and not (expiry_date or item.expiry_date)
+    ):
+        raise HTTPException(400, "Para el Certificado de Cumplimiento IPS ingresá el vencimiento indicado por el IPS (próximo pago).")
 
     uploaded = file is not None and bool(file.filename)
     if uploaded:
@@ -3188,8 +3196,6 @@ async def update_official_certificate_record(
             raise HTTPException(400, "El archivo original vinculado no está disponible para esta empresa.")
         issue_date = issue_date or item.issue_date or date.today()
         expiry_date = expiry_date or default_expiry_date(item.certificate_type, issue_date) or item.expiry_date
-        if item.certificate_type == "ips_certificado_cumplimiento" and not expiry_date:
-            raise HTTPException(400, "Para el Certificado de Cumplimiento IPS ingresá el vencimiento indicado por el IPS (próximo pago).")
     else:
         issue_date = issue_date or item.issue_date
         expiry_date = expiry_date or item.expiry_date
