@@ -2774,10 +2774,15 @@ def certificates_page(
         raise HTTPException(404, "Empresa no encontrada.")
     if employee_id and (not selected_employee or selected_employee.company_id not in company_ids):
         raise HTTPException(404, "Funcionario no encontrado.")
+    selected_vacation = None
     if selected_employee:
         if selected_company and selected_employee.company_id != selected_company.id:
             raise HTTPException(404, "Funcionario no encontrado en la empresa seleccionada.")
         selected_company = selected_company or selected_employee.company
+        selected_vacation = db.scalar(
+            select(Vacation).where(Vacation.employee_id == selected_employee.id)
+            .order_by(Vacation.created_at.desc())
+        )
     calculation_inputs = json_dict(selected_calculation.input_json) if selected_calculation else {}
     calculation_results = json_dict(selected_calculation.result_json) if selected_calculation else {}
     branding = get_or_create_branding(db, selected_company) if selected_company else None
@@ -2795,6 +2800,7 @@ def certificates_page(
         selected_calculation=selected_calculation,
         selected_company=selected_company,
         selected_employee=selected_employee,
+        selected_vacation=selected_vacation,
         selected_document_type=document_type if document_type in CERTIFICATE_TYPES else "",
         calculation_inputs=calculation_inputs,
         calculation_results=calculation_results,
