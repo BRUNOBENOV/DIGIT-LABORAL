@@ -42,6 +42,7 @@ from .database import Base, SessionLocal, apply_session_tenant_context, engine
 from .document_export import (
     DOCUMENT_LABELS,
     build_document_body,
+    document_detail_table_data,
     build_docx_bytes,
     build_pdf_bytes,
     decode_metadata,
@@ -327,7 +328,12 @@ class CSRFMiddleware:
         await self.app(scope, replay_receive, send)
 
 
-app = FastAPI(title="Digit Laboral", version="2.0.0", lifespan=lifespan)
+APP_VERSION = (os.getenv("DIGIT_APP_VERSION", "2.2.0").strip() or "2.2.0")
+APP_COMMIT = os.getenv("RENDER_GIT_COMMIT", os.getenv("GITHUB_SHA", "")).strip()
+APP_BUILD = APP_COMMIT[:7] if APP_COMMIT else "LOCAL"
+APP_BRANCH = os.getenv("RENDER_GIT_BRANCH", os.getenv("GITHUB_REF_NAME", "")).strip() or "local"
+
+app = FastAPI(title="Digit Laboral", version=APP_VERSION, lifespan=lifespan)
 app.add_middleware(CSRFMiddleware)
 app.add_middleware(
     SessionMiddleware,
@@ -566,6 +572,10 @@ def render(request: Request, template: str, db: Session, user: User | None = Non
         "environment": settings.environment,
         "notification_unread_count": 0,
         **context,
+        "app_version": APP_VERSION,
+        "app_build": APP_BUILD,
+        "app_commit": APP_COMMIT,
+        "app_branch": APP_BRANCH,
     }
     if user and user.role != "superadmin":
         data["notification_unread_count"] = db.scalar(
@@ -2773,10 +2783,21 @@ def certificates_page(
         raise HTTPException(404, "Empresa no encontrada.")
     if employee_id and (not selected_employee or selected_employee.company_id not in company_ids):
         raise HTTPException(404, "Funcionario no encontrado.")
+    vacation_by_employee: dict[int, Vacation] = {}
+    employee_ids = [employee.id for employee in employees]
+    if employee_ids:
+        latest_vacation_records = db.scalars(
+            select(Vacation).where(Vacation.employee_id.in_(employee_ids))
+            .order_by(Vacation.created_at.desc())
+        )
+        for vacation_record in latest_vacation_records:
+            vacation_by_employee.setdefault(vacation_record.employee_id, vacation_record)
+    selected_vacation = None
     if selected_employee:
         if selected_company and selected_employee.company_id != selected_company.id:
             raise HTTPException(404, "Funcionario no encontrado en la empresa seleccionada.")
         selected_company = selected_company or selected_employee.company
+        selected_vacation = vacation_by_employee.get(selected_employee.id)
     calculation_inputs = json_dict(selected_calculation.input_json) if selected_calculation else {}
     calculation_results = json_dict(selected_calculation.result_json) if selected_calculation else {}
     branding = get_or_create_branding(db, selected_company) if selected_company else None
@@ -2794,6 +2815,8 @@ def certificates_page(
         selected_calculation=selected_calculation,
         selected_company=selected_company,
         selected_employee=selected_employee,
+        selected_vacation=selected_vacation,
+        vacation_by_employee=vacation_by_employee,
         selected_document_type=document_type if document_type in CERTIFICATE_TYPES else "",
         calculation_inputs=calculation_inputs,
         calculation_results=calculation_results,
@@ -2823,6 +2846,74 @@ def create_certificate(
     nationality: Annotated[str, Form()] = "paraguaya",
     civil_status: Annotated[str, Form()] = "",
     recipient: Annotated[str, Form()] = "Encargado/a de Recursos Humanos",
+    include_salary: Annotated[str, Form()] = "on",
+    last_period_salary_amount: Annotated[str, Form()] = "",
+    contract_modality: Annotated[str, Form()] = "",
+    contract_end_date: Annotated[date | None, Form()] = None,
+    contract_cause: Annotated[str, Form()] = "",
+    previous_contract_number: Annotated[str, Form()] = "",
+    workplace: Annotated[str, Form()] = "",
+    job_functions: Annotated[str, Form()] = "",
+    work_schedule: Annotated[str, Form()] = "",
+    weekly_rest: Annotated[str, Form()] = "",
+    payment_frequency: Annotated[str, Form()] = "",
+    probation_period: Annotated[str, Form()] = "",
+    payment_date: Annotated[date | None, Form()] = None,
+    payment_method: Annotated[str, Form()] = "",
+    days_worked: Annotated[str, Form()] = "",
+    hours_worked: Annotated[str, Form()] = "",
+    units_worked: Annotated[str, Form()] = "",
+    salary_basic_amount: Annotated[str, Form()] = "",
+    night_surcharge_amount: Annotated[str, Form()] = "0",
+    overtime_day_amount: Annotated[str, Form()] = "0",
+    overtime_night_amount: Annotated[str, Form()] = "0",
+    holiday_amount: Annotated[str, Form()] = "0",
+    vacation_pay_amount: Annotated[str, Form()] = "0",
+    family_allowance_amount: Annotated[str, Form()] = "0",
+    commission_amount: Annotated[str, Form()] = "0",
+    gratification_amount: Annotated[str, Form()] = "0",
+    prize_amount: Annotated[str, Form()] = "0",
+    bonus_amount: Annotated[str, Form()] = "0",
+    other_income_amount: Annotated[str, Form()] = "0",
+    other_income_description: Annotated[str, Form()] = "",
+    ips_deduction_amount: Annotated[str, Form()] = "0",
+    advance_deduction_amount: Annotated[str, Form()] = "0",
+    authorized_deduction_amount: Annotated[str, Form()] = "0",
+    authority_deduction_amount: Annotated[str, Form()] = "0",
+    other_deduction_amount: Annotated[str, Form()] = "0",
+    other_deduction_description: Annotated[str, Form()] = "",
+    vacation_period_year: Annotated[str, Form()] = "",
+    vacation_request_date: Annotated[date | None, Form()] = None,
+    vacation_notice_date: Annotated[date | None, Form()] = None,
+    vacation_days: Annotated[str, Form()] = "",
+    vacation_amount: Annotated[str, Form()] = "0",
+    vacation_payment_date: Annotated[date | None, Form()] = None,
+    leave_type: Annotated[str, Form()] = "",
+    leave_quantity: Annotated[str, Form()] = "",
+    leave_unit: Annotated[str, Form()] = "",
+    paid_leave: Annotated[str, Form()] = "",
+    compensation_method: Annotated[str, Form()] = "",
+    birth_event_date: Annotated[date | None, Form()] = None,
+    termination_reason: Annotated[str, Form()] = "",
+    last_worked_date: Annotated[date | None, Form()] = None,
+    notice_start_date: Annotated[date | None, Form()] = None,
+    notice_days: Annotated[str, Form()] = "",
+    incident_date: Annotated[date | None, Form()] = None,
+    incident_details: Annotated[str, Form()] = "",
+    disciplinary_action: Annotated[str, Form()] = "Amonestación escrita",
+    sanction_start_date: Annotated[date | None, Form()] = None,
+    sanction_end_date: Annotated[date | None, Form()] = None,
+    previous_salary: Annotated[str, Form()] = "0",
+    settlement_salary_due: Annotated[str, Form()] = "0",
+    settlement_notice_amount: Annotated[str, Form()] = "0",
+    settlement_indemnity_amount: Annotated[str, Form()] = "0",
+    settlement_vacation_amount: Annotated[str, Form()] = "0",
+    settlement_bonus_amount: Annotated[str, Form()] = "0",
+    settlement_other_income_amount: Annotated[str, Form()] = "0",
+    settlement_other_income_description: Annotated[str, Form()] = "",
+    settlement_ips_deduction: Annotated[str, Form()] = "0",
+    settlement_other_deduction: Annotated[str, Form()] = "0",
+    settlement_other_deduction_description: Annotated[str, Form()] = "",
     calculation_id: Annotated[int | None, Form()] = None,
     intent: Annotated[str, Form()] = "save",
     user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
@@ -2830,6 +2921,74 @@ def create_certificate(
 ):
     if document_type not in CERTIFICATE_TYPES:
         raise HTTPException(400, "Tipo de documento inválido.")
+
+    def nonnegative_amount(raw: str | int | None, label: str) -> int:
+        value = str(raw if raw is not None else "").strip().replace(" ", "")
+        if not value:
+            return 0
+        if not value.isdigit():
+            raise HTTPException(400, f"El campo «{label}» debe contener un importe entero en guaraníes, sin separadores.")
+        return int(value)
+
+    field_amounts = {
+        "salary_basic_amount": nonnegative_amount(salary_basic_amount, "Salario básico del período"),
+        "last_period_salary_amount": nonnegative_amount(last_period_salary_amount, "Salario del último período de pago"),
+        "night_surcharge_amount": nonnegative_amount(night_surcharge_amount, "Recargo nocturno"),
+        "overtime_day_amount": nonnegative_amount(overtime_day_amount, "Horas extras diurnas"),
+        "overtime_night_amount": nonnegative_amount(overtime_night_amount, "Horas extras nocturnas"),
+        "holiday_amount": nonnegative_amount(holiday_amount, "Feriados trabajados"),
+        "vacation_pay_amount": nonnegative_amount(vacation_pay_amount, "Vacaciones pagadas"),
+        "family_allowance_amount": nonnegative_amount(family_allowance_amount, "Asignación familiar"),
+        "commission_amount": nonnegative_amount(commission_amount, "Comisiones"),
+        "gratification_amount": nonnegative_amount(gratification_amount, "Gratificaciones"),
+        "prize_amount": nonnegative_amount(prize_amount, "Premios"),
+        "bonus_amount": nonnegative_amount(bonus_amount, "Bonificaciones"),
+        "other_income_amount": nonnegative_amount(other_income_amount, "Otros ingresos"),
+        "ips_deduction_amount": nonnegative_amount(ips_deduction_amount, "Descuento IPS"),
+        "advance_deduction_amount": nonnegative_amount(advance_deduction_amount, "Anticipo salarial"),
+        "authorized_deduction_amount": nonnegative_amount(authorized_deduction_amount, "Descuento autorizado"),
+        "authority_deduction_amount": nonnegative_amount(authority_deduction_amount, "Descuento por orden competente"),
+        "other_deduction_amount": nonnegative_amount(other_deduction_amount, "Otros descuentos"),
+        "vacation_amount": nonnegative_amount(vacation_amount, "Pago de vacaciones"),
+        "previous_salary": nonnegative_amount(previous_salary, "Salario anterior"),
+        "settlement_salary_due": nonnegative_amount(settlement_salary_due, "Salarios pendientes"),
+        "settlement_notice_amount": nonnegative_amount(settlement_notice_amount, "Importe de preaviso"),
+        "settlement_indemnity_amount": nonnegative_amount(settlement_indemnity_amount, "Indemnización"),
+        "settlement_vacation_amount": nonnegative_amount(settlement_vacation_amount, "Vacaciones pendientes"),
+        "settlement_bonus_amount": nonnegative_amount(settlement_bonus_amount, "Aguinaldo de liquidación"),
+        "settlement_other_income_amount": nonnegative_amount(settlement_other_income_amount, "Otros haberes de liquidación"),
+        "settlement_ips_deduction": nonnegative_amount(settlement_ips_deduction, "Descuento de liquidación"),
+        "settlement_other_deduction": nonnegative_amount(settlement_other_deduction, "Otros descuentos de liquidación"),
+    }
+
+    contract_types = {
+        "contrato_trabajo", "contrato_tiempo_parcial", "contrato_mipymes_plazo_determinado",
+        "contrato_mipymes_80", "adenda_prorroga_contrato",
+    }
+    default_modality = {
+        "contrato_trabajo": "indefinido",
+        "contrato_tiempo_parcial": "tiempo_parcial",
+        "contrato_mipymes_plazo_determinado": "mipyme_plazo_fijo",
+        "contrato_mipymes_80": "mipyme_80",
+        "adenda_prorroga_contrato": "prorroga",
+    }.get(document_type, "")
+    contract_modality_value = contract_modality.strip() or default_modality
+    if document_type in contract_types:
+        if not workplace.strip() or not job_functions.strip() or not work_schedule.strip():
+            raise HTTPException(400, "Para emitir un contrato, completá el lugar de trabajo, las funciones y la jornada/horario.")
+        if document_type in {"contrato_mipymes_plazo_determinado", "contrato_mipymes_80", "adenda_prorroga_contrato"}:
+            if not contract_end_date or not contract_cause.strip():
+                raise HTTPException(400, "Este modelo requiere fecha de finalización y una causa/condición específica documentada.")
+        if document_type == "adenda_prorroga_contrato" and not previous_contract_number.strip():
+            raise HTTPException(400, "La adenda requiere identificar el contrato anterior que se prorroga.")
+        if document_type == "contrato_trabajo" and contract_modality_value in {"plazo_fijo", "mipyme_plazo_fijo", "mipyme_80", "prorroga"}:
+            if not contract_end_date or not contract_cause.strip():
+                raise HTTPException(400, "Para un contrato a plazo determinado, indicá fecha final y causa documentada.")
+
+    if document_type == "recibo_salario" and (not period_start or not period_end):
+        raise HTTPException(400, "El recibo de salario requiere el período de liquidación desde/hasta.")
+    if document_type == "recibo_salario" and period_end < period_start:
+        raise HTTPException(400, "El fin del período de liquidación no puede ser anterior al inicio.")
     company = company_allowed(db, user, company_id)
     employee = db.get(Employee, employee_id)
     if not employee or employee.company_id != company.id:
@@ -2844,6 +3003,11 @@ def create_certificate(
     calc_results = json_dict(calculation.result_json) if calculation else {}
     position_value = position.strip() or employee.position
     admission_value = admission_date or employee.admission_date
+    if document_type in {"certificado_trabajo_a", "certificado_trabajo_b", "constancia"} and not effective_date:
+        if (employee.status or "").strip().lower() not in {"activo", "active"} and employee.termination_date:
+            effective_date = employee.termination_date
+    if document_type in {"certificado_trabajo_a", "certificado_trabajo_b", "constancia"} and effective_date and field_amounts["last_period_salary_amount"] <= 0:
+        raise HTTPException(400, "Para un certificado al término de la relación, consigná el salario efectivamente devengado en el último período de pago, según nómina o recibo.")
     salary_value = max(0, salary or employee.base_salary)
     if calculation:
         if document_type in {"aguinaldo_anual", "aguinaldo_proporcional", "usufructo_vacaciones", "notificacion_preaviso"}:
@@ -2864,17 +3028,56 @@ def create_certificate(
             period_start = period_start or date(latest_aguinaldo.year, 1, 1)
             period_end = period_end or date(latest_aguinaldo.year, 12, 31)
             observations = observations or f"Importe tomado del registro de aguinaldo {latest_aguinaldo.year}, estado {latest_aguinaldo.status}."
-    if not calculation and document_type in {"solicitud_vacacion", "usufructo_vacaciones"}:
+    if not calculation and document_type in {"solicitud_vacacion", "notificacion_vacaciones", "usufructo_vacaciones", "recibo_vacaciones"}:
         latest_vacation = db.scalar(
             select(Vacation).where(Vacation.employee_id == employee.id).order_by(Vacation.created_at.desc())
         )
         if latest_vacation:
             leave_start = leave_start or latest_vacation.start_date
             leave_end = leave_end or latest_vacation.end_date
+            vacation_period_year = vacation_period_year or str(latest_vacation.period_year)
+            if not vacation_days and latest_vacation.used_days:
+                vacation_days = str(latest_vacation.used_days)
             if not observations:
                 observations = f"Periodo {latest_vacation.period_year}: {latest_vacation.used_days} de {latest_vacation.entitled_days} días registrados, estado {latest_vacation.status}."
+    if document_type in {"solicitud_vacacion", "notificacion_vacaciones", "usufructo_vacaciones", "recibo_vacaciones"}:
+        if not leave_start or not leave_end:
+            raise HTTPException(400, "Completá las fechas de inicio y término del período de vacaciones.")
+        if leave_end < leave_start:
+            raise HTTPException(400, "La fecha final de vacaciones no puede ser anterior a la fecha inicial.")
     if document_type in {"aguinaldo_anual", "aguinaldo_proporcional"} and amount <= 0:
         raise HTTPException(400, "El recibo de aguinaldo requiere un cálculo o importe registrado.")
+    # Evitar confundir un recibo con una cifra única: calcular subtotales a partir
+    # de los conceptos detallados del modelo oficial y dejar visible cada componente.
+    receipt_income_total = sum(field_amounts[key] for key in (
+        "salary_basic_amount", "night_surcharge_amount", "overtime_day_amount", "overtime_night_amount",
+        "holiday_amount", "vacation_pay_amount", "family_allowance_amount", "commission_amount",
+        "gratification_amount", "prize_amount", "bonus_amount", "other_income_amount",
+    ))
+    receipt_deductions_total = sum(field_amounts[key] for key in (
+        "ips_deduction_amount", "advance_deduction_amount", "authorized_deduction_amount",
+        "authority_deduction_amount", "other_deduction_amount",
+    ))
+    if document_type == "recibo_salario" and not field_amounts["salary_basic_amount"]:
+        field_amounts["salary_basic_amount"] = salary_value
+        receipt_income_total += salary_value
+    if document_type == "recibo_salario" and receipt_income_total - receipt_deductions_total < 0:
+        raise HTTPException(400, "Los descuentos del recibo no pueden superar el total de haberes.")
+    if document_type == "recibo_salario":
+        amount = receipt_income_total - receipt_deductions_total
+
+    contract_types = {
+        "contrato_trabajo", "contrato_tiempo_parcial", "contrato_mipymes_plazo_determinado",
+        "contrato_mipymes_80", "adenda_prorroga_contrato",
+    }
+    default_modality = {
+        "contrato_trabajo": "indefinido",
+        "contrato_tiempo_parcial": "tiempo_parcial",
+        "contrato_mipymes_plazo_determinado": "mipyme_plazo_fijo",
+        "contrato_mipymes_80": "mipyme_80",
+        "adenda_prorroga_contrato": "prorroga",
+    }.get(document_type, "")
+    contract_modality_value = contract_modality.strip() or default_modality
     branding = get_or_create_branding(db, company)
     document_number_value = document_number.strip() or next_document_number(db, company, document_type, branding)
     metadata = {
@@ -2889,6 +3092,62 @@ def create_certificate(
         "nationality": nationality.strip(),
         "civil_status": civil_status.strip(),
         "recipient": recipient.strip(),
+        "include_salary": include_salary.strip().lower() in {"on", "true", "1", "yes"},
+        "last_period_salary_amount": field_amounts["last_period_salary_amount"],
+        "contract_modality": contract_modality_value,
+        "contract_end_date": contract_end_date.isoformat() if contract_end_date else "",
+        "contract_cause": contract_cause.strip(),
+        "previous_contract_number": previous_contract_number.strip(),
+        "workplace": workplace.strip(),
+        "job_functions": job_functions.strip(),
+        "work_schedule": work_schedule.strip(),
+        "weekly_rest": weekly_rest.strip(),
+        "payment_frequency": (payment_frequency.strip() or employee.payment_frequency or "Mensual"),
+        "probation_period": probation_period.strip(),
+        "payment_date": (vacation_payment_date or payment_date).isoformat() if (vacation_payment_date or payment_date) else "",
+        "payment_method": payment_method.strip(),
+        "days_worked": str(days_worked).strip(),
+        "hours_worked": str(hours_worked).strip(),
+        "units_worked": units_worked.strip(),
+        **field_amounts,
+        "other_income_description": other_income_description.strip(),
+        "other_deduction_description": other_deduction_description.strip(),
+        "vacation_period_year": vacation_period_year.strip(),
+        "vacation_request_date": vacation_request_date.isoformat() if vacation_request_date else "",
+        "vacation_notice_date": vacation_notice_date.isoformat() if vacation_notice_date else "",
+        "vacation_days": vacation_days.strip(),
+        "vacation_amount": field_amounts["vacation_amount"],
+        "leave_type": leave_type.strip(),
+        "leave_quantity": leave_quantity.strip(),
+        "leave_unit": leave_unit.strip(),
+        "paid_leave": paid_leave.strip(),
+        "compensation_method": compensation_method.strip(),
+        "birth_event_date": birth_event_date.isoformat() if birth_event_date else "",
+        "termination_reason": termination_reason.strip(),
+        "last_worked_date": last_worked_date.isoformat() if last_worked_date else "",
+        "notice_start_date": notice_start_date.isoformat() if notice_start_date else "",
+        "notice_days": notice_days.strip(),
+        "incident_date": incident_date.isoformat() if incident_date else "",
+        "incident_details": incident_details.strip(),
+        "disciplinary_action": disciplinary_action.strip(),
+        "sanction_start_date": sanction_start_date.isoformat() if sanction_start_date else "",
+        "sanction_end_date": sanction_end_date.isoformat() if sanction_end_date else "",
+        "previous_salary": field_amounts["previous_salary"],
+        "settlement_salary_due": field_amounts["settlement_salary_due"],
+        "settlement_notice_amount": field_amounts["settlement_notice_amount"],
+        "settlement_indemnity_amount": field_amounts["settlement_indemnity_amount"],
+        "settlement_vacation_amount": field_amounts["settlement_vacation_amount"],
+        "settlement_bonus_amount": field_amounts["settlement_bonus_amount"],
+        "settlement_other_income_amount": field_amounts["settlement_other_income_amount"],
+        "settlement_other_income_description": settlement_other_income_description.strip(),
+        "settlement_ips_deduction": field_amounts["settlement_ips_deduction"],
+        "settlement_other_deduction": field_amounts["settlement_other_deduction"],
+        "settlement_other_deduction_description": settlement_other_deduction_description.strip(),
+        "contract_type": employee.contract_type,
+        "employee_address": employee.address or "",
+        "employee_phone": employee.phone or "",
+        "employee_email": employee.email or "",
+        "employee_birth_date": employee.birth_date.isoformat() if employee.birth_date else "",
         "calculation_id": calculation.id if calculation else None,
         "calculation_type": calculation.calculation_type if calculation else "",
         "calculation_results": calc_results,
@@ -2904,6 +3163,15 @@ def create_certificate(
         issue_date=issue_date,
         city=city.strip() or company.city or "Ciudad del Este",
         metadata=metadata,
+        company_ruc=company.ruc or "",
+        company_address=company.address or "",
+        company_phone=company.phone or "",
+        company_email=company.email or "",
+        legal_representative=company.legal_representative or "",
+        employee_address=employee.address or "",
+        employee_phone=employee.phone or "",
+        employee_email=employee.email or "",
+        employee_birth_date=employee.birth_date,
     )
     item = GeneratedCertificate(
         company_id=company.id,
@@ -2947,7 +3215,12 @@ def get_allowed_certificate(certificate_id: int, user: User, db: Session) -> Gen
 @app.get("/app/certificates/{certificate_id}/print", response_class=HTMLResponse)
 def print_certificate(certificate_id: int, request: Request, user: User = Depends(require_user), db: Session = Depends(get_db)):
     item = get_allowed_certificate(certificate_id, user, db)
-    return render(request, "certificate_print.html", db, user, certificate=item, metadata=decode_metadata(item.observations))
+    metadata = decode_metadata(item.observations)
+    detail_table = document_detail_table_data(item.document_type, metadata, item.salary_snapshot)
+    return render(
+        request, "certificate_print.html", db, user,
+        certificate=item, metadata=metadata, detail_table=detail_table,
+    )
 
 
 @app.get("/app/certificates/{certificate_id}/download.docx")
@@ -2986,88 +3259,10 @@ def get_allowed_official_certificate(record_id: int, user: User, db: Session) ->
     return item
 
 
-@app.get("/app/certificates/official", response_class=HTMLResponse)
-def official_certificates_page(
-    request: Request,
-    background_tasks: BackgroundTasks,
-    company_id: OptionalQueryId = None,
-    certificate_type: str = "",
-    user: User = Depends(require_user),
-    db: Session = Depends(get_db),
-):
-    if user.role == "superadmin":
-        return RedirectResponse("/admin", status_code=303)
-    company_ids = company_ids_for_user(db, user)
-    companies = list(db.scalars(
-        select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name)
-    )) if company_ids else []
-    employees = list(db.scalars(
-        select(Employee).where(Employee.company_id.in_(company_ids)).order_by(Employee.full_name)
-    )) if company_ids else []
-    if company_id is not None and company_id not in company_ids:
-        raise HTTPException(404, "Empresa no encontrada.")
-    query = select(OfficialCertificateRecord).where(OfficialCertificateRecord.company_id.in_(company_ids)) if company_ids else select(OfficialCertificateRecord).where(False)
-    if company_id:
-        query = query.where(OfficialCertificateRecord.company_id == company_id)
-    records = list(db.scalars(query.order_by(OfficialCertificateRecord.created_at.desc()).limit(200)))
-    today_value = date.today()
-    record_views = []
-    for item in records:
-        info = OFFICIAL_CERTIFICATE_TYPES.get(item.certificate_type, {})
-        view_state = official_certificate_state(item.status, item.expiry_date, today_value)
-        remaining = days_until_expiry(item.expiry_date, today_value)
-        record_views.append({
-            "record": item,
-            "info": info,
-            "state": view_state,
-            "days_remaining": remaining,
-            "source_url": info.get("source_url", ""),
-            "verification_url": info.get("verification_url", ""),
-            "label": info.get("label", "Certificado oficial"),
-        })
-        # Materialize a persistent alert immediately when a team member visits
-        # this screen; the daily maintenance task also runs when the app is idle.
-        if (
-            user.role in {"administrador", "contador", "auxiliar"}
-            and item.status == "Emitido"
-            and item.expiry_date
-            and item.expiry_date <= today_value + timedelta(days=15)
-        ):
-            overdue = item.expiry_date < today_value
-            due_text = item.expiry_date.strftime("%d/%m/%Y")
-            company = db.get(Company, item.company_id)
-            label = info.get("label", "Certificado oficial")
-            if company:
-                _create_in_app_notification(
-                    db,
-                    background_tasks,
-                    user,
-                    event_type="certificado_oficial_vencimiento",
-                    title=f"{'Certificado oficial vencido' if overdue else 'Certificado oficial por vencer'} · {label}",
-                    body=f"{label} de {company.legal_name} {'venció' if overdue else 'vence'} el {due_text}. Revisá el original y gestioná la renovación en el portal oficial.",
-                    target_url="/app/certificates/official",
-                    dedupe_key=f"official-certificate:{item.id}:{item.expiry_date.isoformat()}:{user.id}",
-                )
-    db.commit()
-    return render(
-        request,
-        "official_certificates.html",
-        db,
-        user,
-        companies=companies,
-        employees=employees,
-        record_views=record_views,
-        selected_company_id=company_id,
-        selected_certificate_type=(
-            certificate_type if certificate_type in OFFICIAL_CERTIFICATE_TYPES
-            else "mtess_certificado_laboral"
-        ),
-        official_certificate_types=OFFICIAL_CERTIFICATE_TYPES,
-        official_certificate_statuses=OFFICIAL_CERTIFICATE_STATUSES,
-        official_certificate_results=OFFICIAL_CERTIFICATE_RESULTS,
-        today=today_value,
-    )
-
+@app.get("/app/certificates/official")
+def official_certificates_page():
+    """Legacy path: keep users in the internal labor-document generator."""
+    return RedirectResponse("/app/certificates", status_code=303)
 
 @app.post("/app/certificates/official")
 def create_official_certificate_record(

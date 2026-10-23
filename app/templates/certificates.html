@@ -2,74 +2,20 @@
 {% block title %}Documentos laborales | Digit Laboral{% endblock %}
 {% block content %}
 <style>
-.cert-center{display:grid;gap:16px;margin-bottom:26px}
-.cert-center-hero{display:flex;justify-content:space-between;align-items:center;gap:24px;flex-wrap:wrap;padding:28px;border:1px solid #d8e1ef;border-left:4px solid #0b2d78;border-radius:16px;background:linear-gradient(135deg,#fff 0%,#f4f7fc 100%)}
-.cert-center-hero h1{font-size:clamp(1.8rem,3vw,2.45rem);line-height:1.1;letter-spacing:-.035em;margin:9px 0}
-.cert-center-hero p{max-width:760px;margin:0;color:#596a84;line-height:1.6}
-.cert-center-actions{display:flex;gap:10px;flex-wrap:wrap}
-.cert-center-note{padding:13px 16px;border:1px solid #d8e1ee;border-radius:11px;background:#f8fafc;color:#34445d;line-height:1.55;font-size:.9rem}
-.cert-center-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
-.cert-center-stat{display:flex;align-items:center;gap:13px;padding:15px 17px;border:1px solid #dce4ef;border-radius:12px;background:#fff}
-.cert-center-stat strong{font-size:1.25rem;letter-spacing:-.03em;color:#102b63;white-space:nowrap}
-.cert-center-stat span{font-size:.82rem;line-height:1.4;color:#687891}
-.cert-center-section-head{display:flex;justify-content:space-between;align-items:end;gap:16px;flex-wrap:wrap}
-.cert-center-section-head h2{font-size:1.15rem;margin:3px 0 0}
-.cert-center-section-head p{margin:4px 0 0;color:#65748b;font-size:.88rem}
-.cert-center-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px}
-.cert-center-card{min-width:0;display:flex;flex-direction:column;gap:11px;padding:17px;border:1px solid #dce4ef;border-radius:14px;background:#fff;box-shadow:0 4px 16px rgba(20,41,78,.035)}
-.cert-center-card h3{font-size:1rem;line-height:1.35;margin:0}
-.cert-center-card p{font-size:.86rem;line-height:1.55;color:#63728a;margin:0;flex:1}
-.cert-center-chip{align-self:flex-start;padding:5px 8px;border-radius:6px;background:#eaf0fc;color:#133d8d;font-size:.7rem;font-weight:800;letter-spacing:.04em}
-.cert-center-chip.ips{background:#e8f4ee;color:#176247}
-.cert-center-validity{padding-top:10px;border-top:1px solid #edf0f5;color:#45556f;font-size:.78rem;font-weight:700;line-height:1.4}
-.cert-center-card-actions{display:flex;gap:13px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-top:2px}
-.cert-center-card-actions a{font-size:.82rem;font-weight:750;text-decoration:none}
-.cert-center-card-actions a:first-child{color:#164397}
-.cert-center-card-actions a:last-child{border-radius:7px;padding:8px 10px;background:#12377f;color:#fff}
-@media(max-width:1000px){.cert-center-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.cert-center-hero{align-items:flex-start}}
-@media(max-width:620px){.cert-center-grid,.cert-center-stats{grid-template-columns:1fr}.cert-center-hero{padding:20px}.cert-center-actions{width:100%}.cert-center-actions .btn{flex:1;text-align:center;justify-content:center}}
+.document-field-section{grid-column:1/-1;display:grid;gap:4px;margin:10px 0 0;padding:10px 12px;border-left:3px solid #173b86;border-radius:0 8px 8px 0;background:#f3f6fb}
+.document-field-section b{font-size:.82rem;letter-spacing:.02em;color:#102b63}
+.document-field-section span,.field-hint{font-size:.77rem;color:#64748b;line-height:1.45}
+.inline-check{display:flex!important;align-items:center;gap:8px;flex-direction:row}
+.inline-check input{width:auto!important;min-width:16px;flex:0 0 auto}
+.certificate-form-card input[type="number"]{font-variant-numeric:tabular-nums}
+.certificate-form-card{font-family:"Aptos","Segoe UI",Arial,sans-serif}
+.certificate-type-button{letter-spacing:.005em}
+.document-format-badge{font-variant-numeric:tabular-nums}
+@media(max-width:760px){.certificate-type-menu{max-height:42vh;overflow:auto}}
 </style>
-<section class="cert-center" aria-labelledby="certCenterTitle">
-  <header class="cert-center-hero">
-    <div>
-      <span class="eyebrow">CENTRO DE CERTIFICADOS · PARAGUAY</span>
-      <h1 id="certCenterTitle">Certificados laborales</h1>
-      <p>Accedé a los trámites oficiales del MTESS y del IPS, consultá requisitos, registrá solicitudes y controlá vencimientos. Los documentos emitidos por la empresa se mantienen en un generador separado.</p>
-    </div>
-    <div class="cert-center-actions">
-      <a class="btn primary" href="/app/certificates/official">Abrir centro MTESS / IPS</a>
-      <a class="btn ghost" href="#internal-certs">Generar documento interno ↓</a>
-    </div>
-  </header>
-  <div class="cert-center-note"><b>Separación importante:</b> los certificados oficiales solo los emite el organismo correspondiente. DIGIT-LABORAL facilita el acceso, seguimiento, archivo del original y control de vigencia; no imita sus sellos, firmas, códigos ni resultados.</div>
-  <div class="cert-center-stats" aria-label="Resumen del catálogo">
-    <div class="cert-center-stat"><strong>{{ official_certificate_types|length }}</strong><span>tipos de constancias y certificados en el catálogo oficial</span></div>
-    <div class="cert-center-stat"><strong>MTESS</strong><span>REOP · certificado laboral y constancias del trabajador</span></div>
-    <div class="cert-center-stat"><strong>IPS</strong><span>AOP · cumplimiento patronal y certificados personales</span></div>
-  </div>
-  <div class="cert-center-section-head">
-    <div><span class="eyebrow">ACCESOS DIRECTOS</span><h2>Trámites más utilizados</h2><p>Seleccioná el trámite para abrir el canal oficial o iniciar su seguimiento.</p></div>
-    <a href="/app/certificates/official">Ver catálogo completo →</a>
-  </div>
-  <div class="cert-center-grid">
-    {% for key in ['mtess_certificado_laboral', 'mtess_constancia_no_inscripto', 'ips_certificado_cumplimiento', 'ips_constancia_no_inscripto', 'ips_constancia_no_asegurado', 'ips_constancia_salario_asegurado'] %}
-    {% set info = official_certificate_types[key] %}
-    <article class="cert-center-card">
-      <span class="cert-center-chip {{ 'ips' if info.institution == 'IPS' else '' }}">{{ info.institution }} · {{ 'PATRONAL' if info.scope == 'empresa' else 'PERSONAL' }}</span>
-      <h3>{{ info.label }}</h3>
-      <p>{{ info.description }}</p>
-      <div class="cert-center-validity">{% if info.validity_days %}Vigencia informada: {{ info.validity_days }} días{% elif key == 'ips_certificado_cumplimiento' %}Vigencia: hasta el próximo vencimiento de pago{% else %}Vigencia: confirmar en la fuente oficial{% endif %}</div>
-      <div class="cert-center-card-actions">
-        <a href="{{ info.source_url }}" target="_blank" rel="noopener noreferrer">{{ info.portal_label }} ↗</a>
-        <a href="/app/certificates/official?certificate_type={{ key }}#officialCertificateCreateForm">Registrar trámite</a>
-      </div>
-    </article>
-    {% endfor %}
-  </div>
-</section>
-<div class="page-header certificates-header" id="internal-certs">
-  <div><span class="eyebrow">DOCUMENTOS EMITIDOS POR LA EMPRESA</span><h1>Generación de documentos laborales internos</h1><p>Certificados de trabajo, constancias, recibos y otros documentos de RR. HH. con datos del legajo, membrete y numeración interna.</p></div>
-  <div class="header-actions"><a class="btn primary" href="/app/certificates/official">Certificados oficiales MTESS / IPS</a><a class="btn ghost" href="/app/reports">Informes</a><a class="btn ghost" href="/app/ai{% if selected_company %}?company_id={{ selected_company.id }}{% endif %}">Revisar con IA</a><a class="btn ghost" href="/app/documents">Archivo digital</a></div>
+<div class="page-header certificates-header">
+  <div><span class="eyebrow">GENERACIÓN DOCUMENTAL AUTOMATIZADA</span><h1>Certificados y documentos laborales</h1><p>Modelos laborales propios, datos del legajo y numeración automática, con descarga profesional en Word o PDF.</p></div>
+  <div class="header-actions"><a class="btn ghost" href="/app/reports">Informes</a><a class="btn ghost" href="/app/ai{% if selected_company %}?company_id={{ selected_company.id }}{% endif %}">Revisar con IA</a><a class="btn ghost" href="/app/documents">Archivo digital</a></div>
 </div>
 {% if request.query_params.get('created') %}<div class="alert success">El documento fue guardado correctamente.</div>{% endif %}
 {% if selected_calculation %}<div class="linked-calculation-banner"><div><b>Cálculo vinculado N.º {{ selected_calculation.id }}</b><span>{{ selected_calculation.calculation_type|capitalize }} · Gs. {{ selected_calculation.amount|gs }} · {{ selected_calculation.reference_period or 'Sin periodo' }}</span></div><a href="/app/calculations">Cambiar cálculo</a></div>{% endif %}
@@ -89,19 +35,167 @@
   <section class="certificate-form-card">
     <div class="document-form-heading"><div><span class="eyebrow">MODELO SELECCIONADO</span><h2 id="certificateFormTitle">{{ certificate_types[initial_type] }}</h2></div><span class="document-format-badge">WORD + PDF</span></div>
     <label>Empresa<select name="company_id" id="certificateCompany" required>{% for company in companies %}<option value="{{ company.id }}" {{ 'selected' if selected_company and selected_company.id == company.id }} data-name="{{ company.legal_name }}" data-city="{{ company.city }}" data-ruc="{{ company.ruc }}" data-address="{{ company.address }}" data-representative="{{ company.legal_representative }}" data-logo-url="{{ '/app/companies/' ~ company.id ~ '/logo' if company.branding and company.branding.logo_bytes else '' }}" data-primary="{{ company.branding.primary_color if company.branding else '#173B86' }}" data-signature="{{ company.branding.signature_name if company.branding and company.branding.signature_name else company.legal_representative }}" data-signature-title="{{ company.branding.signature_title if company.branding else 'Representante legal' }}">{{ company.legal_name }}</option>{% endfor %}</select></label>
-    <label>Funcionario<select name="employee_id" id="certificateEmployee" required>{% for employee in employees %}<option value="{{ employee.id }}" {{ 'selected' if selected_employee and selected_employee.id == employee.id }} data-company="{{ employee.company_id }}" data-name="{{ employee.full_name }}" data-document="{{ employee.document_number }}" data-position="{{ employee.position }}" data-admission="{{ employee.admission_date.isoformat() }}" data-admission-text="{{ employee.admission_date|fecha_larga }}" data-salary="{{ employee.base_salary }}">{{ employee.full_name }} · {{ employee.company.legal_name }}</option>{% endfor %}</select></label>
+    <label>Funcionario<select name="employee_id" id="certificateEmployee" required>{% for employee in employees %}<option value="{{ employee.id }}" {{ 'selected' if selected_employee and selected_employee.id == employee.id }} data-company="{{ employee.company_id }}" data-name="{{ employee.full_name }}" data-document="{{ employee.document_number }}" data-position="{{ employee.position }}" data-admission="{{ employee.admission_date.isoformat() }}" data-admission-text="{{ employee.admission_date|fecha_larga }}" data-salary="{{ employee.base_salary }}" data-vacation-start="{{ vacation_by_employee.get(employee.id).start_date.isoformat() if vacation_by_employee.get(employee.id) and vacation_by_employee.get(employee.id).start_date else '' }}" data-vacation-end="{{ vacation_by_employee.get(employee.id).end_date.isoformat() if vacation_by_employee.get(employee.id) and vacation_by_employee.get(employee.id).end_date else '' }}" data-vacation-year="{{ vacation_by_employee.get(employee.id).period_year if vacation_by_employee.get(employee.id) else '' }}" data-vacation-days="{{ vacation_by_employee.get(employee.id).used_days if vacation_by_employee.get(employee.id) and vacation_by_employee.get(employee.id).used_days else '' }}">{{ employee.full_name }} · {{ employee.company.legal_name }}</option>{% endfor %}</select></label>
     <div class="document-form-grid"><label>Ciudad<input name="city" id="certificateCity" value="{{ selected_company.city if selected_company else 'Ciudad del Este' }}" required></label><label>Fecha de emisión<input name="issue_date" id="certificateIssueDate" type="date" value="{{ today.isoformat() }}" required></label></div>
     <div class="document-form-grid"><label>Cargo<input name="position" id="certificatePosition" value="{{ selected_employee.position if selected_employee else '' }}" required></label><label>Fecha de ingreso<input name="admission_date" id="certificateAdmission" type="date" value="{{ selected_employee.admission_date.isoformat() if selected_employee else '' }}" required></label></div>
     <label>Salario mensual (Gs.)<input name="salary" id="certificateSalary" type="number" min="0" value="{{ selected_employee.base_salary if selected_employee else 0 }}" required></label>
 
     <fieldset class="document-specific-fields" id="documentSpecificFields"><legend>Datos específicos del documento</legend>
       <label class="specific-field" data-specific="all">Número interno<input name="document_number" id="certificateDocumentNumber" placeholder="Se asignará automáticamente"></label>
+      <label class="specific-field" data-specific="aguinaldo_anual aguinaldo_proporcional">Fecha de pago del aguinaldo<input type="date" name="payment_date" id="certificateBonusPaymentDate"></label>
       <div class="document-form-grid specific-field" data-specific="aguinaldo_anual aguinaldo_proporcional recibo_salario liquidacion_final"><label>Periodo desde<input name="period_start" id="certificatePeriodStart" type="date" value="{{ calculation_inputs.get('period_start','') }}"></label><label>Periodo hasta<input name="period_end" id="certificatePeriodEnd" type="date" value="{{ calculation_inputs.get('period_end','') }}"></label></div>
       <label class="specific-field" data-specific="aguinaldo_anual aguinaldo_proporcional recibo_salario liquidacion_final cambio_salarial">Monto relacionado (Gs.)<input name="amount" id="certificateAmount" type="number" min="0" value="{{ selected_calculation.amount if selected_calculation else 0 }}"></label>
-      <label class="specific-field" data-specific="notificacion_preaviso renuncia despido cambio_salarial baja_funcionario liquidacion_final">Fecha efectiva<input name="effective_date" id="certificateEffectiveDate" type="date"></label>
-      <div class="document-form-grid specific-field" data-specific="permiso_paternidad permiso_laboral solicitud_vacacion usufructo_vacaciones"><label>Desde<input name="leave_start" id="certificateLeaveStart" type="date"></label><label>Hasta<input name="leave_end" id="certificateLeaveEnd" type="date"></label></div>
+      <label class="specific-field" data-specific="certificado_trabajo_a certificado_trabajo_b constancia notificacion_preaviso renuncia despido cambio_salarial baja_funcionario liquidacion_final">Fecha efectiva / conclusión laboral<input name="effective_date" id="certificateEffectiveDate" type="date"></label>
+      <label class="specific-field" data-specific="certificado_trabajo_a certificado_trabajo_b constancia">Salario devengado en el último período de pago (Gs.)<input name="last_period_salary_amount" id="certificateLastPeriodSalary" type="number" min="0" value="" placeholder="Importe del último período liquidado"><span class="field-hint">No se completa con el salario mensual actual: verificá el último recibo o nómina liquidada.</span><span class="field-hint">Para la constancia al término de la relación laboral, consigná el importe del último período de pago.</span></label>
+      <div class="document-form-grid specific-field" data-specific="permiso_paternidad permiso_laboral solicitud_vacacion usufructo_vacaciones notificacion_vacaciones recibo_vacaciones"><label>Desde<input name="leave_start" id="certificateLeaveStart" type="date" value="{{ selected_vacation.start_date.isoformat() if selected_vacation and selected_vacation.start_date else '' }}"></label><label>Hasta<input name="leave_end" id="certificateLeaveEnd" type="date" value="{{ selected_vacation.end_date.isoformat() if selected_vacation and selected_vacation.end_date else '' }}"></label></div>
+      <div class="document-form-grid specific-field" data-specific="certificado_trabajo_a certificado_trabajo_b constancia"><label class="inline-check"><input type="checkbox" id="certificateIncludeSalary" value="on" checked> Incluir remuneración en el documento</label><input type="hidden" name="include_salary" id="certificateIncludeSalaryValue" value="on"><span class="field-hint">La remuneración solo se imprimirá cuando la selecciones.</span></div>
       <div class="document-form-grid specific-field" data-specific="constancia"><label>Nacionalidad<input name="nationality" id="certificateNationality" value="paraguaya"></label><label>Estado civil (opcional)<input name="civil_status" id="certificateCivilStatus"></label></div>
       <label class="specific-field" data-specific="permiso_paternidad permiso_laboral renuncia solicitud_vacacion amonestacion">Destinatario<input name="recipient" id="certificateRecipient" value="Encargado/a de Recursos Humanos"></label>
+
+      <div class="document-field-section specific-field" data-specific="contrato_trabajo contrato_tiempo_parcial contrato_mipymes_plazo_determinado contrato_mipymes_80 adenda_prorroga_contrato"><b>Condiciones del contrato</b><span>Completá estos campos para que el instrumento no salga con cláusulas genéricas.</span></div>
+      <div class="document-form-grid specific-field" data-specific="contrato_trabajo contrato_tiempo_parcial contrato_mipymes_plazo_determinado contrato_mipymes_80 adenda_prorroga_contrato">
+        <label>Modalidad contractual
+          <select name="contract_modality" id="certificateContractModality">
+            <option value="">Según el modelo seleccionado</option>
+            <option value="indefinido">Tiempo indefinido</option>
+            <option value="plazo_fijo">Plazo determinado general</option>
+            <option value="tiempo_parcial">Tiempo parcial</option>
+            <option value="mipyme_plazo_fijo">MIE / PE — plazo determinado</option>
+            <option value="mipyme_80">MIE — régimen salarial especial (verificar elegibilidad)</option>
+            <option value="prorroga">Adenda / prórroga</option>
+          </select>
+        </label>
+        <label>Fecha de finalización (si aplica)<input name="contract_end_date" id="certificateContractEnd" type="date"></label>
+      </div>
+      <div class="document-form-grid specific-field" data-specific="contrato_trabajo contrato_tiempo_parcial contrato_mipymes_plazo_determinado contrato_mipymes_80 adenda_prorroga_contrato">
+        <label>Lugar o establecimiento de trabajo<input name="workplace" id="certificateWorkplace" placeholder="Dirección o lugar de prestación"></label>
+        <label>Descanso semanal<input name="weekly_rest" id="certificateWeeklyRest" placeholder="Ej.: domingo, según jornada pactada"></label>
+      </div>
+      <label class="specific-field" data-specific="contrato_trabajo contrato_tiempo_parcial contrato_mipymes_plazo_determinado contrato_mipymes_80 adenda_prorroga_contrato">Funciones y tareas principales
+        <textarea name="job_functions" id="certificateJobFunctions" rows="3" placeholder="Detallá funciones concretas del cargo."></textarea>
+      </label>
+      <label class="specific-field" data-specific="contrato_trabajo contrato_tiempo_parcial contrato_mipymes_plazo_determinado contrato_mipymes_80 adenda_prorroga_contrato">Jornada y horario
+        <textarea name="work_schedule" id="certificateWorkSchedule" rows="2" placeholder="Días, horario de entrada/salida, descansos y jornada acordada."></textarea>
+      </label>
+      <div class="document-form-grid specific-field" data-specific="contrato_trabajo contrato_tiempo_parcial contrato_mipymes_plazo_determinado contrato_mipymes_80 adenda_prorroga_contrato">
+        <label>Período de prueba, si procede<input name="probation_period" id="certificateProbationPeriod" placeholder="Conforme a modalidad y ley aplicable"></label>
+        <label>Frecuencia de pago
+          <select name="payment_frequency" id="certificatePaymentFrequency">
+            <option value="">Usar la del legajo</option><option>Mensual</option><option>Quincenal</option><option>Semanal</option><option>Por jornal</option><option>Por hora</option>
+          </select>
+        </label>
+      </div>
+      <label class="specific-field" data-specific="contrato_trabajo contrato_tiempo_parcial contrato_mipymes_plazo_determinado contrato_mipymes_80 adenda_prorroga_contrato">Causa objetiva / condición especial del plazo
+        <textarea name="contract_cause" id="certificateContractCause" rows="2" placeholder="Requerida para contratos a plazo y modalidades especiales."></textarea>
+      </label>
+      <label class="specific-field" data-specific="adenda_prorroga_contrato">Número o identificación del contrato anterior<input name="previous_contract_number" id="certificatePreviousContractNumber" placeholder="Contrato base que se modifica o prorroga"></label>
+
+      <div class="document-field-section specific-field" data-specific="recibo_salario"><b>Detalle de liquidación salarial — modelo REOP / art. 235</b><span>Los importes se detallan por concepto; el neto se calcula sobre las cifras ingresadas.</span></div>
+      <div class="document-form-grid specific-field" data-specific="recibo_salario">
+        <label>Fecha de pago<input name="payment_date" id="certificatePaymentDate" type="date"></label>
+        <label>Forma de pago
+          <select name="payment_method" id="certificatePaymentMethod"><option value="">Seleccionar</option><option>Efectivo</option><option>Transferencia bancaria</option><option>Cheque</option><option>Billetera electrónica</option><option>Otro medio documentado</option></select>
+        </label>
+      </div>
+      <div class="document-form-grid specific-field" data-specific="recibo_salario">
+        <label>Días trabajados<input type="number" min="0" max="31" name="days_worked" id="certificateDaysWorked"></label>
+        <label>Horas trabajadas<input type="number" min="0" step="0.25" name="hours_worked" id="certificateHoursWorked"></label>
+      </div>
+      <label class="specific-field" data-specific="recibo_salario">Piezas o tareas realizadas, si aplica<input name="units_worked" id="certificateUnitsWorked"></label>
+      <label class="specific-field" data-specific="recibo_salario">Salario básico del período (Gs.)<input type="number" min="0" name="salary_basic_amount" id="certificateSalaryBasic" value="{{ selected_employee.base_salary if selected_employee else 0 }}"></label>
+      <div class="document-form-grid specific-field" data-specific="recibo_salario">
+        <label>Recargo nocturno (Gs.)<input type="number" min="0" name="night_surcharge_amount" id="certificateNightSurcharge" value="0"></label>
+        <label>Horas extras diurnas (50%) (Gs.)<input type="number" min="0" name="overtime_day_amount" id="certificateOvertimeDay" value="0"></label>
+        <label>Horas extras nocturnas (100%) (Gs.)<input type="number" min="0" name="overtime_night_amount" id="certificateOvertimeNight" value="0"></label>
+        <label>Feriados trabajados (Gs.)<input type="number" min="0" name="holiday_amount" id="certificateHolidayAmount" value="0"></label>
+        <label>Vacaciones pagadas (Gs.)<input type="number" min="0" name="vacation_pay_amount" id="certificateVacationPay" value="0"></label>
+        <label>Asignación familiar (Gs.)<input type="number" min="0" name="family_allowance_amount" id="certificateFamilyAllowance" value="0"></label>
+        <label>Comisiones (Gs.)<input type="number" min="0" name="commission_amount" id="certificateCommission" value="0"></label>
+        <label>Gratificaciones (Gs.)<input type="number" min="0" name="gratification_amount" id="certificateGratification" value="0"></label>
+        <label>Premios (Gs.)<input type="number" min="0" name="prize_amount" id="certificatePrize" value="0"></label>
+        <label>Bonificaciones (Gs.)<input type="number" min="0" name="bonus_amount" id="certificateBonus" value="0"></label>
+      </div>
+      <div class="document-form-grid specific-field" data-specific="recibo_salario">
+        <label>Otros ingresos (Gs.)<input type="number" min="0" name="other_income_amount" id="certificateOtherIncome" value="0"></label>
+        <label>Detalle de otros ingresos<input name="other_income_description" id="certificateOtherIncomeDescription"></label>
+      </div>
+      <div class="document-field-section specific-field" data-specific="recibo_salario"><b>Descuentos</b><span>Solo consigná descuentos procedentes y debidamente respaldados.</span></div>
+      <div class="document-form-grid specific-field" data-specific="recibo_salario">
+        <label>Aporte IPS trabajador/a (Gs.)<input type="number" min="0" name="ips_deduction_amount" id="certificateIpsDeduction" value="0"></label>
+        <label>Anticipo salarial (Gs.)<input type="number" min="0" name="advance_deduction_amount" id="certificateAdvanceDeduction" value="0"></label>
+        <label>Descuento autorizado por escrito (Gs.)<input type="number" min="0" name="authorized_deduction_amount" id="certificateAuthorizedDeduction" value="0"></label>
+        <label>Descuento por orden competente (Gs.)<input type="number" min="0" name="authority_deduction_amount" id="certificateAuthorityDeduction" value="0"></label>
+        <label>Otros descuentos (Gs.)<input type="number" min="0" name="other_deduction_amount" id="certificateOtherDeduction" value="0"></label>
+        <label>Detalle de otros descuentos<input name="other_deduction_description" id="certificateOtherDeductionDescription"></label>
+      </div>
+
+      <div class="document-field-section specific-field" data-specific="solicitud_vacacion notificacion_vacaciones usufructo_vacaciones recibo_vacaciones"><b>Datos del período de vacaciones</b><span>Campos basados en las comunicaciones de vacaciones publicadas por el MTESS.</span></div>
+      <div class="document-form-grid specific-field" data-specific="solicitud_vacacion notificacion_vacaciones usufructo_vacaciones recibo_vacaciones">
+        <label>Período de vacaciones (año)<input type="number" min="1900" max="9999" name="vacation_period_year" id="certificateVacationYear" value="{{ selected_vacation.period_year if selected_vacation else today.year }}"></label>
+        <label>Días de vacaciones consignados<input name="vacation_days" id="certificateVacationDays" value="{{ selected_vacation.used_days if selected_vacation and selected_vacation.used_days else '' }}" placeholder="Días corridos / saldo revisado"></label>
+      </div>
+      <div class="document-form-grid specific-field" data-specific="solicitud_vacacion notificacion_vacaciones usufructo_vacaciones recibo_vacaciones">
+        <label>Fecha de solicitud<input type="date" name="vacation_request_date" id="certificateVacationRequestDate"></label>
+        <label>Fecha de comunicación al trabajador<input type="date" name="vacation_notice_date" id="certificateVacationNoticeDate"></label>
+      </div>
+      <div class="document-form-grid specific-field" data-specific="notificacion_vacaciones recibo_vacaciones">
+        <label>Pago por vacaciones (Gs.)<input type="number" min="0" name="vacation_amount" id="certificateVacationAmount" value="0"></label>
+        <label>Fecha efectiva de pago<input type="date" name="vacation_payment_date" id="certificateVacationPaymentDate"></label>
+      </div>
+
+      <div class="document-field-section specific-field" data-specific="permiso_laboral permiso_paternidad"><b>Datos de licencia o permiso</b><span>Seleccioná el tipo de permiso y consigná el período y unidad correspondiente.</span></div>
+      <div class="document-form-grid specific-field" data-specific="permiso_laboral permiso_paternidad">
+        <label>Tipo de permiso
+          <select name="leave_type" id="certificateLeaveType">
+            <option value="">Seleccionar</option><option>Enfermedad / reposo</option><option>Luto</option><option>Nacimiento / paternidad</option><option>Lactancia</option><option>Matrimonio</option><option>Maternidad</option><option>Adopción</option><option>Obligación legal o gubernativa</option><option>Licencia sindical</option><option>Búsqueda de empleo</option><option>Vacunación o examen preventivo</option><option>Otro permiso legal o contractual</option>
+          </select>
+        </label>
+        <label>Cantidad del permiso<input name="leave_quantity" id="certificateLeaveQuantity" placeholder="Ej.: 4"></label>
+        <label>Unidad
+          <select name="leave_unit" id="certificateLeaveUnit"><option value="">Seleccionar</option><option>días</option><option>horas</option></select>
+        </label>
+      </div>
+      <div class="document-form-grid specific-field" data-specific="permiso_laboral">
+        <label>¿Con goce de sueldo?<select name="paid_leave" id="certificatePaidLeave"><option value="">A definir / según norma</option><option value="Sí">Sí</option><option value="No">No</option></select></label>
+        <label>Compensación / recuperación si corresponde<input name="compensation_method" id="certificateCompensationMethod"></label>
+      </div>
+      <label class="specific-field" data-specific="permiso_paternidad">Fecha de nacimiento o hecho generador del permiso<input type="date" name="birth_event_date" id="certificateBirthEventDate"></label>
+
+      <div class="document-field-section specific-field" data-specific="notificacion_preaviso renuncia despido amonestacion cambio_salarial baja_funcionario"><b>Terminación, comunicaciones y medidas disciplinarias</b><span>Las causas y fechas deben registrarse de forma específica y ser revisadas antes de emitir el documento.</span></div>
+      <label class="specific-field" data-specific="notificacion_preaviso renuncia despido baja_funcionario">Motivo / causa a consignar<textarea name="termination_reason" id="certificateTerminationReason" rows="2"></textarea></label>
+      <div class="document-form-grid specific-field" data-specific="notificacion_preaviso despido baja_funcionario">
+        <label>Último día trabajado<input type="date" name="last_worked_date" id="certificateLastWorkedDate"></label>
+        <label>Inicio del preaviso<input type="date" name="notice_start_date" id="certificateNoticeStartDate"></label>
+        <label>Plazo de preaviso (días)<input name="notice_days" id="certificateNoticeDays"></label>
+      </div>
+      <div class="document-form-grid specific-field" data-specific="amonestacion">
+        <label>Fecha del hecho<input type="date" name="incident_date" id="certificateIncidentDate"></label>
+        <label>Medida disciplinaria<select name="disciplinary_action" id="certificateDisciplinaryAction"><option>Amonestación escrita</option><option>Apercibimiento</option><option>Suspensión</option></select></label>
+      </div>
+      <label class="specific-field" data-specific="amonestacion">Descripción objetiva del hecho<textarea name="incident_details" id="certificateIncidentDetails" rows="3" placeholder="Fecha, lugar, conducta concreta y antecedentes verificables."></textarea></label>
+      <div class="document-form-grid specific-field" data-specific="amonestacion">
+        <label>Desde la fecha<input type="date" name="sanction_start_date" id="certificateSanctionStart"></label>
+        <label>Hasta la fecha<input type="date" name="sanction_end_date" id="certificateSanctionEnd"></label>
+      </div>
+      <div class="document-form-grid specific-field" data-specific="cambio_salarial">
+        <label>Salario anterior (Gs.)<input type="number" min="0" name="previous_salary" id="certificatePreviousSalary" value="0"></label>
+      </div>
+
+      <div class="document-field-section specific-field" data-specific="liquidacion_final"><b>Detalle de liquidación final</b><span>Desglosá cada rubro; el documento no debe presentar un monto global como si fuera una liquidación calculada y validada.</span></div>
+      <div class="document-form-grid specific-field" data-specific="liquidacion_final">
+        <label>Salarios pendientes (Gs.)<input type="number" min="0" name="settlement_salary_due" id="certificateSettlementSalary" value="0"></label>
+        <label>Preaviso, si corresponde (Gs.)<input type="number" min="0" name="settlement_notice_amount" id="certificateSettlementNotice" value="0"></label>
+        <label>Indemnización, si corresponde (Gs.)<input type="number" min="0" name="settlement_indemnity_amount" id="certificateSettlementIndemnity" value="0"></label>
+        <label>Vacaciones pendientes/proporcionales (Gs.)<input type="number" min="0" name="settlement_vacation_amount" id="certificateSettlementVacation" value="0"></label>
+        <label>Aguinaldo devengado/proporcional (Gs.)<input type="number" min="0" name="settlement_bonus_amount" id="certificateSettlementBonus" value="0"></label>
+      </div>
+      <div class="document-form-grid specific-field" data-specific="liquidacion_final">
+        <label>Otros haberes (Gs.)<input type="number" min="0" name="settlement_other_income_amount" id="certificateSettlementOtherIncome" value="0"></label>
+        <label>Detalle de otros haberes<input name="settlement_other_income_description" id="certificateSettlementOtherIncomeDescription"></label>
+        <label>Descuentos admisibles (Gs.)<input type="number" min="0" name="settlement_ips_deduction" id="certificateSettlementDeduction" value="0"></label>
+        <label>Otros descuentos revisados (Gs.)<input type="number" min="0" name="settlement_other_deduction" id="certificateSettlementOtherDeduction" value="0"></label>
+        <label>Detalle de otros descuentos<input name="settlement_other_deduction_description" id="certificateSettlementOtherDeductionDescription"></label>
+      </div>
     </fieldset>
     <label>Observaciones<textarea name="observations" id="certificateObservations" rows="4" placeholder="Texto adicional, fechas, condiciones o aclaraciones">{% if selected_calculation %}Cálculo N.º {{ selected_calculation.id }} vinculado: {{ selected_calculation.calculation_type|capitalize }}, monto estimado Gs. {{ selected_calculation.amount|gs }}.{% endif %}</textarea></label>
     <div class="document-auto-note"><b>Automatización activa</b><span>El sistema asignará numeración, membrete, firma, datos del funcionario y relación con el cálculo.</span></div>
