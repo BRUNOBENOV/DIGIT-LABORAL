@@ -4237,6 +4237,18 @@ def compliance_page(
                 .limit(40)
             )
         )
+        for batch in batches:
+            if not batch.receipt_storage_key:
+                legacy_receipt_key = db.scalar(
+                    select(ComplianceEvent.receipt_storage_key)
+                    .where(
+                        ComplianceEvent.batch_id == batch.id,
+                        ComplianceEvent.receipt_storage_key != "",
+                    )
+                    .limit(1)
+                )
+                if legacy_receipt_key:
+                    batch.receipt_storage_key = legacy_receipt_key
         rei_errors = validate_company_for_authority(db, selected_company, "REI")
         reop_errors = validate_company_for_authority(db, selected_company, "REOP")
     pending = sum(item.status in {"Borrador", "Validado", "Exportado", "Observado"} for item in events)
@@ -4514,6 +4526,7 @@ def export_compliance_events(
     key = f"integrations/{company.id}/{batch.file_name}"
     storage.put(key, content, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     batch.storage_key = key
+    batch.file_bytes = content if settings.storage_backend == "local" else None
     write_audit(db, user, "exportar", "lote_integracion", str(batch.id), f"{authority} · {len(events)} registros")
     db.commit()
     return StreamingResponse(
@@ -4549,6 +4562,7 @@ def export_reop_annual(
     key = f"integrations/{company.id}/{batch.file_name}"
     storage.put(key, content, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     batch.storage_key = key
+    batch.file_bytes = content if settings.storage_backend == "local" else None
     write_audit(db, user, "exportar", "planillas_reop", str(batch.id), str(year))
     db.commit()
     return StreamingResponse(
@@ -4567,9 +4581,12 @@ def download_integration_batch(
     batch = db.get(IntegrationBatch, batch_id)
     if not batch or batch.company_id not in company_ids_for_user(db, user):
         raise HTTPException(404)
-    if not batch.storage_key or not storage.exists(batch.storage_key):
+    if batch.file_bytes is not None:
+        content = bytes(batch.file_bytes)
+    elif batch.storage_key and storage.exists(batch.storage_key):
+        content = storage.get(batch.storage_key)
+    else:
         raise HTTPException(404, "El archivo del lote no está disponible.")
-    content = storage.get(batch.storage_key)
     write_audit(db, user, "descargar", "lote_integracion", str(batch.id), batch.file_name)
     db.commit()
     return StreamingResponse(
@@ -4606,6 +4623,10 @@ async def upload_integration_receipt(
             raise HTTPException(415, "El comprobante debe ser PDF, PNG o JPG.")
         key = f"integrations/{batch.company_id}/receipts/{batch.id}_{uuid.uuid4().hex}_{safe_filename(receipt.filename)}"
         storage.put(key, content, content_type)
+        batch.receipt_storage_key = key
+        batch.receipt_bytes = content if settings.storage_backend == "local" else None
+        batch.receipt_content_type = content_type
+        batch.receipt_file_name = safe_filename(receipt.filename)
         for event in db.scalars(select(ComplianceEvent).where(ComplianceEvent.batch_id == batch.id)):
             event.receipt_storage_key = key
             event.status = status_value
@@ -4614,6 +4635,49 @@ async def upload_integration_receipt(
     write_audit(db, user, "registrar", "comprobante_integracion", str(batch.id), status_value)
     db.commit()
     return RedirectResponse(f"/app/compliance?company_id={batch.company_id}&receipt=1", status_code=303)
+
+
+@app.get("/app/compliance/batches/{batch_id}/receipt")
+def download_integration_receipt(
+    batch_id: int,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    batch = db.get(IntegrationBatch, batch_id)
+    if not batch or batch.company_id not in company_ids_for_user(db, user):
+        raise HTTPException(404)
+    receipt_key = batch.receipt_storage_key
+    if not receipt_key:
+        receipt_key = db.scalar(
+            select(ComplianceEvent.receipt_storage_key)
+            .where(
+                ComplianceEvent.batch_id == batch.id,
+                ComplianceEvent.receipt_storage_key != "",
+            )
+            .limit(1)
+        ) or ""
+    if batch.receipt_bytes is not None:
+        content = bytes(batch.receipt_bytes)
+        content_type = batch.receipt_content_type or "application/octet-stream"
+    elif receipt_key and storage.exists(receipt_key):
+        content = storage.get(receipt_key)
+        suffix = Path(receipt_key).suffix.lower()
+        content_type = batch.receipt_content_type or {
+            ".pdf": "application/pdf",
+            ".png": "image/png",
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+        }.get(suffix, "application/octet-stream")
+    else:
+        raise HTTPException(404, "El comprobante no está disponible.")
+    filename = Path(batch.receipt_file_name or Path(receipt_key).name or f"comprobante-{batch.id}").name
+    write_audit(db, user, "descargar", "comprobante_integracion", str(batch.id), filename)
+    db.commit()
+    return StreamingResponse(
+        io.BytesIO(content),
+        media_type=content_type,
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
+    )
 
 
 @app.get("/app/labor-code", response_class=HTMLResponse)

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import re
 
+import io
+import zipfile
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -10,7 +12,9 @@ from app.config import settings
 from app.storage_service import storage
 from app.database import SessionLocal
 from app.main import app
-from app.models import Company, CompanyRequest, Document, Employee, Notification, RequestAttachment, RequestWorkflow, Studio, User
+from app.models import Company, CompanyRequest, Document, Employee, IntegrationBatch, Notification, RequestAttachment, RequestWorkflow, Studio, User
+from app.backup_service import build_studio_export
+from app.main import UPLOAD_DIR
 
 
 def ensure_admin() -> tuple[str, str, int, int]:
@@ -306,3 +310,73 @@ def test_general_document_upload_survives_loss_of_local_file_copy():
         downloaded = client.get(f"/app/documents/{document_id}/download")
         assert downloaded.status_code == 200
         assert downloaded.content == content
+
+
+
+def test_integration_batch_and_receipt_survive_local_file_loss_and_backup():
+    from app.models import Studio
+
+    email, password, company_id, _ = ensure_admin()
+    workbook_content = b"synthetic-xlsx-content-for-persistence-test"
+    receipt_content = b"%PDF-1.7\nsynthetic receipt persistence test\n"
+    with SessionLocal() as db:
+        user = db.scalar(select(User).where(User.email == email))
+        assert user is not None and user.studio_id is not None
+        batch = IntegrationBatch(
+            studio_id=user.studio_id,
+            company_id=company_id,
+            authority="REOP",
+            batch_type="Prueba de persistencia",
+            period="2026",
+            status="Generado",
+            file_name="test-batch.xlsx",
+            storage_key=f"integrations/{company_id}/test-batch.xlsx",
+            file_bytes=workbook_content,
+            file_sha256="a" * 64,
+            item_count=1,
+            created_by=email,
+        )
+        db.add(batch)
+        db.commit()
+        batch_id = batch.id
+        studio_id = user.studio_id
+
+    with TestClient(app) as client:
+        csrf = login(client, email, password)
+        posted = client.post(
+            f"/app/compliance/batches/{batch_id}/receipt",
+            data={"csrf_token": csrf, "status": "Presentado", "external_reference": "REG-TEST-001"},
+            files={"receipt": ("comprobante-test.pdf", receipt_content, "application/pdf")},
+            follow_redirects=False,
+        )
+        assert posted.status_code == 303
+
+    with SessionLocal() as db:
+        batch = db.get(IntegrationBatch, batch_id)
+        assert batch is not None
+        receipt_key = batch.receipt_storage_key
+        assert receipt_key
+        assert batch.receipt_file_name == "comprobante-test.pdf"
+        if settings.storage_backend == "local":
+            assert bytes(batch.receipt_bytes) == receipt_content
+            storage.delete(receipt_key)
+        studio = db.get(Studio, studio_id)
+        assert studio is not None
+        backup_content = build_studio_export(db, studio, UPLOAD_DIR)
+
+    with TestClient(app) as client:
+        login(client, email, password)
+        workbook = client.get(f"/app/compliance/batches/{batch_id}/download")
+        receipt = client.get(f"/app/compliance/batches/{batch_id}/receipt")
+        assert workbook.status_code == 200
+        assert workbook.content == workbook_content
+        assert receipt.status_code == 200
+        assert receipt.content == receipt_content
+        assert receipt.headers["content-type"].startswith("application/pdf")
+
+    with zipfile.ZipFile(io.BytesIO(backup_content)) as archive:
+        names = archive.namelist()
+        batch_file = next(n for n in names if n.endswith(f"/lotes/{batch_id}_test-batch.xlsx"))
+        receipt_file = next(n for n in names if n.endswith(f"/comprobantes/{batch_id}_comprobante-test.pdf"))
+        assert archive.read(batch_file) == workbook_content
+        assert archive.read(receipt_file) == receipt_content
