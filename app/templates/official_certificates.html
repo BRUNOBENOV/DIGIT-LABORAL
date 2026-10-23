@@ -1,0 +1,206 @@
+{% extends "base.html" %}
+{% block title %}Certificados oficiales MTESS / IPS | Digit Laboral{% endblock %}
+{% block content %}
+<style>
+.official-certs{display:grid;gap:18px}.official-certs .official-intro{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;flex-wrap:wrap}.official-certs .official-intro p{max-width:780px}.official-certs .official-callout{border:1px solid #d6e0ef;border-left:4px solid #2563eb;border-radius:12px;padding:14px 16px;background:var(--panel, #fff)}.official-certs .official-links{display:grid;grid-template-columns:repeat(auto-fit,minmax(245px,1fr));gap:12px}.official-certs .official-source{display:flex;flex-direction:column;gap:9px;padding:16px;border:1px solid var(--border, #dce2eb);border-radius:12px;background:var(--surface, #fff);min-width:0}.official-certs .official-source h3{margin:0;font-size:1rem}.official-certs .official-source p{font-size:.9rem;margin:0;line-height:1.5}.official-certs .official-source a{font-weight:700;align-self:flex-start}.official-certs .official-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.official-certs .span-2{grid-column:1/-1}.official-certs .official-records{display:grid;gap:14px}.official-certs .official-record{border:1px solid var(--border, #dce2eb);border-radius:14px;padding:18px;display:grid;gap:16px;background:var(--surface, #fff)}.official-certs .official-record-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}.official-certs .official-record-head h3{margin:0 0 5px;font-size:1.05rem}.official-certs .official-meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:10px}.official-certs .official-meta div{padding:10px 12px;border-radius:9px;background:var(--panel-soft, #f6f8fb);min-width:0}.official-certs .official-meta small,.official-certs .official-meta b{display:block;overflow-wrap:anywhere}.official-certs .official-meta small{color:var(--muted, #65748b);font-size:.76rem;margin-bottom:4px}.official-certs .official-record-actions{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.official-certs .official-record-form{border-top:1px solid var(--border, #dce2eb);padding-top:15px;display:grid;gap:12px}.official-certs .official-record-form summary{font-weight:700;cursor:pointer}.official-certs .official-hint{color:var(--muted, #65748b);font-size:.85rem;line-height:1.5}.official-certs .official-state{display:inline-flex;align-items:center;padding:5px 9px;border-radius:999px;background:#edf2f8;color:#263b58;font-size:.78rem;font-weight:700}.official-certs .official-state.expired{background:#fff0f0;color:#9b2226}.official-certs .official-state.near{background:#fff5df;color:#885400}.official-certs .official-state.valid{background:#eaf7ef;color:#22643b}@media(max-width:680px){.official-certs .official-form-grid{grid-template-columns:1fr}.official-certs .span-2{grid-column:auto}.official-certs .official-record{padding:14px}}
+</style>
+<div class="official-certs">
+  <div class="page-header official-intro">
+    <div>
+      <span class="eyebrow">GESTIÓN Y VIGENCIA DOCUMENTAL</span>
+      <h1>Certificados oficiales · MTESS / IPS</h1>
+      <p>Registrá los trámites, controlá vencimientos y archivá los documentos originales emitidos por cada institución desde un solo lugar.</p>
+    </div>
+    <div class="header-actions">
+      <a class="btn ghost" href="/app/certificates">Documentos laborales internos</a>
+      <a class="btn ghost" href="/app/documents">Archivo documental</a>
+    </div>
+  </div>
+
+  {% if request.query_params.get('created') %}
+    <div class="alert success">El seguimiento del certificado fue registrado.</div>
+  {% endif %}
+  {% if request.query_params.get('updated') %}
+    <div class="alert success">El estado y los datos del certificado fueron actualizados.</div>
+  {% endif %}
+
+  <div class="official-callout">
+    <b>Importante:</b> DIGIT-LABORAL no emite certificados del MTESS ni del IPS, no simula sus firmas, sellos, códigos ni resultados. Los enlaces abren los canales institucionales; el sistema registra el seguimiento y conserva el archivo original que se descargue de ellos.
+  </div>
+
+  <section class="panel">
+    <div class="panel-head"><div><span>PORTALES Y TRÁMITES</span><h2>Catálogo oficial</h2></div></div>
+    <div class="official-links">
+      {% for key, info in official_certificate_types.items() %}
+      <article class="official-source">
+        <div><span class="eyebrow">{{ info.institution }}</span><h3>{{ info.label }}</h3></div>
+        <p>{{ info.description }}</p>
+        <a href="{{ info.source_url }}" target="_blank" rel="noopener noreferrer">{{ info.portal_label }} ↗</a>
+      </article>
+      {% endfor %}
+    </div>
+  </section>
+
+  {% if user.role != 'empresa' %}
+  <section class="panel">
+    <div class="panel-head"><div><span>NUEVO SEGUIMIENTO</span><h2>Registrar certificado o constancia</h2></div></div>
+    <p class="official-hint">El registro comienza en estado Pendiente. Después de tramitarlo en el portal institucional, actualizá el estado y adjuntá el original emitido.</p>
+    <form method="post" action="/app/certificates/official" class="form-grid" id="officialCertificateCreateForm">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>Empresa
+        <select name="company_id" id="officialCertificateCompany" required>
+          {% for company in companies %}
+          <option value="{{ company.id }}" {{ 'selected' if company.id == selected_company_id }}>{{ company.legal_name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Tipo de certificado
+        <select name="certificate_type" id="officialCertificateType" required>
+          {% for key, info in official_certificate_types.items() %}
+          <option value="{{ key }}" data-institution="{{ info.institution }}" data-scope="{{ info.scope }}" data-validity="{{ info.validity_days if info.validity_days else '' }}">{{ info.institution }} · {{ info.label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Funcionario relacionado (opcional)
+        <select name="employee_id" id="officialCertificateEmployee">
+          <option value="">Sin funcionario asociado / trámite patronal</option>
+          {% for employee in employees %}
+          <option value="{{ employee.id }}" data-company="{{ employee.company_id }}">{{ employee.full_name }} · {{ employee.company.legal_name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Fecha de solicitud
+        <input type="date" name="request_date" value="{{ today.isoformat() }}" max="9999-12-31" required>
+      </label>
+      <label class="span-2">Notas internas
+        <textarea name="notes" rows="2" maxlength="5000" placeholder="Ej.: responsable del trámite, documentación pendiente o referencia administrativa. No incluyas contraseñas de los portales."></textarea>
+      </label>
+      <div class="official-hint span-2" id="officialCertificateTypeHint">La validez se calculará solo cuando la fuente oficial establece un plazo fijo.</div>
+      <div class="form-actions span-2"><button class="btn primary" type="submit">Registrar seguimiento</button></div>
+    </form>
+  </section>
+  {% endif %}
+
+  <section class="panel">
+    <div class="panel-head"><div><span>CONTROL DOCUMENTAL</span><h2>Seguimiento de certificados</h2></div>
+      {% if companies|length > 1 %}
+      <form method="get" action="/app/certificates/official" class="inline-filter">
+        <label>Empresa
+          <select name="company_id" onchange="this.form.submit()">
+            <option value="">Todas las empresas</option>
+            {% for company in companies %}<option value="{{ company.id }}" {{ 'selected' if company.id == selected_company_id }}>{{ company.legal_name }}</option>{% endfor %}
+          </select>
+        </label>
+      </form>
+      {% endif %}
+    </div>
+    <div class="official-records">
+      {% for view in record_views %}
+        {% set item = view.record %}
+        {% set info = view.info %}
+        {% set state = view.state %}
+        <article class="official-record">
+          <div class="official-record-head">
+            <div>
+              <span class="eyebrow">{{ info.institution or 'INSTITUCIÓN' }} · {{ item.official_number or ('Registro interno #' ~ item.id) }}</span>
+              <h3>{{ view.label }}</h3>
+              <div class="official-hint">{{ item.company.legal_name }}{% if item.employee %} · {{ item.employee.full_name }}{% endif %}</div>
+            </div>
+            <span class="official-state {{ 'expired' if state == 'Vencido' else 'near' if state == 'Por vencer' else 'valid' if state == 'Vigente' else '' }}">{{ state }}</span>
+          </div>
+          <div class="official-meta">
+            <div><small>Fecha de solicitud</small><b>{{ item.request_date|fecha }}</b></div>
+            <div><small>Fecha de emisión</small><b>{{ item.issue_date|fecha if item.issue_date else 'Pendiente' }}</b></div>
+            <div><small>Vencimiento</small><b>{{ item.expiry_date|fecha if item.expiry_date else 'Por confirmar / No indicado' }}</b></div>
+            <div><small>Resultado oficial</small><b>{{ item.result_status or 'No registrado' }}</b></div>
+            <div><small>Actualizado por</small><b>{{ item.updated_by or item.created_by or '—' }}</b></div>
+          </div>
+          {% if item.notes %}<div><small class="official-hint">Notas internas</small><p>{{ item.notes }}</p></div>{% endif %}
+          <div class="official-record-actions">
+            <a href="{{ info.source_url }}" target="_blank" rel="noopener noreferrer">Abrir portal oficial ↗</a>
+            {% if item.document_id %}<a href="/app/documents/{{ item.document_id }}/download">Descargar original archivado</a>{% else %}<span class="official-hint">Original todavía no adjuntado</span>{% endif %}
+            {% if view.days_remaining is not none %}<span class="official-hint">{% if view.days_remaining < 0 %}Venció hace {{ -view.days_remaining }} día(s).{% elif view.days_remaining == 0 %}Vence hoy.{% else %}{{ view.days_remaining }} día(s) restantes.{% endif %}</span>{% endif %}
+          </div>
+
+          {% if user.role != 'empresa' %}
+          <details class="official-record-form">
+            <summary>Actualizar trámite, adjuntar original o registrar vencimiento</summary>
+            <form method="post" action="/app/certificates/official/{{ item.id }}/update" enctype="multipart/form-data" class="form-grid">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <label>Estado
+                <select name="status" required>
+                  {% for status in official_certificate_statuses %}<option value="{{ status }}" {{ 'selected' if item.status == status }}>{{ status }}</option>{% endfor %}
+                </select>
+              </label>
+              <label>Número del certificado oficial
+                <input name="official_number" value="{{ item.official_number }}" maxlength="120" placeholder="Según el documento original">
+              </label>
+              <label>Fecha de emisión
+                <input type="date" name="issue_date" value="{{ item.issue_date.isoformat() if item.issue_date else '' }}">
+              </label>
+              <label>Fecha de vencimiento
+                <input type="date" name="expiry_date" value="{{ item.expiry_date.isoformat() if item.expiry_date else '' }}">
+              </label>
+              {% if info.has_result %}
+              <label>Resultado indicado por MTESS
+                <select name="result_status">
+                  <option value="">Pendiente de registrar</option>
+                  <option value="CUMPLE" {{ 'selected' if item.result_status == 'CUMPLE' }}>CUMPLE</option>
+                  <option value="NO CUMPLE" {{ 'selected' if item.result_status == 'NO CUMPLE' }}>NO CUMPLE</option>
+                </select>
+              </label>
+              {% endif %}
+              <label class="span-2">Adjuntar original oficial (PDF, PNG o JPG; hasta 10 MB)
+                <input type="file" name="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg">
+              </label>
+              <p class="official-hint span-2">
+                {% if info.validity_days %}El sistema puede calcular {{ info.validity_days }} días desde la fecha de emisión cuando guardes el certificado como Emitido.{% elif item.certificate_type == 'ips_certificado_cumplimiento' %}Ingresá como vencimiento la fecha que figura/indica el IPS: el plazo corresponde al próximo pago y no se infiere automáticamente.{% else %}Si el portal no indica un plazo fijo, comprobá el vencimiento en el original; no se inventa automáticamente.{% endif %}
+                {% if item.document_id %}Ya existe un archivo vinculado; al subir otro original se conservará el archivo anterior en el archivo documental.{% endif %}
+              </p>
+              <label class="span-2">Notas internas
+                <textarea name="notes" rows="2" maxlength="5000">{{ item.notes }}</textarea>
+              </label>
+              <div class="form-actions span-2"><button class="btn primary" type="submit">Guardar actualización</button></div>
+            </form>
+          </details>
+          {% endif %}
+        </article>
+      {% else %}
+        <div class="empty-state">Todavía no hay certificados oficiales registrados para esta selección.</div>
+      {% endfor %}
+    </div>
+  </section>
+</div>
+
+<script>
+(() => {
+  const company = document.querySelector('#officialCertificateCompany');
+  const employee = document.querySelector('#officialCertificateEmployee');
+  const type = document.querySelector('#officialCertificateType');
+  const hint = document.querySelector('#officialCertificateTypeHint');
+  const catalog = {{ official_certificate_types|tojson }};
+  const filterEmployees = () => {
+    if (!company || !employee) return;
+    const current = employee.value;
+    [...employee.options].forEach(option => {
+      if (!option.value) { option.hidden = false; return; }
+      const matches = option.dataset.company === company.value;
+      option.hidden = !matches;
+      option.disabled = !matches;
+      if (option.value === current && !matches) employee.value = '';
+    });
+  };
+  const updateHint = () => {
+    if (!type || !hint) return;
+    const info = catalog[type.value];
+    if (!info) return;
+    const validity = info.validity_days ? ' La fuente oficial establece ' + info.validity_days + ' días de validez; DIGIT-LABORAL calculará esa fecha al registrar la emisión.' : ' La vigencia debe confirmarse en el documento original o el canal oficial.';
+    hint.textContent = info.institution + ': ' + info.description + validity;
+  };
+  company?.addEventListener('change', filterEmployees);
+  type?.addEventListener('change', updateHint);
+  filterEmployees();
+  updateHint();
+})();
+</script>
+{% endblock %}
