@@ -3250,88 +3250,10 @@ def get_allowed_official_certificate(record_id: int, user: User, db: Session) ->
     return item
 
 
-@app.get("/app/certificates/official", response_class=HTMLResponse)
-def official_certificates_page(
-    request: Request,
-    background_tasks: BackgroundTasks,
-    company_id: OptionalQueryId = None,
-    certificate_type: str = "",
-    user: User = Depends(require_user),
-    db: Session = Depends(get_db),
-):
-    if user.role == "superadmin":
-        return RedirectResponse("/admin", status_code=303)
-    company_ids = company_ids_for_user(db, user)
-    companies = list(db.scalars(
-        select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name)
-    )) if company_ids else []
-    employees = list(db.scalars(
-        select(Employee).where(Employee.company_id.in_(company_ids)).order_by(Employee.full_name)
-    )) if company_ids else []
-    if company_id is not None and company_id not in company_ids:
-        raise HTTPException(404, "Empresa no encontrada.")
-    query = select(OfficialCertificateRecord).where(OfficialCertificateRecord.company_id.in_(company_ids)) if company_ids else select(OfficialCertificateRecord).where(False)
-    if company_id:
-        query = query.where(OfficialCertificateRecord.company_id == company_id)
-    records = list(db.scalars(query.order_by(OfficialCertificateRecord.created_at.desc()).limit(200)))
-    today_value = date.today()
-    record_views = []
-    for item in records:
-        info = OFFICIAL_CERTIFICATE_TYPES.get(item.certificate_type, {})
-        view_state = official_certificate_state(item.status, item.expiry_date, today_value)
-        remaining = days_until_expiry(item.expiry_date, today_value)
-        record_views.append({
-            "record": item,
-            "info": info,
-            "state": view_state,
-            "days_remaining": remaining,
-            "source_url": info.get("source_url", ""),
-            "verification_url": info.get("verification_url", ""),
-            "label": info.get("label", "Certificado oficial"),
-        })
-        # Materialize a persistent alert immediately when a team member visits
-        # this screen; the daily maintenance task also runs when the app is idle.
-        if (
-            user.role in {"administrador", "contador", "auxiliar"}
-            and item.status == "Emitido"
-            and item.expiry_date
-            and item.expiry_date <= today_value + timedelta(days=15)
-        ):
-            overdue = item.expiry_date < today_value
-            due_text = item.expiry_date.strftime("%d/%m/%Y")
-            company = db.get(Company, item.company_id)
-            label = info.get("label", "Certificado oficial")
-            if company:
-                _create_in_app_notification(
-                    db,
-                    background_tasks,
-                    user,
-                    event_type="certificado_oficial_vencimiento",
-                    title=f"{'Certificado oficial vencido' if overdue else 'Certificado oficial por vencer'} · {label}",
-                    body=f"{label} de {company.legal_name} {'venció' if overdue else 'vence'} el {due_text}. Revisá el original y gestioná la renovación en el portal oficial.",
-                    target_url="/app/certificates/official",
-                    dedupe_key=f"official-certificate:{item.id}:{item.expiry_date.isoformat()}:{user.id}",
-                )
-    db.commit()
-    return render(
-        request,
-        "official_certificates.html",
-        db,
-        user,
-        companies=companies,
-        employees=employees,
-        record_views=record_views,
-        selected_company_id=company_id,
-        selected_certificate_type=(
-            certificate_type if certificate_type in OFFICIAL_CERTIFICATE_TYPES
-            else "mtess_certificado_laboral"
-        ),
-        official_certificate_types=OFFICIAL_CERTIFICATE_TYPES,
-        official_certificate_statuses=OFFICIAL_CERTIFICATE_STATUSES,
-        official_certificate_results=OFFICIAL_CERTIFICATE_RESULTS,
-        today=today_value,
-    )
-
+@app.get("/app/certificates/official")
+def official_certificates_page():
+    """Legacy path: keep users in the internal labor-document generator."""
+    return RedirectResponse("/app/certificates", status_code=303)
 
 @app.post("/app/certificates/official")
 def create_official_certificate_record(
