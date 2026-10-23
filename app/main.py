@@ -3217,10 +3217,14 @@ async def update_official_certificate_record(
     item.notes = notes.strip()[:5000]
     item.updated_by = user.email
     item.updated_at = datetime.now(UTC)
-    write_audit(
-        db, user, "actualizar", "certificado_oficial", str(item.id),
-        f"{info.get('label', item.certificate_type)}: {previous_status} → {item.status}",
+    audit_detail = (
+        f"{info.get('label', item.certificate_type)}; estado={previous_status} → {item.status}; "
+        f"emisión={item.issue_date.isoformat() if item.issue_date else 'sin registrar'}; "
+        f"vencimiento={item.expiry_date.isoformat() if item.expiry_date else 'sin registrar'}; "
+        f"número={item.official_number or 'sin registrar'}; resultado={item.result_status or 'sin registrar'}; "
+        f"original_document_id={item.document_id or 'sin adjuntar'}"
     )
+    write_audit(db, user, "actualizar", "certificado_oficial", str(item.id), audit_detail)
     if previous_status != item.status:
         _notify_studio_team(
             db, background_tasks, company, user,
