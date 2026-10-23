@@ -62,21 +62,16 @@ def test_primary_certificates_page_remains_the_internal_document_generator():
         assert "Trámites más utilizados" not in page.text
 
 
-def test_official_catalog_is_searchable_and_supports_preselected_type():
+def test_legacy_official_catalog_url_redirects_to_internal_document_generator():
     with TestClient(app) as client:
         _login(client)
         page = client.get(
             "/app/certificates/official",
             params={"certificate_type": "ips_constancia_salario_asegurado"},
+            follow_redirects=False,
         )
-        assert page.status_code == 200
-        assert "officialCatalogSearch" in page.text
-        assert "Constancia de salario de asegurado" in page.text
-        assert re.search(
-            r'<option value="ips_constancia_salario_asegurado" selected(?:\s|>)',
-            page.text,
-        )
-        assert "Constancia de no adeudar (IPS)" in page.text
+        assert page.status_code == 303
+        assert page.headers["location"] == "/app/certificates"
 
 
 def _login(client: TestClient) -> str:
@@ -102,10 +97,9 @@ def _login(client: TestClient) -> str:
 def test_official_certificate_workflow_requires_original_and_calculates_expiry():
     with TestClient(app) as client:
         csrf = _login(client)
-        page = client.get("/app/certificates/official")
-        assert page.status_code == 200
-        assert "Certificados oficiales" in page.text
-        assert "Certificado Laboral (REOP)" in page.text
+        page = client.get("/app/certificates/official", follow_redirects=False)
+        assert page.status_code == 303
+        assert page.headers["location"] == "/app/certificates"
 
         created = client.post(
             "/app/certificates/official",
@@ -150,11 +144,9 @@ def test_official_certificate_workflow_requires_original_and_calculates_expiry()
             follow_redirects=False,
         )
         assert issued.status_code == 303
-        refreshed = client.get("/app/certificates/official")
-        assert refreshed.status_code == 200
-        assert "TEST-0001" in refreshed.text
-        assert "30/12/2026" in refreshed.text
-        assert "Descargar original archivado" in refreshed.text
+        refreshed = client.get("/app/certificates/official", follow_redirects=False)
+        assert refreshed.status_code == 303
+        assert refreshed.headers["location"] == "/app/certificates"
 
         with SessionLocal() as db:
             saved_record = db.get(OfficialCertificateRecord, record_id)
