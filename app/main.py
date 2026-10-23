@@ -3020,6 +3020,7 @@ def official_certificates_page(
             "state": view_state,
             "days_remaining": remaining,
             "source_url": info.get("source_url", ""),
+            "verification_url": info.get("verification_url", ""),
             "label": info.get("label", "Certificado oficial"),
         })
         # Materialize a persistent alert immediately when a team member visits
@@ -3082,6 +3083,8 @@ def create_official_certificate_record(
         employee = db.get(Employee, employee_id)
         if not employee or employee.company_id != company.id:
             raise HTTPException(400, "El funcionario no pertenece a la empresa seleccionada.")
+    if info.get("scope") == "persona" and not employee:
+        raise HTTPException(400, "Seleccioná el funcionario relacionado con este certificado personal.")
     item = OfficialCertificateRecord(
         company_id=company.id,
         employee_id=employee.id if employee else None,
