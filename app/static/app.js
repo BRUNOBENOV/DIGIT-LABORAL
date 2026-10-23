@@ -170,6 +170,20 @@ if (certificateForm) {
     const salaryBasic = document.querySelector('#certificateSalaryBasic');
     if (salaryBasic) salaryBasic.value = employee.dataset.salary || '0';
     if (!amountInput.value) amountInput.value = employee.dataset.salary || '0';
+
+    // Reutiliza el último registro guardado de vacaciones del funcionario seleccionado.
+    const vacationFields = [
+      ['#certificateLeaveStart', 'vacationStart'],
+      ['#certificateLeaveEnd', 'vacationEnd'],
+      ['#certificateVacationYear', 'vacationYear'],
+      ['#certificateVacationDays', 'vacationDays']
+    ];
+    vacationFields.forEach(([selector, key]) => {
+      const field = document.querySelector(selector);
+      if (field && employee.dataset[key] !== undefined) {
+        field.value = employee.dataset[key] || '';
+      }
+    });
     updatePreview();
   };
   const updateSpecificFields = () => {
