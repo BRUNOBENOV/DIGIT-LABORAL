@@ -21,6 +21,7 @@ COMPANY_POLICIES = {
     "payrolls": "company_id IN (SELECT id FROM companies WHERE studio_id = digit_current_studio_id())",
     "documents": "company_id IN (SELECT id FROM companies WHERE studio_id = digit_current_studio_id())",
     "generated_certificates": "company_id IN (SELECT id FROM companies WHERE studio_id = digit_current_studio_id())",
+    "official_certificates": "company_id IN (SELECT id FROM companies WHERE studio_id = digit_current_studio_id())",
     "company_branding": "company_id IN (SELECT id FROM companies WHERE studio_id = digit_current_studio_id())",
     "calculation_records": "company_id IN (SELECT id FROM companies WHERE studio_id = digit_current_studio_id())",
     "labor_deadlines": "company_id IN (SELECT id FROM companies WHERE studio_id = digit_current_studio_id())",
