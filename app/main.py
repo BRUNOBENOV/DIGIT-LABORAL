@@ -328,7 +328,16 @@ class CSRFMiddleware:
         await self.app(scope, replay_receive, send)
 
 
-APP_VERSION = (os.getenv("DIGIT_APP_VERSION", "2.2.0").strip() or "2.2.0")
+_VERSION_PATH = Path(__file__).resolve().parent.parent / "VERSION"
+try:
+    _VERSION_FILE_VALUE = _VERSION_PATH.read_text(encoding="utf-8").strip()
+except OSError:  # pragma: no cover - deployments may package the module without the root marker
+    _VERSION_FILE_VALUE = "2.3.0"
+APP_VERSION = (
+    os.getenv("DIGIT_APP_VERSION", _VERSION_FILE_VALUE or "2.3.0").strip()
+    or _VERSION_FILE_VALUE
+    or "2.3.0"
+)
 APP_COMMIT = os.getenv("RENDER_GIT_COMMIT", os.getenv("GITHUB_SHA", "")).strip()
 APP_BUILD = APP_COMMIT[:7] if APP_COMMIT else "LOCAL"
 APP_BRANCH = os.getenv("RENDER_GIT_BRANCH", os.getenv("GITHUB_REF_NAME", "")).strip() or "local"
