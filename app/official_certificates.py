@@ -218,6 +218,62 @@ OFFICIAL_CERTIFICATE_TYPES: dict[str, dict[str, Any]] = {
     },
 }
 
+
+    "mtess_constancia_inscripcion_empleado": {
+        "institution": "MTESS",
+        "label": "Constancia de inscripción de empleado",
+        "scope": "persona",
+        "validity_days": None,
+        "source_url": "https://www.paraguay.gov.py/carpeta-ciudadana",
+        "portal_label": "Abrir Portal Único de Gobierno",
+        "description": (
+            "Constancia publicada dentro de los servicios de trabajo del Portal Único de Gobierno. "
+            "Confirmá el canal de acceso y los requisitos vigentes antes de iniciar el trámite."
+        ),
+        "requirements": (
+            "Cédula de identidad del trabajador.",
+            "Verificar si el servicio requiere Identidad Electrónica.",
+            "Archivar la constancia emitida por el MTESS, no una plantilla interna.",
+        ),
+        "has_result": False,
+    },
+    "ips_constancia_no_adeudar": {
+        "institution": "IPS",
+        "label": "Constancia de no adeudar (IPS)",
+        "scope": "empresa",
+        "validity_days": None,
+        "source_url": "https://portal.ips.gov.py/sistemas/ipsportal/contenido.php?c=361",
+        "portal_label": "Consultar servicios AOP del IPS",
+        "description": (
+            "Seguimiento de la constancia de no adeudar en los servicios AOP publicados por el IPS. "
+            "La disponibilidad y cualquier condición de vigencia deben confirmarse en el canal oficial."
+        ),
+        "requirements": (
+            "RUC y datos de identificación patronal.",
+            "Confirmar el estado de las obligaciones ante IPS.",
+            "Registrar la vigencia indicada por la institución cuando corresponda.",
+        ),
+        "has_result": False,
+    },
+    "ips_constancia_salario_asegurado": {
+        "institution": "IPS",
+        "label": "Constancia de salario de asegurado",
+        "scope": "persona",
+        "validity_days": None,
+        "source_url": "https://www.paraguay.gov.py/carpeta-ciudadana",
+        "portal_label": "Abrir Portal Único de Gobierno",
+        "description": (
+            "Constancia con información del salario declarado del asegurado, publicada entre los "
+            "servicios del Portal Único de Gobierno. Revisá el documento emitido y su finalidad de uso."
+        ),
+        "requirements": (
+            "Cédula de identidad del titular.",
+            "Verificar el acceso mediante Identidad Electrónica y el alcance del documento.",
+            "Conservar el original emitido por el sistema oficial.",
+        ),
+        "has_result": False,
+    },
+
 OFFICIAL_CERTIFICATE_STATUSES = ("Pendiente", "En trámite", "Emitido", "Observado", "Cancelado")
 OFFICIAL_CERTIFICATE_RESULTS = ("", "CUMPLE", "NO CUMPLE", "No aplica")
 
