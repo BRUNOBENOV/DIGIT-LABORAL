@@ -311,3 +311,23 @@ tbody tr:hover td{background:#EEF3FD}
 .company-profile-logo-frame.logo-bg-navy,.branding-logo-shell.logo-bg-navy{background:#0B2D78}
 @media(max-width:860px){.page-header{padding:16px;border-left-width:4px}.home-module-heading{padding:15px}}
 @media(max-width:620px){.page-header{padding:14px 13px;margin-bottom:16px}.home-stat-grid{gap:10px}.home-module-heading{padding:14px}.logo-adjuster{padding:12px}.logo-adjuster-fields{grid-template-columns:1fr}.logo-adjuster-preview{height:120px;min-height:120px}.logo-adjuster-actions{align-items:flex-start;flex-direction:column}.logo-adjuster-actions>span{text-align:left}}
+
+
+/* Final layout mechanics: scale the logo artwork itself, keep alignment selectable. */
+.company-profile-logo-frame,.branding-logo-shell,.logo-adjuster-preview{
+  display:flex!important;align-items:center!important;justify-content:center!important
+}
+.company-profile-logo-frame .company-profile-logo,.branding-logo-shell>img,.logo-adjuster-preview>img{
+  width:calc(100% * var(--logo-scale,1))!important;
+  height:calc(100% * var(--logo-scale,1))!important;
+  max-width:none!important;max-height:none!important;flex:0 0 auto;
+  transform:none!important;object-fit:contain
+}
+.logo-fit-contain .company-profile-logo,.logo-fit-contain>img,.logo-fit-contain img{object-fit:contain!important}
+.logo-fit-cover .company-profile-logo,.logo-fit-cover>img,.logo-fit-cover img{object-fit:cover!important}
+.company-profile-logo-frame.logo-align-left,.branding-logo-shell.logo-align-left,.logo-adjuster-preview.logo-align-left{justify-content:flex-start!important}
+.company-profile-logo-frame.logo-align-center,.branding-logo-shell.logo-align-center,.logo-adjuster-preview.logo-align-center{justify-content:center!important}
+.company-profile-logo-frame.logo-align-right,.branding-logo-shell.logo-align-right,.logo-adjuster-preview.logo-align-right{justify-content:flex-end!important}
+.logo-align-left .company-profile-logo,.logo-align-left>img{transform:translateX(-6%)!important}
+.logo-align-center .company-profile-logo,.logo-align-center>img{transform:none!important}
+.logo-align-right .company-profile-logo,.logo-align-right>img{transform:translateX(6%)!important}
