@@ -2830,7 +2830,7 @@ def create_certificate(
     nationality: Annotated[str, Form()] = "paraguaya",
     civil_status: Annotated[str, Form()] = "",
     recipient: Annotated[str, Form()] = "Encargado/a de Recursos Humanos",
-    include_salary: Annotated[str, Form()] = "",
+    include_salary: Annotated[str, Form()] = "on",
     last_period_salary_amount: Annotated[str, Form()] = "",
     contract_modality: Annotated[str, Form()] = "",
     contract_end_date: Annotated[date | None, Form()] = None,
