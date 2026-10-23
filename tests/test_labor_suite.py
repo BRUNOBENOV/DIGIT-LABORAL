@@ -699,3 +699,36 @@ def test_company_logo_presentation_migration_backfills_existing_rows(tmp_path):
         ).one()
         assert tuple(row) == ("contain", 100, "center", "white")
     engine.dispose()
+
+
+def test_company_logo_renderer_respects_saved_presentation_preferences():
+    from io import BytesIO
+
+    from PIL import Image, ImageDraw
+
+    from app.logo_presentation import prepare_company_logo
+
+    source = Image.new("RGBA", (1100, 360), (255, 255, 255, 0))
+    draw = ImageDraw.Draw(source)
+    draw.rectangle((220, 100, 880, 260), fill=(220, 20, 30, 255))
+    buffer = BytesIO()
+    source.save(buffer, format="PNG")
+    original = buffer.getvalue()
+
+    centered_bytes = prepare_company_logo(
+        original, fit="contain", scale=100, alignment="center", background="transparent"
+    )
+    left_bytes = prepare_company_logo(
+        original, fit="contain", scale=100, alignment="left", background="navy"
+    )
+    small_bytes = prepare_company_logo(
+        original, fit="contain", scale=60, alignment="center", background="white"
+    )
+
+    with Image.open(BytesIO(centered_bytes)) as centered, Image.open(BytesIO(left_bytes)) as left, Image.open(BytesIO(small_bytes)) as small:
+        assert centered.size == (1100, 360)
+        assert left.getpixel((0, 0)) == (11, 45, 120, 255)
+        assert centered.getchannel("A").getbbox()[0] > left.getchannel("A").getbbox()[0]
+        centered_red = sum(1 for r, g, b, a in centered.getdata() if r > 180 and g < 60 and b < 60 and a > 0)
+        small_red = sum(1 for r, g, b, a in small.getdata() if r > 180 and g < 60 and b < 60 and a > 0)
+        assert small_red < centered_red
