@@ -266,6 +266,8 @@ async def create_vacation_v24(
     range_error = validate_date_range(start_date, end_date)
     if range_error:
         return _error("/app/vacations", range_error, "vacationModal")
+    if start_date and start_date < employee.admission_date:
+        return _error("/app/vacations", "La fecha de inicio no puede ser anterior al ingreso del funcionario.", "vacationModal")
     status_value = _clean(form.get("status"), 30) or "Pendiente"
     if status_value not in {"Pendiente", "Aprobada", "Completada"}:
         return _error("/app/vacations", "Seleccioná un estado válido para las vacaciones.", "vacationModal")
