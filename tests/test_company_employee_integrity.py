@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import uuid
+from datetime import date
 
 import pytest
 from fastapi.testclient import TestClient
@@ -112,7 +113,7 @@ def test_employee_create_accepts_blank_optional_birth_date_and_normalizes_duplic
             full_name="Funcionario duplicado de prueba",
             document_number=unique_document,
             position="Auxiliar de prueba",
-            admission_date=__import__("datetime").date(2024, 2, 1),
+            admission_date=date(2024, 2, 1),
             base_salary=3_044_000,
         )
         db.add(existing)
