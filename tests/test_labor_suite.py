@@ -11,7 +11,7 @@ import pytest
 from pypdf import PdfReader
 
 from app.labor_calculator import CalculationError, calculate, notice_days, vacation_days, anniversary
-from app.labor_rules import aguinaldo_amount, vacation_amount, notice_amount
+from app.labor_rules import (aguinaldo_amount, vacation_amount, notice_amount, completed_years, months_of_service, vacation_entitlement_days, preaviso_days)
 from app.liquidation_export import build_liquidation_pdf, build_liquidation_csv
 
 
@@ -48,6 +48,24 @@ def test_vacation_exact_anniversaries(end, expected):
 def test_calendar_leap_day():
     assert anniversary(date(2020,2,29),1) == date(2021,2,28)
     assert notice_days(date(2020,2,29),date(2021,3,1)) == 45
+
+def test_labor_tenure_counts_leap_day_anniversaries_consistently():
+    admitted = date(2024, 2, 29)
+    assert completed_years(admitted, date(2025, 2, 27)) == 0
+    assert completed_years(admitted, date(2025, 2, 28)) == 1
+    assert completed_years(admitted, date(2026, 2, 27)) == 1
+    assert completed_years(admitted, date(2026, 2, 28)) == 2
+    assert months_of_service(admitted, date(2025, 2, 28)) == 12
+    assert months_of_service(admitted, date(2026, 2, 28)) == 24
+
+
+def test_leap_day_worker_gets_correct_first_year_vacation_and_notice_boundary():
+    admitted = date(2024, 2, 29)
+    first_anniversary = vacation_entitlement_days(admitted, date(2025, 2, 28))
+    assert first_anniversary.value == 12
+    assert "1 año(s)" in first_anniversary.note
+    assert preaviso_days(admitted, date(2025, 2, 28)).value == 30
+    assert preaviso_days(admitted, date(2025, 3, 1)).value == 45
 
 
 def test_salary_and_employer_cost_are_separate():
@@ -583,6 +601,41 @@ def test_payroll_zero_base_persistence_and_closed_edit_guard(web_case):
     assert client.post(f"/app/payrolls/{payroll.id}/lines/{line.id}",data=data).status_code == 422
     payroll.status="Cerrada";db.commit()
     assert client.post(f"/app/payrolls/{payroll.id}/lines/{line.id}",data=data).status_code == 409
+
+
+def test_payroll_receipt_and_closure_reject_inconsistent_saved_ips_formula(web_case):
+    client, db, _, company, employee, _ = web_case
+    from app.models import Payroll, PayrollLine
+
+    payroll = Payroll(company_id=company.id, period="2026-09")
+    db.add(payroll)
+    db.flush()
+    line = PayrollLine(
+        payroll_id=payroll.id,
+        employee_id=employee.id,
+        base_salary=3_500_000,
+        gross=3_500_000,
+        ips_employee=314_999,
+        total_discounts=314_999,
+        net=3_185_001,
+        ips_base=3_500_000,
+        ips_rate=Decimal("9.00"),
+    )
+    db.add(line)
+    db.commit()
+
+    pdf = client.get(f"/app/payrolls/{payroll.id}/recibos.pdf?line_id={line.id}")
+    assert pdf.status_code == 409
+    assert "aporte IPS guardado no coincide" in pdf.text
+
+    response = client.post(
+        f"/app/payrolls/{payroll.id}/status",
+        data={"csrf_token": token(client), "status": "Cerrada"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 409
+    db.refresh(payroll)
+    assert payroll.status == "Borrador"
 
 
 def test_migration_adds_columns_without_rewriting_history(tmp_path):
