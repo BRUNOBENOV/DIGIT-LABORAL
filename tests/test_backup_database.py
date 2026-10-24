@@ -87,3 +87,10 @@ def test_system_backup_excludes_backup_prefix_to_prevent_recursive_growth():
     assert backup_database._safe_storage_key("documents/../private.txt") is None
     assert backup_database._safe_storage_key("/documents/absolute.txt") is None
     assert backup_database._safe_storage_key("documents/valid/file.pdf") == "documents/valid/file.pdf"
+
+
+
+def test_pg_dump_url_normalization_supports_provider_and_sqlalchemy_schemes():
+    assert backup_database.pg_dump_database_url("postgres://user:secret@host/db") == "postgresql://user:secret@host/db"
+    assert backup_database.pg_dump_database_url("postgresql://user:secret@host/db") == "postgresql://user:secret@host/db"
+    assert backup_database.pg_dump_database_url("postgresql+psycopg://user:secret@host/db") == "postgresql://user:secret@host/db"
