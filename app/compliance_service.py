@@ -49,6 +49,16 @@ COMPLIANCE_STATUS_TRANSITIONS: dict[str, set[str]] = {
     "Anulado": {"Anulado"},
 }
 
+# Los lotes anuales no tienen eventos individuales, por eso su estado propio
+# debe mantener la misma trazabilidad que los lotes de comunicaciones.
+INTEGRATION_BATCH_STATUS_TRANSITIONS: dict[str, set[str]] = {
+    "Generado": {"Presentado"},
+    "Presentado": {"Presentado", "Aceptado", "Observado", "Rechazado"},
+    "Aceptado": {"Aceptado"},
+    "Observado": {"Observado"},
+    "Rechazado": {"Rechazado"},
+}
+
 
 def can_transition_compliance_status(current: str, target: str) -> bool:
     return target in COMPLIANCE_STATUS_TRANSITIONS.get(current, {current})
@@ -165,6 +175,8 @@ def create_compliance_event(
     source_key: str | None = None,
 ) -> ComplianceEvent:
     authority = authority.upper()
+    if authority not in {"REI", "REOP"}:
+        raise ValueError("Autoridad de cumplimiento no reconocida.")
     valid = REI_EVENT_TYPES if authority == "REI" else REOP_EVENT_TYPES
     if event_type not in valid:
         raise ValueError("Tipo de comunicación no reconocido.")
