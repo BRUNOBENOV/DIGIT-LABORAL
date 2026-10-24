@@ -456,7 +456,7 @@ def test_compliance_event_submission_requires_reference_and_exported_state_comes
             authority="REOP",
             event_type="Entrada",
             event_date=date.today(),
-            status="Validado",
+            status="Exportado",
             payload_json="{}",
             created_by="qa-other-reviewer",
         )
