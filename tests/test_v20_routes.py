@@ -216,7 +216,11 @@ def test_saved_calculators_use_commercial_half_up_rounding():
             "reference_period": "round-aguinaldo",
             "total_remunerations": "6",
             "expected_amount": 1,
-            "expected_result": {"aguinaldo": 1, "total_remunerations": 6},
+            "expected_result": {
+                "aguinaldo": 1,
+                "total_remunerations": 6,
+                "legal_basis": "Código del Trabajo, arts. 243 y 244",
+            },
         },
     ]
 
