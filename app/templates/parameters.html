@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% block title %}Parámetros | Digit Laboral{% endblock %}
-{% block page_name %}Parámetros laborales{% endblock %}
+{% block title %}Referencias laborales | Digit Laboral{% endblock %}
+{% block page_name %}Referencias laborales{% endblock %}
 {% block content %}
-<div class="page-header"><div><span class="eyebrow">VALORES VIGENTES</span><h1>Parámetros laborales</h1><p>Referencias con fecha de vigencia y fuente institucional.</p></div></div>
-<div class="legal-warning"><b>Importante:</b> los valores generales pueden variar según actividad, profesión o régimen. Deben revisarse antes de emitir una liquidación definitiva.</div>
-<section class="parameter-grid">{% for item in parameters %}<article><span class="parameter-icon">◉</span><div><span class="eyebrow">VIGENTE DESDE {{ item.effective_from.strftime('%d/%m/%Y') }}</span><h3>{{ item.label }}</h3><b>{% if item.unit == "%" %}{{ item.value|float|round(2) }}%{% else %}{{ item.unit }} {{ item.value|int|gs }}{% endif %}</b><p>{{ item.notes }}</p><a href="{{ item.source_url }}" target="_blank" rel="noopener">Fuente: {{ item.source_name }} ↗</a></div></article>{% endfor %}</section>
+<div class="page-header"><div><span class="eyebrow">FUENTES DE REFERENCIA</span><h1>Referencias laborales</h1><p>Valores informativos con fecha de vigencia y fuente institucional.</p></div></div>
+<div class="legal-warning"><b>Consulta, no edición:</b> esta pantalla muestra las referencias registradas en el sistema. No modifica parámetros ni reemplaza la verificación de la normativa aplicable al caso concreto.</div>
+<section class="parameter-grid">{% for item in parameters %}<article><span class="parameter-icon">◉</span><div><span class="eyebrow">VIGENTE DESDE {{ item.effective_from.strftime('%d/%m/%Y') }}</span><h3>{{ item.label }}</h3><b>{% if item.unit == "%" %}{{ item.value|float|round(2) }}%{% else %}{{ item.unit }} {{ item.value|int|gs }}{% endif %}</b><p>{{ item.notes }}</p><a href="{{ item.source_url }}" target="_blank" rel="noopener">Fuente: {{ item.source_name }} ↗</a></div></article>{% else %}<article><div><h3>No hay referencias activas</h3><p>No se encontraron parámetros vigentes en la base de datos.</p></div></article>{% endfor %}</section>
 {% endblock %}

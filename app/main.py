@@ -328,7 +328,16 @@ class CSRFMiddleware:
         await self.app(scope, replay_receive, send)
 
 
-APP_VERSION = (os.getenv("DIGIT_APP_VERSION", "2.2.0").strip() or "2.2.0")
+_VERSION_PATH = Path(__file__).resolve().parent.parent / "VERSION"
+try:
+    _VERSION_FILE_VALUE = _VERSION_PATH.read_text(encoding="utf-8").strip()
+except OSError:  # pragma: no cover - deployments may package the module without the root marker
+    _VERSION_FILE_VALUE = "2.3.0"
+APP_VERSION = (
+    os.getenv("DIGIT_APP_VERSION", _VERSION_FILE_VALUE or "2.3.0").strip()
+    or _VERSION_FILE_VALUE
+    or "2.3.0"
+)
 APP_COMMIT = os.getenv("RENDER_GIT_COMMIT", os.getenv("GITHUB_SHA", "")).strip()
 APP_BUILD = APP_COMMIT[:7] if APP_COMMIT else "LOCAL"
 APP_BRANCH = os.getenv("RENDER_GIT_BRANCH", os.getenv("GITHUB_REF_NAME", "")).strip() or "local"
@@ -1515,11 +1524,22 @@ def employee_import_preview_page(
     if preview.user_id != user.id or preview.studio_id != (user.studio_id or 0):
         raise HTTPException(403)
     company = company_allowed(db, user, preview.company_id)
-    existing_documents = set(db.scalars(select(Employee.document_number).where(Employee.company_id == company.id)))
+    existing_employees = {
+        item.document_number: item
+        for item in db.scalars(select(Employee).where(Employee.company_id == company.id))
+    }
+    existing_documents = set(existing_employees)
     duplicate_count = sum(row.data.get("document_number") in existing_documents for row in preview.rows if row.valid)
+    salary_change_count = sum(
+        1 for row in preview.rows
+        if row.valid
+        and row.data.get("document_number") in existing_employees
+        and int(row.data.get("base_salary") or 0) != existing_employees[row.data["document_number"]].base_salary
+    )
     return render(
         request, "employee_import_preview.html", db, user, token=token, preview=preview, company=company,
         duplicate_count=duplicate_count, existing_documents=existing_documents,
+        salary_change_count=salary_change_count,
     )
 
 
@@ -1537,7 +1557,7 @@ def employee_import_confirm(
     if preview.user_id != user.id or preview.studio_id != (user.studio_id or 0):
         raise HTTPException(403)
     company = company_allowed(db, user, preview.company_id)
-    created = updated = skipped = 0
+    created = updated = skipped = salary_changes_requires_request = 0
     for row in preview.rows:
         if not row.valid:
             skipped += 1
@@ -1555,24 +1575,21 @@ def employee_import_confirm(
         admission = date.fromisoformat(data["admission_date"])
         birth = date.fromisoformat(data["birth_date"]) if data.get("birth_date") else None
         if employee:
-            old_salary = employee.base_salary
+            # Bulk imports may update profile data, but must never change an existing salary.
+            # Salary differences are reported for manual processing through the approval workflow.
+            if int(data.get("base_salary") or 0) != employee.base_salary:
+                salary_changes_requires_request += 1
             employee.full_name = data["full_name"]
             employee.position = data["position"]
             employee.admission_date = admission
             employee.birth_date = birth
             employee.contract_type = data["contract_type"]
             employee.payment_frequency = data["payment_frequency"]
-            employee.base_salary = data["base_salary"]
             employee.ips_contributor = data["ips_contributor"]
             employee.email = data["email"]
             employee.phone = data["phone"]
             employee.address = data["address"]
             employee.notes = data["notes"]
-            if old_salary != employee.base_salary:
-                db.add(SalaryHistory(
-                    employee_id=employee.id, previous_salary=old_salary, new_salary=employee.base_salary,
-                    effective_from=date.today(), reason="Actualización por importación", created_by=user.email,
-                ))
             add_employee_event(db, employee, user, "Importación", "Datos actualizados por importación", f"Archivo: {preview.filename}")
             updated += 1
         else:
@@ -1591,10 +1608,18 @@ def employee_import_confirm(
                 effective_from=admission, reason="Salario inicial importado", created_by=user.email,
             ))
             created += 1
-    write_audit(db, user, "confirmar", "importacion_funcionarios", token, f"{company.legal_name}: {created} creados, {updated} actualizados, {skipped} omitidos")
+    write_audit(
+        db, user, "confirmar", "importacion_funcionarios", token,
+        f"{company.legal_name}: {created} creados, {updated} actualizados, {skipped} omitidos, "
+        f"{salary_changes_requires_request} cambios salariales derivados a solicitud",
+    )
     db.commit()
     (IMPORT_DIR / f"{token}.json").unlink(missing_ok=True)
-    return RedirectResponse(f"/app/employees?imported={created}&updated={updated}&skipped={skipped}&company_id={company.id}", status_code=303)
+    return RedirectResponse(
+        f"/app/employees?imported={created}&updated={updated}&skipped={skipped}"
+        f"&salary_changes={salary_changes_requires_request}&company_id={company.id}",
+        status_code=303,
+    )
 
 
 @app.post("/app/employees")
@@ -1667,7 +1692,7 @@ def edit_employee(
     employee_id: int,
     full_name: Annotated[str, Form()],
     position_name: Annotated[str, Form(alias="position")],
-    base_salary: Annotated[int, Form()],
+    base_salary: Annotated[int | None, Form()] = None,
     email: Annotated[str, Form()] = "",
     phone: Annotated[str, Form()] = "",
     address: Annotated[str, Form()] = "",
@@ -1678,26 +1703,20 @@ def edit_employee(
     employee = db.get(Employee, employee_id)
     if not employee or employee.company_id not in company_ids_for_user(db, user):
         raise HTTPException(404)
-    previous_salary = employee.base_salary
+    # Do not allow profile-edit requests to bypass the approved salary-request workflow.
+    # Keep the optional form field for stale clients and reject a changed value server-side.
+    if base_salary is not None and max(0, base_salary) != employee.base_salary:
+        raise HTTPException(
+            409,
+            "El salario vigente solo puede modificarse mediante una solicitud salarial aprobada.",
+        )
     employee.full_name = full_name.strip()
     employee.position = position_name.strip()
-    employee.base_salary = max(0, base_salary)
     employee.email = email.strip()
     employee.phone = phone.strip()
     employee.address = address.strip()
     employee.notes = notes.strip()
-    if previous_salary != employee.base_salary:
-        db.add(SalaryHistory(
-            employee_id=employee.id, previous_salary=previous_salary, new_salary=employee.base_salary,
-            effective_from=date.today(), reason="Actualización desde expediente", created_by=user.email,
-        ))
-        add_employee_event(
-            db, employee, user, "Cambio salarial", "Actualización salarial",
-            f"De Gs. {format_gs(previous_salary)} a Gs. {format_gs(employee.base_salary)}",
-            date.today(), employee.base_salary,
-        )
-    else:
-        add_employee_event(db, employee, user, "Actualización", "Datos del funcionario actualizados")
+    add_employee_event(db, employee, user, "Actualización", "Datos del funcionario actualizados")
     write_audit(db, user, "editar", "funcionario", str(employee.id), employee.full_name)
     db.commit()
     return RedirectResponse(f"/app/employees/{employee.id}", status_code=303)
@@ -2355,7 +2374,9 @@ async def add_request_attachment(
     storage.put(stored_name, content, content_type)
     attachment = RequestAttachment(
         request_id=item.id, stored_name=stored_name, original_name=safe_filename(file.filename or "archivo"),
-        content_type=content_type, uploaded_by=user.email,
+        content_type=content_type,
+        content_bytes=content if settings.storage_backend == "local" else None,
+        uploaded_by=user.email,
     )
     db.add(attachment)
     db.flush()
@@ -2378,13 +2399,19 @@ def download_request_attachment(
     if not item or item.company_id not in company_ids_for_user(db, user) or not attachment or attachment.request_id != item.id:
         raise HTTPException(404)
     storage_key = attachment.stored_name
-    if not storage.exists(storage_key):
-        legacy = UPLOAD_DIR / "requests" / str(item.id) / attachment.stored_name
-        if not legacy.exists():
+    if attachment.content_bytes is not None:
+        content = bytes(attachment.content_bytes)
+    elif storage.exists(storage_key):
+        content = storage.get(storage_key)
+    else:
+        legacy_candidates = (
+            UPLOAD_DIR / storage_key,
+            UPLOAD_DIR / "requests" / str(item.id) / Path(storage_key).name,
+        )
+        legacy = next((candidate for candidate in legacy_candidates if candidate.is_file()), None)
+        if legacy is None:
             raise HTTPException(404, "Archivo no encontrado.")
         content = legacy.read_bytes()
-    else:
-        content = storage.get(storage_key)
     write_audit(db, user, "descargar", "adjunto_solicitud", str(attachment.id), attachment.original_name)
     db.commit()
     return StreamingResponse(io.BytesIO(content), media_type=attachment.content_type, headers={"Content-Disposition": f'attachment; filename="{attachment.original_name}"'})
@@ -3914,7 +3941,18 @@ async def upload_document(
     original = safe_filename(file.filename or "archivo")
     stored = f"documents/{company_id}/{uuid.uuid4().hex}_{original}"
     storage.put(stored, content, file.content_type or "application/octet-stream")
-    document = Document(company_id=company_id, employee_id=employee_id or None, category=category.strip(), title=title.strip(), stored_name=stored, original_name=original, content_type=file.content_type or "application/octet-stream", uploaded_by=user.email)
+    document = Document(
+        company_id=company_id,
+        employee_id=employee_id or None,
+        category=category.strip(),
+        title=title.strip(),
+        stored_name=stored,
+        original_name=original,
+        content_type=file.content_type or "application/octet-stream",
+        # Local filesystem storage may be ephemeral; keep a durable copy in PostgreSQL.
+        content_bytes=content if settings.storage_backend == "local" else None,
+        uploaded_by=user.email,
+    )
     db.add(document)
     db.flush()
     write_audit(db, user, "subir", "documento", str(document.id), original)
@@ -4236,6 +4274,18 @@ def compliance_page(
                 .limit(40)
             )
         )
+        for batch in batches:
+            if not batch.receipt_storage_key:
+                legacy_receipt_key = db.scalar(
+                    select(ComplianceEvent.receipt_storage_key)
+                    .where(
+                        ComplianceEvent.batch_id == batch.id,
+                        ComplianceEvent.receipt_storage_key != "",
+                    )
+                    .limit(1)
+                )
+                if legacy_receipt_key:
+                    batch.receipt_storage_key = legacy_receipt_key
         rei_errors = validate_company_for_authority(db, selected_company, "REI")
         reop_errors = validate_company_for_authority(db, selected_company, "REOP")
     pending = sum(item.status in {"Borrador", "Validado", "Exportado", "Observado"} for item in events)
@@ -4513,6 +4563,7 @@ def export_compliance_events(
     key = f"integrations/{company.id}/{batch.file_name}"
     storage.put(key, content, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     batch.storage_key = key
+    batch.file_bytes = content if settings.storage_backend == "local" else None
     write_audit(db, user, "exportar", "lote_integracion", str(batch.id), f"{authority} · {len(events)} registros")
     db.commit()
     return StreamingResponse(
@@ -4548,6 +4599,7 @@ def export_reop_annual(
     key = f"integrations/{company.id}/{batch.file_name}"
     storage.put(key, content, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     batch.storage_key = key
+    batch.file_bytes = content if settings.storage_backend == "local" else None
     write_audit(db, user, "exportar", "planillas_reop", str(batch.id), str(year))
     db.commit()
     return StreamingResponse(
@@ -4566,9 +4618,12 @@ def download_integration_batch(
     batch = db.get(IntegrationBatch, batch_id)
     if not batch or batch.company_id not in company_ids_for_user(db, user):
         raise HTTPException(404)
-    if not batch.storage_key or not storage.exists(batch.storage_key):
+    if batch.file_bytes is not None:
+        content = bytes(batch.file_bytes)
+    elif batch.storage_key and storage.exists(batch.storage_key):
+        content = storage.get(batch.storage_key)
+    else:
         raise HTTPException(404, "El archivo del lote no está disponible.")
-    content = storage.get(batch.storage_key)
     write_audit(db, user, "descargar", "lote_integracion", str(batch.id), batch.file_name)
     db.commit()
     return StreamingResponse(
@@ -4605,6 +4660,10 @@ async def upload_integration_receipt(
             raise HTTPException(415, "El comprobante debe ser PDF, PNG o JPG.")
         key = f"integrations/{batch.company_id}/receipts/{batch.id}_{uuid.uuid4().hex}_{safe_filename(receipt.filename)}"
         storage.put(key, content, content_type)
+        batch.receipt_storage_key = key
+        batch.receipt_bytes = content if settings.storage_backend == "local" else None
+        batch.receipt_content_type = content_type
+        batch.receipt_file_name = safe_filename(receipt.filename)
         for event in db.scalars(select(ComplianceEvent).where(ComplianceEvent.batch_id == batch.id)):
             event.receipt_storage_key = key
             event.status = status_value
@@ -4613,6 +4672,49 @@ async def upload_integration_receipt(
     write_audit(db, user, "registrar", "comprobante_integracion", str(batch.id), status_value)
     db.commit()
     return RedirectResponse(f"/app/compliance?company_id={batch.company_id}&receipt=1", status_code=303)
+
+
+@app.get("/app/compliance/batches/{batch_id}/receipt")
+def download_integration_receipt(
+    batch_id: int,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    batch = db.get(IntegrationBatch, batch_id)
+    if not batch or batch.company_id not in company_ids_for_user(db, user):
+        raise HTTPException(404)
+    receipt_key = batch.receipt_storage_key
+    if not receipt_key:
+        receipt_key = db.scalar(
+            select(ComplianceEvent.receipt_storage_key)
+            .where(
+                ComplianceEvent.batch_id == batch.id,
+                ComplianceEvent.receipt_storage_key != "",
+            )
+            .limit(1)
+        ) or ""
+    if batch.receipt_bytes is not None:
+        content = bytes(batch.receipt_bytes)
+        content_type = batch.receipt_content_type or "application/octet-stream"
+    elif receipt_key and storage.exists(receipt_key):
+        content = storage.get(receipt_key)
+        suffix = Path(receipt_key).suffix.lower()
+        content_type = batch.receipt_content_type or {
+            ".pdf": "application/pdf",
+            ".png": "image/png",
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+        }.get(suffix, "application/octet-stream")
+    else:
+        raise HTTPException(404, "El comprobante no está disponible.")
+    filename = Path(batch.receipt_file_name or Path(receipt_key).name or f"comprobante-{batch.id}").name
+    write_audit(db, user, "descargar", "comprobante_integracion", str(batch.id), filename)
+    db.commit()
+    return StreamingResponse(
+        io.BytesIO(content),
+        media_type=content_type,
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
+    )
 
 
 @app.get("/app/labor-code", response_class=HTMLResponse)
@@ -4703,10 +4805,104 @@ def parameters_page(request: Request, user: User = Depends(require_user), db: Se
     return render(request, "parameters.html", db, user, parameters=parameters)
 
 
+def _audit_conditions(
+    studio_id: int | None,
+    q: str = "",
+    user_email: str = "",
+    action: str = "",
+    entity: str = "",
+    start_date: date | None = None,
+    end_date: date | None = None,
+):
+    # A missing tenant must not expose audit rows that have no tenant attached.
+    conditions = [AuditLog.studio_id == (studio_id if studio_id is not None else -1)]
+    query = q.strip()
+    if query:
+        pattern = f"%{query}%"
+        conditions.append(or_(
+            AuditLog.user_email.ilike(pattern),
+            AuditLog.action.ilike(pattern),
+            AuditLog.entity.ilike(pattern),
+            AuditLog.entity_id.ilike(pattern),
+            AuditLog.detail.ilike(pattern),
+        ))
+    if user_email.strip():
+        conditions.append(AuditLog.user_email.ilike(f"%{user_email.strip()}%"))
+    if action.strip():
+        conditions.append(AuditLog.action == action.strip())
+    if entity.strip():
+        conditions.append(AuditLog.entity == entity.strip())
+    if start_date:
+        conditions.append(AuditLog.created_at >= datetime.combine(start_date, datetime.min.time()))
+    if end_date:
+        conditions.append(AuditLog.created_at < datetime.combine(end_date + timedelta(days=1), datetime.min.time()))
+    return conditions
+
+
 @app.get("/app/audit", response_class=HTMLResponse)
-def audit_page(request: Request, user: User = Depends(require_roles("administrador")), db: Session = Depends(get_db)):
-    logs = list(db.scalars(select(AuditLog).where(AuditLog.studio_id == user.studio_id).order_by(AuditLog.created_at.desc()).limit(300)))
-    return render(request, "audit.html", db, user, logs=logs)
+def audit_page(
+    request: Request,
+    q: str = "",
+    user_email: str = "",
+    action: str = "",
+    entity: str = "",
+    start_date: date | None = None,
+    end_date: date | None = None,
+    page: int = 1,
+    user: User = Depends(require_roles("administrador")),
+    db: Session = Depends(get_db),
+):
+    if start_date and end_date and start_date > end_date:
+        raise HTTPException(400, "La fecha inicial no puede ser posterior a la fecha final.")
+    conditions = _audit_conditions(user.studio_id, q, user_email, action, entity, start_date, end_date)
+    total = db.scalar(select(func.count(AuditLog.id)).where(*conditions)) or 0
+    page_size = 50
+    page_count = max(1, (total + page_size - 1) // page_size)
+    page = min(max(1, page), page_count)
+    logs = list(db.scalars(
+        select(AuditLog).where(*conditions)
+        .order_by(AuditLog.created_at.desc(), AuditLog.id.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    ))
+    tenant_scope = AuditLog.studio_id == (user.studio_id if user.studio_id is not None else -1)
+    actions = list(db.scalars(select(AuditLog.action).where(tenant_scope).distinct().order_by(AuditLog.action)))
+    entities = list(db.scalars(select(AuditLog.entity).where(tenant_scope).distinct().order_by(AuditLog.entity)))
+    return render(
+        request, "audit.html", db, user, logs=logs, q=q, user_email=user_email,
+        action=action, entity=entity, start_date=start_date, end_date=end_date,
+        page=page, page_count=page_count, total=total, actions=actions, entities=entities,
+    )
+
+
+@app.get("/app/audit.csv")
+def export_audit_csv(
+    q: str = "",
+    user_email: str = "",
+    action: str = "",
+    entity: str = "",
+    start_date: date | None = None,
+    end_date: date | None = None,
+    user: User = Depends(require_roles("administrador")),
+    db: Session = Depends(get_db),
+):
+    if start_date and end_date and start_date > end_date:
+        raise HTTPException(400, "La fecha inicial no puede ser posterior a la fecha final.")
+    conditions = _audit_conditions(user.studio_id, q, user_email, action, entity, start_date, end_date)
+    logs = db.scalars(select(AuditLog).where(*conditions).order_by(AuditLog.created_at.desc(), AuditLog.id.desc()))
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Fecha", "Usuario", "Acción", "Entidad", "ID", "Detalle"])
+    for item in logs:
+        writer.writerow([
+            item.created_at.strftime("%Y-%m-%d %H:%M:%S") if item.created_at else "",
+            item.user_email, item.action, item.entity, item.entity_id, item.detail,
+        ])
+    payload = output.getvalue().encode("utf-8-sig")
+    return StreamingResponse(
+        io.BytesIO(payload), media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=digit_laboral_auditoria.csv"},
+    )
 
 
 @app.get("/app/export/studio.zip")

@@ -120,3 +120,47 @@ def test_branch_compliance_profile_can_be_saved():
         assert profile is not None
         assert profile.ips_employer_number == "IPS-TEST-001"
         assert profile.mtess_employer_number == "MTESS-TEST-001"
+
+
+
+def test_audit_filters_pagination_and_csv_export_are_scoped_to_studio():
+    from sqlalchemy import select
+    from app.database import SessionLocal
+    from app.models import AuditLog, User
+
+    marker = "audit-filter-regression-20261023-unique"
+    with SessionLocal() as db:
+        admin = db.scalar(select(User).where(User.email == "admin@digitlaboral.com.py"))
+        assert admin is not None and admin.studio_id is not None
+        db.add_all([
+            AuditLog(
+                studio_id=admin.studio_id, user_email="filter.actor@example.test",
+                action="TEST_FILTER", entity="test_entity", entity_id="314159",
+                detail=f"Detail contains {marker}",
+            ),
+            AuditLog(
+                studio_id=admin.studio_id, user_email="other.actor@example.test",
+                action="TEST_OTHER", entity="other_entity", entity_id="271828",
+                detail="Different test detail",
+            ),
+        ])
+        db.commit()
+
+    with TestClient(app) as client:
+        _login(client)
+        filtered = client.get("/app/audit", params={"q": marker})
+        assert filtered.status_code == 200
+        assert marker in filtered.text
+        assert "filter.actor@example.test" in filtered.text
+        assert "other.actor@example.test" not in filtered.text
+        by_action = client.get("/app/audit", params={"action": "TEST_FILTER", "entity": "test_entity"})
+        assert by_action.status_code == 200
+        assert "filter.actor@example.test" in by_action.text
+        csv_response = client.get("/app/audit.csv", params={"q": marker})
+        assert csv_response.status_code == 200
+        assert "text/csv" in csv_response.headers.get("content-type", "")
+        assert marker.encode("utf-8") in csv_response.content
+        invalid_dates = client.get(
+            "/app/audit", params={"start_date": "2026-10-24", "end_date": "2026-10-23"}
+        )
+        assert invalid_dates.status_code == 400

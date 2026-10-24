@@ -5,7 +5,7 @@
 1. Configurar `INITIAL_ADMIN_EMAIL` e `INITIAL_ADMIN_PASSWORD` (mínimo 12 caracteres). En producción no se crean cuentas ni empresas de demostración.
 2. Configurar `DIGIT_SECRET_KEY` con valor aleatorio largo.
 3. Usar PostgreSQL administrado con copias de seguridad.
-4. Configurar almacenamiento persistente para `data/uploads`.
+4. Configurar almacenamiento persistente compatible con S3 para producción. En modo local, los documentos comunes, adjuntos de solicitudes, archivos de lotes REI/REOP y comprobantes nuevos conservan además una copia en PostgreSQL. Esto no sustituye una base de datos con respaldos, no recupera archivos antiguos que ya se hayan perdido ni reemplaza una comprobación previa de los archivos existentes antes de desplegar.
 5. Configurar HTTPS, `SECURE_COOKIES=true` y `CSRF_ENABLED=true`.
 6. Configurar SMTP para recuperación y recordatorios.
 7. Crear dos roles PostgreSQL:

@@ -1,5 +1,7 @@
+import os
 import re
 from datetime import date
+from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from fastapi.testclient import TestClient
@@ -46,6 +48,9 @@ def test_app_version_and_build_are_visible_in_the_global_header():
         assert f"v{APP_VERSION}" in response.text
         assert f"BUILD {APP_BUILD}" in response.text
         assert app.version == APP_VERSION
+        version_file = Path(__file__).resolve().parents[1] / "VERSION"
+        if not os.getenv("DIGIT_APP_VERSION"):
+            assert APP_VERSION == version_file.read_text(encoding="utf-8").strip()
 
 
 def test_amount_in_words_and_legal_basis():
@@ -133,6 +138,13 @@ def test_word_and_pdf_downloads():
         assert pdf.status_code == 200
         assert pdf.headers["content-type"].startswith("application/pdf")
         assert pdf.content.startswith(b"%PDF")
+
+        print_version = client.get(f"/app/certificates/{certificate_id}/print")
+        assert print_version.status_code == 200
+        employee_detail = client.get("/app/employees/1")
+        assert employee_detail.status_code == 200
+        assert f'href="/app/certificates/{certificate_id}/download.pdf"' in employee_detail.text
+        assert f'href="/app/certificates/{certificate_id}/pdf"' not in employee_detail.text
 
 
 

@@ -2,6 +2,29 @@
 {% block title %}Auditoría | Digit Laboral{% endblock %}
 {% block page_name %}Auditoría{% endblock %}
 {% block content %}
-<div class="page-header"><div><span class="eyebrow">TRAZABILIDAD</span><h1>Registro de acciones</h1><p>Últimos 300 movimientos realizados dentro del estudio.</p></div></div>
-<section class="panel table-panel"><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Usuario</th><th>Acción</th><th>Entidad</th><th>ID</th><th>Detalle</th></tr></thead><tbody>{% for item in logs %}<tr><td>{{ item.created_at.strftime('%d/%m/%Y %H:%M') }}</td><td>{{ item.user_email }}</td><td><b>{{ item.action }}</b></td><td>{{ item.entity }}</td><td>{{ item.entity_id or '—' }}</td><td>{{ item.detail or '—' }}</td></tr>{% else %}<tr><td colspan="6" class="empty-state">No hay movimientos registrados.</td></tr>{% endfor %}</tbody></table></div></section>
+<div class="page-header">
+  <div><span class="eyebrow">TRAZABILIDAD</span><h1>Registro de acciones</h1><p>{{ total }} movimiento{{ '' if total == 1 else 's' }} coincide{{ '' if total == 1 else 'n' }} con los filtros aplicados.</p></div>
+  <a class="btn outline" href="/app/audit.csv?q={{ q|urlencode }}&user_email={{ user_email|urlencode }}&action={{ action|urlencode }}&entity={{ entity|urlencode }}&start_date={{ start_date.isoformat() if start_date else '' }}&end_date={{ end_date.isoformat() if end_date else '' }}">Exportar CSV</a>
+</div>
+<form method="get" action="/app/audit" class="panel form-grid">
+  <label class="span-2">Buscar en usuario, acción, entidad, ID o detalle<input type="search" name="q" value="{{ q }}" placeholder="Palabra clave o identificador"></label>
+  <label>Usuario<input type="search" name="user_email" value="{{ user_email }}" placeholder="Correo del usuario"></label>
+  <label>Acción<select name="action"><option value="">Todas las acciones</option>{% for option in actions %}<option value="{{ option }}" {{ 'selected' if action == option else '' }}>{{ option }}</option>{% endfor %}</select></label>
+  <label>Entidad<select name="entity"><option value="">Todas las entidades</option>{% for option in entities %}<option value="{{ option }}" {{ 'selected' if entity == option else '' }}>{{ option }}</option>{% endfor %}</select></label>
+  <label>Desde<input type="date" name="start_date" value="{{ start_date.isoformat() if start_date else '' }}"></label>
+  <label>Hasta<input type="date" name="end_date" value="{{ end_date.isoformat() if end_date else '' }}"></label>
+  <div class="form-actions span-2"><button class="btn primary" type="submit">Aplicar filtros</button><a class="btn ghost" href="/app/audit">Limpiar</a></div>
+</form>
+<section class="panel table-panel">
+  <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Usuario</th><th>Acción</th><th>Entidad</th><th>ID</th><th>Detalle</th></tr></thead><tbody>
+  {% for item in logs %}<tr><td>{{ item.created_at.strftime('%d/%m/%Y %H:%M') }}</td><td>{{ item.user_email }}</td><td><b>{{ item.action }}</b></td><td>{{ item.entity }}</td><td>{{ item.entity_id or '—' }}</td><td>{{ item.detail or '—' }}</td></tr>{% else %}<tr><td colspan="6" class="empty-state">No hay movimientos que coincidan con los filtros.</td></tr>{% endfor %}
+  </tbody></table></div>
+  <div class="form-actions" style="justify-content:space-between;align-items:center;padding:16px">
+    <span class="muted">Página {{ page }} de {{ page_count }} · 50 movimientos por página</span>
+    <div class="button-row">
+      {% if page > 1 %}<a class="btn outline" href="{{ request.url.include_query_params(page=page-1) }}">Anterior</a>{% endif %}
+      {% if page < page_count %}<a class="btn outline" href="{{ request.url.include_query_params(page=page+1) }}">Siguiente</a>{% endif %}
+    </div>
+  </div>
+</section>
 {% endblock %}
