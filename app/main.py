@@ -2391,9 +2391,9 @@ async def add_request_attachment(
         raise HTTPException(415, "Tipo de archivo no permitido.")
     if content_type == "application/pdf" and not content.startswith(b"%PDF-"):
         raise HTTPException(415, "El contenido no corresponde a un PDF válido.")
-    if content_type == "image/png" and not content.startswith(b"\\x89PNG\\r\\n\\x1a\\n"):
+    if content_type == "image/png" and not content.startswith(b"\x89PNG\r\n\x1a\n"):
         raise HTTPException(415, "El contenido no corresponde a una imagen PNG válida.")
-    if content_type == "image/jpeg" and not content.startswith(b"\\xff\\xd8\\xff"):
+    if content_type == "image/jpeg" and not content.startswith(b"\xff\xd8\xff"):
         raise HTTPException(415, "El contenido no corresponde a una imagen JPEG válida.")
     if content_type in {
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
