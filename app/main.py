@@ -129,6 +129,7 @@ from .storage_service import storage
 from .form_utils import OptionalQueryId, optional_int, optional_date, clean_text
 from .compliance_service import (
     COMPLIANCE_STATUS_TRANSITIONS,
+    INTEGRATION_BATCH_STATUS_TRANSITIONS,
     OFFICIAL_SOURCES,
     REI_EVENT_TYPES,
     REOP_EVENT_TYPES,
@@ -4274,6 +4275,7 @@ def compliance_page(
     employee_profiles: dict[int, EmployeeComplianceProfile] = {}
     events: list[ComplianceEvent] = []
     batches: list[IntegrationBatch] = []
+    batch_receipt_available: dict[int, bool] = {}
     rei_errors: list[str] = []
     reop_errors: list[str] = []
     if selected_company:
@@ -4308,6 +4310,26 @@ def compliance_page(
                 .limit(40)
             )
         )
+        if batches:
+            batch_ids = [item.id for item in batches]
+            linked_receipts: dict[int, list[str]] = {}
+            for event in db.scalars(
+                select(ComplianceEvent).where(
+                    ComplianceEvent.batch_id.in_(batch_ids),
+                    ComplianceEvent.receipt_storage_key != "",
+                )
+            ):
+                linked_receipts.setdefault(event.batch_id, []).append(event.receipt_storage_key)
+            receipt_extensions = ("pdf", "png", "jpg")
+            for batch in batches:
+                deterministic_keys = [
+                    f"integrations/{batch.company_id}/receipts/batch-{batch.id}.{extension}"
+                    for extension in receipt_extensions
+                ]
+                legacy_keys = linked_receipts.get(batch.id, [])
+                batch_receipt_available[batch.id] = any(
+                    storage.exists(key) for key in (*deterministic_keys, *legacy_keys) if key
+                )
         rei_errors = validate_company_for_authority(db, selected_company, "REI")
         reop_errors = validate_company_for_authority(db, selected_company, "REOP")
     pending = sum(item.status in {"Borrador", "Validado", "Exportado", "Observado"} for item in events)
@@ -4326,6 +4348,7 @@ def compliance_page(
         employee_profiles=employee_profiles,
         events=events,
         batches=batches,
+        batch_receipt_available=batch_receipt_available,
         authority_filter=authority.upper(),
         rei_errors=rei_errors,
         reop_errors=reop_errors,
@@ -4338,6 +4361,7 @@ def compliance_page(
         direct_reop=settings.reop_direct_enabled,
         storage_backend=settings.storage_backend,
         compliance_status_transitions={key: sorted(value) for key, value in COMPLIANCE_STATUS_TRANSITIONS.items()},
+        integration_batch_transitions={key: sorted(value) for key, value in INTEGRATION_BATCH_STATUS_TRANSITIONS.items()},
         compliance_dual_approval=settings.compliance_dual_approval,
     )
 
@@ -4469,8 +4493,8 @@ def update_employee_compliance_profile(
     profile.weekly_hours = max(1, min(int(weekly_hours or 48), 96))
     profile.salary_type = clean_text(salary_type, max_length=40) or "Mensual"
     profile.dependent_children = max(0, min(int(dependent_children or 0), 30))
-    profile.indigenous = bool(indigenous)
-    profile.disability = bool(disability)
+    profile.indigenous = (indigenous or "").strip().lower() in {"on", "true", "1", "yes"}
+    profile.disability = (disability or "").strip().lower() in {"on", "true", "1", "yes"}
     write_audit(db, user, "actualizar", "perfil_cumplimiento_funcionario", str(employee.id))
     db.commit()
     return RedirectResponse(f"/app/compliance?company_id={company.id}&saved=employee", status_code=303)
@@ -4496,14 +4520,23 @@ def add_compliance_event(
         selected_employee = db.get(Employee, parsed_employee_id)
         if not selected_employee or selected_employee.company_id != company.id:
             raise HTTPException(400, "Funcionario inválido.")
-    parsed_due = date.fromisoformat(due_date) if due_date.strip() else None
+    authority_value = authority.strip().upper()
+    if authority_value not in {"REI", "REOP"}:
+        raise HTTPException(400, "Seleccioná una autoridad válida: REI o REOP.")
+    event_type_value = event_type.strip()
+    allowed_event_types = REI_EVENT_TYPES if authority_value == "REI" else REOP_EVENT_TYPES
+    if event_type_value not in allowed_event_types:
+        raise HTTPException(400, "El tipo de comunicación no corresponde a la autoridad seleccionada.")
+    parsed_due = _parse_optional_form_date(due_date, "fecha límite")
+    if parsed_due and parsed_due < event_date:
+        raise HTTPException(400, "La fecha límite no puede ser anterior a la fecha del evento.")
     event = create_compliance_event(
         db,
         company_id=company.id,
         employee_id=parsed_employee_id,
         branch_id=selected_employee.branch_id if selected_employee else None,
-        authority=authority.upper(),
-        event_type=event_type,
+        authority=authority_value,
+        event_type=event_type_value,
         event_date=event_date,
         due_date=parsed_due,
         payload={"detail": clean_text(detail, max_length=4000), "notes": clean_text(notes, max_length=2000)},
@@ -4529,16 +4562,26 @@ def update_compliance_event_status(
     allowed = {"Borrador", "Validado", "Exportado", "Presentado", "Aceptado", "Observado", "Rechazado", "Anulado"}
     if status_value not in allowed:
         raise HTTPException(400, "Estado inválido.")
+    if event.batch_id:
+        raise HTTPException(409, "Esta comunicación pertenece a un lote. Actualizá su presentación y comprobante desde «Lotes y comprobantes».")
+    if status_value == "Exportado":
+        raise HTTPException(409, "El estado Exportado se asigna únicamente al generar el archivo del lote.")
     if not can_transition_compliance_status(event.status, status_value):
         raise HTTPException(409, f"No se puede cambiar una comunicación de {event.status} a {status_value}.")
     if status_value == "Validado" and settings.compliance_dual_approval and event.created_by == user.email:
         raise HTTPException(409, "La validación debe realizarla un segundo usuario autorizado.")
+    reference_value = clean_text(external_reference, max_length=160) or event.external_reference
+    if status_value in {"Presentado", "Aceptado", "Observado", "Rechazado"} and not reference_value:
+        raise HTTPException(400, "Registrá la referencia del portal o el comprobante en el lote antes de actualizar el resultado.")
+    previous_status = event.status
     event.status = status_value
-    event.external_reference = clean_text(external_reference, max_length=160)
+    event.external_reference = reference_value
     if status_value == "Validado":
         event.approved_by = user.email
-    if status_value in {"Presentado", "Aceptado", "Observado", "Rechazado"}:
+    if status_value == "Presentado" and previous_status != "Presentado":
         event.submitted_at = datetime.now(UTC)
+    if status_value == "Aceptado" and previous_status != "Aceptado":
+        event.approved_by = user.email
     write_audit(db, user, "cambiar_estado", "comunicacion_oficial", str(event.id), status_value)
     db.commit()
     return RedirectResponse(f"/app/compliance?company_id={event.company_id}&status_updated=1", status_code=303)
@@ -4664,27 +4707,105 @@ async def upload_integration_receipt(
         raise HTTPException(404)
     if status_value not in {"Presentado", "Aceptado", "Observado", "Rechazado"}:
         raise HTTPException(400, "Estado inválido.")
-    batch.status = status_value
-    batch.external_reference = clean_text(external_reference, max_length=160)
-    batch.approved_by = user.email
-    batch.submitted_at = datetime.now(UTC)
+    if status_value not in INTEGRATION_BATCH_STATUS_TRANSITIONS.get(batch.status, set()):
+        raise HTTPException(409, f"No se puede cambiar el lote de {batch.status} a {status_value}.")
+    reference_value = clean_text(external_reference, max_length=160) or batch.external_reference
+    content: bytes | None = None
+    content_type = ""
+    extension = ""
     if receipt and receipt.filename:
         content = await receipt.read(MAX_UPLOAD_SIZE + 1)
         if len(content) > MAX_UPLOAD_SIZE:
             raise HTTPException(413, "El comprobante supera el máximo permitido.")
+        if not content:
+            raise HTTPException(400, "El archivo de comprobante está vacío.")
         content_type = (receipt.content_type or "application/octet-stream").lower()
-        if content_type not in {"application/pdf", "image/png", "image/jpeg"}:
+        signatures = {
+            "application/pdf": (b"%PDF-", "pdf"),
+            "image/png": (b"\x89PNG\r\n\x1a\n", "png"),
+            "image/jpeg": (b"\xff\xd8\xff", "jpg"),
+        }
+        if content_type not in signatures:
             raise HTTPException(415, "El comprobante debe ser PDF, PNG o JPG.")
-        key = f"integrations/{batch.company_id}/receipts/{batch.id}_{uuid.uuid4().hex}_{safe_filename(receipt.filename)}"
-        storage.put(key, content, content_type)
-        for event in db.scalars(select(ComplianceEvent).where(ComplianceEvent.batch_id == batch.id)):
-            event.receipt_storage_key = key
-            event.status = status_value
-            event.external_reference = batch.external_reference
-            event.submitted_at = batch.submitted_at
+        signature, extension = signatures[content_type]
+        if not content.startswith(signature):
+            raise HTTPException(415, "El contenido no corresponde al tipo de comprobante declarado.")
+    if not reference_value and content is None:
+        raise HTTPException(400, "Registrá la referencia del portal o adjuntá el comprobante.")
+    linked_events = list(db.scalars(select(ComplianceEvent).where(ComplianceEvent.batch_id == batch.id)))
+    for event in linked_events:
+        if not can_transition_compliance_status(event.status, status_value):
+            raise HTTPException(409, f"La comunicación #{event.id} no admite el cambio de estado solicitado.")
+
+    receipt_key = ""
+    if content is not None:
+        receipt_key = f"integrations/{batch.company_id}/receipts/batch-{batch.id}.{extension}"
+        # Store first; only remove previous formats after the new upload succeeds.
+        storage.put(receipt_key, content, content_type)
+        for old_extension in ("pdf", "png", "jpg"):
+            old_key = f"integrations/{batch.company_id}/receipts/batch-{batch.id}.{old_extension}"
+            if old_key != receipt_key and storage.exists(old_key):
+                storage.delete(old_key)
+
+    previous_batch_status = batch.status
+    now = datetime.now(UTC)
+    batch.status = status_value
+    batch.external_reference = reference_value
+    if status_value == "Presentado" and previous_batch_status != "Presentado":
+        batch.submitted_at = now
+    if status_value == "Aceptado" and previous_batch_status != "Aceptado":
+        batch.approved_by = user.email
+    for event in linked_events:
+        previous_event_status = event.status
+        event.status = status_value
+        event.external_reference = reference_value
+        if receipt_key:
+            event.receipt_storage_key = receipt_key
+        if status_value == "Presentado" and previous_event_status != "Presentado":
+            event.submitted_at = now
+        if status_value == "Aceptado" and previous_event_status != "Aceptado":
+            event.approved_by = user.email
     write_audit(db, user, "registrar", "comprobante_integracion", str(batch.id), status_value)
     db.commit()
     return RedirectResponse(f"/app/compliance?company_id={batch.company_id}&receipt=1", status_code=303)
+
+
+@app.get("/app/compliance/batches/{batch_id}/receipt")
+def download_integration_batch_receipt(
+    batch_id: int,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    batch = db.get(IntegrationBatch, batch_id)
+    if not batch or batch.company_id not in company_ids_for_user(db, user):
+        raise HTTPException(404)
+    receipt_key = ""
+    linked_key = db.scalar(
+        select(ComplianceEvent.receipt_storage_key)
+        .where(ComplianceEvent.batch_id == batch.id, ComplianceEvent.receipt_storage_key != "")
+        .order_by(ComplianceEvent.id.desc())
+        .limit(1)
+    )
+    if linked_key and storage.exists(linked_key):
+        receipt_key = linked_key
+    else:
+        for extension in ("pdf", "png", "jpg"):
+            candidate = f"integrations/{batch.company_id}/receipts/batch-{batch.id}.{extension}"
+            if storage.exists(candidate):
+                receipt_key = candidate
+                break
+    if not receipt_key:
+        raise HTTPException(404, "El comprobante del lote no está disponible.")
+    content = storage.get(receipt_key)
+    extension = receipt_key.lower().rsplit(".", 1)[-1]
+    content_type = {"pdf": "application/pdf", "png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg"}.get(extension, "application/octet-stream")
+    write_audit(db, user, "descargar", "comprobante_integracion", str(batch.id), batch.file_name)
+    db.commit()
+    return StreamingResponse(
+        io.BytesIO(content),
+        media_type=content_type,
+        headers={"Content-Disposition": f'attachment; filename="comprobante-lote-{batch.id}.{extension}"'},
+    )
 
 
 @app.get("/app/labor-code", response_class=HTMLResponse)

@@ -396,3 +396,268 @@ def test_vacation_rejects_invalid_status_counts_and_overlarge_days():
             Vacation.employee_id == employee_id, Vacation.period_year == year
         )) or 0
         assert after == before
+
+
+
+def test_compliance_events_validate_authority_type_and_due_date():
+    from datetime import date
+    from sqlalchemy import select, func
+    from app.database import SessionLocal
+    from app.models import Company, ComplianceEvent
+
+    with SessionLocal() as db:
+        company = db.scalar(select(Company).order_by(Company.id))
+        assert company is not None
+        company_id = company.id
+        before = db.scalar(select(func.count(ComplianceEvent.id)).where(
+            ComplianceEvent.company_id == company_id
+        )) or 0
+
+    invalid_events = [
+        {"authority": "OTHER", "event_type": "Entrada", "due_date": ""},
+        {"authority": "REI", "event_type": "Accidente laboral", "due_date": ""},
+        {"authority": "REOP", "event_type": "Entrada", "due_date": "fecha-inválida"},
+    ]
+    with TestClient(app) as client:
+        csrf = _login(client)
+        for case in invalid_events:
+            response = client.post(
+                "/app/compliance/events",
+                data={
+                    "csrf_token": csrf,
+                    "company_id": str(company_id),
+                    "employee_id": "",
+                    "event_date": date.today().isoformat(),
+                    "detail": "Prueba de validación",
+                    **case,
+                },
+                follow_redirects=False,
+            )
+            assert response.status_code == 400, (case, response.status_code, response.text[:200])
+
+    with SessionLocal() as db:
+        after = db.scalar(select(func.count(ComplianceEvent.id)).where(
+            ComplianceEvent.company_id == company_id
+        )) or 0
+        assert after == before
+
+
+def test_compliance_event_submission_requires_reference_and_exported_state_comes_from_batch():
+    from datetime import date
+    from sqlalchemy import select
+    from app.database import SessionLocal
+    from app.models import Company, ComplianceEvent
+
+    with SessionLocal() as db:
+        company = db.scalar(select(Company).order_by(Company.id))
+        assert company is not None
+        event = ComplianceEvent(
+            company_id=company.id,
+            authority="REOP",
+            event_type="Entrada",
+            event_date=date.today(),
+            status="Exportado",
+            payload_json="{}",
+            created_by="qa-other-reviewer",
+        )
+        db.add(event)
+        db.commit()
+        event_id = event.id
+
+    try:
+        with TestClient(app) as client:
+            csrf = _login(client)
+            manual_export = client.post(
+                f"/app/compliance/events/{event_id}/status",
+                data={"csrf_token": csrf, "status": "Exportado", "external_reference": ""},
+                follow_redirects=False,
+            )
+            assert manual_export.status_code == 409
+
+            missing_reference = client.post(
+                f"/app/compliance/events/{event_id}/status",
+                data={"csrf_token": csrf, "status": "Presentado", "external_reference": ""},
+                follow_redirects=False,
+            )
+            assert missing_reference.status_code == 400
+
+            submitted = client.post(
+                f"/app/compliance/events/{event_id}/status",
+                data={"csrf_token": csrf, "status": "Presentado", "external_reference": "REOP-REF-QA"},
+                follow_redirects=False,
+            )
+            assert submitted.status_code == 303
+
+            with SessionLocal() as db:
+                event = db.get(ComplianceEvent, event_id)
+                assert event is not None
+                submitted_at = event.submitted_at
+                assert submitted_at is not None
+                assert event.external_reference == "REOP-REF-QA"
+
+            accepted = client.post(
+                f"/app/compliance/events/{event_id}/status",
+                data={"csrf_token": csrf, "status": "Aceptado", "external_reference": "REOP-REF-QA"},
+                follow_redirects=False,
+            )
+            assert accepted.status_code == 303
+
+        with SessionLocal() as db:
+            event = db.get(ComplianceEvent, event_id)
+            assert event is not None
+            assert event.status == "Aceptado"
+            assert event.submitted_at == submitted_at
+    finally:
+        with SessionLocal() as db:
+            event = db.get(ComplianceEvent, event_id)
+            if event is not None:
+                db.delete(event)
+                db.commit()
+
+
+def test_employee_compliance_boolean_fields_parse_false_strings_as_false():
+    from sqlalchemy import select
+    from app.database import SessionLocal
+    from app.models import Company, Employee, EmployeeComplianceProfile
+
+    with SessionLocal() as db:
+        employee = db.scalar(select(Employee).order_by(Employee.id))
+        assert employee is not None
+        company_id, employee_id = employee.company_id, employee.id
+
+    with TestClient(app) as client:
+        csrf = _login(client)
+        response = client.post(
+            "/app/compliance/employee-profile",
+            data={
+                "csrf_token": csrf,
+                "company_id": str(company_id),
+                "employee_id": str(employee_id),
+                "indigenous": "false",
+                "disability": "0",
+                "weekly_hours": "48",
+                "dependent_children": "0",
+            },
+            follow_redirects=False,
+        )
+        assert response.status_code == 303
+
+    with SessionLocal() as db:
+        profile = db.scalar(select(EmployeeComplianceProfile).where(
+            EmployeeComplianceProfile.employee_id == employee_id
+        ))
+        assert profile is not None
+        assert profile.indigenous is False
+        assert profile.disability is False
+
+
+def test_annual_batch_receipt_is_stored_downloadable_and_stateful():
+    from sqlalchemy import select
+    from app.database import SessionLocal
+    from app.models import Company, IntegrationBatch
+    from app.storage_service import storage
+
+    with SessionLocal() as db:
+        company = db.scalar(select(Company).order_by(Company.id))
+        assert company is not None
+        batch = IntegrationBatch(
+            studio_id=company.studio_id,
+            company_id=company.id,
+            authority="REOP",
+            batch_type="Planillas anuales",
+            period="2098",
+            status="Generado",
+            file_name="qa_reop_annual.xlsx",
+            file_sha256="a" * 64,
+            item_count=0,
+            created_by="qa",
+        )
+        db.add(batch)
+        db.commit()
+        batch_id, company_id = batch.id, company.id
+
+    receipt_key = f"integrations/{company_id}/receipts/batch-{batch_id}.pdf"
+    try:
+        with TestClient(app) as client:
+            csrf = _login(client)
+            missing_evidence = client.post(
+                f"/app/compliance/batches/{batch_id}/receipt",
+                data={"csrf_token": csrf, "status": "Presentado", "external_reference": ""},
+                follow_redirects=False,
+            )
+            assert missing_evidence.status_code == 400
+
+            fake_pdf = client.post(
+                f"/app/compliance/batches/{batch_id}/receipt",
+                data={
+                    "csrf_token": csrf,
+                    "status": "Presentado",
+                    "external_reference": "REOP-QA-2026-01",
+                },
+                files={"receipt": ("fake.pdf", b"no es PDF", "application/pdf")},
+                follow_redirects=False,
+            )
+            assert fake_pdf.status_code == 415
+
+            pdf_bytes = b"%PDF-1.4\n% Digit Laboral receipt test\n"
+            registered = client.post(
+                f"/app/compliance/batches/{batch_id}/receipt",
+                data={
+                    "csrf_token": csrf,
+                    "status": "Presentado",
+                    "external_reference": "REOP-QA-2026-01",
+                },
+                files={"receipt": ("comprobante.pdf", pdf_bytes, "application/pdf")},
+                follow_redirects=False,
+            )
+            assert registered.status_code == 303
+
+            download = client.get(f"/app/compliance/batches/{batch_id}/receipt")
+            assert download.status_code == 200
+            assert download.content == pdf_bytes
+            assert download.headers["content-type"].startswith("application/pdf")
+
+            with SessionLocal() as db:
+                batch = db.get(IntegrationBatch, batch_id)
+                assert batch is not None
+                submitted_at = batch.submitted_at
+                assert batch.status == "Presentado"
+                assert submitted_at is not None
+                assert batch.external_reference == "REOP-QA-2026-01"
+
+            accepted = client.post(
+                f"/app/compliance/batches/{batch_id}/receipt",
+                data={
+                    "csrf_token": csrf,
+                    "status": "Aceptado",
+                    "external_reference": "REOP-QA-2026-01",
+                },
+                follow_redirects=False,
+            )
+            assert accepted.status_code == 303
+
+            forbidden_reversal = client.post(
+                f"/app/compliance/batches/{batch_id}/receipt",
+                data={
+                    "csrf_token": csrf,
+                    "status": "Rechazado",
+                    "external_reference": "REOP-QA-2026-01",
+                },
+                follow_redirects=False,
+            )
+            assert forbidden_reversal.status_code == 409
+
+        with SessionLocal() as db:
+            batch = db.get(IntegrationBatch, batch_id)
+            assert batch is not None
+            assert batch.status == "Aceptado"
+            assert batch.submitted_at == submitted_at
+            assert batch.approved_by == "admin@digitlaboral.com.py"
+    finally:
+        if storage.exists(receipt_key):
+            storage.delete(receipt_key)
+        with SessionLocal() as db:
+            batch = db.get(IntegrationBatch, batch_id)
+            if batch is not None:
+                db.delete(batch)
+                db.commit()
