@@ -922,3 +922,21 @@ def test_production_readiness_warns_when_csrf_protection_is_disabled():
     production = replace(settings, environment="production", csrf_enabled=False)
     issues = production.production_issues()
     assert any("CSRF_ENABLED" in issue for issue in issues)
+
+
+
+def test_dark_module_navigation_styles_are_versioned_and_accessible():
+    with TestClient(app) as client:
+        login_page = client.get("/login")
+        assert login_page.status_code == 200
+        base = client.get("/app")
+        assert base.status_code == 200
+        assert "brand-identity.css?v=20261024c" in base.text
+
+        stylesheet = client.get("/static/brand-identity.css?v=20261024c")
+        assert stylesheet.status_code == 200
+        css = stylesheet.text
+        assert ".modern-mobile-nav.workspace-sidebar" in css
+        assert "background:#0B1730" in css
+        assert "workspace-nav-link.active" in css
+        assert "outline:3px solid #84BCFF" in css

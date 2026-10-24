@@ -331,3 +331,103 @@ tbody tr:hover td{background:#EEF3FD}
 .logo-align-left .company-profile-logo,.logo-align-left>img{transform:translateX(-6%)!important}
 .logo-align-center .company-profile-logo,.logo-align-center>img{transform:none!important}
 .logo-align-right .company-profile-logo,.logo-align-right>img{transform:translateX(6%)!important}
+
+
+/* Final navigation contrast pass: dark grouped sidebar, clear active state, light work canvas. */
+.modern-mobile-nav.workspace-sidebar{
+  background:#0B1730;
+  border-right-color:#263653;
+  color:#E7EDF7;
+  box-shadow:4px 0 18px rgba(7,18,39,.06);
+}
+.workspace-sidebar-label{
+  color:#8C9CB6;
+}
+.workspace-home-link{
+  color:#BCC9DC;
+  border-color:transparent;
+}
+.workspace-home-link:hover,.workspace-home-link.active{
+  color:#fff;
+  background:#1A2B49;
+  border-color:#2D4264;
+}
+.workspace-home-symbol{
+  background:#1C2B45;
+  color:#B5C6DF;
+}
+.workspace-home-link.active .workspace-home-symbol{
+  background:#2F72E6;
+  color:#fff;
+}
+.workspace-nav-group{
+  background:#111F38;
+  border-color:#263752;
+}
+.workspace-nav-group[open]{
+  background:#14233E;
+  border-color:#354D72;
+  box-shadow:0 6px 18px rgba(0,0,0,.12);
+}
+.workspace-nav-group>summary{
+  color:#DDE6F4;
+}
+.workspace-nav-group>summary:hover,.workspace-nav-group[open]>summary{
+  color:#fff;
+  background:#1B2F50;
+}
+.workspace-group-symbol{
+  background:#1C2B45;
+  border-color:#334663;
+  color:#BDCAE0;
+}
+.workspace-nav-group[open] .workspace-group-symbol{
+  background:#2F72E6;
+  border-color:#2F72E6;
+  color:#fff;
+}
+.workspace-submenu{
+  border-left-color:#354A69;
+}
+.workspace-nav-link{
+  color:#B5C3D8;
+  border-color:transparent;
+}
+.workspace-nav-link:hover{
+  background:#1A2C49;
+  color:#fff;
+}
+.workspace-nav-link.active{
+  background:#1A4D91;
+  border-color:#2F72C9;
+  box-shadow:inset 3px 0 #9DD7FF;
+  color:#fff;
+}
+.workspace-nav-link .notification-count{
+  background:#77Caff!important;
+  color:#0B1730!important;
+}
+.workspace-sidebar-bottom{
+  border-top-color:#2B3D59;
+  color:#AEBFD7;
+}
+.workspace-sidebar-bottom b{
+  color:#F4F7FC;
+}
+.workspace-sidebar-bottom small{
+  color:#90A2BD;
+}
+.workspace-sidebar-bottom-mark.workspace-brand-image{
+  border-color:#344762;
+  background:#fff;
+}
+.workspace-sidebar a:focus-visible,.workspace-sidebar summary:focus-visible{
+  outline:3px solid #84BCFF;
+  outline-offset:2px;
+}
+@media(max-width:860px){
+  .modern-mobile-nav.workspace-sidebar{
+    background:#0B1730;
+    border-right-color:#263653;
+  }
+}
