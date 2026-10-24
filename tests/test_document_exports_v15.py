@@ -82,6 +82,16 @@ def test_word_and_pdf_downloads():
         assert "Certificado de Trabajo" in generator_page.text
         assert "Referencias oficiales utilizadas" not in generator_page.text
         assert "notificacion_vacaciones" in generator_page.text
+        certificate_form = re.search(
+            r'<form\b(?=[^>]*id="certificateForm")[^>]*>(.*?)</form>',
+            generator_page.text,
+            re.DOTALL,
+        )
+        assert certificate_form
+        # A single payment_date control serves aguinaldo receipts and payroll receipts.
+        # Duplicate names made the later hidden input override the visible date.
+        assert len(re.findall(r'name="payment_date"', certificate_form.group(1))) == 1
+        assert 'data-specific="aguinaldo_anual aguinaldo_proporcional recibo_salario"' in certificate_form.group(1)
         response = client.post(
             "/app/certificates",
             data={
