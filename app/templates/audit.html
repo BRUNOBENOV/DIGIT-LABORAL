@@ -2,6 +2,97 @@
 {% block title %}Auditoría | Digit Laboral{% endblock %}
 {% block page_name %}Auditoría{% endblock %}
 {% block content %}
-<div class="page-header"><div><span class="eyebrow">TRAZABILIDAD</span><h1>Registro de acciones</h1><p>Últimos 300 movimientos realizados dentro del estudio.</p></div></div>
-<section class="panel table-panel"><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Usuario</th><th>Acción</th><th>Entidad</th><th>ID</th><th>Detalle</th></tr></thead><tbody>{% for item in logs %}<tr><td>{{ item.created_at.strftime('%d/%m/%Y %H:%M') }}</td><td>{{ item.user_email }}</td><td><b>{{ item.action }}</b></td><td>{{ item.entity }}</td><td>{{ item.entity_id or '—' }}</td><td>{{ item.detail or '—' }}</td></tr>{% else %}<tr><td colspan="6" class="empty-state">No hay movimientos registrados.</td></tr>{% endfor %}</tbody></table></div></section>
+<div class="page-header audit-header">
+  <div>
+    <span class="eyebrow">TRAZABILIDAD DEL ESTUDIO</span>
+    <h1>Registro de acciones</h1>
+    <p>Buscá operaciones y exportá resultados sin mezclar información de otros estudios.</p>
+  </div>
+  <form method="get" action="/app/audit/export.csv" class="audit-export-form">
+    <input type="hidden" name="q" value="{{ filters.q }}">
+    <input type="hidden" name="user_email" value="{{ filters.user_email }}">
+    <input type="hidden" name="action" value="{{ filters.action }}">
+    <input type="hidden" name="entity" value="{{ filters.entity }}">
+    <input type="hidden" name="date_from" value="{{ filters.date_from }}">
+    <input type="hidden" name="date_to" value="{{ filters.date_to }}">
+    <button class="btn primary" type="submit">Exportar CSV filtrado</button>
+  </form>
+</div>
+
+<section class="panel audit-filter-panel">
+  <form method="get" action="/app/audit" class="form-grid audit-filter-form">
+    <label class="span-2">Buscar
+      <input name="q" value="{{ filters.q }}" maxlength="160" placeholder="Usuario, acción, entidad, ID o detalle">
+    </label>
+    <label>Usuario
+      <input name="user_email" value="{{ filters.user_email }}" maxlength="180" placeholder="Correo del usuario">
+    </label>
+    <label>Acción
+      <input name="action" value="{{ filters.action }}" maxlength="120" placeholder="Ej. crear, editar, exportar">
+    </label>
+    <label>Entidad
+      <input name="entity" value="{{ filters.entity }}" maxlength="80" placeholder="Ej. funcionario, solicitud">
+    </label>
+    <label>Desde
+      <input type="date" name="date_from" value="{{ filters.date_from }}">
+    </label>
+    <label>Hasta
+      <input type="date" name="date_to" value="{{ filters.date_to }}">
+    </label>
+    <div class="form-actions span-2">
+      <button class="btn primary" type="submit">Aplicar filtros</button>
+      <a class="btn ghost" href="/app/audit">Limpiar</a>
+    </div>
+  </form>
+</section>
+
+<section class="panel table-panel">
+  <div class="panel-head">
+    <div><span>HISTORIAL DEL ESTUDIO</span><h2>Movimientos registrados</h2></div>
+    <small>{{ total_count }} resultado{{ '' if total_count == 1 else 's' }} · página {{ current_page }} de {{ total_pages }}</small>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Fecha</th><th>Usuario</th><th>Acción</th><th>Entidad</th><th>ID</th><th>Detalle</th></tr></thead>
+      <tbody>
+      {% for item in logs %}
+        <tr>
+          <td>{{ item.created_at.strftime('%d/%m/%Y %H:%M') }}</td>
+          <td>{{ item.user_email }}</td>
+          <td><b>{{ item.action }}</b></td>
+          <td>{{ item.entity }}</td>
+          <td>{{ item.entity_id or '—' }}</td>
+          <td>{{ item.detail or '—' }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="6" class="empty-state">No hay movimientos que coincidan con estos filtros.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="form-actions audit-pagination">
+    {% if current_page > 1 %}
+    <form method="get" action="/app/audit">
+      <input type="hidden" name="q" value="{{ filters.q }}">
+      <input type="hidden" name="user_email" value="{{ filters.user_email }}">
+      <input type="hidden" name="action" value="{{ filters.action }}">
+      <input type="hidden" name="entity" value="{{ filters.entity }}">
+      <input type="hidden" name="date_from" value="{{ filters.date_from }}">
+      <input type="hidden" name="date_to" value="{{ filters.date_to }}">
+      <button class="btn ghost" type="submit" name="page" value="{{ current_page - 1 }}">Anterior</button>
+    </form>
+    {% endif %}
+    {% if current_page < total_pages %}
+    <form method="get" action="/app/audit">
+      <input type="hidden" name="q" value="{{ filters.q }}">
+      <input type="hidden" name="user_email" value="{{ filters.user_email }}">
+      <input type="hidden" name="action" value="{{ filters.action }}">
+      <input type="hidden" name="entity" value="{{ filters.entity }}">
+      <input type="hidden" name="date_from" value="{{ filters.date_from }}">
+      <input type="hidden" name="date_to" value="{{ filters.date_to }}">
+      <button class="btn ghost" type="submit" name="page" value="{{ current_page + 1 }}">Siguiente</button>
+    </form>
+    {% endif %}
+  </div>
+</section>
 {% endblock %}
