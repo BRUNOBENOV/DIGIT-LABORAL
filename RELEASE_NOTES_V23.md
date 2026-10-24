@@ -18,7 +18,7 @@
 - Compatibilidad conservada para registros históricos que no tienen ni base ni tasa IPS guardadas.
 
 ### Identificación de versión
-- La fuente de versión de la aplicación es el archivo `VERSION`.
+- La versión predeterminada proviene del archivo `VERSION`; la variable `DIGIT_APP_VERSION`, si está configurada, tiene prioridad.
 - La interfaz autenticada muestra la versión y el identificador de build en la barra superior.
 - Los endpoints de salud informan la versión activa.
 - Se añade una prueba de regresión para comprobar que la versión publicada por la aplicación coincide con la versión mostrada en la interfaz.
