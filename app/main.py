@@ -1153,7 +1153,7 @@ def add_company(
     db: Session = Depends(get_db),
 ):
     legal_name_value = legal_name.strip()
-    ruc_value = re.sub(r"\\s+", "", ruc)
+    ruc_value = re.sub(r"\s+", "", ruc)
     if not legal_name_value:
         return RedirectResponse(
             f"/app/companies?form_error={quote('La razón social es obligatoria.')}&open=companyModal",
