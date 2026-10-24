@@ -3811,6 +3811,12 @@ def payroll_status(
         raise HTTPException(404)
     if status_value not in {"Borrador", "En revisión", "Cerrada"}:
         raise HTTPException(422, "Estado de nómina inválido.")
+    # El cierre fija los importes de la liquidación. No se puede reabrir cambiando
+    # un selector de estado; cualquier ajuste debe seguir un procedimiento explícito.
+    if payroll.status == "Cerrada":
+        if status_value == "Cerrada":
+            return RedirectResponse(f"/app/payrolls/{payroll_id}", status_code=303)
+        raise HTTPException(409, "La nómina está cerrada y no puede reabrirse desde este flujo.")
     if status_value == "Cerrada":
         from .calculator_routes import payroll_result
         lines = list(db.scalars(select(PayrollLine).where(PayrollLine.payroll_id == payroll.id)))
@@ -3887,8 +3893,12 @@ def create_aguinaldo(
     employee = db.get(Employee, employee_id)
     if not employee or employee.company_id not in company_ids_for_user(db, user):
         raise HTTPException(404)
-    amount = round_gs(max(0, total_remunerations) / 12)
-    item = Aguinaldo(employee_id=employee_id, year=year, total_remunerations=max(0, total_remunerations), calculated_amount=amount, notes=notes.strip())
+    if not 1900 <= year <= 2100:
+        raise HTTPException(400, "El año del aguinaldo debe estar entre 1900 y 2100.")
+    if not 0 <= total_remunerations <= 2147483647:
+        raise HTTPException(400, "Las remuneraciones computables deben estar entre 0 y 2.147.483.647 Gs.")
+    amount = round_gs(total_remunerations / 12)
+    item = Aguinaldo(employee_id=employee_id, year=year, total_remunerations=total_remunerations, calculated_amount=amount, notes=notes.strip())
     db.add(item)
     try:
         db.flush()
