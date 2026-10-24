@@ -1726,7 +1726,7 @@ def edit_employee(
 def employee_status(
     employee_id: int,
     status_value: Annotated[str, Form(alias="status")],
-    termination_date_raw: Annotated[str, Form(alias="termination_date")] = "",
+    termination_date: Annotated[str | date | None, Form()] = None,
     user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
     db: Session = Depends(get_db),
 ):
@@ -1735,7 +1735,7 @@ def employee_status(
         raise HTTPException(404)
     if status_value not in {"Activo", "Inactivo", "Desvinculado"}:
         raise HTTPException(400, "El estado seleccionado no es válido.")
-    termination_date = optional_date(termination_date_raw, field="fecha efectiva de salida")
+    termination_date = optional_date(termination_date, field="fecha efectiva de salida")
     if status_value != "Activo" and termination_date is None:
         raise HTTPException(400, "Indicá la fecha efectiva de salida para inactivar o desvincular al funcionario.")
     employee.status = status_value
