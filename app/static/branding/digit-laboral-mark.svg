@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="Digit Laboral">
+  <defs>
+    <linearGradient id="digit-bg" x1="9" y1="4" x2="88" y2="92" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#12439A"/>
+      <stop offset="1" stop-color="#071A45"/>
+    </linearGradient>
+    <linearGradient id="digit-paper" x1="43" y1="39" x2="58" y2="57" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8BC9FF"/>
+      <stop offset="1" stop-color="#4C96F4"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="92" height="92" rx="23" fill="url(#digit-bg)"/>
+  <path fill="#FFFFFF" fill-rule="evenodd" d="M24 18h20c18.2 0 30 12.3 30 30S62.2 78 44 78H24V18Zm12 12v36h8c11.1 0 18-7.5 18-18s-6.9-18-18-18h-8Z"/>
+  <path d="M44 40h10M44 48h12M44 56h8" fill="none" stroke="url(#digit-paper)" stroke-width="3.2" stroke-linecap="round"/>
+</svg>
