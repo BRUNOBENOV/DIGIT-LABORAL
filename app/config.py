@@ -86,6 +86,8 @@ class Settings:
                 issues.append(f"Faltan credenciales de almacenamiento: {', '.join(missing)}.")
         if self.is_production and not self.secure_cookies:
             issues.append("SECURE_COOKIES debe estar activo en producción.")
+        if self.is_production and not self.csrf_enabled:
+            issues.append("CSRF_ENABLED debe estar activado en producción para proteger los formularios.")
         if self.is_production and not self.public_url.startswith("https://"):
             issues.append("PUBLIC_URL debe usar HTTPS en producción.")
         if self.is_production and (not self.smtp_host or not self.smtp_from_email):
