@@ -426,19 +426,25 @@ if (certificateForm) {
     const mark = document.querySelector('#certificatePreviewMark');
     if (logo && mark) {
       const logoUrl = companyOption?.dataset.logoUrl || '';
-      if (logo.getAttribute('src') !== logoUrl) logo.src = logoUrl;
-      logo.classList.toggle('hidden', !logoUrl);
-      mark.classList.toggle('hidden', Boolean(logoUrl));
-      logo.onerror = () => {
+      if (!logoUrl) {
+        logo.removeAttribute('src');
         logo.classList.add('hidden');
         mark.classList.remove('hidden');
-      };
-      logo.onload = () => {
-        if (logoUrl) {
+      } else {
+        logo.onload = () => {
+          logo.classList.remove('hidden');
+          mark.classList.add('hidden');
+        };
+        logo.onerror = () => {
+          logo.classList.add('hidden');
+          mark.classList.remove('hidden');
+        };
+        if (logo.getAttribute('src') !== logoUrl) logo.src = logoUrl;
+        else if (logo.complete && logo.naturalWidth > 0) {
           logo.classList.remove('hidden');
           mark.classList.add('hidden');
         }
-      };
+      }
     }
 
     const letterhead = document.querySelector('#certificatePreviewLetterhead');
