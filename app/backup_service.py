@@ -64,6 +64,10 @@ def _read_stored_object(key: str, upload_dir: Path) -> bytes | None:
     """Read a stored object from the configured backend or a validated legacy upload path."""
     if not key:
         return None
+    normalized_key = str(key).replace("\\", "/")
+    parts = normalized_key.split("/")
+    if normalized_key.startswith("/") or any(part in {".", ".."} for part in parts):
+        return None
     if storage.exists(key):
         # If the configured provider reports the object, surface read errors so a backup
         # cannot silently claim completeness when an existing object cannot be copied.
@@ -122,6 +126,7 @@ def build_studio_export(db: Session, studio: Studio, upload_dir: Path) -> bytes:
     }
     missing_artifacts: list[dict[str, Any]] = []
     archived_keys: set[str] = set()
+    attempted_keys: set[str] = set()
     output = io.BytesIO()
 
     with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as archive:
@@ -143,8 +148,9 @@ def build_studio_export(db: Session, studio: Studio, upload_dir: Path) -> bytes:
         def add_artifact(key: str, archive_name: str, artifact_type: str, record_id: int) -> None:
             if not key:
                 return
-            if key in archived_keys:
+            if key in archived_keys or key in attempted_keys:
                 return
+            attempted_keys.add(key)
             try:
                 content = _read_stored_object(key, upload_dir)
             except Exception:
@@ -203,10 +209,15 @@ def build_studio_export(db: Session, studio: Studio, upload_dir: Path) -> bytes:
                     "studio": {"id": studio.id, "name": studio.name, "ruc": studio.ruc, "plan": studio.plan_name},
                     "counts": counts,
                     "artifacts": {
-                        "expected": sum(1 for x in documents if x.content_bytes is None)
-                        + len(attachments)
-                        + sum(1 for x in integration_batches if x.storage_key)
-                        + sum(1 for x in compliance_events if x.receipt_storage_key),
+                        "expected": len({
+                            x.stored_name for x in documents if x.content_bytes is None and x.stored_name
+                        } | {
+                            x.stored_name for x in attachments if x.stored_name
+                        } | {
+                            x.storage_key for x in integration_batches if x.storage_key
+                        } | {
+                            x.receipt_storage_key for x in compliance_events if x.receipt_storage_key
+                        }) + sum(1 for x in documents if x.content_bytes is not None),
                         "archived": len(archived_keys) + sum(1 for x in documents if x.content_bytes is not None),
                         "missing": len(missing_artifacts),
                         "status": "complete" if not missing_artifacts else "incomplete",
