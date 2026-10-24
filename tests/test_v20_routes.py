@@ -661,3 +661,155 @@ def test_annual_batch_receipt_is_stored_downloadable_and_stateful():
             if batch is not None:
                 db.delete(batch)
                 db.commit()
+
+
+
+def test_audit_search_filters_and_paginates_study_logs():
+    from sqlalchemy import select
+    from app.database import SessionLocal
+    from app.models import AuditLog, Company
+
+    with SessionLocal() as db:
+        company = db.scalar(select(Company).order_by(Company.id))
+        assert company is not None
+        studio_id = company.studio_id
+        rows = [
+            AuditLog(
+                studio_id=studio_id,
+                user_email="qa-audit@test.py",
+                action="qa_filter_action",
+                entity="qa_compliance",
+                entity_id=f"audit-{i:02d}",
+                detail=f"audit-find-me row {i:02d}",
+            )
+            for i in range(52)
+        ]
+        db.add_all(rows)
+        db.commit()
+        audit_ids = [item.id for item in rows]
+
+    try:
+        with TestClient(app) as client:
+            csrf = _login(client)
+            page_one = client.get(
+                "/app/audit",
+                params={"q": "audit-find-me", "action": "qa_filter_action", "entity": "qa_compliance"},
+            )
+            assert page_one.status_code == 200
+            assert "52 resultados" in page_one.text
+            assert "página 1 de 2" in page_one.text
+            soup_one = BeautifulSoup(page_one.text, "html.parser")
+            assert len(soup_one.select("tbody tr")) == 50
+
+            page_two = client.get(
+                "/app/audit",
+                params={
+                    "q": "audit-find-me", "action": "qa_filter_action",
+                    "entity": "qa_compliance", "page": "2",
+                },
+            )
+            assert page_two.status_code == 200
+            assert "página 2 de 2" in page_two.text
+            soup_two = BeautifulSoup(page_two.text, "html.parser")
+            assert len(soup_two.select("tbody tr")) == 2
+
+            invalid_range = client.get(
+                "/app/audit",
+                params={"date_from": "2026-10-25", "date_to": "2026-10-24"},
+            )
+            assert invalid_range.status_code == 400
+    finally:
+        with SessionLocal() as db:
+            for item in db.scalars(select(AuditLog).where(AuditLog.id.in_(audit_ids))):
+                db.delete(item)
+            db.commit()
+
+
+def test_audit_and_data_csv_exports_escape_spreadsheet_formulas():
+    import csv
+    import io
+    import uuid
+    from datetime import date
+    from sqlalchemy import select
+    from app.database import SessionLocal
+    from app.models import AuditLog, CalculationRecord, Company, Employee
+
+    with SessionLocal() as db:
+        company = db.scalar(select(Company).order_by(Company.id))
+        assert company is not None
+        company_id, studio_id = company.id, company.studio_id
+        marker = uuid.uuid4().hex[:10]
+        employee = Employee(
+            company_id=company_id,
+            full_name="=1+1",
+            document_number=f"CSV-{marker}",
+            position="=HYPERLINK(\"https://example.invalid\",\"open\")",
+            admission_date=date.today(),
+            base_salary=0,
+            status="Activo",
+        )
+        db.add(employee)
+        db.flush()
+        calculation = CalculationRecord(
+            company_id=company_id,
+            employee_id=employee.id,
+            calculation_type="hours",
+            reference_period="=1+1",
+            input_json="{}",
+            result_json="{}",
+            amount=1,
+            status="Borrador",
+            source="QA",
+            created_by="qa@test.py",
+        )
+        audit = AuditLog(
+            studio_id=studio_id,
+            user_email="qa-audit@test.py",
+            action=f"formula_export_{marker}",
+            entity="qa_csv",
+            entity_id=marker,
+            detail="=1+1",
+        )
+        db.add_all([calculation, audit])
+        db.commit()
+        employee_id, calculation_id, audit_id = employee.id, calculation.id, audit.id
+
+    try:
+        with TestClient(app) as client:
+            csrf = _login(client)
+            audit_response = client.get(
+                "/app/audit/export.csv",
+                params={"action": f"formula_export_{marker}"},
+            )
+            assert audit_response.status_code == 200
+            audit_rows = list(csv.reader(io.StringIO(audit_response.content.decode("utf-8-sig"))))
+            audit_row = next(row for row in audit_rows[1:] if row[3] == "qa_csv")
+            assert audit_row[5] == "'=1+1"
+
+            employee_response = client.get("/app/export/employees.csv")
+            assert employee_response.status_code == 200
+            employee_rows = list(csv.reader(io.StringIO(employee_response.content.decode("utf-8-sig"))))
+            employee_row = next(row for row in employee_rows[1:] if row[3] == f"CSV-{marker}")
+            assert employee_row[2] == "'=1+1"
+            assert employee_row[4].startswith("'=HYPERLINK(")
+
+            report_response = client.get(
+                "/app/reports/export.csv",
+                params={"company_id": str(company_id), "employee_id": str(employee_id)},
+            )
+            assert report_response.status_code == 200
+            report_rows = list(csv.reader(io.StringIO(report_response.content.decode("utf-8-sig"))))
+            report_row = next(row for row in report_rows[1:] if row[2] == "'=1+1")
+            assert report_row[4] == "'=1+1"
+    finally:
+        with SessionLocal() as db:
+            audit = db.get(AuditLog, audit_id)
+            calculation = db.get(CalculationRecord, calculation_id)
+            employee = db.get(Employee, employee_id)
+            if audit is not None:
+                db.delete(audit)
+            if calculation is not None:
+                db.delete(calculation)
+            if employee is not None:
+                db.delete(employee)
+            db.commit()

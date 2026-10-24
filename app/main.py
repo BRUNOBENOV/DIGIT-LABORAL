@@ -3525,6 +3525,16 @@ async def update_official_certificate_record(
     return RedirectResponse(f"/app/certificates/official?updated={item.id}", status_code=303)
 
 
+def _csv_safe_cell(value):
+    """Prevent spreadsheet formula execution when text exports are opened in Excel/LibreOffice."""
+    if not isinstance(value, str):
+        return value
+    trimmed = value.lstrip(" \t\r\n")
+    if value.startswith(("\t", "\r", "\n")) or (trimmed and trimmed[0] in {"=", "+", "-", "@"}):
+        return "'" + value
+    return value
+
+
 @app.get("/app/reports", response_class=HTMLResponse)
 def reports_page(
     request: Request,
@@ -3583,7 +3593,7 @@ def reports_export_csv(
     writer = csv.writer(output)
     writer.writerow(["Fecha", "Empresa", "Funcionario", "Tipo", "Periodo", "Monto", "Estado", "Origen", "Creado por"])
     for item in items:
-        writer.writerow([
+        writer.writerow([_csv_safe_cell(value) for value in [
             item.created_at.strftime("%d/%m/%Y %H:%M"),
             company.legal_name,
             item.employee.full_name if item.employee else "",
@@ -3593,7 +3603,7 @@ def reports_export_csv(
             item.status,
             item.source,
             item.created_by,
-        ])
+        ]])
     filename = safe_download_name(f"Informe de cálculos {company.legal_name}", "", "csv")
     return StreamingResponse(
         iter(["\ufeff" + output.getvalue()]),
@@ -4896,10 +4906,122 @@ def parameters_page(request: Request, user: User = Depends(require_user), db: Se
     return render(request, "parameters.html", db, user, parameters=parameters)
 
 
+def _audit_filtered_query(
+    studio_id: int | None,
+    *,
+    q: str = "",
+    user_email: str = "",
+    action: str = "",
+    entity: str = "",
+    date_from: str = "",
+    date_to: str = "",
+):
+    query = select(AuditLog).where(AuditLog.studio_id == studio_id) if studio_id else select(AuditLog).where(False)
+    search = clean_text(q, max_length=160)
+    if search:
+        pattern = f"%{search}%"
+        query = query.where(or_(
+            AuditLog.user_email.ilike(pattern),
+            AuditLog.action.ilike(pattern),
+            AuditLog.entity.ilike(pattern),
+            AuditLog.entity_id.ilike(pattern),
+            AuditLog.detail.ilike(pattern),
+        ))
+    for column, raw in (
+        (AuditLog.user_email, user_email),
+        (AuditLog.action, action),
+        (AuditLog.entity, entity),
+    ):
+        value = clean_text(raw, max_length=180)
+        if value:
+            query = query.where(column.ilike(f"%{value}%"))
+    start_date = _parse_optional_form_date(date_from, "fecha inicial")
+    end_date = _parse_optional_form_date(date_to, "fecha final")
+    if start_date and end_date and end_date < start_date:
+        raise HTTPException(400, "La fecha final no puede ser anterior a la fecha inicial.")
+    if start_date:
+        query = query.where(AuditLog.created_at >= datetime.combine(start_date, datetime.min.time()))
+    if end_date:
+        query = query.where(AuditLog.created_at <= datetime.combine(end_date, datetime.max.time()))
+    return query
+
+
 @app.get("/app/audit", response_class=HTMLResponse)
-def audit_page(request: Request, user: User = Depends(require_roles("administrador")), db: Session = Depends(get_db)):
-    logs = list(db.scalars(select(AuditLog).where(AuditLog.studio_id == user.studio_id).order_by(AuditLog.created_at.desc()).limit(300)))
-    return render(request, "audit.html", db, user, logs=logs)
+def audit_page(
+    request: Request,
+    q: str = "",
+    user_email: str = "",
+    action: str = "",
+    entity: str = "",
+    date_from: str = "",
+    date_to: str = "",
+    page: int = 1,
+    user: User = Depends(require_roles("administrador")),
+    db: Session = Depends(get_db),
+):
+    query = _audit_filtered_query(
+        user.studio_id, q=q, user_email=user_email, action=action, entity=entity,
+        date_from=date_from, date_to=date_to,
+    )
+    total_count = db.scalar(select(func.count()).select_from(query.order_by(None).subquery())) or 0
+    page_size = 50
+    total_pages = max(1, (total_count + page_size - 1) // page_size)
+    current_page = max(1, min(page, total_pages))
+    logs = list(db.scalars(
+        query.order_by(AuditLog.created_at.desc(), AuditLog.id.desc())
+        .limit(page_size).offset((current_page - 1) * page_size)
+    ))
+    filters = {
+        "q": clean_text(q, max_length=160),
+        "user_email": clean_text(user_email, max_length=180),
+        "action": clean_text(action, max_length=120),
+        "entity": clean_text(entity, max_length=80),
+        "date_from": date_from,
+        "date_to": date_to,
+    }
+    return render(
+        request, "audit.html", db, user, logs=logs, filters=filters,
+        total_count=total_count, current_page=current_page, total_pages=total_pages,
+        page_size=page_size,
+    )
+
+
+@app.get("/app/audit/export.csv")
+def export_audit_csv(
+    q: str = "",
+    user_email: str = "",
+    action: str = "",
+    entity: str = "",
+    date_from: str = "",
+    date_to: str = "",
+    user: User = Depends(require_roles("administrador")),
+    db: Session = Depends(get_db),
+):
+    query = _audit_filtered_query(
+        user.studio_id, q=q, user_email=user_email, action=action, entity=entity,
+        date_from=date_from, date_to=date_to,
+    )
+    items = list(db.scalars(query.order_by(AuditLog.created_at.desc(), AuditLog.id.desc())))
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Fecha", "Usuario", "Acción", "Entidad", "ID", "Detalle"])
+    for item in items:
+        writer.writerow([_csv_safe_cell(value) for value in [
+            item.created_at.strftime("%d/%m/%Y %H:%M"),
+            item.user_email,
+            item.action,
+            item.entity,
+            item.entity_id or "",
+            item.detail or "",
+        ]])
+    write_audit(db, user, "exportar", "auditoria", str(user.studio_id or ""), f"{len(items)} movimientos")
+    db.commit()
+    output_name = safe_download_name("Auditoria Digit Laboral", date.today().isoformat(), "csv")
+    return StreamingResponse(
+        iter(["\ufeff" + output.getvalue()]),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(output_name)}"},
+    )
 
 
 @app.get("/app/export/studio.zip")
@@ -4927,7 +5049,7 @@ def export_employees(user: User = Depends(require_user), db: Session = Depends(g
     writer = csv.writer(output)
     writer.writerow(["Empresa", "RUC", "Funcionario", "Documento", "Cargo", "Ingreso", "Salario", "IPS", "Estado"])
     for item in employees:
-        writer.writerow([item.company.legal_name, item.company.ruc, item.full_name, item.document_number, item.position, item.admission_date.isoformat(), item.base_salary, "Sí" if item.ips_contributor else "No", item.status])
+        writer.writerow([_csv_safe_cell(value) for value in [item.company.legal_name, item.company.ruc, item.full_name, item.document_number, item.position, item.admission_date.isoformat(), item.base_salary, "Sí" if item.ips_contributor else "No", item.status]])
     data = output.getvalue().encode("utf-8-sig")
     return StreamingResponse(io.BytesIO(data), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=funcionarios_digit_laboral.csv"})
 
