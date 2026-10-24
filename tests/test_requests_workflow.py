@@ -389,3 +389,174 @@ def test_employee_status_treats_blank_date_as_empty_and_requires_exit_date():
         assert employee is not None
         assert employee.status == "Desvinculado"
         assert employee.termination_date == date.today()
+
+
+
+def test_request_numeric_limits_and_hour_precision_are_enforced():
+    email, password, company_id, employee_id = ensure_admin()
+    today = date.today().isoformat()
+    with TestClient(app) as client:
+        csrf = login(client, email, password)
+        oversized_salary = client.post(
+            "/app/requests",
+            data={
+                "csrf_token": csrf, "company_id": str(company_id), "request_type": "Cambio salarial",
+                "detail": "Prueba de límite numérico.", "priority": "Normal",
+                "employee_id": str(employee_id), "effective_date": today,
+                "amount": "2147483648",
+            },
+            follow_redirects=False,
+        )
+        assert oversized_salary.status_code == 400
+
+        too_many_vacation_days = client.post(
+            "/app/requests",
+            data={
+                "csrf_token": csrf, "company_id": str(company_id), "request_type": "Vacaciones",
+                "detail": "Prueba de límite de días.", "priority": "Normal",
+                "employee_id": str(employee_id), "period_year": str(date.today().year),
+                "requested_days": "366", "start_date": today, "end_date": today,
+            },
+            follow_redirects=False,
+        )
+        assert too_many_vacation_days.status_code == 400
+
+        hours_with_excess_precision = client.post(
+            "/app/requests",
+            data={
+                "csrf_token": csrf, "company_id": str(company_id), "request_type": "Permiso/licencia",
+                "detail": "Prueba de precisión horaria.", "priority": "Normal",
+                "employee_id": str(employee_id), "leave_type": "Otro",
+                "start_date": today, "end_date": today, "hours_requested": "0.001",
+            },
+            follow_redirects=False,
+        )
+        assert hours_with_excess_precision.status_code == 400
+
+
+def test_salary_request_cannot_be_resolved_without_apply_and_invalid_legacy_request_fails_closed():
+    email, password, company_id, employee_id = ensure_admin()
+    with SessionLocal() as db:
+        employee = db.get(Employee, employee_id)
+        assert employee is not None
+        original_salary = employee.base_salary
+
+    today = date.today().isoformat()
+    with TestClient(app) as client:
+        csrf = login(client, email, password)
+        submitted = client.post(
+            "/app/requests",
+            data={
+                "csrf_token": csrf, "company_id": str(company_id), "request_type": "Cambio salarial",
+                "subject": "Prueba de aplicación segura", "detail": "Validar el flujo formal de aprobación.",
+                "priority": "Normal", "employee_id": str(employee_id),
+                "effective_date": today, "amount": str(original_salary + 100000),
+            },
+            follow_redirects=False,
+        )
+        assert submitted.status_code == 303
+        request_id = int(submitted.headers["location"].rstrip("/").split("/")[-1])
+
+        csrf = token_from_page(client, f"/app/requests/{request_id}")
+        approved = client.post(
+            f"/app/requests/{request_id}/review",
+            data={"csrf_token": csrf, "status": "Aprobada", "response": "Aprobación de prueba"},
+            follow_redirects=False,
+        )
+        assert approved.status_code == 303
+
+        csrf = token_from_page(client, f"/app/requests/{request_id}")
+        resolved_without_apply = client.post(
+            f"/app/requests/{request_id}/status",
+            data={
+                "csrf_token": csrf, "status": "Resuelta", "response": "",
+                "assigned_user_id": "", "due_date": "", "internal_notes": "",
+            },
+            follow_redirects=False,
+        )
+        assert resolved_without_apply.status_code == 409
+
+        with SessionLocal() as db:
+            item = db.get(CompanyRequest, request_id)
+            assert item is not None
+            item.amount = 0
+            db.commit()
+
+        csrf = token_from_page(client, f"/app/requests/{request_id}")
+        zero_salary = client.post(
+            f"/app/requests/{request_id}/apply",
+            data={"csrf_token": csrf},
+            follow_redirects=False,
+        )
+        assert zero_salary.status_code == 400
+
+        with SessionLocal() as db:
+            item = db.get(CompanyRequest, request_id)
+            assert item is not None
+            item.amount = original_salary + 100000
+            item.effective_date = None
+            db.commit()
+
+        csrf = token_from_page(client, f"/app/requests/{request_id}")
+        missing_effective_date = client.post(
+            f"/app/requests/{request_id}/apply",
+            data={"csrf_token": csrf},
+            follow_redirects=False,
+        )
+        assert missing_effective_date.status_code == 400
+
+    with SessionLocal() as db:
+        employee = db.get(Employee, employee_id)
+        item = db.get(CompanyRequest, request_id)
+        workflow = db.scalar(select(RequestWorkflow).where(RequestWorkflow.request_id == request_id))
+        assert employee is not None and item is not None and workflow is not None
+        assert employee.base_salary == original_salary
+        assert item.status == "Aprobada"
+        assert not workflow.applied
+
+
+def test_request_comments_and_attachments_reject_empty_or_misrepresented_content():
+    email, password, company_id, _ = ensure_admin()
+    with TestClient(app) as client:
+        csrf = login(client, email, password)
+        created = client.post(
+            "/app/requests",
+            data={
+                "csrf_token": csrf, "company_id": str(company_id), "request_type": "Otra consulta",
+                "detail": "Solicitud para validar comentarios y adjuntos.", "priority": "Normal",
+            },
+            follow_redirects=False,
+        )
+        assert created.status_code == 303
+        request_id = int(created.headers["location"].rstrip("/").split("/")[-1])
+
+        csrf = token_from_page(client, f"/app/requests/{request_id}")
+        blank_comment = client.post(
+            f"/app/requests/{request_id}/comments",
+            data={"csrf_token": csrf, "body": "   ", "visibility": "Empresa"},
+            follow_redirects=False,
+        )
+        assert blank_comment.status_code == 400
+
+        long_comment = client.post(
+            f"/app/requests/{request_id}/comments",
+            data={"csrf_token": csrf, "body": "x" * 10001, "visibility": "Empresa"},
+            follow_redirects=False,
+        )
+        assert long_comment.status_code == 400
+
+        fake_pdf = client.post(
+            f"/app/requests/{request_id}/attachments",
+            data={"csrf_token": csrf},
+            files={"file": ("not-a-pdf.pdf", b"not a PDF document", "application/pdf")},
+            follow_redirects=False,
+        )
+        assert fake_pdf.status_code == 415
+
+        empty_pdf = client.post(
+            f"/app/requests/{request_id}/attachments",
+            data={"csrf_token": csrf},
+            files={"file": ("empty.pdf", b"", "application/pdf")},
+            follow_redirects=False,
+        )
+        assert empty_pdf.status_code == 400
