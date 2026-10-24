@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import math
 import re
 from dataclasses import dataclass, asdict
 from datetime import UTC, date, datetime, timedelta
@@ -109,22 +110,40 @@ def parse_date(value: Any) -> date | None:
     return None
 
 
+def normalize_document_number(value: Any) -> str:
+    """Normalize cédula formatting without removing meaningful hyphens."""
+    return re.sub(r"[.\s]+", "", str(value or "").strip())
+
+
 def parse_money(value: Any) -> int | None:
-    if value in (None, ""):
+    """Parse integer Guaraní amounts without silently converting invalid values to zero."""
+    if value is None or isinstance(value, bool):
         return None
-    if isinstance(value, (int, float)):
-        return max(0, int(round(value)))
-    digits = re.sub(r"[^0-9-]", "", str(value))
-    try:
-        return max(0, int(digits))
-    except (TypeError, ValueError):
+    if isinstance(value, int):
+        return value if value >= 0 else None
+    if isinstance(value, float):
+        if not math.isfinite(value) or value < 0 or not value.is_integer():
+            return None
+        return int(value)
+    text = str(value).strip()
+    if not text or text.startswith("-") or "(" in text or ")" in text:
         return None
+    text = re.sub(r"(?i)^gs\.?\s*", "", text).replace("₲", "").replace("$", "")
+    text = re.sub(r"\s+", "", text)
+    if not re.fullmatch(r"(?:\d+|\d{1,3}(?:[.,]\d{3})+)", text):
+        return None
+    return int(re.sub(r"[.,]", "", text))
 
 
 def parse_bool(value: Any, default: bool = True) -> bool:
-    if value in (None, ""):
+    if value is None or str(value).strip() == "":
         return default
-    return normalize_header(value) in {"si", "s", "1", "true", "verdadero", "x", "aporta"}
+    normalized = normalize_header(value)
+    if normalized in {"si", "s", "1", "true", "verdadero", "x", "aporta", "si_aporta"}:
+        return True
+    if normalized in {"no", "n", "0", "false", "falso", "no_aporta", "no_aporta_ips"}:
+        return False
+    return default
 
 
 def _rows_from_xlsx(content: bytes) -> tuple[list[str], list[list[Any]]]:
@@ -163,6 +182,13 @@ def parse_employee_import(content: bytes, filename: str, max_rows: int = 2000) -
     else:
         raise ValueError("El archivo debe ser .xlsx o .csv")
 
+    header_counts: dict[str, int] = {}
+    for header in headers:
+        if header:
+            header_counts[header] = header_counts.get(header, 0) + 1
+    duplicate_headers = sorted(header for header, count in header_counts.items() if count > 1)
+    if duplicate_headers:
+        raise ValueError("Hay columnas repetidas en la plantilla: " + ", ".join(duplicate_headers))
     missing = REQUIRED_HEADERS.difference(headers)
     if missing:
         raise ValueError("Faltan columnas obligatorias: " + ", ".join(sorted(missing)))
@@ -170,6 +196,9 @@ def parse_employee_import(content: bytes, filename: str, max_rows: int = 2000) -
         raise ValueError(f"El archivo supera el máximo permitido de {max_rows} filas.")
 
     parsed: list[ImportRow] = []
+    seen_documents: dict[str, int] = {}
+    true_ips_values = {"si", "s", "1", "true", "verdadero", "x", "aporta", "si_aporta"}
+    false_ips_values = {"no", "n", "0", "false", "falso", "no_aporta", "no_aporta_ips"}
     for index, values in enumerate(raw_rows, start=2):
         mapping = {headers[pos]: values[pos] if pos < len(values) else None for pos in range(len(headers))}
         if not any(value not in (None, "") for value in mapping.values()):
@@ -177,27 +206,42 @@ def parse_employee_import(content: bytes, filename: str, max_rows: int = 2000) -
         errors: list[str] = []
         warnings: list[str] = []
         name = str(mapping.get("nombre_completo") or "").strip()
-        document = re.sub(r"\s+", "", str(mapping.get("cedula") or "").strip())
+        document = normalize_document_number(mapping.get("cedula"))
         position = str(mapping.get("cargo") or "").strip()
         admission = parse_date(mapping.get("fecha_ingreso"))
         salary = parse_money(mapping.get("salario_base"))
-        birth = parse_date(mapping.get("fecha_nacimiento"))
+        raw_birth = mapping.get("fecha_nacimiento")
+        birth = parse_date(raw_birth)
         email = str(mapping.get("correo") or "").strip().lower()
+        raw_ips = str(mapping.get("aporta_ips") or "").strip()
+        normalized_ips = normalize_header(raw_ips)
 
         if not name:
             errors.append("Falta el nombre completo.")
         if not document:
             errors.append("Falta la cédula.")
+        elif document in seen_documents:
+            errors.append(f"La cédula ya aparece en la fila {seen_documents[document]} del archivo.")
+        else:
+            seen_documents[document] = index
+        if len(document) > 40:
+            errors.append("La cédula supera el máximo de 40 caracteres.")
         if not position:
             errors.append("Falta el cargo.")
+        if len(position) > 140:
+            errors.append("El cargo supera el máximo de 140 caracteres.")
         if not admission:
             errors.append("La fecha de ingreso no es válida.")
         if salary is None:
             errors.append("El salario base no es válido.")
-        if email and "@" not in email:
+        if raw_birth not in (None, "") and birth is None:
+            errors.append("La fecha de nacimiento no es válida.")
+        if email and ("@" not in email or email.startswith("@") or email.endswith("@")):
             warnings.append("El correo parece incompleto.")
+        if raw_ips and normalized_ips not in true_ips_values | false_ips_values:
+            warnings.append("El valor de aporta_ips no se reconoce; se usará Sí por defecto.")
         if birth and admission and birth >= admission:
-            warnings.append("La fecha de nacimiento debe revisarse.")
+            errors.append("La fecha de nacimiento debe ser anterior a la fecha de ingreso.")
 
         data = {
             "full_name": name,
@@ -208,7 +252,7 @@ def parse_employee_import(content: bytes, filename: str, max_rows: int = 2000) -
             "birth_date": birth.isoformat() if birth else "",
             "contract_type": str(mapping.get("tipo_contrato") or "Tiempo indefinido").strip(),
             "payment_frequency": str(mapping.get("frecuencia_pago") or "Mensual").strip(),
-            "ips_contributor": parse_bool(mapping.get("aporta_ips"), default=True),
+            "ips_contributor": parse_bool(raw_ips, default=True),
             "email": email,
             "phone": str(mapping.get("telefono") or "").strip(),
             "address": str(mapping.get("direccion") or "").strip(),
@@ -216,7 +260,6 @@ def parse_employee_import(content: bytes, filename: str, max_rows: int = 2000) -
         }
         parsed.append(ImportRow(index, data, errors, warnings))
     return parsed
-
 
 def build_employee_template() -> bytes:
     workbook = Workbook()
