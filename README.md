@@ -125,6 +125,7 @@ Documentación: `REI_REOP_INTEGRATION.md`.
 ## Documentación principal
 
 - `REVISION_INTEGRAL_V20.md`
+- `RELEASE_NOTES_V23.md`
 - `RELEASE_NOTES_V20.md`
 - `REI_REOP_INTEGRATION.md`
 - `PRODUCTION_DEPLOYMENT_V20.md`
