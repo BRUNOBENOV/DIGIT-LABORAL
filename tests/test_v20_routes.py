@@ -813,3 +813,98 @@ def test_audit_and_data_csv_exports_escape_spreadsheet_formulas():
             if employee is not None:
                 db.delete(employee)
             db.commit()
+
+
+
+def test_totp_login_failures_lock_temporary_account():
+    import uuid
+    from sqlalchemy import select
+    from app.auth import hash_password
+    from app.database import SessionLocal
+    from app.models import SecurityEvent, Studio, User, UserSecurity
+
+    marker = uuid.uuid4().hex[:12]
+    email = f"totp-lockout-{marker}@test.py"
+    password = f"Qa-Password-{marker}!A9"
+    with SessionLocal() as db:
+        admin = db.scalar(select(User).where(User.email == "admin@digitlaboral.com.py"))
+        assert admin is not None and admin.studio_id is not None
+        user = User(
+            studio_id=admin.studio_id,
+            full_name="QA TOTP Lockout",
+            email=email,
+            password_hash=hash_password(password),
+            role="administrador",
+            active=True,
+            must_change_password=False,
+        )
+        db.add(user)
+        db.flush()
+        security = UserSecurity(user_id=user.id, totp_secret="JBSWY3DPEHPK3PXP", totp_enabled=True)
+        db.add(security)
+        db.commit()
+        user_id = user.id
+        assert db.get(Studio, admin.studio_id) is not None
+
+    try:
+        with TestClient(app) as client:
+            login_page = client.get("/login")
+            match = re.search(r'name="csrf_token" value="([^"]+)"', login_page.text)
+            assert match
+            authenticated_password = client.post(
+                "/login",
+                data={"email": email, "password": password, "csrf_token": match.group(1)},
+                follow_redirects=False,
+            )
+            assert authenticated_password.status_code == 303
+            assert authenticated_password.headers["location"] == "/login/2fa"
+
+            second_factor_page = client.get("/login/2fa")
+            match = re.search(r'name="csrf_token" value="([^"]+)"', second_factor_page.text)
+            assert second_factor_page.status_code == 200 and match
+            csrf = match.group(1)
+            for _ in range(settings.login_max_attempts):
+                invalid = client.post(
+                    "/login/2fa",
+                    data={"csrf_token": csrf, "code": "999999"},
+                    follow_redirects=False,
+                )
+                assert invalid.status_code == 200
+            blocked = client.post(
+                "/login/2fa",
+                data={"csrf_token": csrf, "code": "999999"},
+                follow_redirects=False,
+            )
+            assert blocked.status_code == 200
+            assert "bloqueada temporalmente" in blocked.text.lower()
+
+        with SessionLocal() as db:
+            security = db.scalar(select(UserSecurity).where(UserSecurity.user_id == user_id))
+            assert security is not None
+            assert security.failed_attempts >= settings.login_max_attempts
+            assert security.locked_until is not None
+            assert len(list(db.scalars(select(SecurityEvent).where(
+                SecurityEvent.user_id == user_id,
+                SecurityEvent.event_type == "segundo_factor",
+                SecurityEvent.success.is_(False),
+            )))) >= settings.login_max_attempts
+    finally:
+        with SessionLocal() as db:
+            for event in db.scalars(select(SecurityEvent).where(SecurityEvent.user_id == user_id)):
+                db.delete(event)
+            security = db.scalar(select(UserSecurity).where(UserSecurity.user_id == user_id))
+            user = db.get(User, user_id)
+            if security is not None:
+                db.delete(security)
+            if user is not None:
+                db.delete(user)
+            db.commit()
+
+
+def test_production_readiness_warns_when_csrf_protection_is_disabled():
+    from dataclasses import replace
+    from app.config import settings
+
+    production = replace(settings, environment="production", csrf_enabled=False)
+    issues = production.production_issues()
+    assert any("CSRF_ENABLED" in issue for issue in issues)
