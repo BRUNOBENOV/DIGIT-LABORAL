@@ -824,36 +824,42 @@ def _set_cell_margins(cell, **kwargs: int) -> None:
 
 
 def _docx_header(document: Document, data: ExportData) -> None:
+    """Create a restrained letterhead sized for the normalized horizontal company logo."""
     table = document.add_table(rows=1, cols=2)
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
     table.autofit = False
-    table.columns[0].width = Cm(2.1)
-    table.columns[1].width = Cm(14.7)
+    table.columns[0].width = Cm(4.0)
+    table.columns[1].width = Cm(12.8)
     left, right = table.rows[0].cells
-    left.width = Cm(2.1)
-    right.width = Cm(14.7)
+    left.width = Cm(4.0)
+    right.width = Cm(12.8)
     left.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
-    _set_cell_margins(left, top=100, start=80, bottom=100, end=80)
+    right.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+    _set_cell_margins(left, top=150, start=100, bottom=150, end=100)
+    _set_cell_margins(right, top=120, start=180, bottom=120, end=120)
     p = left.paragraphs[0]
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     if data.logo_bytes:
+        _set_cell_shading(left, "F7F9FC")
         try:
-            p.add_run().add_picture(io.BytesIO(data.logo_bytes), width=Cm(1.9))
+            p.add_run().add_picture(io.BytesIO(data.logo_bytes), width=Cm(3.55))
         except Exception:
             _set_cell_shading(left, data.primary_color.lstrip("#") or "173B86")
             r = p.add_run("DL")
             r.bold = True
+            r.font.name = "Aptos Display"
             r.font.size = Pt(18)
             r.font.color.rgb = RGBColor(255, 255, 255)
     else:
         _set_cell_shading(left, data.primary_color.lstrip("#") or "173B86")
         r = p.add_run("DL")
         r.bold = True
+        r.font.name = "Aptos Display"
         r.font.size = Pt(18)
         r.font.color.rgb = RGBColor(255, 255, 255)
 
     p = right.paragraphs[0]
-    p.paragraph_format.space_after = Pt(2)
+    p.paragraph_format.space_after = Pt(3)
     r = p.add_run(data.company_name.upper())
     r.bold = True
     r.font.name = "Aptos Display"
@@ -873,16 +879,23 @@ def _docx_header(document: Document, data: ExportData) -> None:
         p2.paragraph_format.space_before = Pt(0)
         p2.paragraph_format.space_after = Pt(0)
         for run in p2.runs:
-            run.font.size = Pt(8.5)
+            run.font.name = "Aptos"
+            run.font.size = Pt(8.3)
             run.font.color.rgb = RGBColor(85, 97, 116)
 
-    border = document.add_paragraph()
-    border.paragraph_format.space_before = Pt(2)
-    border.paragraph_format.space_after = Pt(12)
-    run = border.add_run("─" * 82)
-    run.font.name = "Aptos"
-    run.font.color.rgb = RGBColor.from_string(data.primary_color.lstrip("#") or "173B86")
-    run.font.size = Pt(4.5)
+    rule = document.add_paragraph()
+    rule.paragraph_format.space_before = Pt(1)
+    rule.paragraph_format.space_after = Pt(11)
+    rule.paragraph_format.line_spacing = 1
+    p_pr = rule._p.get_or_add_pPr()
+    borders = OxmlElement("w:pBdr")
+    bottom = OxmlElement("w:bottom")
+    bottom.set(qn("w:val"), "single")
+    bottom.set(qn("w:sz"), "12")
+    bottom.set(qn("w:space"), "1")
+    bottom.set(qn("w:color"), (data.primary_color.lstrip("#") or "173B86").upper())
+    borders.append(bottom)
+    p_pr.append(borders)
 
 
 def _requires_both_signatures(document_type: str) -> bool:
