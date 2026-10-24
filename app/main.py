@@ -126,7 +126,7 @@ from .tenant_security import apply_postgres_rls
 from .migration_service import migration_engine, run_migrations
 from .observability import configure_logging, request_context_middleware
 from .storage_service import storage
-from .form_utils import OptionalQueryId, optional_int, clean_text
+from .form_utils import OptionalQueryId, optional_int, optional_date, clean_text
 from .compliance_service import (
     COMPLIANCE_STATUS_TRANSITIONS,
     OFFICIAL_SOURCES,
@@ -2833,23 +2833,23 @@ def create_certificate(
     city: Annotated[str, Form()] = "Ciudad del Este",
     issue_date: Annotated[date, Form()] = date.today(),
     position: Annotated[str, Form()] = "",
-    admission_date: Annotated[date | None, Form()] = None,
+    admission_date: Annotated[str, Form()] = "",
     salary: Annotated[int, Form()] = 0,
     observations: Annotated[str, Form()] = "",
     document_number: Annotated[str, Form()] = "",
-    period_start: Annotated[date | None, Form()] = None,
-    period_end: Annotated[date | None, Form()] = None,
+    period_start: Annotated[str, Form()] = "",
+    period_end: Annotated[str, Form()] = "",
     amount: Annotated[int, Form()] = 0,
-    effective_date: Annotated[date | None, Form()] = None,
-    leave_start: Annotated[date | None, Form()] = None,
-    leave_end: Annotated[date | None, Form()] = None,
+    effective_date: Annotated[str, Form()] = "",
+    leave_start: Annotated[str, Form()] = "",
+    leave_end: Annotated[str, Form()] = "",
     nationality: Annotated[str, Form()] = "paraguaya",
     civil_status: Annotated[str, Form()] = "",
     recipient: Annotated[str, Form()] = "Encargado/a de Recursos Humanos",
     include_salary: Annotated[str, Form()] = "on",
     last_period_salary_amount: Annotated[str, Form()] = "",
     contract_modality: Annotated[str, Form()] = "",
-    contract_end_date: Annotated[date | None, Form()] = None,
+    contract_end_date: Annotated[str, Form()] = "",
     contract_cause: Annotated[str, Form()] = "",
     previous_contract_number: Annotated[str, Form()] = "",
     workplace: Annotated[str, Form()] = "",
@@ -2858,7 +2858,7 @@ def create_certificate(
     weekly_rest: Annotated[str, Form()] = "",
     payment_frequency: Annotated[str, Form()] = "",
     probation_period: Annotated[str, Form()] = "",
-    payment_date: Annotated[date | None, Form()] = None,
+    payment_date: Annotated[str, Form()] = "",
     payment_method: Annotated[str, Form()] = "",
     days_worked: Annotated[str, Form()] = "",
     hours_worked: Annotated[str, Form()] = "",
@@ -2883,26 +2883,26 @@ def create_certificate(
     other_deduction_amount: Annotated[str, Form()] = "0",
     other_deduction_description: Annotated[str, Form()] = "",
     vacation_period_year: Annotated[str, Form()] = "",
-    vacation_request_date: Annotated[date | None, Form()] = None,
-    vacation_notice_date: Annotated[date | None, Form()] = None,
+    vacation_request_date: Annotated[str, Form()] = "",
+    vacation_notice_date: Annotated[str, Form()] = "",
     vacation_days: Annotated[str, Form()] = "",
     vacation_amount: Annotated[str, Form()] = "0",
-    vacation_payment_date: Annotated[date | None, Form()] = None,
+    vacation_payment_date: Annotated[str, Form()] = "",
     leave_type: Annotated[str, Form()] = "",
     leave_quantity: Annotated[str, Form()] = "",
     leave_unit: Annotated[str, Form()] = "",
     paid_leave: Annotated[str, Form()] = "",
     compensation_method: Annotated[str, Form()] = "",
-    birth_event_date: Annotated[date | None, Form()] = None,
+    birth_event_date: Annotated[str, Form()] = "",
     termination_reason: Annotated[str, Form()] = "",
-    last_worked_date: Annotated[date | None, Form()] = None,
-    notice_start_date: Annotated[date | None, Form()] = None,
+    last_worked_date: Annotated[str, Form()] = "",
+    notice_start_date: Annotated[str, Form()] = "",
     notice_days: Annotated[str, Form()] = "",
-    incident_date: Annotated[date | None, Form()] = None,
+    incident_date: Annotated[str, Form()] = "",
     incident_details: Annotated[str, Form()] = "",
     disciplinary_action: Annotated[str, Form()] = "Amonestación escrita",
-    sanction_start_date: Annotated[date | None, Form()] = None,
-    sanction_end_date: Annotated[date | None, Form()] = None,
+    sanction_start_date: Annotated[str, Form()] = "",
+    sanction_end_date: Annotated[str, Form()] = "",
     previous_salary: Annotated[str, Form()] = "0",
     settlement_salary_due: Annotated[str, Form()] = "0",
     settlement_notice_amount: Annotated[str, Form()] = "0",
@@ -2914,13 +2914,34 @@ def create_certificate(
     settlement_ips_deduction: Annotated[str, Form()] = "0",
     settlement_other_deduction: Annotated[str, Form()] = "0",
     settlement_other_deduction_description: Annotated[str, Form()] = "",
-    calculation_id: Annotated[int | None, Form()] = None,
+    calculation_id: Annotated[str, Form()] = "",
     intent: Annotated[str, Form()] = "save",
     user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
     db: Session = Depends(get_db),
 ):
     if document_type not in CERTIFICATE_TYPES:
         raise HTTPException(400, "Tipo de documento inválido.")
+
+    # Los controles HTML de fecha envían "" cuando están vacíos. Normalizarlos
+    # antes de cualquier validación evita rechazos Pydantic de campos opcionales.
+    admission_date = optional_date(admission_date, field="fecha de ingreso")
+    period_start = optional_date(period_start, field="inicio del período")
+    period_end = optional_date(period_end, field="fin del período")
+    effective_date = optional_date(effective_date, field="fecha efectiva")
+    leave_start = optional_date(leave_start, field="inicio del permiso")
+    leave_end = optional_date(leave_end, field="fin del permiso")
+    contract_end_date = optional_date(contract_end_date, field="fin del contrato")
+    payment_date = optional_date(payment_date, field="fecha de pago")
+    vacation_request_date = optional_date(vacation_request_date, field="solicitud de vacaciones")
+    vacation_notice_date = optional_date(vacation_notice_date, field="comunicación de vacaciones")
+    vacation_payment_date = optional_date(vacation_payment_date, field="pago de vacaciones")
+    birth_event_date = optional_date(birth_event_date, field="fecha del hecho generador")
+    last_worked_date = optional_date(last_worked_date, field="último día trabajado")
+    notice_start_date = optional_date(notice_start_date, field="inicio del preaviso")
+    incident_date = optional_date(incident_date, field="fecha del hecho")
+    sanction_start_date = optional_date(sanction_start_date, field="inicio de la medida")
+    sanction_end_date = optional_date(sanction_end_date, field="fin de la medida")
+    calculation_id = optional_int(calculation_id, field="identificador de cálculo")
 
     def nonnegative_amount(raw: str | int | None, label: str) -> int:
         value = str(raw if raw is not None else "").strip().replace(" ", "")
