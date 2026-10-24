@@ -1,10 +1,10 @@
-# Digit Laboral 2.0
+# Digit Laboral 2.4.0
 
 Plataforma de gestión y cumplimiento laboral para estudios contables paraguayos.
 
 ## Alcance de la versión
 
-Digit Laboral 2.0 integra:
+Digit Laboral 2.4.0 integra:
 
 - estudios, empresas y sucursales;
 - funcionarios y expedientes digitales;
@@ -61,7 +61,7 @@ python -m compileall -q app alembic tests
 pytest --cov=app --cov-report=term-missing -q
 ```
 
-Resultado de la entrega: **32 pruebas aprobadas**.
+La cantidad vigente de pruebas aprobadas se informa en cada ejecución de CI de GitHub Actions.
 
 ## Migraciones
 
@@ -125,6 +125,7 @@ Documentación: `REI_REOP_INTEGRATION.md`.
 ## Documentación principal
 
 - `REVISION_INTEGRAL_V20.md`
+- `RELEASE_NOTES_V24.md`
 - `RELEASE_NOTES_V23.md`
 - `RELEASE_NOTES_V20.md`
 - `REI_REOP_INTEGRATION.md`
