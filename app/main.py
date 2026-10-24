@@ -332,9 +332,9 @@ class CSRFMiddleware:
 
 try:
     _VERSION_FILE = Path(__file__).resolve().parents[1] / "VERSION"
-    _DEFAULT_APP_VERSION = _VERSION_FILE.read_text(encoding="utf-8").strip() or "2.2.0"
+    _DEFAULT_APP_VERSION = _VERSION_FILE.read_text(encoding="utf-8").strip() or "2.4.0"
 except OSError:
-    _DEFAULT_APP_VERSION = "2.2.0"
+    _DEFAULT_APP_VERSION = "2.4.0"
 APP_VERSION = (os.getenv("DIGIT_APP_VERSION", _DEFAULT_APP_VERSION).strip() or _DEFAULT_APP_VERSION)
 APP_COMMIT = os.getenv("RENDER_GIT_COMMIT", os.getenv("GITHUB_SHA", "")).strip()
 APP_BUILD = APP_COMMIT[:7] if APP_COMMIT else "LOCAL"
