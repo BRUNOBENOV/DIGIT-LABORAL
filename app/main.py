@@ -119,6 +119,7 @@ from .import_service import (
     ImportPreview,
     build_employee_template,
     load_preview,
+    normalize_document_number,
     parse_employee_import,
     save_preview,
 )
@@ -1151,15 +1152,27 @@ def add_company(
     user: User = Depends(require_roles("administrador", "contador")),
     db: Session = Depends(get_db),
 ):
+    legal_name_value = legal_name.strip()
+    ruc_value = re.sub(r"\\s+", "", ruc)
+    if not legal_name_value:
+        return RedirectResponse(
+            f"/app/companies?form_error={quote('La razón social es obligatoria.')}&open=companyModal",
+            status_code=303,
+        )
+    if not ruc_value:
+        return RedirectResponse(
+            f"/app/companies?form_error={quote('El RUC es obligatorio.')}&open=companyModal",
+            status_code=303,
+        )
     studio = db.get(Studio, user.studio_id)
     count = db.scalar(select(func.count(Company.id)).where(Company.studio_id == user.studio_id)) or 0
     if studio and count >= studio.company_limit:
         return RedirectResponse("/app/companies?limit=1", status_code=303)
     company = Company(
         studio_id=user.studio_id,
-        legal_name=legal_name.strip(),
+        legal_name=legal_name_value,
         trade_name=trade_name.strip(),
-        ruc=ruc.strip(),
+        ruc=ruc_value,
         city=city.strip(),
         address=address.strip(),
         phone=phone.strip(),
@@ -1369,8 +1382,13 @@ def edit_company(
     db: Session = Depends(get_db),
 ):
     company = company_allowed(db, user, company_id)
+    legal_name_value = legal_name.strip()
+    if not legal_name_value:
+        raise HTTPException(400, "La razón social de la empresa no puede quedar vacía.")
+    if len(legal_name_value) > 200:
+        raise HTTPException(400, "La razón social no puede superar los 200 caracteres.")
     for attr, value in {
-        "legal_name": legal_name,
+        "legal_name": legal_name_value,
         "trade_name": trade_name,
         "city": city,
         "address": address,
@@ -1391,6 +1409,8 @@ def edit_company(
 @app.post("/app/companies/{company_id}/status")
 def update_company_status(company_id: int, status_value: Annotated[str, Form(alias="status")], user: User = Depends(require_roles("administrador", "contador")), db: Session = Depends(get_db)):
     company = company_allowed(db, user, company_id)
+    if status_value not in {"Activa", "Pendiente", "Suspendida"}:
+        raise HTTPException(400, "El estado seleccionado para la empresa no es válido.")
     company.status = status_value
     write_audit(db, user, "actualizar_estado", "empresa", str(company.id), status_value)
     db.commit()
@@ -1406,8 +1426,13 @@ def add_branch(
     user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
     db: Session = Depends(get_db),
 ):
-    company_allowed(db, user, company_id)
-    branch = Branch(company_id=company_id, name=name.strip(), city=city.strip(), address=address.strip())
+    company = company_allowed(db, user, company_id)
+    branch_name = name.strip()
+    if not branch_name:
+        raise HTTPException(400, "El nombre de la sucursal es obligatorio.")
+    if len(branch_name) > 160:
+        raise HTTPException(400, "El nombre de la sucursal no puede superar los 160 caracteres.")
+    branch = Branch(company_id=company.id, name=branch_name, city=city.strip(), address=address.strip())
     db.add(branch)
     db.flush()
     write_audit(db, user, "crear", "sucursal", str(branch.id), branch.name)
@@ -1524,10 +1549,11 @@ def employee_import_preview_page(
     if preview.user_id != user.id or preview.studio_id != (user.studio_id or 0):
         raise HTTPException(403)
     company = company_allowed(db, user, preview.company_id)
-    existing_employees = {
-        item.document_number: item
-        for item in db.scalars(select(Employee).where(Employee.company_id == company.id))
-    }
+    existing_employees = {}
+    for item in db.scalars(select(Employee).where(Employee.company_id == company.id)):
+        normalized_document = normalize_document_number(item.document_number)
+        if normalized_document:
+            existing_employees.setdefault(normalized_document, item)
     existing_documents = set(existing_employees)
     duplicate_count = sum(row.data.get("document_number") in existing_documents for row in preview.rows if row.valid)
     salary_change_count = sum(
@@ -1557,18 +1583,22 @@ def employee_import_confirm(
     if preview.user_id != user.id or preview.studio_id != (user.studio_id or 0):
         raise HTTPException(403)
     company = company_allowed(db, user, preview.company_id)
+    existing_employees = {}
+    for item in db.scalars(select(Employee).where(Employee.company_id == company.id)):
+        normalized_document = normalize_document_number(item.document_number)
+        if normalized_document:
+            existing_employees.setdefault(normalized_document, item)
     created = updated = skipped = salary_changes_requires_request = 0
     for row in preview.rows:
         if not row.valid:
             skipped += 1
             continue
         data = row.data
-        employee = db.scalar(
-            select(Employee).where(
-                Employee.company_id == company.id,
-                Employee.document_number == data["document_number"],
-            )
-        )
+        document_number = normalize_document_number(data.get("document_number"))
+        if not document_number:
+            skipped += 1
+            continue
+        employee = existing_employees.get(document_number)
         if employee and duplicate_action != "update":
             skipped += 1
             continue
@@ -1602,6 +1632,7 @@ def employee_import_confirm(
             )
             db.add(employee)
             db.flush()
+            existing_employees[document_number] = employee
             add_employee_event(db, employee, user, "Alta", "Funcionario importado", f"Archivo: {preview.filename}", admission, employee.base_salary)
             db.add(SalaryHistory(
                 employee_id=employee.id, previous_salary=0, new_salary=employee.base_salary,
@@ -1630,8 +1661,8 @@ def add_employee(
     position_name: Annotated[str, Form(alias="position")],
     admission_date: Annotated[date, Form()],
     base_salary: Annotated[int, Form()],
-    branch_id: Annotated[int | None, Form()] = None,
-    birth_date: Annotated[date | None, Form()] = None,
+    branch_id: Annotated[str, Form()] = "",
+    birth_date: Annotated[str, Form()] = "",
     contract_type: Annotated[str, Form()] = "Tiempo indefinido",
     payment_frequency: Annotated[str, Form()] = "Mensual",
     email: Annotated[str, Form()] = "",
@@ -1642,18 +1673,48 @@ def add_employee(
     user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
     db: Session = Depends(get_db),
 ):
-    company_allowed(db, user, company_id)
+    company = company_allowed(db, user, company_id)
+    full_name_value = full_name.strip()
+    document_number_value = normalize_document_number(document_number)
+    position_value = position_name.strip()
+    if not full_name_value:
+        raise HTTPException(400, "El nombre completo es obligatorio.")
+    if len(full_name_value) > 180:
+        raise HTTPException(400, "El nombre completo no puede superar los 180 caracteres.")
+    if not document_number_value:
+        raise HTTPException(400, "La cédula es obligatoria.")
+    if len(document_number_value) > 40:
+        raise HTTPException(400, "La cédula no puede superar los 40 caracteres.")
+    if not position_value:
+        raise HTTPException(400, "El cargo es obligatorio.")
+    if len(position_value) > 140:
+        raise HTTPException(400, "El cargo no puede superar los 140 caracteres.")
+    if base_salary < 0:
+        raise HTTPException(400, "El salario base no puede ser negativo.")
+    branch_id_value = optional_int(branch_id, field="sucursal")
+    birth_date_value = optional_date(birth_date, field="fecha de nacimiento")
+    if birth_date_value and birth_date_value >= admission_date:
+        raise HTTPException(400, "La fecha de nacimiento debe ser anterior a la fecha de ingreso.")
+    if branch_id_value is not None:
+        branch = db.scalar(select(Branch).where(
+            Branch.id == branch_id_value, Branch.company_id == company.id
+        ))
+        if not branch or not branch.active:
+            raise HTTPException(400, "La sucursal seleccionada no pertenece a la empresa o está inactiva.")
+    existing_documents = db.scalars(select(Employee.document_number).where(Employee.company_id == company.id))
+    if any(normalize_document_number(value) == document_number_value for value in existing_documents):
+        return RedirectResponse("/app/employees?duplicate=1", status_code=303)
     employee = Employee(
-        company_id=company_id,
-        branch_id=branch_id or None,
-        full_name=full_name.strip(),
-        document_number=document_number.strip(),
-        birth_date=birth_date,
-        position=position_name.strip(),
+        company_id=company.id,
+        branch_id=branch_id_value,
+        full_name=full_name_value,
+        document_number=document_number_value,
+        birth_date=birth_date_value,
+        position=position_value,
         admission_date=admission_date,
         contract_type=contract_type.strip(),
         payment_frequency=payment_frequency.strip(),
-        base_salary=max(0, base_salary),
+        base_salary=base_salary,
         ips_contributor=ips_contributor == "on",
         email=email.strip(),
         phone=phone.strip(),
