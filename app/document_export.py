@@ -1230,14 +1230,16 @@ def build_pdf_bytes(data: ExportData) -> bytes:
     if data.company_email:
         details.append(escape(data.company_email))
     logo_cell: Any
+    has_logo = False
     if data.logo_bytes:
         try:
             logo_cell = Image(io.BytesIO(data.logo_bytes), width=34 * mm, height=14 * mm, kind="proportional")
+            has_logo = True
         except Exception:
             logo_cell = Paragraph("<b>DL</b>", ParagraphStyle("DL", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=18, textColor=colors.white, alignment=TA_CENTER))
     else:
         logo_cell = Paragraph("<b>DL</b>", ParagraphStyle("DL", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=18, textColor=colors.white, alignment=TA_CENTER))
-    logo_background = colors.HexColor("#F7F9FC") if data.logo_bytes else colors.HexColor(data.primary_color)
+    logo_background = colors.HexColor("#F7F9FC") if has_logo else colors.HexColor(data.primary_color)
     header = Table(
         [[logo_cell, [Paragraph(escape(data.company_name.upper()), company_style), Paragraph(" · ".join(details), detail_style) if details else ""]]],
         colWidths=[38 * mm, 130 * mm],
