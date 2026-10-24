@@ -718,21 +718,21 @@ def calculate_values(
     }
     if calculation_type == "salary":
         computable = inputs["gross"] + inputs["other_income"]
-        ips = round(computable * ips_rate / 100) if inputs["apply_ips"] else 0
+        ips = round_gs(computable * ips_rate / 100) if inputs["apply_ips"] else 0
         discounts = ips + inputs["other_discount"]
         amount = max(0, computable - discounts)
         results = {"gross_computable": computable, "ips_employee": ips, "discounts": discounts, "net": amount}
     elif calculation_type == "hours":
         base = inputs["salary"] / inputs["monthly_hours"]
-        amount = round(base * inputs["hours_quantity"] * inputs["multiplier"])
-        results = {"hour_value": round(base), "total": amount}
+        amount = round_gs(base * inputs["hours_quantity"] * inputs["multiplier"])
+        results = {"hour_value": round_gs(base), "total": amount}
     elif calculation_type == "aguinaldo":
-        amount = round(inputs["total_remunerations"] / 12)
+        amount = round_gs(inputs["total_remunerations"] / 12)
         results = {"total_remunerations": inputs["total_remunerations"], "aguinaldo": amount}
     elif calculation_type in {"vacation", "notice"}:
         daily = inputs["salary"] / 30
-        amount = round(daily * inputs["days"])
-        results = {"daily_value": round(daily), "days": inputs["days"], "total": amount}
+        amount = round_gs(daily * inputs["days"])
+        results = {"daily_value": round_gs(daily), "days": inputs["days"], "total": amount}
     else:
         raise HTTPException(400, "Tipo de cálculo inválido.")
     return inputs, results, amount
@@ -3790,7 +3790,7 @@ def update_payroll_line(
         setattr(line, attr, max(0, value))
     line.gross = line.base_salary + line.overtime + line.commissions + line.bonuses + line.other_income
     rate = get_parameter(db, "ips_employee_rate_general", 9) / 100
-    line.ips_employee = round(line.gross * rate) if line.employee.ips_contributor else 0
+    line.ips_employee = round_gs(line.gross * rate) if line.employee.ips_contributor else 0
     line.total_discounts = line.ips_employee + line.absences_discount + line.advances + line.other_discount
     line.net = max(0, line.gross - line.total_discounts)
     recalculate_payroll(db, payroll)
@@ -3887,7 +3887,7 @@ def create_aguinaldo(
     employee = db.get(Employee, employee_id)
     if not employee or employee.company_id not in company_ids_for_user(db, user):
         raise HTTPException(404)
-    amount = round(max(0, total_remunerations) / 12)
+    amount = round_gs(max(0, total_remunerations) / 12)
     item = Aguinaldo(employee_id=employee_id, year=year, total_remunerations=max(0, total_remunerations), calculated_amount=amount, notes=notes.strip())
     db.add(item)
     try:
