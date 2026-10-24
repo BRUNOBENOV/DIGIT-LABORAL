@@ -112,7 +112,7 @@ def parse_date(value: Any) -> date | None:
 
 def normalize_document_number(value: Any) -> str:
     """Normalize cédula formatting without removing meaningful hyphens."""
-    return re.sub(r"[.\\s]+", "", str(value or "").strip())
+    return re.sub(r"[.\s]+", "", str(value or "").strip())
 
 
 def parse_money(value: Any) -> int | None:
@@ -128,9 +128,9 @@ def parse_money(value: Any) -> int | None:
     text = str(value).strip()
     if not text or text.startswith("-") or "(" in text or ")" in text:
         return None
-    text = re.sub(r"(?i)^gs\\.?\\s*", "", text).replace("₲", "").replace("$", "")
-    text = re.sub(r"\\s+", "", text)
-    if not re.fullmatch(r"(?:\\d+|\\d{1,3}(?:[.,]\\d{3})+)", text):
+    text = re.sub(r"(?i)^gs\.?\s*", "", text).replace("₲", "").replace("$", "")
+    text = re.sub(r"\s+", "", text)
+    if not re.fullmatch(r"(?:\d+|\d{1,3}(?:[.,]\d{3})+)", text):
         return None
     return int(re.sub(r"[.,]", "", text))
 
@@ -144,6 +144,7 @@ def parse_bool(value: Any, default: bool = True) -> bool:
     if normalized in {"no", "n", "0", "false", "falso", "no_aporta", "no_aporta_ips"}:
         return False
     return default
+
 
 def _rows_from_xlsx(content: bytes) -> tuple[list[str], list[list[Any]]]:
     workbook = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
