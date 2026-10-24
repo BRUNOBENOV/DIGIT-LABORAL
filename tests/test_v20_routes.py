@@ -120,3 +120,69 @@ def test_branch_compliance_profile_can_be_saved():
         assert profile is not None
         assert profile.ips_employer_number == "IPS-TEST-001"
         assert profile.mtess_employer_number == "MTESS-TEST-001"
+
+
+
+def test_company_logo_presentation_preferences_are_saved_and_bounded():
+    from sqlalchemy import select
+    from app.database import SessionLocal
+    from app.models import Company, CompanyBranding
+
+    with SessionLocal() as db:
+        company = db.scalar(select(Company).order_by(Company.id))
+        assert company is not None
+        company_id = company.id
+
+    with TestClient(app) as client:
+        csrf = _login(client)
+        saved = client.post(
+            f"/app/companies/{company_id}/branding",
+            data={
+                "csrf_token": csrf,
+                "logo_fit": "cover",
+                "logo_scale": "120",
+                "logo_alignment": "right",
+                "logo_background": "navy",
+                "primary_color": "#112233",
+                "secondary_color": "#445566",
+                "document_footer": "Pie personalizado de prueba",
+                "signature_name": "Representante de prueba",
+                "signature_title": "Representante legal",
+                "document_prefix": "DLTEST",
+                "show_ruc": "on",
+                "show_contact": "on",
+            },
+            follow_redirects=False,
+        )
+        assert saved.status_code == 303
+
+    with SessionLocal() as db:
+        branding = db.scalar(select(CompanyBranding).where(CompanyBranding.company_id == company_id))
+        assert branding is not None
+        assert branding.logo_fit == "cover"
+        assert branding.logo_scale == 120
+        assert branding.logo_alignment == "right"
+        assert branding.logo_background == "navy"
+
+    with TestClient(app) as client:
+        csrf = _login(client)
+        invalid = client.post(
+            f"/app/companies/{company_id}/branding",
+            data={
+                "csrf_token": csrf,
+                "logo_fit": "invalid",
+                "logo_scale": "999",
+                "logo_alignment": "outside",
+                "logo_background": "purple",
+            },
+            follow_redirects=False,
+        )
+        assert invalid.status_code == 303
+
+    with SessionLocal() as db:
+        branding = db.scalar(select(CompanyBranding).where(CompanyBranding.company_id == company_id))
+        assert branding is not None
+        assert branding.logo_fit == "contain"
+        assert branding.logo_scale == 140
+        assert branding.logo_alignment == "center"
+        assert branding.logo_background == "white"
