@@ -365,8 +365,10 @@ def test_employee_status_treats_blank_date_as_empty_and_requires_exit_date():
             data={"csrf_token": csrf, "status": "Desvinculado", "termination_date": ""},
             follow_redirects=False,
         )
-        assert missing_exit_date.status_code == 400
-        assert "fecha efectiva de salida" in missing_exit_date.text.lower()
+        assert missing_exit_date.status_code == 303
+        error_page = client.get(missing_exit_date.headers["location"])
+        assert error_page.status_code == 200
+        assert "fecha efectiva de salida" in error_page.text.lower()
 
         with SessionLocal() as db:
             employee = db.get(Employee, employee_id)
