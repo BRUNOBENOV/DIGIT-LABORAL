@@ -32,12 +32,16 @@ def optional_int(value: str | int | None, *, field: str = "valor") -> int | None
 
 
 def optional_date(value: str | date | None, *, field: str = "fecha") -> date | None:
-    if value is None or value == "":
+    """Convert optional HTML date values to dates, treating blank strings as absent."""
+    if value is None:
         return None
     if isinstance(value, date):
         return value
+    cleaned = str(value).strip()
+    if not cleaned:
+        return None
     try:
-        return date.fromisoformat(str(value).strip())
+        return date.fromisoformat(cleaned)
     except ValueError as exc:
         raise HTTPException(400, f"{field.capitalize()} inválida.") from exc
 
