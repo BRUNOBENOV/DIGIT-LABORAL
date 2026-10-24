@@ -3525,7 +3525,6 @@ async def update_official_certificate_record(
     return RedirectResponse(f"/app/certificates/official?updated={item.id}", status_code=303)
 
 
-@app.get("/app/reports", response_class=HTMLResponse)
 def _csv_safe_cell(value):
     """Prevent spreadsheet formula execution when text exports are opened in Excel/LibreOffice."""
     if not isinstance(value, str):
@@ -3536,6 +3535,7 @@ def _csv_safe_cell(value):
     return value
 
 
+@app.get("/app/reports", response_class=HTMLResponse)
 def reports_page(
     request: Request,
     company_id: OptionalQueryId = None,
