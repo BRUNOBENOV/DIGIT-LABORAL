@@ -416,11 +416,16 @@ def test_vacation_rejects_malformed_partial_and_inconsistent_dates_and_statuses(
         employee = db.scalar(select(Employee).where(Employee.status == "Activo").order_by(Employee.id))
         assert employee is not None
         employee_id = employee.id
+        admission_date = employee.admission_date
         before = db.scalar(select(func.count(Vacation.id)).where(
             Vacation.employee_id == employee_id, Vacation.period_year == year
         )) or 0
 
     invalid_cases = [
+        # A vacation cannot start before the worker's recorded admission date.
+        {"status": "Pendiente", "used_days": "0",
+         "start_date": (admission_date - timedelta(days=1)).isoformat(),
+         "end_date": (admission_date - timedelta(days=1)).isoformat()},
         # Pending entries may omit dates, but cannot provide just one endpoint.
         {"status": "Pendiente", "used_days": "0", "start_date": past_start, "end_date": ""},
         # Invalid ISO dates must not silently turn into an empty date.
