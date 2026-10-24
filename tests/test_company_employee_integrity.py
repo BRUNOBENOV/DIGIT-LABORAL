@@ -102,41 +102,52 @@ def test_employee_form_shows_only_a_company_specific_branch_selector():
 
 
 def test_employee_create_accepts_blank_optional_birth_date_and_normalizes_duplicate_document():
-    with TestClient(app) as client:
-        csrf = _login(client)
-        with SessionLocal() as db:
-            employee = next(
-                (
-                    item for item in db.scalars(select(Employee).order_by(Employee.id))
-                    if item.document_number.isdigit() and len(item.document_number) >= 4
-                ),
-                None,
-            )
-            assert employee is not None
-            company_id = employee.company_id
-            dotted_document = _dot_format_document(employee.document_number)
-
-        response = client.post(
-            "/app/employees",
-            data={
-                "csrf_token": csrf,
-                "company_id": str(company_id),
-                "full_name": "Registro duplicado de prueba",
-                "document_number": dotted_document,
-                "position": "Auxiliar de prueba",
-                "admission_date": "2024-02-01",
-                "birth_date": "",
-                "branch_id": "",
-                "base_salary": "3044000",
-                "contract_type": "Tiempo indefinido",
-                "payment_frequency": "Mensual",
-            },
-            follow_redirects=False,
+    unique_document = str(900_000_000_000_000 + uuid.uuid4().int % 99_999_999_999_999)
+    with SessionLocal() as db:
+        company = db.scalar(select(Company).order_by(Company.id))
+        assert company is not None
+        company_id = company.id
+        existing = Employee(
+            company_id=company_id,
+            full_name="Funcionario duplicado de prueba",
+            document_number=unique_document,
+            position="Auxiliar de prueba",
+            admission_date=__import__("datetime").date(2024, 2, 1),
+            base_salary=3_044_000,
         )
+        db.add(existing)
+        db.commit()
+        existing_id = existing.id
 
-        assert response.status_code == 303
-        assert response.headers["location"] == "/app/employees?duplicate=1"
+    try:
+        with TestClient(app) as client:
+            csrf = _login(client)
+            response = client.post(
+                "/app/employees",
+                data={
+                    "csrf_token": csrf,
+                    "company_id": str(company_id),
+                    "full_name": "Registro duplicado de prueba",
+                    "document_number": _dot_format_document(unique_document),
+                    "position": "Auxiliar de prueba",
+                    "admission_date": "2024-02-01",
+                    "birth_date": "",
+                    "branch_id": "",
+                    "base_salary": "3044000",
+                    "contract_type": "Tiempo indefinido",
+                    "payment_frequency": "Mensual",
+                },
+                follow_redirects=False,
+            )
 
+            assert response.status_code == 303
+            assert response.headers["location"] == "/app/employees?duplicate=1"
+    finally:
+        with SessionLocal() as db:
+            existing = db.get(Employee, existing_id)
+            if existing:
+                db.delete(existing)
+                db.commit()
 
 def test_employee_create_rejects_an_unrelated_branch_before_writing_the_employee():
     unique_document = f"QA-{uuid.uuid4().hex[:14]}"
