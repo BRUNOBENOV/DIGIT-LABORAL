@@ -181,6 +181,15 @@ def backup_sqlite() -> Path:
     return destination
 
 
+def pg_dump_database_url(url: str) -> str:
+    """Convert common provider/SQLAlchemy PostgreSQL URLs to a libpq-compatible URL."""
+    if url.startswith("postgres://"):
+        return "postgresql://" + url[len("postgres://"):]
+    if url.startswith("postgresql+") and "://" in url:
+        return "postgresql://" + url.split("://", 1)[1]
+    return url
+
+
 def backup_postgres() -> Path:
     pg_dump = shutil.which("pg_dump")
     if not pg_dump:
@@ -189,7 +198,7 @@ def backup_postgres() -> Path:
     destination = BACKUPS / f"digit-laboral-{STAMP}.zip"
     try:
         subprocess.run(
-            [pg_dump, "--format=custom", "--no-owner", "--file", str(dump_path), DATABASE_URL],
+            [pg_dump, "--format=custom", "--no-owner", "--file", str(dump_path), pg_dump_database_url(DATABASE_URL)],
             check=True,
             timeout=60 * 30,
         )
