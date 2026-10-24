@@ -1916,6 +1916,8 @@ def _parse_optional_form_int(value: str, label: str, minimum: int = 0) -> int | 
         raise HTTPException(400, f"El campo {label} debe ser un número entero.") from exc
     if parsed < minimum:
         raise HTTPException(400, f"El campo {label} no puede ser menor que {minimum}.")
+    if parsed > 2147483647:
+        raise HTTPException(400, f"El campo {label} supera el máximo admitido.")
     return parsed
 
 
@@ -2252,7 +2254,10 @@ def add_request(
             raise HTTPException(400, "La cantidad de horas no es válida.") from exc
         if not hours_requested.is_finite() or hours_requested <= 0 or hours_requested > Decimal("744"):
             raise HTTPException(400, "La cantidad de horas debe ser mayor que 0 y no superar 744.")
-        hours_requested = hours_requested.quantize(Decimal("0.01"))
+        rounded_hours = hours_requested.quantize(Decimal("0.01"))
+        if hours_requested != rounded_hours:
+            raise HTTPException(400, "La cantidad de horas admite como máximo dos decimales.")
+        hours_requested = rounded_hours
     if period_year is not None and period_year > date.today().year + 2:
         raise HTTPException(400, "El año del periodo está demasiado lejos.")
     if start_date and end_date and end_date < start_date:
@@ -2265,6 +2270,8 @@ def add_request(
     elif request_kind == "vacaciones":
         if not employee or period_year is None or requested_days is None or not start_date or not end_date:
             raise HTTPException(400, "Una solicitud de vacaciones requiere funcionario, periodo, días solicitados y fechas desde/hasta.")
+        if requested_days > 365:
+            raise HTTPException(400, "Los días solicitados de vacaciones no pueden superar 365.")
     elif request_kind in {"permiso/licencia", "permiso", "licencia"}:
         if not employee or not leave_type_raw.strip() or not start_date or not end_date:
             raise HTTPException(400, "Un permiso o licencia requiere funcionario, tipo de permiso y fechas desde/hasta.")
@@ -2336,8 +2343,13 @@ def add_request_comment(
     if not item or item.company_id not in company_ids_for_user(db, user):
         raise HTTPException(404)
     safe_visibility = "Empresa" if user.role == "empresa" else ("Interno" if visibility == "Interno" else "Empresa")
+    body_value = body.strip()
+    if not body_value:
+        raise HTTPException(400, "El comentario no puede estar vacío.")
+    if len(body_value) > 10000:
+        raise HTTPException(400, "El comentario supera el máximo de 10.000 caracteres.")
     comment = RequestComment(
-        request_id=item.id, user_id=user.id, author_name=user.full_name, visibility=safe_visibility, body=body.strip(),
+        request_id=item.id, user_id=user.id, author_name=user.full_name, visibility=safe_visibility, body=body_value,
     )
     db.add(comment)
     db.flush()
@@ -2372,9 +2384,29 @@ async def add_request_attachment(
     content = await file.read(MAX_UPLOAD_SIZE + 1)
     if len(content) > MAX_UPLOAD_SIZE:
         raise HTTPException(413, "El archivo supera el máximo permitido de 10 MB.")
+    if not content:
+        raise HTTPException(400, "El archivo adjunto está vacío.")
     content_type = (file.content_type or "application/octet-stream").lower()
     if content_type not in ALLOWED_UPLOAD_TYPES:
         raise HTTPException(415, "Tipo de archivo no permitido.")
+    if content_type == "application/pdf" and not content.startswith(b"%PDF-"):
+        raise HTTPException(415, "El contenido no corresponde a un PDF válido.")
+    if content_type == "image/png" and not content.startswith(b"\\x89PNG\\r\\n\\x1a\\n"):
+        raise HTTPException(415, "El contenido no corresponde a una imagen PNG válida.")
+    if content_type == "image/jpeg" and not content.startswith(b"\\xff\\xd8\\xff"):
+        raise HTTPException(415, "El contenido no corresponde a una imagen JPEG válida.")
+    if content_type in {
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    }:
+        required_member = "word/document.xml" if content_type.endswith("wordprocessingml.document") else "xl/workbook.xml"
+        try:
+            with zipfile.ZipFile(io.BytesIO(content)) as archive:
+                is_ooxml = required_member in archive.namelist()
+        except (zipfile.BadZipFile, OSError):
+            is_ooxml = False
+        if not is_ooxml:
+            raise HTTPException(415, "El contenido no corresponde a un documento Word o Excel válido.")
     stored_name = f"requests/{item.id}/{uuid.uuid4().hex}_{safe_filename(file.filename or 'archivo')}"
     storage.put(stored_name, content, content_type)
     attachment = RequestAttachment(
@@ -2437,6 +2469,8 @@ def request_status(
         raise HTTPException(400, "Estado inválido.")
     if status_value in {"Aprobada", "Rechazada"} and user.role not in {"administrador", "contador"}:
         raise HTTPException(403, "Solo un administrador o contador puede aprobar o rechazar un trámite.")
+    if item.request_type.strip().casefold() == "cambio salarial" and status_value == "Resuelta":
+        raise HTTPException(409, "Un cambio salarial debe aplicarse desde su acción específica o rechazarse; no se puede cerrar como resuelto sin actualizar el legajo.")
     due_date = _parse_optional_form_date(due_date_raw, "fecha límite")
     assigned_user_id = _parse_optional_form_int(assigned_user_id_raw, "responsable", 1)
     company = db.get(Company, item.company_id)
@@ -2584,8 +2618,12 @@ def apply_request(
     if item.request_type.strip().casefold() != "cambio salarial":
         raise HTTPException(400, "La aplicación automática está habilitada únicamente para cambios salariales. Los demás trámites deben completarse desde su módulo correspondiente.")
     employee = db.get(Employee, item.employee_id) if item.employee_id else None
-    if not employee or employee.company_id != item.company_id or item.amount is None or item.amount < 0:
-        raise HTTPException(400, "La solicitud salarial necesita un funcionario de la empresa y un importe válido.")
+    if (
+        not employee or employee.company_id != item.company_id
+        or item.amount is None or item.amount <= 0 or item.amount > 2147483647
+        or item.effective_date is None
+    ):
+        raise HTTPException(400, "La solicitud salarial necesita un funcionario, un salario mensual positivo y una fecha efectiva válida.")
     previous_salary = employee.base_salary
     effective_from = item.effective_date or date.today()
     employee.base_salary = item.amount
