@@ -6,6 +6,7 @@ import re
 import unicodedata
 import zipfile
 from datetime import datetime
+from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -17,7 +18,7 @@ from starlette.concurrency import run_in_threadpool
 from . import main as core
 from .calculator_fields import GROUPS
 from .form_utils import OptionalQueryId
-from .labor_calculator import CalculationError, SOURCE, TITLES, VERSION, calculate, clean
+from .labor_calculator import CalculationError, SOURCE, TITLES, VERSION, amount as round_gs, calculate, clean
 from .liquidation_export import build_liquidation_pdf, build_liquidation_csv
 from .labor_examples import example_values
 from .models import CalculationRecord, Company, Employee, Payroll, PayrollLine, PayrollComplianceDetail, User
@@ -240,7 +241,17 @@ def payroll_result(payroll, line, detail=None):
     if (any(r["amount"] < 0 for r in earnings + deductions) or
         gross != line.gross or total != line.total_discounts or gross - total != line.net or line.net < 0):
         raise HTTPException(409, "La nómina contiene importes inconsistentes. Revisá y guardá los conceptos antes de emitir.")
-    if line.ips_base is not None:
+    # When a saved IPS base/rate exists, the receipt must not display a deduction
+    # that conflicts with the formula printed underneath it. Legacy rows with both
+    # values absent remain exportable, while partially migrated snapshots fail closed.
+    if (line.ips_base is None) != (line.ips_rate is None):
+        raise HTTPException(409, "La nómina tiene una base o tasa IPS incompleta. Revisá la línea antes de emitir.")
+    if line.ips_base is not None and line.ips_rate is not None:
+        if line.ips_base < 0 or line.ips_rate < 0 or line.ips_rate > 100:
+            raise HTTPException(409, "La nómina contiene una base o tasa IPS inválida.")
+        expected_ips = round_gs(Decimal(str(line.ips_base)) * Decimal(str(line.ips_rate)) / Decimal("100"))
+        if line.ips_employee != expected_ips:
+            raise HTTPException(409, "El aporte IPS guardado no coincide con la base y la tasa registradas. Revisá la línea antes de emitir.")
         for row in deductions:
             if row["label"] == "Aporte IPS":
                 row["formula"] = f"Base guardada Gs. {line.ips_base:,} × {line.ips_rate}%"
