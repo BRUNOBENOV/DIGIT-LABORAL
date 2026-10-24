@@ -1066,6 +1066,16 @@ def build_docx_bytes(data: ExportData) -> bytes:
     date_p.runs[0].font.name = "Aptos"
     date_p.runs[0].font.size = Pt(10.5)
 
+    kicker = document.add_paragraph()
+    kicker.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    kicker.paragraph_format.space_before = Pt(0)
+    kicker.paragraph_format.space_after = Pt(4)
+    kicker_run = kicker.add_run("DOCUMENTO LABORAL")
+    kicker_run.bold = True
+    kicker_run.font.name = "Aptos"
+    kicker_run.font.size = Pt(8)
+    kicker_run.font.color.rgb = RGBColor.from_string(data.primary_color.lstrip("#") or "173B86")
+
     title = document.add_paragraph()
     title.alignment = WD_ALIGN_PARAGRAPH.CENTER
     title.paragraph_format.space_after = Pt(18)
@@ -1129,6 +1139,9 @@ def build_docx_bytes(data: ExportData) -> bytes:
 def _pdf_footer(canvas, doc, data: ExportData) -> None:
     canvas.saveState()
     width, _ = A4
+    canvas.setStrokeColor(colors.HexColor(data.primary_color))
+    canvas.setLineWidth(0.6)
+    canvas.line(21 * mm, 15 * mm, width - 21 * mm, 15 * mm)
     canvas.setFont("Helvetica", 7)
     canvas.setFillColor(colors.HexColor("#7A8597"))
     canvas.drawCentredString(
@@ -1169,7 +1182,12 @@ def build_pdf_bytes(data: ExportData) -> bytes:
         leading=10,
         textColor=colors.HexColor("#556174"),
     )
-    date_style = ParagraphStyle("Date", parent=styles["Normal"], fontName="Helvetica", fontSize=10.5, leading=14, textColor=colors.HexColor("#4E5B70"), alignment=TA_RIGHT, spaceAfter=16)
+    date_style = ParagraphStyle("Date", parent=styles["Normal"], fontName="Helvetica", fontSize=10.5, leading=14, textColor=colors.HexColor("#4E5B70"), alignment=TA_RIGHT, spaceAfter=12)
+    kicker_style = ParagraphStyle(
+        "DocumentKicker", parent=styles["Normal"], fontName="Helvetica-Bold",
+        fontSize=7.5, leading=10, textColor=colors.HexColor(data.primary_color),
+        alignment=TA_CENTER, spaceAfter=4,
+    )
     title_style = ParagraphStyle(
         "Title",
         parent=styles["Heading1"],
@@ -1214,30 +1232,32 @@ def build_pdf_bytes(data: ExportData) -> bytes:
     logo_cell: Any
     if data.logo_bytes:
         try:
-            logo_cell = Image(io.BytesIO(data.logo_bytes), width=16 * mm, height=16 * mm, kind="proportional")
+            logo_cell = Image(io.BytesIO(data.logo_bytes), width=34 * mm, height=14 * mm, kind="proportional")
         except Exception:
             logo_cell = Paragraph("<b>DL</b>", ParagraphStyle("DL", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=18, textColor=colors.white, alignment=TA_CENTER))
     else:
         logo_cell = Paragraph("<b>DL</b>", ParagraphStyle("DL", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=18, textColor=colors.white, alignment=TA_CENTER))
+    logo_background = colors.HexColor("#F7F9FC") if data.logo_bytes else colors.HexColor(data.primary_color)
     header = Table(
         [[logo_cell, [Paragraph(escape(data.company_name.upper()), company_style), Paragraph(" · ".join(details), detail_style) if details else ""]]],
-        colWidths=[20 * mm, 150 * mm],
+        colWidths=[38 * mm, 130 * mm],
     )
     header.setStyle(
         TableStyle(
             [
-                ("BACKGROUND", (0, 0), (0, 0), colors.HexColor(data.primary_color)),
+                ("BACKGROUND", (0, 0), (0, 0), logo_background),
                 ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("LEFTPADDING", (0, 0), (-1, -1), 8),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
-                ("TOPPADDING", (0, 0), (-1, -1), 8),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+                ("LEFTPADDING", (0, 0), (-1, -1), 9),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 9),
+                ("TOPPADDING", (0, 0), (-1, -1), 9),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 9),
                 ("LINEBELOW", (0, 0), (-1, -1), 1.3, colors.HexColor(data.primary_color)),
             ]
         )
     )
     story.extend([header, Spacer(1, 10 * mm)])
     story.append(Paragraph(f"{escape(data.city)}, {escape(format_date_long_es(data.issue_date))}", date_style))
+    story.append(Paragraph("DOCUMENTO LABORAL", kicker_style))
     story.append(Paragraph(escape(data.title.upper()), title_style))
     document_number = str((data.metadata or {}).get("document_number") or "").strip()
     if document_number:
