@@ -941,10 +941,28 @@ def login_2fa_action(
         request.session.clear()
         return RedirectResponse("/login", status_code=303)
     security = get_or_create_security(db, user)
+    if is_locked(security):
+        write_security_event(db, request, "segundo_factor_bloqueado", False, user=user, detail="Segundo factor intentado durante bloqueo temporal")
+        db.commit()
+        return render(
+            request, "login_2fa.html", db, pending_email=user.email,
+            error="La cuenta está bloqueada temporalmente por intentos fallidos. Volvé a iniciar sesión más tarde.",
+        )
+    if security_rate_limited(
+        db, request, event_types=("segundo_factor",), limit=15, minutes=15, failures_only=True
+    ):
+        write_security_event(db, request, "segundo_factor_bloqueado", False, user=user, detail="Límite de intentos TOTP por conexión")
+        db.commit()
+        return render(
+            request, "login_2fa.html", db, pending_email=user.email,
+            error="Se alcanzó el límite de códigos de esta conexión. Esperá unos minutos antes de volver a intentar.",
+        )
     if not verify_totp(security.totp_secret, code):
+        record_failed_login(security)
         write_security_event(db, request, "segundo_factor", False, user=user, detail="Código TOTP inválido")
         db.commit()
         return render(request, "login_2fa.html", db, pending_email=user.email, error="El código no es válido.")
+    reset_login_failures(security)
     db.info["studio_id"] = user.studio_id
     db.info["is_superadmin"] = user.role == "superadmin"
     apply_session_tenant_context(db)
@@ -4057,7 +4075,13 @@ def security_2fa_confirm(
     request: Request, code: Annotated[str, Form()], user: User = Depends(require_user), db: Session = Depends(get_db),
 ):
     secret = request.session.get("pending_totp_secret", "")
+    if security_rate_limited(
+        db, request, event_types=("activar_2fa",), limit=10, minutes=15, failures_only=True
+    ):
+        return RedirectResponse("/app/security?invalid_code=1", status_code=303)
     if not secret or not verify_totp(secret, code):
+        write_security_event(db, request, "activar_2fa", False, user=user, detail="Código de activación TOTP inválido")
+        db.commit()
         return RedirectResponse("/app/security?invalid_code=1", status_code=303)
     security = get_or_create_security(db, user)
     security.totp_secret = secret
@@ -4076,8 +4100,14 @@ def security_2fa_disable(
     request: Request, password: Annotated[str, Form()], code: Annotated[str, Form()],
     user: User = Depends(require_user), db: Session = Depends(get_db),
 ):
+    if security_rate_limited(
+        db, request, event_types=("desactivar_2fa",), limit=10, minutes=15, failures_only=True
+    ):
+        return RedirectResponse("/app/security?disable_error=1", status_code=303)
     security = get_or_create_security(db, user)
     if not verify_password(password, user.password_hash) or not verify_totp(security.totp_secret, code):
+        write_security_event(db, request, "desactivar_2fa", False, user=user, detail="Contraseña o código TOTP incorrecto")
+        db.commit()
         return RedirectResponse("/app/security?disable_error=1", status_code=303)
     security.totp_enabled = False
     security.totp_secret = ""
@@ -4094,7 +4124,13 @@ def security_change_password(
     request: Request, current_password: Annotated[str, Form()], new_password: Annotated[str, Form()],
     new_password_confirm: Annotated[str, Form()], user: User = Depends(require_user), db: Session = Depends(get_db),
 ):
+    if security_rate_limited(
+        db, request, event_types=("cambio_contrasena",), limit=10, minutes=15, failures_only=True
+    ):
+        return RedirectResponse("/app/security?password_error=current", status_code=303)
     if not verify_password(current_password, user.password_hash):
+        write_security_event(db, request, "cambio_contrasena", False, user=user, detail="Contraseña actual incorrecta")
+        db.commit()
         return RedirectResponse("/app/security?password_error=current", status_code=303)
     if new_password != new_password_confirm:
         return RedirectResponse("/app/security?password_error=match", status_code=303)
