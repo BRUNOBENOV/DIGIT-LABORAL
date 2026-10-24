@@ -253,8 +253,16 @@ async def create_vacation_v24(
     usage_error = validate_vacation_usage(entitled_days, used_days)
     if usage_error:
         return _error("/app/vacations", usage_error, "vacationModal")
-    start_date = _date(form.get("start_date"))
-    end_date = _date(form.get("end_date"))
+    start_raw = _clean(form.get("start_date"), 20)
+    end_raw = _clean(form.get("end_date"), 20)
+    start_date = _date(start_raw)
+    end_date = _date(end_raw)
+    if start_raw and start_date is None:
+        return _error("/app/vacations", "La fecha de inicio no es válida.", "vacationModal")
+    if end_raw and end_date is None:
+        return _error("/app/vacations", "La fecha de fin no es válida.", "vacationModal")
+    if (start_date is None) != (end_date is None):
+        return _error("/app/vacations", "Indicá ambas fechas de vacaciones o dejá ambas vacías.", "vacationModal")
     range_error = validate_date_range(start_date, end_date)
     if range_error:
         return _error("/app/vacations", range_error, "vacationModal")
@@ -263,6 +271,13 @@ async def create_vacation_v24(
         return _error("/app/vacations", "Seleccioná un estado válido para las vacaciones.", "vacationModal")
     if status_value in {"Aprobada", "Completada"} and (not start_date or not end_date):
         return _error("/app/vacations", "Para vacaciones aprobadas o completadas indicá las fechas de inicio y fin.", "vacationModal")
+    if status_value != "Completada" and used_days:
+        return _error("/app/vacations", "Solo las vacaciones completadas pueden registrar días ya utilizados.", "vacationModal")
+    if status_value == "Completada":
+        if used_days <= 0:
+            return _error("/app/vacations", "Para completar el registro indicá los días efectivamente utilizados.", "vacationModal")
+        if end_date and end_date > date.today():
+            return _error("/app/vacations", "Una vacación completada no puede finalizar en una fecha futura.", "vacationModal")
     notes = _clean(form.get("notes"), 3000)
     if suggestion.value and entitled_days != int(suggestion.value):
         control = f"Referencia automática art. 218: {int(suggestion.value)} días; registro manual: {entitled_days} días."
