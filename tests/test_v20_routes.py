@@ -186,3 +186,72 @@ def test_company_logo_presentation_preferences_are_saved_and_bounded():
         assert branding.logo_scale == 140
         assert branding.logo_alignment == "center"
         assert branding.logo_background == "white"
+
+
+
+def test_saved_calculators_use_commercial_half_up_rounding():
+    import json
+    from sqlalchemy import select
+    from app.database import SessionLocal
+    from app.models import CalculationRecord, Company
+
+    with SessionLocal() as db:
+        company = db.scalar(select(Company).order_by(Company.id))
+        assert company is not None
+        company_id = company.id
+
+    cases = [
+        {
+            "calculation_type": "hours",
+            "reference_period": "round-hours",
+            "salary": "1",
+            "monthly_hours": "2",
+            "hours_quantity": "1",
+            "multiplier": "1",
+            "expected_amount": 1,
+            "expected_result": {"hour_value": 1, "total": 1},
+        },
+        {
+            "calculation_type": "aguinaldo",
+            "reference_period": "round-aguinaldo",
+            "total_remunerations": "6",
+            "expected_amount": 1,
+            "expected_result": {"aguinaldo": 1, "total_remunerations": 6},
+        },
+    ]
+
+    with TestClient(app) as client:
+        csrf = _login(client)
+        for case in cases:
+            data = {
+                "csrf_token": csrf,
+                "calculation_type": case["calculation_type"],
+                "company_id": str(company_id),
+                "employee_id": "",
+                "reference_period": case["reference_period"],
+                "salary": case.get("salary", ""),
+                "monthly_hours": case.get("monthly_hours", ""),
+                "hours_quantity": case.get("hours_quantity", ""),
+                "multiplier": case.get("multiplier", ""),
+                "total_remunerations": case.get("total_remunerations", ""),
+                "gross": "",
+                "other_income": "",
+                "other_discount": "",
+                "ips_base": "",
+            }
+            response = client.post("/app/calculations", data=data, follow_redirects=False)
+            assert response.status_code == 303, response.text
+
+            with SessionLocal() as db:
+                item = db.scalar(
+                    select(CalculationRecord)
+                    .where(
+                        CalculationRecord.company_id == company_id,
+                        CalculationRecord.calculation_type == case["calculation_type"],
+                        CalculationRecord.reference_period == case["reference_period"],
+                    )
+                    .order_by(CalculationRecord.id.desc())
+                )
+                assert item is not None
+                assert item.amount == case["expected_amount"]
+                assert json.loads(item.result_json) == case["expected_result"]
