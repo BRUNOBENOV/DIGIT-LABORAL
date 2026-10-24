@@ -1289,6 +1289,10 @@ async def update_company_branding(
     document_prefix: Annotated[str, Form()] = "DL",
     show_ruc: Annotated[str | None, Form()] = None,
     show_contact: Annotated[str | None, Form()] = None,
+    logo_fit: Annotated[str, Form()] = "contain",
+    logo_scale: Annotated[int, Form()] = 100,
+    logo_alignment: Annotated[str, Form()] = "center",
+    logo_background: Annotated[str, Form()] = "white",
     logo: UploadFile | None = File(default=None),
     user: User = Depends(require_roles("administrador", "contador", "empresa")),
     db: Session = Depends(get_db),
@@ -1296,6 +1300,10 @@ async def update_company_branding(
     company = company_allowed(db, user, company_id)
     branding = get_or_create_branding(db, company)
     color_pattern = re.compile(r"^#[0-9A-Fa-f]{6}$")
+    branding.logo_fit = logo_fit if logo_fit in {"contain", "cover"} else "contain"
+    branding.logo_scale = max(60, min(140, logo_scale))
+    branding.logo_alignment = logo_alignment if logo_alignment in {"left", "center", "right"} else "center"
+    branding.logo_background = logo_background if logo_background in {"white", "transparent", "soft", "navy"} else "white"
     branding.primary_color = primary_color if color_pattern.fullmatch(primary_color) else "#173B86"
     branding.secondary_color = secondary_color if color_pattern.fullmatch(secondary_color) else "#0B1F48"
     branding.document_footer = document_footer.strip()[:240] or "Generado por Digit Laboral"
