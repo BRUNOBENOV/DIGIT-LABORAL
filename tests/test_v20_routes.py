@@ -818,14 +818,20 @@ def test_audit_and_data_csv_exports_escape_spreadsheet_formulas():
 
 def test_totp_login_failures_lock_temporary_account():
     import uuid
+    from datetime import UTC, datetime
     from sqlalchemy import select
     from app.auth import hash_password
     from app.database import SessionLocal
     from app.models import SecurityEvent, Studio, User, UserSecurity
+    from app.security_service import _totp_at
 
     marker = uuid.uuid4().hex[:12]
     email = f"totp-lockout-{marker}@test.py"
     password = f"Qa-Password-{marker}!A9"
+    secret = "JBSWY3DPEHPK3PXP"
+    counter = int(datetime.now(UTC).timestamp() // 30)
+    valid_codes = {_totp_at(secret, step) for step in range(counter - 3, counter + 12)}
+    invalid_code = next(f"{candidate:06d}" for candidate in range(1_000_000) if f"{candidate:06d}" not in valid_codes)
     with SessionLocal() as db:
         admin = db.scalar(select(User).where(User.email == "admin@digitlaboral.com.py"))
         assert admin is not None and admin.studio_id is not None
@@ -840,7 +846,7 @@ def test_totp_login_failures_lock_temporary_account():
         )
         db.add(user)
         db.flush()
-        security = UserSecurity(user_id=user.id, totp_secret="JBSWY3DPEHPK3PXP", totp_enabled=True)
+        security = UserSecurity(user_id=user.id, totp_secret=secret, totp_enabled=True)
         db.add(security)
         db.commit()
         user_id = user.id
@@ -866,13 +872,13 @@ def test_totp_login_failures_lock_temporary_account():
             for _ in range(settings.login_max_attempts):
                 invalid = client.post(
                     "/login/2fa",
-                    data={"csrf_token": csrf, "code": "999999"},
+                    data={"csrf_token": csrf, "code": invalid_code},
                     follow_redirects=False,
                 )
                 assert invalid.status_code == 200
             blocked = client.post(
                 "/login/2fa",
-                data={"csrf_token": csrf, "code": "999999"},
+                data={"csrf_token": csrf, "code": invalid_code},
                 follow_redirects=False,
             )
             assert blocked.status_code == 200
