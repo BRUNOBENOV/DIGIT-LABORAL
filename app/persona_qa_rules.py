@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import io
 from datetime import date
-from .labor_calculator import anniversary
+from .labor_calculator import amount as round_gs, anniversary
 
 from PIL import Image
 
@@ -41,21 +41,21 @@ def run_rule_stress(check) -> None:  # noqa: ANN001
 
     for total in range(0, 120_000_001, 113_777):
         result = aguinaldo_amount(total)
-        check(result.value == round(total / 12), f'aguinaldo 1/12 {total}')
+        check(result.value == round_gs(total / 12), f'aguinaldo 1/12 {total}')
         check(result.value >= 0, f'aguinaldo negativo {total}')
 
     for salary in (0, 1_500_000, 3_044_000, 3_500_000, 7_250_000, 15_000_000):
         for minimum in (0, 3_044_000):
             for days in (0, 1, 6, 12, 18, 30):
                 result = vacation_amount(salary, minimum, days)
-                expected = round(max(salary, minimum) / 30 * days)
+                expected = round_gs(max(salary, minimum) / 30 * days)
                 check(result.value == expected, f'vacaciones importe {salary}/{minimum}/{days}')
                 check(result.value >= 0, 'vacaciones importe negativo')
 
     for average in range(0, 20_000_001, 137_000):
         for days in (0, 30, 45, 60, 90):
             result = notice_amount(average, days)
-            check(result.value == round(average / 30 * days), f'preaviso importe {average}/{days}')
+            check(result.value == round_gs(average / 30 * days), f'preaviso importe {average}/{days}')
 
     for number in range(0, 3000):
         check(bool(number_to_words_es(number)), f'número a letras vacío {number}')
