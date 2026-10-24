@@ -4580,7 +4580,7 @@ def update_compliance_event_status(
         event.approved_by = user.email
     if status_value == "Presentado" and previous_status != "Presentado":
         event.submitted_at = datetime.now(UTC)
-    if status_value == "Aceptado":
+    if status_value == "Aceptado" and previous_status != "Aceptado":
         event.approved_by = user.email
     write_audit(db, user, "cambiar_estado", "comunicacion_oficial", str(event.id), status_value)
     db.commit()
@@ -4753,7 +4753,7 @@ async def upload_integration_receipt(
     batch.external_reference = reference_value
     if status_value == "Presentado" and previous_batch_status != "Presentado":
         batch.submitted_at = now
-    if status_value == "Aceptado":
+    if status_value == "Aceptado" and previous_batch_status != "Aceptado":
         batch.approved_by = user.email
     for event in linked_events:
         previous_event_status = event.status
@@ -4763,7 +4763,7 @@ async def upload_integration_receipt(
             event.receipt_storage_key = receipt_key
         if status_value == "Presentado" and previous_event_status != "Presentado":
             event.submitted_at = now
-        if status_value == "Aceptado":
+        if status_value == "Aceptado" and previous_event_status != "Aceptado":
             event.approved_by = user.email
     write_audit(db, user, "registrar", "comprobante_integracion", str(batch.id), status_value)
     db.commit()
