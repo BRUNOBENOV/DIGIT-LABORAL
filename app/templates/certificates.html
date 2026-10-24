@@ -42,7 +42,7 @@
 
     <fieldset class="document-specific-fields" id="documentSpecificFields"><legend>Datos específicos del documento</legend>
       <label class="specific-field" data-specific="all">Número interno<input name="document_number" id="certificateDocumentNumber" placeholder="Se asignará automáticamente"></label>
-      <label class="specific-field" data-specific="aguinaldo_anual aguinaldo_proporcional">Fecha de pago del aguinaldo<input type="date" name="payment_date" id="certificateBonusPaymentDate"></label>
+      <label class="specific-field" data-specific="aguinaldo_anual aguinaldo_proporcional recibo_salario">Fecha de pago<input type="date" name="payment_date" id="certificatePaymentDate"></label>
       <div class="document-form-grid specific-field" data-specific="aguinaldo_anual aguinaldo_proporcional recibo_salario liquidacion_final"><label>Periodo desde<input name="period_start" id="certificatePeriodStart" type="date" value="{{ calculation_inputs.get('period_start','') }}"></label><label>Periodo hasta<input name="period_end" id="certificatePeriodEnd" type="date" value="{{ calculation_inputs.get('period_end','') }}"></label></div>
       <label class="specific-field" data-specific="aguinaldo_anual aguinaldo_proporcional recibo_salario liquidacion_final cambio_salarial">Monto relacionado (Gs.)<input name="amount" id="certificateAmount" type="number" min="0" value="{{ selected_calculation.amount if selected_calculation else 0 }}"></label>
       <label class="specific-field" data-specific="certificado_trabajo_a certificado_trabajo_b constancia notificacion_preaviso renuncia despido cambio_salarial baja_funcionario liquidacion_final">Fecha efectiva / conclusión laboral<input name="effective_date" id="certificateEffectiveDate" type="date"></label>
@@ -92,7 +92,7 @@
 
       <div class="document-field-section specific-field" data-specific="recibo_salario"><b>Detalle de liquidación salarial — modelo REOP / art. 235</b><span>Los importes se detallan por concepto; el neto se calcula sobre las cifras ingresadas.</span></div>
       <div class="document-form-grid specific-field" data-specific="recibo_salario">
-        <label>Fecha de pago<input name="payment_date" id="certificatePaymentDate" type="date"></label>
+        
         <label>Forma de pago
           <select name="payment_method" id="certificatePaymentMethod"><option value="">Seleccionar</option><option>Efectivo</option><option>Transferencia bancaria</option><option>Cheque</option><option>Billetera electrónica</option><option>Otro medio documentado</option></select>
         </label>
