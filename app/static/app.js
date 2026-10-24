@@ -398,30 +398,85 @@ if (certificateForm) {
   };
 
   function updatePreview() {
-    const title = labels[typeInput.value] || 'Documento laboral';
+    const type = typeInput.value;
+    const title = labels[type] || 'Documento laboral';
     const companyOption = selectedOption(companySelect);
+    const employeeOption = selectedOption(employeeSelect);
     const company = companyOption?.dataset.name || '';
+    const employee = employeeOption?.dataset.name || 'Funcionario/a';
+    const employeeDocument = employeeOption?.dataset.document || '—';
+    const companyColor = companyOption?.dataset.primary || '#0B2D78';
+
     document.querySelector('#certificatePreviewTitle').textContent = title.toUpperCase();
     document.querySelector('#certificatePreviewDate').textContent = `${cityInput.value || 'Ciudad del Este'}, ${longDate(issueDateInput.value)}`;
     document.querySelector('#certificatePreviewBody').textContent = buildBody();
-    document.querySelector('#certificatePreviewCompany').textContent = company;
     document.querySelector('#certificatePreviewHeaderCompany').textContent = company;
-    document.querySelector('#certificatePreviewHeaderDetails').textContent = [companyOption?.dataset.ruc ? `RUC ${companyOption.dataset.ruc}` : '', companyOption?.dataset.address || ''].filter(Boolean).join(' · ');
-    document.querySelector('#certificatePreviewNumber').textContent = documentNumberInput?.value ? `Documento N.º ${documentNumberInput.value}` : 'Numeración automática';
+    document.querySelector('#certificatePreviewHeaderDetails').textContent = [
+      companyOption?.dataset.ruc ? `RUC ${companyOption.dataset.ruc}` : '',
+      companyOption?.dataset.address || ''
+    ].filter(Boolean).join(' · ');
+    document.querySelector('#certificatePreviewNumber').textContent = documentNumberInput?.value
+      ? `Documento N.º ${documentNumberInput.value}`
+      : 'Numeración automática';
+
+    const preview = document.querySelector('#certificatePreview');
+    if (preview) preview.style.setProperty('--company-primary', companyColor);
+
     const logo = document.querySelector('#certificatePreviewLogo');
     const mark = document.querySelector('#certificatePreviewMark');
     if (logo && mark) {
       const logoUrl = companyOption?.dataset.logoUrl || '';
-      logo.src = logoUrl;
+      if (logo.getAttribute('src') !== logoUrl) logo.src = logoUrl;
       logo.classList.toggle('hidden', !logoUrl);
       mark.classList.toggle('hidden', Boolean(logoUrl));
+      logo.onerror = () => {
+        logo.classList.add('hidden');
+        mark.classList.remove('hidden');
+      };
+      logo.onload = () => {
+        if (logoUrl) {
+          logo.classList.remove('hidden');
+          mark.classList.add('hidden');
+        }
+      };
     }
+
     const letterhead = document.querySelector('#certificatePreviewLetterhead');
-    if (letterhead && companyOption?.dataset.primary) letterhead.style.borderColor = companyOption.dataset.primary;
-    const signature = document.querySelector('#certificatePreviewSignature');
-    const signatureTitle = document.querySelector('#certificatePreviewSignatureTitle');
-    if (signature) signature.textContent = companyOption?.dataset.signature || 'Firma autorizada';
-    if (signatureTitle) signatureTitle.textContent = companyOption?.dataset.signatureTitle || 'Representante legal';
+    if (letterhead) letterhead.style.borderColor = companyColor;
+
+    const signature = companyOption?.dataset.signature || 'Firma autorizada';
+    const signatureTitle = companyOption?.dataset.signatureTitle || 'Representante legal';
+    const pairedTypes = new Set([
+      'contrato_trabajo', 'contrato_tiempo_parcial', 'contrato_mipymes_plazo_determinado',
+      'contrato_mipymes_80', 'adenda_prorroga_contrato', 'notificacion_preaviso', 'despido',
+      'amonestacion', 'cambio_salarial', 'alta_funcionario', 'baja_funcionario', 'aguinaldo_anual',
+      'aguinaldo_proporcional', 'recibo_salario', 'liquidacion_final', 'notificacion_vacaciones',
+      'usufructo_vacaciones', 'recibo_vacaciones'
+    ]);
+    const employeeOnlyTypes = new Set([
+      'permiso_paternidad', 'renuncia', 'solicitud_vacacion', 'permiso_laboral'
+    ]);
+    const usePair = pairedTypes.has(type);
+    const singleSignature = document.querySelector('#certificatePreviewSingleSignature');
+    const signaturePair = document.querySelector('#certificatePreviewSignaturePair');
+    if (singleSignature) singleSignature.classList.toggle('hidden', usePair);
+    if (signaturePair) signaturePair.classList.toggle('hidden', !usePair);
+
+    if (usePair) {
+      document.querySelector('#certificatePreviewEmployeeName').textContent = employee;
+      document.querySelector('#certificatePreviewEmployeeDocument').textContent = `C.I. N.º ${employeeDocument}`;
+      document.querySelector('#certificatePreviewPairedSignature').textContent = signature;
+      document.querySelector('#certificatePreviewPairedSignatureTitle').textContent = signatureTitle;
+      document.querySelector('#certificatePreviewPairedCompany').textContent = company;
+    } else if (employeeOnlyTypes.has(type)) {
+      document.querySelector('#certificatePreviewSignature').textContent = employee;
+      document.querySelector('#certificatePreviewSignatureTitle').textContent = 'Firma del trabajador/a';
+      document.querySelector('#certificatePreviewCompany').textContent = `C.I. N.º ${employeeDocument}`;
+    } else {
+      document.querySelector('#certificatePreviewSignature').textContent = signature;
+      document.querySelector('#certificatePreviewSignatureTitle').textContent = signatureTitle;
+      document.querySelector('#certificatePreviewCompany').textContent = company;
+    }
     typeTitle.textContent = title;
   }
 
