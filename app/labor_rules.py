@@ -13,19 +13,26 @@ class RuleResult:
 
 
 def completed_years(admission_date: date, as_of: date) -> int:
+    """Count completed service years using the same clamped anniversaries as the calculator.
+
+    For leap-day admissions, the anniversary helper maps February 29 to February 28
+    in non-leap years. Comparing raw month/day tuples would incorrectly defer that
+    anniversary until March 1 in this module.
+    """
     if as_of < admission_date:
         return 0
     years = as_of.year - admission_date.year
-    if (as_of.month, as_of.day) < (admission_date.month, admission_date.day):
+    if as_of < anniversary(admission_date, years):
         years -= 1
     return max(0, years)
 
 
 def months_of_service(admission_date: date, as_of: date) -> int:
+    """Count complete months using clamped calendar anniversaries."""
     if as_of < admission_date:
         return 0
     months = (as_of.year - admission_date.year) * 12 + as_of.month - admission_date.month
-    if as_of.day < admission_date.day:
+    if as_of < anniversary(admission_date, months=months):
         months -= 1
     return max(0, months)
 
