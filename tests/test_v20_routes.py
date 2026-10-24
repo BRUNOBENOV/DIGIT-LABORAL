@@ -399,6 +399,113 @@ def test_vacation_rejects_invalid_status_counts_and_overlarge_days():
 
 
 
+def test_vacation_rejects_malformed_partial_and_inconsistent_dates_and_statuses():
+    from datetime import date, timedelta
+    from sqlalchemy import select, func
+    from app.database import SessionLocal
+    from app.models import Employee, Vacation, ComplianceEvent
+
+    today = date.today()
+    year = today.year
+    past_start = (today - timedelta(days=3)).isoformat()
+    past_end = (today - timedelta(days=1)).isoformat()
+    future_start = (today + timedelta(days=1)).isoformat()
+    future_end = (today + timedelta(days=3)).isoformat()
+
+    with SessionLocal() as db:
+        employee = db.scalar(select(Employee).where(Employee.status == "Activo").order_by(Employee.id))
+        assert employee is not None
+        employee_id = employee.id
+        before = db.scalar(select(func.count(Vacation.id)).where(
+            Vacation.employee_id == employee_id, Vacation.period_year == year
+        )) or 0
+
+    invalid_cases = [
+        # Pending entries may omit dates, but cannot provide just one endpoint.
+        {"status": "Pendiente", "used_days": "0", "start_date": past_start, "end_date": ""},
+        # Invalid ISO dates must not silently turn into an empty date.
+        {"status": "Pendiente", "used_days": "0", "start_date": f"{year}-02-30", "end_date": ""},
+        # A date range must be present for an approved leave.
+        {"status": "Aprobada", "used_days": "0", "start_date": "", "end_date": ""},
+        # Days can only be accounted as used once the leave is completed.
+        {"status": "Aprobada", "used_days": "2", "start_date": past_start, "end_date": past_end},
+        # Completed leave requires positive used days and cannot end in the future.
+        {"status": "Completada", "used_days": "0", "start_date": past_start, "end_date": past_end},
+        {"status": "Completada", "used_days": "2", "start_date": future_start, "end_date": future_end},
+    ]
+
+    with TestClient(app) as client:
+        csrf = _login(client)
+        for case in invalid_cases:
+            response = client.post(
+                "/app/vacations",
+                data={
+                    "csrf_token": csrf,
+                    "employee_id": str(employee_id),
+                    "period_year": str(year),
+                    "entitled_days": "12",
+                    **case,
+                },
+                follow_redirects=False,
+            )
+            assert response.status_code == 303, (case, response.status_code, response.text[:300])
+            assert "form_error=" in response.headers.get("location", ""), case
+
+        with SessionLocal() as db:
+            after_invalid = db.scalar(select(func.count(Vacation.id)).where(
+                Vacation.employee_id == employee_id, Vacation.period_year == year
+            )) or 0
+            assert after_invalid == before
+
+        marker = "qa-valid-completed-vacation"
+        valid = client.post(
+            "/app/vacations",
+            data={
+                "csrf_token": csrf,
+                "employee_id": str(employee_id),
+                "period_year": str(year),
+                "entitled_days": "12",
+                "used_days": "3",
+                "status": "Completada",
+                "start_date": past_start,
+                "end_date": past_end,
+                "notes": marker,
+            },
+            follow_redirects=False,
+        )
+        assert valid.status_code == 303
+        assert "form_error=" not in valid.headers.get("location", "")
+
+    vacation_id = None
+    event_id = None
+    try:
+        with SessionLocal() as db:
+            item = db.scalar(select(Vacation).where(
+                Vacation.employee_id == employee_id,
+                Vacation.period_year == year,
+                Vacation.notes.like(f"{marker}%"),
+            ).order_by(Vacation.id.desc()))
+            assert item is not None
+            vacation_id = item.id
+            event = db.scalar(select(ComplianceEvent).where(
+                ComplianceEvent.source_key == f"vacation:{vacation_id}:reop"
+            ))
+            if event is not None:
+                event_id = event.id
+    finally:
+        with SessionLocal() as db:
+            if event_id is not None:
+                event = db.get(ComplianceEvent, event_id)
+                if event is not None:
+                    db.delete(event)
+            if vacation_id is not None:
+                item = db.get(Vacation, vacation_id)
+                if item is not None:
+                    db.delete(item)
+            db.commit()
+
+
+
 def test_compliance_events_validate_authority_type_and_due_date():
     from datetime import date
     from sqlalchemy import select, func
