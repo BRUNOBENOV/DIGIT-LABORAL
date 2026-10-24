@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
-from .labor_calculator import anniversary
+from .labor_calculator import amount as round_gs, anniversary
 
 
 @dataclass(frozen=True)
@@ -67,7 +67,7 @@ def preaviso_days(admission_date: date, as_of: date, *, trial_completed: bool = 
 
 
 def aguinaldo_amount(total_computable_remunerations: int | float) -> RuleResult:
-    amount = round(max(0, float(total_computable_remunerations or 0)) / 12)
+    amount = round_gs(max(0, float(total_computable_remunerations or 0)) / 12)
     return RuleResult(amount, "Código del Trabajo, arts. 243 y 244", "La base debe incluir solamente remuneraciones legalmente computables.")
 
 
@@ -81,14 +81,14 @@ def vacation_monthly_base(monthly_salary: int | float, legal_minimum: int | floa
 def vacation_amount(monthly_salary: int | float, legal_minimum: int | float, days: int | float) -> RuleResult:
     monthly = vacation_monthly_base(monthly_salary, legal_minimum)
     quantity = max(0, float(days or 0))
-    amount = round(float(monthly.value) / 30 * quantity)
+    amount = round_gs(float(monthly.value) / 30 * quantity)
     return RuleResult(amount, "Código del Trabajo, arts. 218 y 220", f"Base mensual de control: Gs. {round(float(monthly.value)):,}.".replace(",", "."))
 
 
 def notice_amount(monthly_average: int | float, days: int | float) -> RuleResult:
     average = max(0, float(monthly_average or 0))
     quantity = max(0, float(days or 0))
-    amount = round(average / 30 * quantity)
+    amount = round_gs(average / 30 * quantity)
     return RuleResult(amount, "Código del Trabajo, arts. 87, 90 y 92", "Para el cálculo económico debe revisarse la base promedio legal aplicable.")
 
 

@@ -11,6 +11,7 @@ import pytest
 from pypdf import PdfReader
 
 from app.labor_calculator import CalculationError, calculate, notice_days, vacation_days, anniversary
+from app.labor_rules import aguinaldo_amount, vacation_amount, notice_amount
 from app.liquidation_export import build_liquidation_pdf, build_liquidation_csv
 
 
@@ -732,3 +733,10 @@ def test_company_logo_renderer_respects_saved_presentation_preferences():
         centered_red = sum(1 for r, g, b, a in centered.getdata() if r > 180 and g < 60 and b < 60 and a > 0)
         small_red = sum(1 for r, g, b, a in small.getdata() if r > 180 and g < 60 and b < 60 and a > 0)
         assert small_red < centered_red
+
+
+
+def test_labor_rules_use_commercial_half_up_rounding_for_currency():
+    assert aguinaldo_amount(6).value == 1
+    assert vacation_amount(15, 0, 1).value == 1
+    assert notice_amount(15, 1).value == 1

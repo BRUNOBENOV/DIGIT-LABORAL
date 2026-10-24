@@ -332,9 +332,9 @@ async def save_calculation_v24(
         results.update({"gross_computable": computable, "ips_base": ips_base, "ips_employee": ips, "discounts": discounts, "net": amount})
     elif calculation_type == "hours":
         base = salary / monthly_hours
-        amount = round(base * hours_quantity * multiplier)
+        amount = round_gs(base * hours_quantity * multiplier)
         inputs.update({"salary": salary, "monthly_hours": monthly_hours, "hours_quantity": hours_quantity, "multiplier": multiplier})
-        results.update({"hour_value": round(base), "total": amount})
+        results.update({"hour_value": round_gs(base), "total": amount})
     elif calculation_type == "aguinaldo":
         rule = aguinaldo_amount(total_remunerations)
         amount = int(rule.value)
@@ -345,13 +345,13 @@ async def save_calculation_v24(
         rule = vacation_amount(salary, minimum, days)
         amount = int(rule.value)
         inputs.update({"salary": salary, "minimum_salary_reference": minimum, "days": days})
-        results.update({"base_monthly": max(salary, int(minimum)), "daily_value": round(max(salary, int(minimum)) / 30), "days": days, "total": amount, "legal_basis": rule.legal_basis})
+        results.update({"base_monthly": max(salary, int(minimum)), "daily_value": round_gs(max(salary, int(minimum)) / 30), "days": days, "total": amount, "legal_basis": rule.legal_basis})
     else:
         if employee and not _clean(form.get("days")):
             days = float(preaviso_days(employee.admission_date, date.today()).value)
-        amount = round(salary / 30 * days)
+        amount = round_gs(salary / 30 * days)
         inputs.update({"monthly_average_base": salary, "days": days})
-        results.update({"daily_value": round(salary / 30), "days": days, "total": amount, "legal_basis": "Código del Trabajo, arts. 87, 90 y 92"})
+        results.update({"daily_value": round_gs(salary / 30), "days": days, "total": amount, "legal_basis": "Código del Trabajo, arts. 87, 90 y 92"})
 
     if amount > 2147483647:
         raise HTTPException(422, "El resultado supera el límite del historial.")
