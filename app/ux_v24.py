@@ -232,14 +232,24 @@ async def create_vacation_v24(
     employee = db.get(Employee, employee_id)
     if not employee or employee.company_id not in core.company_ids_for_user(db, user):
         raise HTTPException(404, "Funcionario no encontrado.")
-    period_year = _int(form.get("period_year"), date.today().year)
+    period_year_raw = _clean(form.get("period_year"), 10)
+    try:
+        period_year = int(period_year_raw) if period_year_raw else date.today().year
+    except ValueError:
+        return _error("/app/vacations", "Ingresá un año válido para el periodo.", "vacationModal")
     if period_year < 1990 or period_year > date.today().year + 2:
         return _error("/app/vacations", "Revisá el año del periodo.", "vacationModal")
     reference_date = date(period_year, 12, 31)
     suggestion = vacation_entitlement_days(employee.admission_date, reference_date)
     entitled_raw = _clean(form.get("entitled_days"), 10)
-    entitled_days = _int(entitled_raw, int(suggestion.value)) if entitled_raw else int(suggestion.value)
-    used_days = _int(form.get("used_days"), 0)
+    used_raw = _clean(form.get("used_days"), 10)
+    try:
+        entitled_days = int(entitled_raw) if entitled_raw else int(suggestion.value)
+        used_days = int(used_raw) if used_raw else 0
+    except ValueError:
+        return _error("/app/vacations", "Ingresá cantidades enteras para los días concedidos y utilizados.", "vacationModal")
+    if entitled_days > 365 or used_days > 365:
+        return _error("/app/vacations", "Los días concedidos y utilizados deben estar entre 0 y 365.", "vacationModal")
     usage_error = validate_vacation_usage(entitled_days, used_days)
     if usage_error:
         return _error("/app/vacations", usage_error, "vacationModal")
@@ -249,6 +259,8 @@ async def create_vacation_v24(
     if range_error:
         return _error("/app/vacations", range_error, "vacationModal")
     status_value = _clean(form.get("status"), 30) or "Pendiente"
+    if status_value not in {"Pendiente", "Aprobada", "Completada"}:
+        return _error("/app/vacations", "Seleccioná un estado válido para las vacaciones.", "vacationModal")
     if status_value in {"Aprobada", "Completada"} and (not start_date or not end_date):
         return _error("/app/vacations", "Para vacaciones aprobadas o completadas indicá las fechas de inicio y fin.", "vacationModal")
     notes = _clean(form.get("notes"), 3000)

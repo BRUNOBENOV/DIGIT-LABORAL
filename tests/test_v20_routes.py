@@ -259,3 +259,140 @@ def test_saved_calculators_use_commercial_half_up_rounding():
                 assert item is not None
                 assert item.amount == case["expected_amount"]
                 assert json.loads(item.result_json) == case["expected_result"]
+
+
+
+def test_closed_payroll_cannot_be_reopened_or_reset_by_reclosing():
+    from datetime import datetime
+    from sqlalchemy import select
+    from app.database import SessionLocal
+    from app.models import Company, Payroll
+
+    with SessionLocal() as db:
+        company = db.scalar(select(Company).order_by(Company.id))
+        assert company is not None
+        company_id = company.id
+        used_periods = set(db.scalars(select(Payroll.period).where(Payroll.company_id == company_id)))
+        period = next(
+            f"{year}-{month:02d}"
+            for year in range(2090, 2100)
+            for month in range(1, 13)
+            if f"{year}-{month:02d}" not in used_periods
+        )
+        closed_at = datetime(2026, 10, 20, 12, 30, 0)
+        payroll = Payroll(
+            company_id=company_id,
+            period=period,
+            status="Cerrada",
+            created_by="qa",
+            reviewed_by="reviewer-qa",
+            closed_at=closed_at,
+        )
+        db.add(payroll)
+        db.commit()
+        payroll_id = payroll.id
+
+    with TestClient(app) as client:
+        csrf = _login(client)
+        page = client.get(f"/app/payrolls/{payroll_id}")
+        assert page.status_code == 200
+        assert "no se puede reabrir desde este formulario" in page.text.lower()
+        assert 'id="payroll-status"' not in page.text
+
+        reopen = client.post(
+            f"/app/payrolls/{payroll_id}/status",
+            data={"csrf_token": csrf, "status": "Borrador"},
+            follow_redirects=False,
+        )
+        assert reopen.status_code == 409
+
+        close_again = client.post(
+            f"/app/payrolls/{payroll_id}/status",
+            data={"csrf_token": csrf, "status": "Cerrada"},
+            follow_redirects=False,
+        )
+        assert close_again.status_code == 303
+
+    with SessionLocal() as db:
+        payroll = db.get(Payroll, payroll_id)
+        assert payroll is not None
+        assert payroll.status == "Cerrada"
+        assert payroll.closed_at is not None
+        assert payroll.closed_at.year == 2026
+        assert payroll.closed_at.month == 10
+        assert payroll.reviewed_by == "reviewer-qa"
+
+
+def test_aguinaldo_rejects_invalid_year_and_unrepresentable_amounts():
+    from datetime import date
+    from sqlalchemy import select
+    from app.database import SessionLocal
+    from app.models import Employee
+
+    with SessionLocal() as db:
+        employee = db.scalar(select(Employee).where(Employee.status == "Activo").order_by(Employee.id))
+        assert employee is not None
+        employee_id = employee.id
+
+    invalid_cases = [
+        {"year": "2200", "total_remunerations": "1000"},
+        {"year": str(date.today().year), "total_remunerations": "-1"},
+        {"year": str(date.today().year), "total_remunerations": "2147483648"},
+    ]
+    with TestClient(app) as client:
+        csrf = _login(client)
+        for case in invalid_cases:
+            response = client.post(
+                "/app/aguinaldo",
+                data={"csrf_token": csrf, "employee_id": str(employee_id), **case},
+                follow_redirects=False,
+            )
+            assert response.status_code == 400, (case, response.status_code, response.text[:300])
+
+
+def test_vacation_rejects_invalid_status_counts_and_overlarge_days():
+    from datetime import date
+    from sqlalchemy import select, func
+    from app.database import SessionLocal
+    from app.models import Employee, Vacation
+
+    with SessionLocal() as db:
+        employee = db.scalar(select(Employee).where(Employee.status == "Activo").order_by(Employee.id))
+        assert employee is not None
+        employee_id = employee.id
+
+    year = date.today().year
+    cases = [
+        {"entitled_days": "366", "used_days": "0", "status": "Pendiente"},
+        {"entitled_days": "", "used_days": "0", "status": "Estado inventado"},
+        {"entitled_days": "abc", "used_days": "0", "status": "Pendiente"},
+        {"entitled_days": "12", "used_days": "366", "status": "Pendiente"},
+    ]
+    with SessionLocal() as db:
+        before = db.scalar(select(func.count(Vacation.id)).where(
+            Vacation.employee_id == employee_id, Vacation.period_year == year
+        )) or 0
+
+    with TestClient(app) as client:
+        csrf = _login(client)
+        for case in cases:
+            response = client.post(
+                "/app/vacations",
+                data={
+                    "csrf_token": csrf,
+                    "employee_id": str(employee_id),
+                    "period_year": str(year),
+                    **case,
+                },
+                follow_redirects=False,
+            )
+            assert response.status_code == 303, (case, response.status_code, response.text[:300])
+            error_page = client.get(response.headers["location"])
+            assert error_page.status_code == 200
+            assert "vacationModal" in error_page.text
+
+    with SessionLocal() as db:
+        after = db.scalar(select(func.count(Vacation.id)).where(
+            Vacation.employee_id == employee_id, Vacation.period_year == year
+        )) or 0
+        assert after == before
