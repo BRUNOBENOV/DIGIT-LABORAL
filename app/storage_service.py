@@ -32,6 +32,10 @@ class StorageBackend:
     def exists(self, key: str) -> bool:
         raise NotImplementedError
 
+    def list_keys(self, prefix: str) -> list[str]:
+        """List keys below a specific application prefix."""
+        raise NotImplementedError
+
 
 class LocalStorage(StorageBackend):
     def __init__(self, root: Path):
@@ -58,6 +62,19 @@ class LocalStorage(StorageBackend):
 
     def exists(self, key: str) -> bool:
         return self._path(key).is_file()
+
+    def list_keys(self, prefix: str) -> list[str]:
+        normalized = prefix.replace("\\", "/").strip("/")
+        if not normalized or any(part in {".", ".."} for part in normalized.split("/")):
+            raise ValueError("Prefijo de almacenamiento inválido.")
+        base = self._path(normalized)
+        if not base.exists():
+            return []
+        return sorted(
+            item.relative_to(self.root).as_posix()
+            for item in base.rglob("*")
+            if item.is_file()
+        )
 
 
 class S3Storage(StorageBackend):
@@ -101,6 +118,20 @@ class S3Storage(StorageBackend):
             return True
         except Exception:  # pragma: no cover
             return False
+
+    def list_keys(self, prefix: str) -> list[str]:
+        normalized = prefix.replace("\\", "/").strip("/")
+        if not normalized or any(part in {".", ".."} for part in normalized.split("/")):
+            raise ValueError("Prefijo de almacenamiento inválido.")
+        paginator = self.client.get_paginator("list_objects_v2")
+        keys: list[str] = []
+        for page in paginator.paginate(Bucket=self.bucket, Prefix=f"{normalized}/"):
+            keys.extend(
+                str(item["Key"])
+                for item in page.get("Contents", [])
+                if item.get("Key") and not str(item["Key"]).endswith("/")
+            )
+        return sorted(keys)
 
 
 def build_storage() -> StorageBackend:
