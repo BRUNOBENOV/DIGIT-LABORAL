@@ -330,7 +330,12 @@ class CSRFMiddleware:
         await self.app(scope, replay_receive, send)
 
 
-APP_VERSION = (os.getenv("DIGIT_APP_VERSION", "2.2.0").strip() or "2.2.0")
+try:
+    _VERSION_FILE = Path(__file__).resolve().parents[1] / "VERSION"
+    _DEFAULT_APP_VERSION = _VERSION_FILE.read_text(encoding="utf-8").strip() or "2.2.0"
+except OSError:
+    _DEFAULT_APP_VERSION = "2.2.0"
+APP_VERSION = (os.getenv("DIGIT_APP_VERSION", _DEFAULT_APP_VERSION).strip() or _DEFAULT_APP_VERSION)
 APP_COMMIT = os.getenv("RENDER_GIT_COMMIT", os.getenv("GITHUB_SHA", "")).strip()
 APP_BUILD = APP_COMMIT[:7] if APP_COMMIT else "LOCAL"
 APP_BRANCH = os.getenv("RENDER_GIT_BRANCH", os.getenv("GITHUB_REF_NAME", "")).strip() or "local"
@@ -5255,12 +5260,12 @@ def admin_activation_status(
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "app": settings.app_name, "environment": settings.environment, "version": "2.0.0"}
+    return {"status": "ok", "app": settings.app_name, "environment": settings.environment, "version": APP_VERSION}
 
 
 @app.get("/health/live")
 def health_live():
-    return {"status": "alive", "version": "2.0.0"}
+    return {"status": "alive", "version": APP_VERSION}
 
 
 @app.get("/health/ready")
@@ -5268,8 +5273,8 @@ def health_ready(db: Session = Depends(get_db)):
     checks = {"database": "ok", "migrations": "ok", "storage": settings.storage_backend}
     try:
         db.execute(select(func.count(User.id)))
-        version = db.execute(text("SELECT version_num FROM alembic_version")).scalar_one_or_none()
-        if not version:
+        migration_revision = db.execute(text("SELECT version_num FROM alembic_version")).scalar_one_or_none()
+        if not migration_revision:
             checks["migrations"] = "missing"
     except Exception as exc:
         logger.exception("Readiness check failed")
@@ -5278,4 +5283,4 @@ def health_ready(db: Session = Depends(get_db)):
             status_code=503,
         )
     warnings = settings.production_issues()
-    return {"status": "ready" if not warnings else "degraded", "checks": checks, "warnings": warnings, "version": "2.0.0"}
+    return {"status": "ready" if not warnings else "degraded", "checks": checks, "warnings": warnings, "version": APP_VERSION}
