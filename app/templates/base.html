@@ -17,6 +17,7 @@
   <link rel="stylesheet" href="{{ url_for('static', path='labor-suite.css') }}?v=20260929b">
   <link rel="stylesheet" href="{{ url_for('static', path='experience.css') }}?v=20261022c">
   <link rel="stylesheet" href="{{ url_for('static', path='brand-identity.css') }}?v=20261023b">
+  <link rel="stylesheet" href="{{ url_for('static', path='certificate-premium.css') }}?v=20261024a">
 
   <style>
     .app-version-indicator{display:inline-flex;align-items:center;gap:7px;flex:0 0 auto;margin-left:auto;padding:7px 10px;border:1px solid #dce4f0;border-radius:9px;background:#f8faff;color:#53627a;font:650 .64rem/1.1 "Aptos","Segoe UI",Arial,sans-serif;white-space:nowrap;font-variant-numeric:tabular-nums}
@@ -34,7 +35,7 @@
 {% if user %}
   <header class="modern-topbar">
     <a class="modern-brand" href="{{ '/admin' if user.role == 'superadmin' else '/app' }}">
-      <img class="modern-brand-mark modern-brand-image" src="/static/branding/digit-laboral-mark.webp?v=20261023a" alt="">
+      <img class="modern-brand-mark modern-brand-image" src="/static/branding/digit-laboral-mark.svg?v=20261024a" alt="Marca de Digit Laboral" width="45" height="45">
       <span class="modern-brand-copy"><b class="official-wordmark"><span>Digit</span> Laboral</b><small>GESTIÓN LABORAL · PY</small></span>
     </a>
     <div class="app-version-indicator" title="Versión {{ app_version }} · rama {{ app_branch }}{% if app_commit %} · commit completo {{ app_commit }}{% else %} · código local sin commit de despliegue{% endif %}" aria-label="Versión {{ app_version }}, compilación {{ app_build }}">

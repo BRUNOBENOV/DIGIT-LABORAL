@@ -205,8 +205,15 @@
 
   <section class="certificate-preview-shell" aria-label="Vista previa del documento"><article class="certificate-sheet" id="certificatePreview">
     <header class="preview-letterhead" id="certificatePreviewLetterhead"><span class="preview-mark" id="certificatePreviewMark">DL</span><img id="certificatePreviewLogo" class="preview-logo hidden" alt="Logo de empresa"><div><b id="certificatePreviewHeaderCompany">Empresa</b><small id="certificatePreviewHeaderDetails">RUC · Dirección</small></div></header>
+    <p class="certificate-preview-kicker">VISTA PREVIA · DOCUMENTO LABORAL</p>
     <p class="certificate-date" id="certificatePreviewDate">Ciudad del Este</p><h2 id="certificatePreviewTitle">DOCUMENTO LABORAL</h2><p class="preview-document-number" id="certificatePreviewNumber">Numeración automática</p><div class="certificate-body" id="certificatePreviewBody"></div>
-    <div class="certificate-signature"><span></span><b id="certificatePreviewSignature">Firma autorizada</b><small id="certificatePreviewSignatureTitle">Representante legal</small><small id="certificatePreviewCompany">Empresa</small></div><p class="certificate-draft-note">BORRADOR · REVISAR ANTES DE FIRMAR</p>
+    <div class="certificate-signature" id="certificatePreviewSingleSignature"><span></span><b id="certificatePreviewSignature">Firma autorizada</b><small id="certificatePreviewSignatureTitle">Representante legal</small><small id="certificatePreviewCompany">Empresa</small></div>
+    <div class="certificate-preview-signature-pair hidden" id="certificatePreviewSignaturePair">
+      <div><span class="signature-line"></span><b>Firma / recepción del trabajador/a</b><small id="certificatePreviewEmployeeName">Funcionario/a</small><small id="certificatePreviewEmployeeDocument">C.I. N.º —</small></div>
+      <div><span class="signature-line"></span><b>Firma del empleador/a</b><small id="certificatePreviewPairedSignature">Firma autorizada</small><small id="certificatePreviewPairedSignatureTitle">Representante legal</small><small id="certificatePreviewPairedCompany">Empresa</small></div>
+    </div>
+    <footer class="certificate-preview-footer">DOCUMENTO DE TRABAJO · Vista previa del modelo. Revisá el texto y los datos antes de emitir.</footer>
+    <p class="certificate-draft-note">BORRADOR · REVISAR ANTES DE FIRMAR</p>
   </article></section>
 </form>
 {% else %}<section class="panel empty-certificate-state"><h2>Primero registrá una empresa y un funcionario</h2><p>Los modelos necesitan datos del legajo.</p><a class="btn primary" href="/app/companies">Ir a Mantenimientos</a></section>{% endif %}

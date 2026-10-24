@@ -824,36 +824,42 @@ def _set_cell_margins(cell, **kwargs: int) -> None:
 
 
 def _docx_header(document: Document, data: ExportData) -> None:
+    """Create a restrained letterhead sized for the normalized horizontal company logo."""
     table = document.add_table(rows=1, cols=2)
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
     table.autofit = False
-    table.columns[0].width = Cm(2.1)
-    table.columns[1].width = Cm(14.7)
+    table.columns[0].width = Cm(4.0)
+    table.columns[1].width = Cm(12.8)
     left, right = table.rows[0].cells
-    left.width = Cm(2.1)
-    right.width = Cm(14.7)
+    left.width = Cm(4.0)
+    right.width = Cm(12.8)
     left.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
-    _set_cell_margins(left, top=100, start=80, bottom=100, end=80)
+    right.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+    _set_cell_margins(left, top=150, start=100, bottom=150, end=100)
+    _set_cell_margins(right, top=120, start=180, bottom=120, end=120)
     p = left.paragraphs[0]
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     if data.logo_bytes:
+        _set_cell_shading(left, "F7F9FC")
         try:
-            p.add_run().add_picture(io.BytesIO(data.logo_bytes), width=Cm(1.9))
+            p.add_run().add_picture(io.BytesIO(data.logo_bytes), width=Cm(3.55))
         except Exception:
             _set_cell_shading(left, data.primary_color.lstrip("#") or "173B86")
             r = p.add_run("DL")
             r.bold = True
+            r.font.name = "Aptos Display"
             r.font.size = Pt(18)
             r.font.color.rgb = RGBColor(255, 255, 255)
     else:
         _set_cell_shading(left, data.primary_color.lstrip("#") or "173B86")
         r = p.add_run("DL")
         r.bold = True
+        r.font.name = "Aptos Display"
         r.font.size = Pt(18)
         r.font.color.rgb = RGBColor(255, 255, 255)
 
     p = right.paragraphs[0]
-    p.paragraph_format.space_after = Pt(2)
+    p.paragraph_format.space_after = Pt(3)
     r = p.add_run(data.company_name.upper())
     r.bold = True
     r.font.name = "Aptos Display"
@@ -873,16 +879,23 @@ def _docx_header(document: Document, data: ExportData) -> None:
         p2.paragraph_format.space_before = Pt(0)
         p2.paragraph_format.space_after = Pt(0)
         for run in p2.runs:
-            run.font.size = Pt(8.5)
+            run.font.name = "Aptos"
+            run.font.size = Pt(8.3)
             run.font.color.rgb = RGBColor(85, 97, 116)
 
-    border = document.add_paragraph()
-    border.paragraph_format.space_before = Pt(2)
-    border.paragraph_format.space_after = Pt(12)
-    run = border.add_run("─" * 82)
-    run.font.name = "Aptos"
-    run.font.color.rgb = RGBColor.from_string(data.primary_color.lstrip("#") or "173B86")
-    run.font.size = Pt(4.5)
+    rule = document.add_paragraph()
+    rule.paragraph_format.space_before = Pt(1)
+    rule.paragraph_format.space_after = Pt(11)
+    rule.paragraph_format.line_spacing = 1
+    p_pr = rule._p.get_or_add_pPr()
+    borders = OxmlElement("w:pBdr")
+    bottom = OxmlElement("w:bottom")
+    bottom.set(qn("w:val"), "single")
+    bottom.set(qn("w:sz"), "12")
+    bottom.set(qn("w:space"), "1")
+    bottom.set(qn("w:color"), (data.primary_color.lstrip("#") or "173B86").upper())
+    borders.append(bottom)
+    p_pr.append(borders)
 
 
 def _requires_both_signatures(document_type: str) -> bool:
@@ -1053,6 +1066,16 @@ def build_docx_bytes(data: ExportData) -> bytes:
     date_p.runs[0].font.name = "Aptos"
     date_p.runs[0].font.size = Pt(10.5)
 
+    kicker = document.add_paragraph()
+    kicker.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    kicker.paragraph_format.space_before = Pt(0)
+    kicker.paragraph_format.space_after = Pt(4)
+    kicker_run = kicker.add_run("DOCUMENTO LABORAL")
+    kicker_run.bold = True
+    kicker_run.font.name = "Aptos"
+    kicker_run.font.size = Pt(8)
+    kicker_run.font.color.rgb = RGBColor.from_string(data.primary_color.lstrip("#") or "173B86")
+
     title = document.add_paragraph()
     title.alignment = WD_ALIGN_PARAGRAPH.CENTER
     title.paragraph_format.space_after = Pt(18)
@@ -1116,6 +1139,9 @@ def build_docx_bytes(data: ExportData) -> bytes:
 def _pdf_footer(canvas, doc, data: ExportData) -> None:
     canvas.saveState()
     width, _ = A4
+    canvas.setStrokeColor(colors.HexColor(data.primary_color))
+    canvas.setLineWidth(0.6)
+    canvas.line(21 * mm, 15 * mm, width - 21 * mm, 15 * mm)
     canvas.setFont("Helvetica", 7)
     canvas.setFillColor(colors.HexColor("#7A8597"))
     canvas.drawCentredString(
@@ -1156,7 +1182,12 @@ def build_pdf_bytes(data: ExportData) -> bytes:
         leading=10,
         textColor=colors.HexColor("#556174"),
     )
-    date_style = ParagraphStyle("Date", parent=styles["Normal"], fontName="Helvetica", fontSize=10.5, leading=14, textColor=colors.HexColor("#4E5B70"), alignment=TA_RIGHT, spaceAfter=16)
+    date_style = ParagraphStyle("Date", parent=styles["Normal"], fontName="Helvetica", fontSize=10.5, leading=14, textColor=colors.HexColor("#4E5B70"), alignment=TA_RIGHT, spaceAfter=12)
+    kicker_style = ParagraphStyle(
+        "DocumentKicker", parent=styles["Normal"], fontName="Helvetica-Bold",
+        fontSize=7.5, leading=10, textColor=colors.HexColor(data.primary_color),
+        alignment=TA_CENTER, spaceAfter=4,
+    )
     title_style = ParagraphStyle(
         "Title",
         parent=styles["Heading1"],
@@ -1199,32 +1230,36 @@ def build_pdf_bytes(data: ExportData) -> bytes:
     if data.company_email:
         details.append(escape(data.company_email))
     logo_cell: Any
+    has_logo = False
     if data.logo_bytes:
         try:
-            logo_cell = Image(io.BytesIO(data.logo_bytes), width=16 * mm, height=16 * mm, kind="proportional")
+            logo_cell = Image(io.BytesIO(data.logo_bytes), width=34 * mm, height=14 * mm, kind="proportional")
+            has_logo = True
         except Exception:
             logo_cell = Paragraph("<b>DL</b>", ParagraphStyle("DL", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=18, textColor=colors.white, alignment=TA_CENTER))
     else:
         logo_cell = Paragraph("<b>DL</b>", ParagraphStyle("DL", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=18, textColor=colors.white, alignment=TA_CENTER))
+    logo_background = colors.HexColor("#F7F9FC") if has_logo else colors.HexColor(data.primary_color)
     header = Table(
         [[logo_cell, [Paragraph(escape(data.company_name.upper()), company_style), Paragraph(" · ".join(details), detail_style) if details else ""]]],
-        colWidths=[20 * mm, 150 * mm],
+        colWidths=[38 * mm, 130 * mm],
     )
     header.setStyle(
         TableStyle(
             [
-                ("BACKGROUND", (0, 0), (0, 0), colors.HexColor(data.primary_color)),
+                ("BACKGROUND", (0, 0), (0, 0), logo_background),
                 ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("LEFTPADDING", (0, 0), (-1, -1), 8),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
-                ("TOPPADDING", (0, 0), (-1, -1), 8),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+                ("LEFTPADDING", (0, 0), (-1, -1), 9),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 9),
+                ("TOPPADDING", (0, 0), (-1, -1), 9),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 9),
                 ("LINEBELOW", (0, 0), (-1, -1), 1.3, colors.HexColor(data.primary_color)),
             ]
         )
     )
     story.extend([header, Spacer(1, 10 * mm)])
     story.append(Paragraph(f"{escape(data.city)}, {escape(format_date_long_es(data.issue_date))}", date_style))
+    story.append(Paragraph("DOCUMENTO LABORAL", kicker_style))
     story.append(Paragraph(escape(data.title.upper()), title_style))
     document_number = str((data.metadata or {}).get("document_number") or "").strip()
     if document_number:

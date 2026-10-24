@@ -1,0 +1,382 @@
+/* Digit Laboral — enterprise certificate workspace and refined brand mark */
+.modern-brand-mark.modern-brand-image{
+  display:block;
+  width:45px;
+  height:45px;
+  flex:0 0 45px;
+  padding:0!important;
+  border:0!important;
+  border-radius:12px!important;
+  background:transparent!important;
+  object-fit:contain;
+  box-shadow:0 6px 16px rgba(11,45,120,.17)!important;
+}
+.modern-brand-copy b{letter-spacing:-.045em;font-weight:850}
+.modern-brand-copy small{color:#778397;letter-spacing:.12em}
+
+/* A clearer and more deliberate document-generation workspace */
+.certificate-workspace{
+  grid-template-columns:205px minmax(315px,355px) minmax(380px,1fr);
+  gap:16px;
+  align-items:start;
+}
+.certificate-type-menu,
+.certificate-form-card,
+.certificate-preview-shell{
+  border:1px solid #DCE4F0;
+  border-radius:15px;
+  box-shadow:0 8px 24px rgba(18,34,65,.045);
+}
+.certificate-type-menu{
+  padding:10px;
+  gap:5px;
+  background:linear-gradient(180deg,#FFFFFF,#F9FBFF);
+}
+.certificate-type-button{
+  position:relative;
+  min-height:40px;
+  padding:10px 11px 10px 13px;
+  border:1px solid transparent;
+  border-radius:9px;
+  color:#536178;
+  font-size:.75rem;
+  font-weight:650;
+  line-height:1.35;
+  transition:background .15s ease,border-color .15s ease,color .15s ease;
+}
+.certificate-type-button:hover{
+  background:#F3F6FC;
+  border-color:#E4EAF4;
+  color:#0B2D78;
+}
+.certificate-type-button.active{
+  background:#EAF0FF;
+  border-color:#D5E1F9;
+  color:#0B2D78;
+  font-weight:850;
+}
+.certificate-type-button.active:before{
+  content:"";
+  position:absolute;
+  left:-1px;
+  top:8px;
+  bottom:8px;
+  width:3px;
+  border-radius:0 4px 4px 0;
+  background:#0B2D78;
+}
+.certificate-form-card{
+  padding:19px;
+  gap:13px;
+  background:#FFFFFF;
+}
+.document-form-heading{
+  align-items:flex-start;
+  padding-bottom:14px;
+  border-bottom:1px solid #E5EAF2;
+}
+.certificate-form-card h2{color:#18243A;letter-spacing:-.025em}
+.certificate-form-card label{
+  gap:7px;
+  color:#344158;
+  font-size:.72rem;
+  font-weight:800;
+}
+.certificate-form-card input,
+.certificate-form-card select,
+.certificate-form-card textarea{
+  border-color:#D7DFEC;
+  border-radius:9px;
+  padding:10px 11px;
+  color:#1D293B;
+  font-size:.82rem;
+}
+.certificate-form-card input:focus,
+.certificate-form-card select:focus,
+.certificate-form-card textarea:focus{
+  border-color:#7C9CD5;
+  box-shadow:0 0 0 3px rgba(11,45,120,.10);
+}
+.document-field-section{
+  border-left-color:#0B2D78;
+  background:#F2F5FB;
+}
+.document-field-section b{color:#17315F}
+.document-format-badge{
+  display:inline-flex;
+  align-items:center;
+  white-space:nowrap;
+  padding:6px 8px;
+  border:1px solid #D8E3F7;
+  border-radius:7px;
+  background:#EFF4FF;
+  color:#0B2D78;
+  font-size:.62rem;
+  font-weight:900;
+  letter-spacing:.07em;
+}
+.document-auto-note{
+  border:1px solid #DFE7F3;
+  border-radius:10px;
+  background:#F7F9FD;
+  padding:12px 13px;
+  gap:4px;
+}
+.document-auto-note b{font-size:.75rem;color:#1C3158}
+.document-auto-note span{font-size:.72rem;color:#69778D;line-height:1.5}
+.certificate-actions{gap:9px}
+.certificate-actions .btn{min-height:40px;font-size:.76rem}
+.certificate-actions .word-button{
+  background:#EDF3FF;
+  color:#0B2D78;
+  border:1px solid #D4E1F7;
+}
+.certificate-actions .word-button:hover{background:#E2EBFC;border-color:#BDCEEE}
+.certificate-actions .pdf-button{
+  background:#0B2D78;
+  color:#FFFFFF;
+  border:1px solid #0B2D78;
+}
+.certificate-actions .pdf-button:hover{background:#16449A;border-color:#16449A}
+.certificate-preview-shell{
+  min-width:0;
+  padding:20px;
+  background:linear-gradient(145deg,#EAF0F8 0%,#F5F7FB 72%);
+}
+.certificate-sheet{
+  --company-primary:#0B2D78;
+  width:100%;
+  max-width:760px;
+  min-height:1030px;
+  margin:0 auto;
+  padding:48px 50px 86px;
+  overflow:hidden;
+  border:1px solid #E1E7F0;
+  border-top:7px solid var(--company-primary);
+  border-radius:3px;
+  background:#FFFFFF;
+  box-shadow:0 18px 44px rgba(20,39,75,.11);
+  font-family:"Aptos","Segoe UI",Arial,sans-serif;
+  color:#243149;
+}
+.preview-letterhead{
+  position:relative;
+  display:flex;
+  align-items:center;
+  gap:16px;
+  min-height:72px;
+  padding:0 0 17px;
+  margin:0 0 34px;
+  border-bottom:1px solid #DFE5EF;
+}
+.preview-letterhead:after{
+  content:"";
+  position:absolute;
+  left:0;
+  bottom:-1px;
+  width:48px;
+  height:2px;
+  border-radius:2px;
+  background:var(--company-primary,#0B2D78);
+}
+.preview-mark{
+  display:grid;
+  place-items:center;
+  width:74px;
+  height:52px;
+  flex:0 0 74px;
+  border:1px solid var(--company-primary,#0B2D78);
+  border-radius:10px;
+  background:linear-gradient(145deg,var(--company-primary,#0B2D78),#071A45);
+  color:#FFFFFF;
+  font:850 1rem/1 "Aptos","Segoe UI",Arial,sans-serif;
+  letter-spacing:-.04em;
+}
+.preview-logo{
+  display:block;
+  width:94px;
+  height:52px;
+  flex:0 0 94px;
+  padding:3px;
+  border:1px solid #E1E7F0;
+  border-radius:9px;
+  background:#FFFFFF;
+  object-fit:contain;
+  object-position:center;
+}
+.preview-letterhead>div{
+  display:flex;
+  flex:1;
+  flex-direction:column;
+  justify-content:center;
+  min-width:0;
+  gap:6px;
+}
+.preview-letterhead b{
+  font-size:1rem;
+  font-weight:850;
+  line-height:1.3;
+  letter-spacing:-.025em;
+  color:var(--company-primary,#0B2D78);
+  white-space:normal;
+  overflow-wrap:anywhere;
+}
+.preview-letterhead small{
+  color:#68768C;
+  font-size:.69rem;
+  line-height:1.5;
+  overflow-wrap:anywhere;
+}
+.certificate-preview-kicker{
+  margin:0 0 8px;
+  color:var(--company-primary,#0B2D78);
+  font:850 .62rem/1.4 "Aptos","Segoe UI",Arial,sans-serif;
+  letter-spacing:.16em;
+  text-align:center;
+  text-transform:uppercase;
+}
+.certificate-date{
+  margin:0 0 28px;
+  color:#536177;
+  font-size:.78rem;
+  line-height:1.5;
+  text-align:right;
+}
+.certificate-sheet h2{
+  position:relative;
+  margin:0 0 25px;
+  padding-bottom:17px;
+  color:#172744;
+  font:850 1.12rem/1.4 "Aptos Display","Aptos","Segoe UI",Arial,sans-serif;
+  letter-spacing:.045em;
+  text-align:center;
+  text-transform:uppercase;
+  overflow-wrap:anywhere;
+}
+.certificate-sheet h2:after{
+  content:"";
+  position:absolute;
+  bottom:0;
+  left:calc(50% - 25px);
+  width:50px;
+  height:3px;
+  border-radius:3px;
+  background:var(--company-primary,#0B2D78);
+}
+.preview-document-number{
+  margin:0 0 24px;
+  padding:9px 11px;
+  border-left:3px solid var(--company-primary,#0B2D78);
+  border-radius:3px;
+  background:#F3F6FB;
+  color:#56647B;
+  font:750 .69rem/1.4 "Aptos","Segoe UI",Arial,sans-serif;
+  text-align:right;
+  overflow-wrap:anywhere;
+}
+.certificate-body{
+  white-space:pre-line;
+  color:#28364B;
+  font:400 .82rem/1.75 "Aptos","Segoe UI",Arial,sans-serif;
+  text-align:justify;
+  overflow-wrap:anywhere;
+  hyphens:auto;
+}
+.certificate-signature{
+  width:76%;
+  margin:76px auto 0;
+  text-align:center;
+  break-inside:avoid;
+}
+.certificate-signature span,
+.certificate-preview-signature-pair .signature-line{
+  display:block;
+  margin-bottom:9px;
+  border-top:1px solid #8793A5;
+}
+.certificate-signature b,
+.certificate-signature small{
+  display:block;
+  overflow-wrap:anywhere;
+}
+.certificate-signature b,
+.certificate-preview-signature-pair b{
+  color:#1C293D;
+  font-size:.76rem;
+  font-weight:850;
+  line-height:1.5;
+}
+.certificate-signature small,
+.certificate-preview-signature-pair small{
+  color:#68768C;
+  font-size:.69rem;
+  line-height:1.5;
+}
+.certificate-preview-signature-pair{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+  gap:26px;
+  margin:62px 0 0;
+  text-align:center;
+  break-inside:avoid;
+}
+.certificate-preview-signature-pair>div{min-width:0}
+.certificate-preview-footer{
+  position:absolute;
+  left:50px;
+  right:50px;
+  bottom:47px;
+  padding-top:10px;
+  border-top:1px solid #E5EAF2;
+  color:#8590A2;
+  font:650 .56rem/1.4 "Aptos","Segoe UI",Arial,sans-serif;
+  letter-spacing:.045em;
+  text-align:center;
+}
+.certificate-draft-note{
+  position:absolute;
+  left:0;
+  right:0;
+  bottom:16px;
+  margin:0;
+  color:#9D3E42;
+  font:850 .56rem/1.4 "Aptos","Segoe UI",Arial,sans-serif;
+  letter-spacing:.13em;
+  text-align:center;
+}
+.generated-documents-panel{margin-top:20px}
+.document-row-actions a{
+  border-color:#D7E0EE;
+  border-radius:7px;
+  color:#0B2D78;
+}
+.document-row-actions a:hover{background:#EDF3FF;border-color:#C9D9F2}
+
+@media(max-width:1180px){
+  .certificate-workspace{grid-template-columns:190px minmax(0,1fr)}
+  .certificate-preview-shell{grid-column:1/-1}
+  .certificate-form-card{min-width:0}
+  .certificate-type-menu{position:static}
+}
+@media(max-width:760px){
+  .certificate-workspace{grid-template-columns:minmax(0,1fr);gap:12px}
+  .certificate-type-menu{display:flex;overflow-x:auto;align-items:stretch;max-height:none;padding:8px;scrollbar-width:thin}
+  .certificate-type-button{flex:0 0 auto;max-width:240px;white-space:normal}
+  .certificate-form-card{padding:15px}
+  .certificate-preview-shell{padding:10px}
+  .certificate-sheet{min-height:900px;padding:28px 23px 78px}
+  .preview-letterhead{gap:10px;margin-bottom:25px;padding-bottom:13px}
+  .preview-mark{width:58px;height:46px;flex-basis:58px;font-size:.88rem}
+  .preview-logo{width:74px;height:46px;flex-basis:74px}
+  .preview-letterhead b{font-size:.85rem}
+  .preview-letterhead small{font-size:.62rem}
+  .certificate-preview-kicker{font-size:.54rem;letter-spacing:.11em}
+  .certificate-sheet h2{font-size:.95rem}
+  .certificate-body{font-size:.77rem;line-height:1.68}
+  .certificate-signature{width:90%;margin-top:54px}
+  .certificate-preview-signature-pair{gap:16px;margin-top:48px}
+  .certificate-preview-footer{left:23px;right:23px;bottom:45px}
+}
+@media(prefers-reduced-motion:reduce){
+  .certificate-type-button{transition:none}
+}
