@@ -1289,6 +1289,10 @@ async def update_company_branding(
     document_prefix: Annotated[str, Form()] = "DL",
     show_ruc: Annotated[str | None, Form()] = None,
     show_contact: Annotated[str | None, Form()] = None,
+    logo_fit: Annotated[str, Form()] = "contain",
+    logo_scale: Annotated[int, Form()] = 100,
+    logo_alignment: Annotated[str, Form()] = "center",
+    logo_background: Annotated[str, Form()] = "white",
     logo: UploadFile | None = File(default=None),
     user: User = Depends(require_roles("administrador", "contador", "empresa")),
     db: Session = Depends(get_db),
@@ -1296,6 +1300,10 @@ async def update_company_branding(
     company = company_allowed(db, user, company_id)
     branding = get_or_create_branding(db, company)
     color_pattern = re.compile(r"^#[0-9A-Fa-f]{6}$")
+    branding.logo_fit = logo_fit if logo_fit in {"contain", "cover"} else "contain"
+    branding.logo_scale = max(60, min(140, logo_scale))
+    branding.logo_alignment = logo_alignment if logo_alignment in {"left", "center", "right"} else "center"
+    branding.logo_background = logo_background if logo_background in {"white", "transparent", "soft", "navy"} else "white"
     branding.primary_color = primary_color if color_pattern.fullmatch(primary_color) else "#173B86"
     branding.secondary_color = secondary_color if color_pattern.fullmatch(secondary_color) else "#0B1F48"
     branding.document_footer = document_footer.strip()[:240] or "Generado por Digit Laboral"
@@ -1515,11 +1523,22 @@ def employee_import_preview_page(
     if preview.user_id != user.id or preview.studio_id != (user.studio_id or 0):
         raise HTTPException(403)
     company = company_allowed(db, user, preview.company_id)
-    existing_documents = set(db.scalars(select(Employee.document_number).where(Employee.company_id == company.id)))
+    existing_employees = {
+        item.document_number: item
+        for item in db.scalars(select(Employee).where(Employee.company_id == company.id))
+    }
+    existing_documents = set(existing_employees)
     duplicate_count = sum(row.data.get("document_number") in existing_documents for row in preview.rows if row.valid)
+    salary_change_count = sum(
+        1 for row in preview.rows
+        if row.valid
+        and row.data.get("document_number") in existing_employees
+        and int(row.data.get("base_salary") or 0) != existing_employees[row.data["document_number"]].base_salary
+    )
     return render(
         request, "employee_import_preview.html", db, user, token=token, preview=preview, company=company,
         duplicate_count=duplicate_count, existing_documents=existing_documents,
+        existing_employees=existing_employees, salary_change_count=salary_change_count,
     )
 
 
@@ -1537,7 +1556,7 @@ def employee_import_confirm(
     if preview.user_id != user.id or preview.studio_id != (user.studio_id or 0):
         raise HTTPException(403)
     company = company_allowed(db, user, preview.company_id)
-    created = updated = skipped = 0
+    created = updated = skipped = salary_changes_requires_request = 0
     for row in preview.rows:
         if not row.valid:
             skipped += 1
@@ -1555,24 +1574,21 @@ def employee_import_confirm(
         admission = date.fromisoformat(data["admission_date"])
         birth = date.fromisoformat(data["birth_date"]) if data.get("birth_date") else None
         if employee:
-            old_salary = employee.base_salary
+            # Los archivos pueden actualizar la ficha, pero no el salario vigente.
+            # Cualquier diferencia debe tramitarse con una solicitud salarial aprobada.
+            if int(data.get("base_salary") or 0) != employee.base_salary:
+                salary_changes_requires_request += 1
             employee.full_name = data["full_name"]
             employee.position = data["position"]
             employee.admission_date = admission
             employee.birth_date = birth
             employee.contract_type = data["contract_type"]
             employee.payment_frequency = data["payment_frequency"]
-            employee.base_salary = data["base_salary"]
             employee.ips_contributor = data["ips_contributor"]
             employee.email = data["email"]
             employee.phone = data["phone"]
             employee.address = data["address"]
             employee.notes = data["notes"]
-            if old_salary != employee.base_salary:
-                db.add(SalaryHistory(
-                    employee_id=employee.id, previous_salary=old_salary, new_salary=employee.base_salary,
-                    effective_from=date.today(), reason="Actualización por importación", created_by=user.email,
-                ))
             add_employee_event(db, employee, user, "Importación", "Datos actualizados por importación", f"Archivo: {preview.filename}")
             updated += 1
         else:
@@ -1591,10 +1607,18 @@ def employee_import_confirm(
                 effective_from=admission, reason="Salario inicial importado", created_by=user.email,
             ))
             created += 1
-    write_audit(db, user, "confirmar", "importacion_funcionarios", token, f"{company.legal_name}: {created} creados, {updated} actualizados, {skipped} omitidos")
+    write_audit(
+        db, user, "confirmar", "importacion_funcionarios", token,
+        f"{company.legal_name}: {created} creados, {updated} actualizados, {skipped} omitidos, "
+        f"{salary_changes_requires_request} cambios salariales derivados a solicitud",
+    )
     db.commit()
     (IMPORT_DIR / f"{token}.json").unlink(missing_ok=True)
-    return RedirectResponse(f"/app/employees?imported={created}&updated={updated}&skipped={skipped}&company_id={company.id}", status_code=303)
+    return RedirectResponse(
+        f"/app/employees?imported={created}&updated={updated}&skipped={skipped}"
+        f"&salary_changes={salary_changes_requires_request}&company_id={company.id}",
+        status_code=303,
+    )
 
 
 @app.post("/app/employees")
@@ -1667,7 +1691,7 @@ def edit_employee(
     employee_id: int,
     full_name: Annotated[str, Form()],
     position_name: Annotated[str, Form(alias="position")],
-    base_salary: Annotated[int, Form()],
+    base_salary_raw: Annotated[str, Form(alias="base_salary")] = "",
     email: Annotated[str, Form()] = "",
     phone: Annotated[str, Form()] = "",
     address: Annotated[str, Form()] = "",
@@ -1678,26 +1702,21 @@ def edit_employee(
     employee = db.get(Employee, employee_id)
     if not employee or employee.company_id not in company_ids_for_user(db, user):
         raise HTTPException(404)
-    previous_salary = employee.base_salary
+    requested_salary = optional_int(base_salary_raw, field="salario")
+    # La edición general del legajo no puede omitir el flujo de aprobación salarial.
+    # Se tolera el campo en clientes antiguos, pero cualquier cambio se rechaza.
+    if requested_salary is not None and max(0, requested_salary) != employee.base_salary:
+        raise HTTPException(
+            409,
+            "El salario vigente solo puede modificarse mediante una solicitud salarial aprobada.",
+        )
     employee.full_name = full_name.strip()
     employee.position = position_name.strip()
-    employee.base_salary = max(0, base_salary)
     employee.email = email.strip()
     employee.phone = phone.strip()
     employee.address = address.strip()
     employee.notes = notes.strip()
-    if previous_salary != employee.base_salary:
-        db.add(SalaryHistory(
-            employee_id=employee.id, previous_salary=previous_salary, new_salary=employee.base_salary,
-            effective_from=date.today(), reason="Actualización desde expediente", created_by=user.email,
-        ))
-        add_employee_event(
-            db, employee, user, "Cambio salarial", "Actualización salarial",
-            f"De Gs. {format_gs(previous_salary)} a Gs. {format_gs(employee.base_salary)}",
-            date.today(), employee.base_salary,
-        )
-    else:
-        add_employee_event(db, employee, user, "Actualización", "Datos del funcionario actualizados")
+    add_employee_event(db, employee, user, "Actualización", "Datos del funcionario actualizados")
     write_audit(db, user, "editar", "funcionario", str(employee.id), employee.full_name)
     db.commit()
     return RedirectResponse(f"/app/employees/{employee.id}", status_code=303)
@@ -1707,13 +1726,18 @@ def edit_employee(
 def employee_status(
     employee_id: int,
     status_value: Annotated[str, Form(alias="status")],
-    termination_date: Annotated[date | None, Form()] = None,
+    termination_date: Annotated[str | date | None, Form()] = None,
     user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
     db: Session = Depends(get_db),
 ):
     employee = db.get(Employee, employee_id)
     if not employee or employee.company_id not in company_ids_for_user(db, user):
         raise HTTPException(404)
+    if status_value not in {"Activo", "Inactivo", "Desvinculado"}:
+        raise HTTPException(400, "El estado seleccionado no es válido.")
+    termination_date = optional_date(termination_date, field="fecha efectiva de salida")
+    if status_value != "Activo" and termination_date is None:
+        raise HTTPException(400, "Indicá la fecha efectiva de salida para inactivar o desvincular al funcionario.")
     employee.status = status_value
     employee.termination_date = termination_date if status_value != "Activo" else None
     effective = employee.termination_date or date.today()

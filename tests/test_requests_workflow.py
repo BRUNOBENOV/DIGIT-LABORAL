@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import csv
+import io
 import re
+import uuid
+from datetime import date
 
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -8,7 +12,7 @@ from sqlalchemy import select
 from app.auth import hash_password
 from app.database import SessionLocal
 from app.main import app
-from app.models import Company, CompanyRequest, Employee, Notification, RequestWorkflow, Studio, User
+from app.models import Company, CompanyRequest, Employee, Notification, RequestWorkflow, SalaryHistory, Studio, User
 
 
 def ensure_admin() -> tuple[str, str, int, int]:
@@ -191,3 +195,197 @@ def test_notification_reads_are_scoped_to_the_logged_in_user():
         other_note = db.get(Notification, other_notification_id)
         assert note.read_at is not None
         assert other_note.read_at is None
+
+
+
+def test_direct_employee_edit_cannot_bypass_salary_approval():
+    email, password, _, employee_id = ensure_admin()
+    with SessionLocal() as db:
+        employee = db.get(Employee, employee_id)
+        assert employee is not None
+        original_salary = employee.base_salary
+        original_name = employee.full_name
+        original_position = employee.position
+        original_notes = employee.notes
+
+    with TestClient(app) as client:
+        csrf = login(client, email, password)
+        rejected = client.post(
+            f"/app/employees/{employee_id}/edit",
+            data={
+                "csrf_token": csrf,
+                "full_name": original_name,
+                "position": original_position,
+                "base_salary": str(original_salary + 150000),
+                "email": "",
+                "phone": "",
+                "address": "",
+                "notes": original_notes,
+            },
+            follow_redirects=False,
+        )
+        assert rejected.status_code == 409
+        assert "solicitud salarial aprobada" in rejected.text.lower()
+
+        updated = client.post(
+            f"/app/employees/{employee_id}/edit",
+            data={
+                "csrf_token": csrf,
+                "full_name": original_name,
+                "position": original_position,
+                "email": "",
+                "phone": "",
+                "address": "",
+                "notes": "Prueba de actualización no salarial.",
+            },
+            follow_redirects=False,
+        )
+        assert updated.status_code == 303
+
+        restored = client.post(
+            f"/app/employees/{employee_id}/edit",
+            data={
+                "csrf_token": csrf,
+                "full_name": original_name,
+                "position": original_position,
+                "email": "",
+                "phone": "",
+                "address": "",
+                "notes": original_notes or "",
+            },
+            follow_redirects=False,
+        )
+        assert restored.status_code == 303
+
+    with SessionLocal() as db:
+        employee = db.get(Employee, employee_id)
+        assert employee is not None
+        assert employee.base_salary == original_salary
+        assert employee.notes == original_notes
+
+
+def test_employee_import_cannot_change_existing_salary():
+    email, password, company_id, employee_id = ensure_admin()
+    with SessionLocal() as db:
+        employee = db.get(Employee, employee_id)
+        assert employee is not None
+        original_salary = employee.base_salary
+        original_document = employee.document_number
+        original_admission = employee.admission_date
+        original_name = employee.full_name
+        original_position = employee.position
+        original_notes = employee.notes
+        salary_history_before = len(list(db.scalars(
+            select(SalaryHistory).where(SalaryHistory.employee_id == employee_id)
+        )))
+
+    csv_buffer = io.StringIO()
+    writer = csv.writer(csv_buffer)
+    writer.writerow([
+        "nombre_completo", "cedula", "cargo", "fecha_ingreso", "salario_base",
+        "fecha_nacimiento", "tipo_contrato", "frecuencia_pago", "aporta_ips",
+        "correo", "telefono", "direccion", "observaciones",
+    ])
+    writer.writerow([
+        original_name, original_document, "Cargo importado de prueba",
+        original_admission.isoformat(), original_salary + 777000, "",
+        "Tiempo indefinido", "Mensual", "Sí", "", "", "",
+        "Ficha actualizada por prueba de importación",
+    ])
+    file_content = csv_buffer.getvalue().encode("utf-8-sig")
+
+    with TestClient(app) as client:
+        csrf = login(client, email, password)
+        preview_response = client.post(
+            "/app/import/employees/preview",
+            data={"csrf_token": csrf, "company_id": str(company_id)},
+            files={"file": ("salary-bypass-test.csv", file_content, "text/csv")},
+            follow_redirects=False,
+        )
+        assert preview_response.status_code == 303
+        preview_url = preview_response.headers["location"]
+        preview_page = client.get(preview_url)
+        assert preview_page.status_code == 200
+        assert "salario vigente se conservará" in preview_page.text
+        assert "1 funcionario existente" in preview_page.text
+        assert f"Gs. {original_salary:,}".replace(",", ".") in preview_page.text
+
+        confirm = client.post(
+            f"{preview_url}/confirm",
+            data={"csrf_token": csrf, "duplicate_action": "update"},
+            follow_redirects=False,
+        )
+        assert confirm.status_code == 303
+        assert "salary_changes=1" in confirm.headers["location"]
+        result_page = client.get(confirm.headers["location"])
+        assert result_page.status_code == 200
+        assert "1 cambio salarial no se aplicó" in result_page.text
+
+    with SessionLocal() as db:
+        employee = db.get(Employee, employee_id)
+        assert employee is not None
+        assert employee.base_salary == original_salary
+        assert employee.position == "Cargo importado de prueba"
+        salary_history_after = len(list(db.scalars(
+            select(SalaryHistory).where(SalaryHistory.employee_id == employee_id)
+        )))
+        assert salary_history_after == salary_history_before
+        employee.position = original_position
+        employee.notes = original_notes
+        db.commit()
+
+
+def test_employee_status_treats_blank_date_as_empty_and_requires_exit_date():
+    email, password, company_id, _ = ensure_admin()
+    with SessionLocal() as db:
+        employee = Employee(
+            company_id=company_id,
+            full_name="Funcionario de prueba de estado",
+            document_number=f"STATUS-TEST-{uuid.uuid4().hex[:12]}",
+            position="Auxiliar",
+            admission_date=date.today(),
+            base_salary=0,
+            status="Activo",
+        )
+        db.add(employee)
+        db.commit()
+        employee_id = employee.id
+
+    with TestClient(app) as client:
+        csrf = login(client, email, password)
+        active = client.post(
+            f"/app/employees/{employee_id}/status",
+            data={"csrf_token": csrf, "status": "Activo", "termination_date": ""},
+            follow_redirects=False,
+        )
+        assert active.status_code == 303
+
+        missing_exit_date = client.post(
+            f"/app/employees/{employee_id}/status",
+            data={"csrf_token": csrf, "status": "Desvinculado", "termination_date": ""},
+            follow_redirects=False,
+        )
+        assert missing_exit_date.status_code == 303
+        error_page = client.get(missing_exit_date.headers["location"])
+        assert error_page.status_code == 200
+        assert "fecha efectiva de salida" in error_page.text.lower()
+
+        with SessionLocal() as db:
+            employee = db.get(Employee, employee_id)
+            assert employee is not None
+            assert employee.status == "Activo"
+            assert employee.termination_date is None
+
+        exit_date = date.today().isoformat()
+        terminated = client.post(
+            f"/app/employees/{employee_id}/status",
+            data={"csrf_token": csrf, "status": "Desvinculado", "termination_date": exit_date},
+            follow_redirects=False,
+        )
+        assert terminated.status_code == 303
+
+    with SessionLocal() as db:
+        employee = db.get(Employee, employee_id)
+        assert employee is not None
+        assert employee.status == "Desvinculado"
+        assert employee.termination_date == date.today()
