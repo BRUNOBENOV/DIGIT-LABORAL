@@ -845,11 +845,19 @@ def test_totp_login_failures_lock_temporary_account():
             must_change_password=False,
         )
         db.add(user)
-        db.flush()
-        security = UserSecurity(user_id=user.id, totp_secret=secret, totp_enabled=True)
-        db.add(security)
         db.commit()
         user_id = user.id
+        # The application may initialize security metadata as part of user creation.
+        # Update that row when it exists instead of inserting a duplicate.
+        security = db.scalar(select(UserSecurity).where(UserSecurity.user_id == user_id))
+        if security is None:
+            security = UserSecurity(user_id=user_id)
+            db.add(security)
+        security.totp_secret = secret
+        security.totp_enabled = True
+        security.failed_attempts = 0
+        security.locked_until = None
+        db.commit()
         assert db.get(Studio, admin.studio_id) is not None
 
     try:
