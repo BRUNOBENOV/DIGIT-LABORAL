@@ -116,7 +116,7 @@ class Employee(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
-    branch_id: Mapped[Optional[int]] = mapped_column(ForeignKey("branches.id"), nullable=True)
+    branch_id: Mapped[Optional[int]] = mapped_column(ForeignKey("branches.id"), nullable=True, index=True)
     full_name: Mapped[str] = mapped_column(String(180), index=True)
     document_number: Mapped[str] = mapped_column(String(40), index=True)
     birth_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
@@ -505,7 +505,7 @@ class RequestWorkflow(Base):
     assigned_user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
     due_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True, index=True)
     internal_notes: Mapped[str] = mapped_column(Text, default="")
-    approved_by_user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    approved_by_user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
     approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     decision_notes: Mapped[str] = mapped_column(Text, default="")
     applied: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
