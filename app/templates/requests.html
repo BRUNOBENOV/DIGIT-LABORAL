@@ -3,14 +3,48 @@
 {% block page_name %}Solicitudes{% endblock %}
 {% block content %}
 <div class="page-header">
-  <div><span class="eyebrow">PORTAL VINCULADO</span><h1>Solicitudes y trámites</h1><p>Canal formal, trazable y asignable entre las empresas y el estudio contable.</p></div>
+  <div><span class="eyebrow">PORTAL VINCULADO</span><h1>{% if user.role == 'abogado' %}Mis expedientes y trámites{% elif user.role == 'empresa' %}Mis solicitudes{% else %}Solicitudes y trámites{% endif %}</h1><p>{% if user.role == 'empresa' %}Seguí cada pedido, respondé cuando el estudio solicite información y consultá la fecha de la próxima gestión.{% elif user.role == 'abogado' %}Priorizá tus asignaciones por responsable, estado y fecha límite. Las aprobaciones laborales siguen reservadas al contador o administrador.{% else %}Gestioná la bandeja del estudio por empresa, tipo de trámite, responsable, estado y vencimiento.{% endif %}</p></div>
   <button class="btn primary" type="button" data-modal-open="requestModal">+ Nueva solicitud</button>
 </div>
+{% if user.role != 'empresa' %}
+<section class="panel request-filter-panel">
+  <form method="get" action="/app/requests" class="form-grid request-filters">
+    <label>Empresa
+      <select name="company_id">
+        <option value="">Todas las empresas</option>
+        {% for company in companies %}<option value="{{ company.id }}" {{ 'selected' if selected_company == company.id }}>{{ company.legal_name }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Estado
+      <select name="status_filter">
+        <option value="">Todos los estados</option>
+        {% for value in ['Pendiente', 'En revisión', 'Falta información', 'Procesando', 'Aprobada', 'Rechazada', 'Resuelta', 'Aplicada'] %}
+        <option value="{{ value }}" {{ 'selected' if selected_status == value }}>{{ value }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Tipo de trámite
+      <select name="request_type">
+        <option value="">Todos los tipos</option>
+        {% for value in request_types %}<option value="{{ value }}" {{ 'selected' if selected_type == value }}>{{ value }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Responsable
+      <select name="assigned_filter">
+        <option value="">Todos los responsables</option>
+        <option value="mine" {{ 'selected' if assigned_filter == 'mine' }}>Asignados a mí</option>
+      </select>
+    </label>
+    <label class="check-field"><input type="checkbox" name="overdue_only" value="1" {{ 'checked' if overdue_only }}> Solo vencidas</label>
+    <div class="form-actions"><button class="btn primary" type="submit">Aplicar filtros</button><a class="btn ghost" href="/app/requests">Limpiar</a></div>
+  </form>
+</section>
+{% endif %}
 <section class="metrics-grid">
-  <article><span>Total</span><b>{{ items|length }}</b><small>Todos los estados</small></article>
+  <article><span>Visibles</span><b>{{ items|length }}</b><small>{% if user.role != 'empresa' and (selected_status or selected_company or selected_type or assigned_filter or overdue_only) %}Según filtros{% else %}Solicitudes del expediente{% endif %}</small></article>
   <article><span>Pendientes</span><b>{{ pending }}</b><small>Requieren seguimiento</small></article>
   <article><span>Vencidas</span><b>{{ overdue }}</b><small>Con fecha límite superada</small></article>
-  <article><span>Resueltas</span><b>{{ items|selectattr('status','equalto','Resuelta')|list|length + items|selectattr('status','equalto','Aplicada')|list|length }}</b><small>Trámites finalizados</small></article>
+  <article><span>Cerradas</span><b>{{ items|selectattr('status','equalto','Resuelta')|list|length + items|selectattr('status','equalto','Aplicada')|list|length + items|selectattr('status','equalto','Rechazada')|list|length }}</b><small>Resueltas, aplicadas o rechazadas</small></article>
 </section>
 <section class="request-grid">
 {% for item in items %}
@@ -29,7 +63,7 @@
     <span class="card-link">Abrir seguimiento →</span>
   </a>
 {% else %}
-  <div class="empty-large"><h3>No hay solicitudes</h3><p>Creá una solicitud para iniciar el seguimiento.</p></div>
+  <div class="empty-large"><h3>No hay solicitudes para mostrar</h3><p>{% if user.role != 'empresa' and (selected_status or selected_company or selected_type or assigned_filter or overdue_only) %}Probá quitar algún filtro o ampliá la selección de responsables y estados.{% else %}Creá una solicitud para iniciar el seguimiento.{% endif %}</p>{% if user.role != 'empresa' and (selected_status or selected_company or selected_type or assigned_filter or overdue_only) %}<a class="btn ghost" href="/app/requests">Limpiar filtros</a>{% endif %}</div>
 {% endfor %}
 </section>
 
