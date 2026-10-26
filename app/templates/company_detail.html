@@ -38,7 +38,7 @@
 
 <section class="company-action-strip" aria-label="Acciones principales de la empresa">
   <a href="/app/employees?company_id={{ company.id }}{% if user.role in ['administrador','contador','auxiliar'] %}&open=employeeModal{% endif %}"><b>Funcionarios</b><span>{{ employees|length }} registrados · altas y legajos</span></a>
-  {% if user.role != 'abogado' %}<a href="/app/payrolls?company_id={{ company.id }}"><b>Operaciones</b><span>Liquidaciones, vacaciones y aguinaldo</span></a>{% else %}<a href="/app/requests?company_id={{ company.id }}"><b>Trámites jurídicos</b><span>{{ requests_list|length }} solicitudes vinculadas a la empresa</span></a>{% endif %}
+  {% if user.role in ['administrador','contador','auxiliar'] %}<a href="/app/payrolls?company_id={{ company.id }}"><b>Operaciones</b><span>Liquidaciones, vacaciones y aguinaldo</span></a>{% elif user.role == 'abogado' %}<a href="/app/requests?company_id={{ company.id }}"><b>Trámites jurídicos</b><span>{{ requests_list|length }} solicitudes vinculadas a la empresa</span></a>{% else %}<a href="/app/requests?company_id={{ company.id }}"><b>Mis solicitudes</b><span>Pedidos y respuestas del estudio</span></a>{% endif %}
   <a href="/app/compliance?company_id={{ company.id }}"><b>REI / REOP</b><span>Cumplimiento y comunicaciones</span></a>
   <a href="/app/documents?company_id={{ company.id }}"><b>Documentos</b><span>Archivo y documentos laborales</span></a>
 </section>
@@ -86,7 +86,7 @@
   <summary>Más información y actividad de esta empresa</summary>
   <div class="v23-more-grid">
     {% if user.role in ['administrador','contador','auxiliar'] %}<a href="/app/calculations?company_id={{ company.id }}"><b>Cálculos</b><span>{{ calculations|length }} resultados recientes</span></a>{% else %}<a href="/app/reports?company_id={{ company.id }}"><b>Antecedentes del caso</b><span>Informes y documentos del expediente</span></a>{% endif %}
-    {% if user.role != 'abogado' %}<a href="/app/payrolls?company_id={{ company.id }}"><b>Liquidaciones</b><span>{{ payrolls|length }} periodos recientes</span></a>{% endif %}
+    {% if user.role in ['administrador','contador','auxiliar'] %}<a href="/app/payrolls?company_id={{ company.id }}"><b>Liquidaciones</b><span>{{ payrolls|length }} periodos recientes</span></a>{% endif %}
     <a href="/app/documents?company_id={{ company.id }}"><b>Archivos</b><span>{{ documents|length }} documentos recientes</span></a>
     <a href="/app/requests?company_id={{ company.id }}"><b>Solicitudes</b><span>{{ requests_list|length }} movimientos recientes</span></a>
     <a href="/app/reports?company_id={{ company.id }}"><b>Reportes</b><span>Informes y exportaciones</span></a>
