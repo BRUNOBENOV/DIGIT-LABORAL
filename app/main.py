@@ -2501,7 +2501,7 @@ def add_request(
     amount_raw: Annotated[str, Form(alias="amount")] = "",
     leave_type_raw: Annotated[str, Form(alias="leave_type")] = "",
     hours_requested_raw: Annotated[str, Form(alias="hours_requested")] = "",
-    user: User = Depends(require_user),
+    user: User = Depends(require_roles("administrador", "contador", "auxiliar", "empresa")),
     db: Session = Depends(get_db),
 ):
     company = company_allowed(db, user, company_id)
