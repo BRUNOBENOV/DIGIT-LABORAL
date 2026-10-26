@@ -2285,6 +2285,73 @@ def requests_page(request: Request, user: User = Depends(require_user), db: Sess
     return render(request, "requests.html", db, user, items=items, companies=companies, employees=employees, workflow_by_request=workflow_by_request, pending=pending, overdue=overdue)
 
 
+def _vacation_balance(
+    db: Session, employee_id: int, period_year: int, *, excluding_request_id: int | None = None,
+) -> dict[str, int]:
+    """Calculate annual entitlement minus used days and active approved reservations."""
+    ledger_rows = list(db.scalars(
+        select(Vacation).where(
+            Vacation.employee_id == employee_id,
+            Vacation.period_year == period_year,
+            Vacation.status.notin_(("Rechazada", "Anulada", "Cancelada")),
+        ).order_by(Vacation.created_at, Vacation.id)
+    ))
+    entitled = sum(max(0, int(row.entitled_days or 0)) for row in ledger_rows)
+    used = sum(max(0, int(row.used_days or 0)) for row in ledger_rows)
+
+    reservation_query = select(CompanyRequest).where(
+        CompanyRequest.employee_id == employee_id,
+        CompanyRequest.period_year == period_year,
+        CompanyRequest.status == "Aprobada",
+    )
+    if excluding_request_id is not None:
+        reservation_query = reservation_query.where(CompanyRequest.id != excluding_request_id)
+    reservations = list(db.scalars(reservation_query))
+    reserved = 0
+    for request_item in reservations:
+        if request_item.request_type.strip().casefold() != "vacaciones":
+            continue
+        workflow = db.scalar(select(RequestWorkflow).where(RequestWorkflow.request_id == request_item.id))
+        if workflow and workflow.applied:
+            continue
+        reserved += max(0, int(request_item.requested_days or 0))
+
+    return {
+        "entitled_days": entitled,
+        "used_days": used,
+        "reserved_days": reserved,
+        "available_days": entitled - used - reserved,
+    }
+
+
+def _validate_vacation_balance(db: Session, item: CompanyRequest) -> None:
+    if (
+        not item.employee_id or not item.period_year or not item.requested_days
+        or not item.start_date or not item.end_date
+    ):
+        raise HTTPException(400, "La solicitud de vacaciones necesita funcionario, periodo, días y fechas válidas.")
+    balance = _vacation_balance(db, item.employee_id, item.period_year, excluding_request_id=item.id)
+    if balance["entitled_days"] <= 0:
+        raise HTTPException(409, "No hay saldo anual cargado para ese funcionario y periodo. Registrá primero su derecho de vacaciones.")
+    if item.requested_days > balance["available_days"]:
+        raise HTTPException(
+            409,
+            f"Saldo insuficiente: hay {max(0, balance['available_days'])} días disponibles y la solicitud requiere {item.requested_days}.",
+        )
+
+
+@app.get("/app/requests/vacation-balance")
+def request_vacation_balance(
+    employee_id: int, period_year: int, user: User = Depends(require_user), db: Session = Depends(get_db),
+):
+    employee = db.get(Employee, employee_id)
+    if not employee or employee.company_id not in company_ids_for_user(db, user):
+        raise HTTPException(404, "Funcionario no encontrado.")
+    if not 1900 <= period_year <= date.today().year + 2:
+        raise HTTPException(400, "El año del periodo no es válido.")
+    return JSONResponse(_vacation_balance(db, employee_id, period_year))
+
+
 @app.post("/app/requests")
 def add_request(
     background_tasks: BackgroundTasks,
