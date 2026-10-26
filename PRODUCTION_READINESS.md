@@ -1,5 +1,15 @@
 # Preparación para producción
 
+## Flujos funcionales por perfil — cambio propuesto v2.5.4
+
+El cambio funcional incorpora un rol jurídico diferenciado y ajusta las acciones de las pantallas:
+- **Contador/administrador:** conserva cálculo, nómina, aprobación de solicitudes y gestión operativa.
+- **Abogado:** puede consultar expedientes y documentos, gestionar comentarios y seguimiento solo en solicitudes asignadas, preparar documentos y consultar normativa; no puede aprobar/rechazar trámites ni reasignarlos.
+- **Empresa empleadora:** puede consultar su expediente, enviar y seguir solicitudes, consultar documentos y ver la agenda; no puede modificar la agenda interna ni gestionar nóminas del estudio.
+- **Auxiliar:** conserva las tareas operativas no reservadas expresamente al administrador/contador.
+
+La batería de pruebas de esta versión debe verificar estos recorridos tras la integración y el despliegue. Los límites de seguridad PostgreSQL y las dependencias externas documentados a continuación siguen pendientes y no quedan resueltos por los cambios de interfaz.
+
 ## Auditoría de seguridad registrada — 26-10-2026
 
 ### Estado verificado antes de v2.5.3
