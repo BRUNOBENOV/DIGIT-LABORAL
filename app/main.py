@@ -2705,6 +2705,8 @@ def review_request(
         raise HTTPException(404, "Solicitud no encontrada.")
     if status_value not in {"Aprobada", "Rechazada", "En revisión", "Falta información"}:
         raise HTTPException(400, "La decisión seleccionada no es válida.")
+    if status_value == "Aprobada" and item.request_type.strip().casefold() == "vacaciones":
+        _validate_vacation_balance(db, item)
     existing_workflow = db.scalar(select(RequestWorkflow).where(RequestWorkflow.request_id == item.id))
     if existing_workflow and existing_workflow.applied:
         raise HTTPException(409, "Este trámite ya fue aplicado y no admite nuevas decisiones.")
