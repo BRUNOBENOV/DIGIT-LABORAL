@@ -29,7 +29,11 @@ def apply_session_tenant_context(session: Session) -> None:
     if engine.dialect.name != "postgresql" or not settings.rls_enabled:
         return
     studio_id = session.info.get("studio_id")
+    user_id = session.info.get("user_id")
+    user_role = str(session.info.get("user_role") or "")
     is_superadmin = bool(session.info.get("is_superadmin"))
+    session.execute(text("SELECT set_config('app.current_user_id', :value, true)"), {"value": str(user_id or "")})
+    session.execute(text("SELECT set_config('app.current_user_role', :value, true)"), {"value": user_role})
     session.execute(text("SELECT set_config('app.is_superadmin', :value, true)"), {"value": "true" if is_superadmin else "false"})
     session.execute(text("SELECT set_config('app.current_studio_id', :value, true)"), {"value": str(studio_id or "")})
 
@@ -39,6 +43,10 @@ def _set_tenant_context_after_begin(session: Session, transaction, connection) -
     if connection.dialect.name != "postgresql" or not settings.rls_enabled:
         return
     studio_id = session.info.get("studio_id")
+    user_id = session.info.get("user_id")
+    user_role = str(session.info.get("user_role") or "")
     is_superadmin = bool(session.info.get("is_superadmin"))
+    connection.execute(text("SELECT set_config('app.current_user_id', :value, true)"), {"value": str(user_id or "")})
+    connection.execute(text("SELECT set_config('app.current_user_role', :value, true)"), {"value": user_role})
     connection.execute(text("SELECT set_config('app.is_superadmin', :value, true)"), {"value": "true" if is_superadmin else "false"})
     connection.execute(text("SELECT set_config('app.current_studio_id', :value, true)"), {"value": str(studio_id or "")})
