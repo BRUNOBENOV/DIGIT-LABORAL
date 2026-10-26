@@ -50,3 +50,40 @@ def _set_tenant_context_after_begin(session: Session, transaction, connection) -
     connection.execute(text("SELECT set_config('app.current_user_role', :value, true)"), {"value": user_role})
     connection.execute(text("SELECT set_config('app.is_superadmin', :value, true)"), {"value": "true" if is_superadmin else "false"})
     connection.execute(text("SELECT set_config('app.current_studio_id', :value, true)"), {"value": str(studio_id or "")})
+
+def postgres_rls_role_issues() -> list[str]:
+    """Report whether the runtime PostgreSQL role can bypass the configured RLS policies."""
+    if engine.dialect.name != "postgresql" or not settings.rls_enabled:
+        return []
+
+    try:
+        with engine.connect() as connection:
+            row = connection.execute(text("""
+                SELECT
+                    current_user AS role_name,
+                    COALESCE((
+                        SELECT rolsuper OR rolbypassrls
+                        FROM pg_roles
+                        WHERE rolname = current_user
+                    ), false) AS can_bypass_rls,
+                    (
+                        SELECT count(*)
+                        FROM pg_class c
+                        JOIN pg_namespace n ON n.oid = c.relnamespace
+                        WHERE c.relkind IN ('r', 'p')
+                          AND n.nspname = 'public'
+                          AND pg_get_userbyid(c.relowner) = current_user
+                    ) AS owned_tables
+            """)).mappings().one()
+    except Exception:
+        return ["No se pudo verificar el rol PostgreSQL de ejecución frente a RLS."]
+
+    issues: list[str] = []
+    if row["can_bypass_rls"]:
+        issues.append("El rol de ejecución puede omitir RLS por privilegios de superusuario o BYPASSRLS.")
+    if int(row["owned_tables"] or 0) > 0:
+        issues.append(
+            "El rol de ejecución es propietario de tablas de la aplicación; "
+            "la separación entre rol de ejecución y rol de migración sigue pendiente."
+        )
+    return issues
