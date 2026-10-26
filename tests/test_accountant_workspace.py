@@ -1,3 +1,57 @@
+from __future__ import annotations
+
+import re
+import uuid
+
+from fastapi.testclient import TestClient
+from sqlalchemy import select
+
+from app.auth import hash_password
+from app.database import SessionLocal
+from app.models import Company, CompanyRequest, Studio, User, UserSecurity
+from app.runtime import app
+
+
+def _new_user(role: str) -> tuple[str, str, int, int]:
+    email = f"{role}-{uuid.uuid4().hex[:12]}@persona.test"
+    password = "Persona-Check-2026!"
+    with SessionLocal() as db:
+        studio = db.scalar(select(Studio).order_by(Studio.id))
+        assert studio is not None
+        company = db.scalar(select(Company).where(Company.studio_id == studio.id).order_by(Company.id))
+        assert company is not None
+        user = User(
+            studio_id=studio.id,
+            company_id=None,
+            full_name=f"Persona {role}",
+            email=email,
+            password_hash=hash_password(password),
+            role=role,
+            active=True,
+            must_change_password=False,
+        )
+        db.add(user)
+        db.flush()
+        db.add(UserSecurity(user_id=user.id))
+        db.commit()
+        return email, password, user.id, company.id
+
+
+def _login(client: TestClient, email: str, password: str) -> str:
+    page = client.get("/login")
+    match = re.search(r'name="csrf_token" value="([^"]+)"', page.text)
+    assert page.status_code == 200 and match
+    login = client.post(
+        "/login",
+        data={"email": email, "password": password, "csrf_token": match.group(1)},
+        follow_redirects=False,
+    )
+    assert login.status_code == 303
+    home = client.get("/app")
+    match = re.search(r'name="csrf_token" value="([^"]+)"', home.text)
+    assert home.status_code == 200 and match
+    return match.group(1)
+
 
 def test_accountant_workbench_keeps_operational_tools_and_request_approval() -> None:
     with TestClient(app) as client:
