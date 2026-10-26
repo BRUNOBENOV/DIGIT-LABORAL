@@ -817,6 +817,7 @@ def test_completed_vacation_and_permission_requests_apply_only_after_end_date():
             notes="Saldo para prueba de aplicación",
         )
         db.add(ledger)
+        db.flush()
         vacation_used_before = sum(
             max(0, int(row.used_days or 0))
             for row in db.scalars(select(Vacation).where(
