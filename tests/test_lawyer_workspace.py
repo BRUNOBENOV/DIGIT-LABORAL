@@ -150,6 +150,7 @@ def test_lawyer_workspace_filters_assigned_cases_and_enforces_role_boundaries() 
         assert "Solo vencidas" in queue.text
         assert "Mis asignaciones" in queue.text
         assert "+ Nueva solicitud" not in queue.text
+        assert 'action="/app/requests"' not in queue.text
         assert client.post(
             "/app/requests",
             data={
@@ -324,3 +325,31 @@ def test_employer_sees_request_centric_dashboard_without_staff_calculation_tools
         assert payroll_list.status_code == 200
         assert "+ Nueva liquidación" not in payroll_list.text
         assert '<form method="post" action="/app/payrolls"' not in payroll_list.text
+
+
+
+def test_unassigned_lawyer_cannot_browse_company_or_unassigned_request() -> None:
+    with TestClient(app) as client:
+        email, password, lawyer_id, company_id = _new_user("abogado")
+        with SessionLocal() as db:
+            company = db.get(Company, company_id)
+            assert company is not None
+            item = CompanyRequest(
+                company_id=company_id,
+                request_type="Otra consulta",
+                subject=f"QA-UNASSIGNED-{uuid.uuid4().hex[:10]}",
+                detail="Trámite no asignado a este abogado.",
+                requested_by_user_id=lawyer_id,
+                priority="Normal",
+                status="Pendiente",
+            )
+            db.add(item)
+            db.commit()
+            request_id = item.id
+
+        _login(client, email, password)
+        companies = client.get("/app/companies")
+        assert companies.status_code == 200
+        assert "Aún no tenés empresas asignadas" in companies.text
+        assert client.get(f"/app/companies/{company_id}").status_code == 404
+        assert client.get(f"/app/requests/{request_id}").status_code == 404
