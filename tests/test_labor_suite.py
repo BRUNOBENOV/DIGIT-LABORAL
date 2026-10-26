@@ -793,3 +793,52 @@ def test_labor_rules_use_commercial_half_up_rounding_for_currency():
     assert aguinaldo_amount(6).value == 1
     assert vacation_amount(15, 0, 1).value == 1
     assert notice_amount(15, 1).value == 1
+
+
+def test_company_logo_print_endpoint_uses_saved_presentation_settings(web_case):
+    from io import BytesIO
+
+    from PIL import Image
+    from sqlalchemy import select
+
+    from app.models import CompanyBranding
+
+    client, db, _, company, _, _ = web_case
+    branding = db.scalar(select(CompanyBranding).where(CompanyBranding.company_id == company.id))
+    if branding is None:
+        branding = CompanyBranding(company_id=company.id)
+        db.add(branding)
+    source = Image.new("RGB", (160, 80), (220, 40, 40))
+    buffer = BytesIO()
+    source.save(buffer, format="PNG")
+    branding.logo_bytes = buffer.getvalue()
+    branding.logo_content_type = "image/png"
+    branding.logo_filename = "print-logo.png"
+    branding.logo_fit = "contain"
+    branding.logo_scale = 135
+    branding.logo_alignment = "right"
+    branding.logo_background = "navy"
+    db.commit()
+
+    response = client.get(f"/app/companies/{company.id}/logo/print")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("image/png")
+    assert "no-store" in response.headers["cache-control"]
+    rendered = Image.open(BytesIO(response.content)).convert("RGBA")
+    assert rendered.size == (1100, 360)
+    assert rendered.getpixel((0, 0)) == (11, 45, 120, 255)
+
+
+def test_certificate_creation_and_print_previews_use_adjusted_company_logo():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    form_template = (root / "app/templates/certificates.html").read_text(encoding="utf-8")
+    print_template = (root / "app/templates/certificate_print.html").read_text(encoding="utf-8")
+    route = (root / "app/ux_v23.py").read_text(encoding="utf-8")
+
+    assert "data-logo-url=" in form_template
+    assert "/logo/print" in form_template
+    assert "/logo/print" in print_template
+    assert "def company_logo_print_v23" in route
