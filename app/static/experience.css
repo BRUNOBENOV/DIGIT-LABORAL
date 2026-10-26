@@ -209,3 +209,21 @@ form.experience-is-processing .experience-submit-processing{pointer-events:none;
 .brand-upload-zone .brand-upload-input:focus-visible{outline:0}
 @media(max-width:1120px){.calculation-index-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.calculation-context{grid-template-columns:1fr}.calculation-context-form{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:620px){.calculation-index-grid{grid-template-columns:1fr;gap:10px}.calculation-index-card{min-height:94px;padding:14px}.calculation-context{padding:15px!important}.calculation-context-form{grid-template-columns:1fr}.calculation-context-form .btn{width:100%}.calculation-history .table-wrap table{min-width:760px}}
+
+/* Work-queue filters and read-only professional records */
+.request-filter-panel{padding:18px 20px;margin:0 0 20px}
+.request-filters{display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:12px 14px;align-items:end}
+.request-filters>label{display:grid;gap:6px;min-width:0;color:var(--exp-ink);font-size:.76rem;font-weight:750}
+.request-filters select{width:100%;min-width:0}
+.request-filters .check-field{display:flex;align-items:center;align-self:center;gap:9px;min-height:42px;color:var(--exp-muted);font-weight:700}
+.request-filters .check-field input{width:16px;height:16px;accent-color:var(--exp-primary)}
+.request-filters .form-actions{display:flex;align-items:center;justify-content:flex-start;gap:8px;flex-wrap:wrap;grid-column:span 2}
+.compact-list-entry{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--exp-line);min-width:0}
+.compact-list-entry:last-child{border-bottom:0}
+.compact-list-entry>div,.employee-payroll-readonly>div{flex:1;min-width:0}
+.compact-list-entry b,.compact-list-entry small,.employee-payroll-readonly b,.employee-payroll-readonly small{display:block;overflow-wrap:anywhere}
+.compact-list-entry small,.employee-payroll-readonly small{margin-top:3px;color:var(--exp-muted);font-size:.73rem}
+.employee-payroll-readonly{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--exp-line)}
+.employee-payroll-readonly:last-child{border-bottom:0}
+@media(max-width:1050px){.request-filters{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:560px){.request-filter-panel{padding:13px}.request-filters{grid-template-columns:1fr}.request-filters .form-actions{grid-column:auto}.request-filters .form-actions .btn{flex:1}}
