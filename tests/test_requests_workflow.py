@@ -906,7 +906,8 @@ def test_completed_vacation_and_permission_requests_apply_only_after_end_date():
             EmployeeEvent.title == f"Exámenes registrado mediante solicitud #{permission_id}",
         ))
         assert event is not None
-        assert "Exámenes" in event.detail
+        assert event.event_type == "Permiso"
+        assert "Motivo: Permiso para rendir examen." in event.detail
 
 
 def test_notification_cron_endpoint_requires_bearer_token(monkeypatch):
