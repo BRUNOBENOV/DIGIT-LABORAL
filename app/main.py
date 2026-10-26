@@ -265,7 +265,7 @@ class CSRFMiddleware:
             return
         method = scope.get("method", "GET").upper()
         path = scope.get("path", "")
-        protected = method in {"POST", "PUT", "PATCH", "DELETE"} and path not in {"/health", "/health/live", "/health/ready"}
+        protected = method in {"POST", "PUT", "PATCH", "DELETE"} and path not in {"/health", "/health/live", "/health/ready", "/internal/cron/notifications"}
         session = scope.get("session") or {}
         expected = session.get("csrf_token", "")
         if not protected:
