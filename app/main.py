@@ -2424,6 +2424,11 @@ def add_request(
             raise HTTPException(400, "Una solicitud de vacaciones requiere funcionario, periodo, días solicitados y fechas desde/hasta.")
         if requested_days > 365:
             raise HTTPException(400, "Los días solicitados de vacaciones no pueden superar 365.")
+        balance = _vacation_balance(db, employee.id, period_year)
+        if balance["entitled_days"] <= 0:
+            raise HTTPException(409, "No hay saldo anual cargado para ese funcionario y periodo. Registrá primero su derecho de vacaciones.")
+        if requested_days > balance["available_days"]:
+            raise HTTPException(400, f"Saldo insuficiente: hay {max(0, balance['available_days'])} días disponibles para el periodo solicitado.")
     elif request_kind in {"permiso/licencia", "permiso", "licencia"}:
         if not employee or not leave_type_raw.strip() or not start_date or not end_date:
             raise HTTPException(400, "Un permiso o licencia requiere funcionario, tipo de permiso y fechas desde/hasta.")
