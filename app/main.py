@@ -2787,32 +2787,84 @@ def apply_request(
         return RedirectResponse(f"/app/requests/{item.id}", status_code=303)
     if item.status != "Aprobada" or not workflow or not workflow.approved_at:
         raise HTTPException(409, "El trámite debe estar aprobado antes de aplicarse.")
-    if item.request_type.strip().casefold() != "cambio salarial":
-        raise HTTPException(400, "La aplicación automática está habilitada únicamente para cambios salariales. Los demás trámites deben completarse desde su módulo correspondiente.")
+    request_kind = item.request_type.strip().casefold()
     employee = db.get(Employee, item.employee_id) if item.employee_id else None
-    if (
-        not employee or employee.company_id != item.company_id
-        or item.amount is None or item.amount <= 0 or item.amount > 2147483647
-        or item.effective_date is None
-    ):
-        raise HTTPException(400, "La solicitud salarial necesita un funcionario, un salario mensual positivo y una fecha efectiva válida.")
-    previous_salary = employee.base_salary
-    effective_from = item.effective_date or date.today()
-    employee.base_salary = item.amount
-    db.add(SalaryHistory(
-        employee_id=employee.id,
-        previous_salary=previous_salary,
-        new_salary=item.amount,
-        effective_from=effective_from,
-        reason=f"Cambio salarial aprobado mediante solicitud #{item.id}",
-        created_by=user.email,
-    ))
-    add_employee_event(
-        db, employee, user, "Salario",
-        f"Cambio salarial aplicado por solicitud #{item.id}",
-        f"Salario anterior: {previous_salary}; nuevo salario: {item.amount}.",
-        effective_from, item.amount,
-    )
+    if not employee or employee.company_id != item.company_id:
+        raise HTTPException(400, "La solicitud requiere un funcionario válido de la misma empresa.")
+
+    if request_kind == "cambio salarial":
+        if (
+            item.amount is None or item.amount <= 0 or item.amount > 2147483647
+            or item.effective_date is None
+        ):
+            raise HTTPException(400, "La solicitud salarial necesita un salario mensual positivo y una fecha efectiva válida.")
+        previous_salary = employee.base_salary
+        effective_from = item.effective_date
+        employee.base_salary = item.amount
+        db.add(SalaryHistory(
+            employee_id=employee.id,
+            previous_salary=previous_salary,
+            new_salary=item.amount,
+            effective_from=effective_from,
+            reason=f"Cambio salarial aprobado mediante solicitud #{item.id}",
+            created_by=user.email,
+        ))
+        add_employee_event(
+            db, employee, user, "Salario",
+            f"Cambio salarial aplicado por solicitud #{item.id}",
+            f"Salario anterior: {previous_salary}; nuevo salario: {item.amount}.",
+            effective_from, item.amount,
+        )
+    elif request_kind == "vacaciones":
+        if (
+            item.period_year is None or item.requested_days is None or item.requested_days <= 0
+            or item.start_date is None or item.end_date is None
+        ):
+            raise HTTPException(400, "La solicitud de vacaciones necesita periodo, días y fechas válidas.")
+        if item.end_date > date.today():
+            raise HTTPException(409, "Los días de vacaciones se registran como utilizados solo después de finalizar el periodo aprobado.")
+        _validate_vacation_balance(db, item)
+        ledger_rows = list(db.scalars(
+            select(Vacation).where(
+                Vacation.employee_id == employee.id,
+                Vacation.period_year == item.period_year,
+                Vacation.status.notin_(("Rechazada", "Anulada", "Cancelada")),
+            ).order_by(Vacation.created_at, Vacation.id)
+        ))
+        remaining_to_allocate = item.requested_days
+        for ledger in ledger_rows:
+            capacity = max(0, int(ledger.entitled_days or 0) - int(ledger.used_days or 0))
+            if capacity <= 0:
+                continue
+            used_now = min(capacity, remaining_to_allocate)
+            ledger.used_days = int(ledger.used_days or 0) + used_now
+            note = f"Uso confirmado mediante solicitud #{item.id}: {used_now} día(s), {item.start_date:%d/%m/%Y}–{item.end_date:%d/%m/%Y}."
+            ledger.notes = f"{ledger.notes.rstrip()}\n{note}".strip()
+            remaining_to_allocate -= used_now
+            if remaining_to_allocate == 0:
+                break
+        if remaining_to_allocate:
+            raise HTTPException(409, "No se pudo asignar el uso al saldo anual. Revisá los registros de vacaciones del periodo.")
+        add_employee_event(
+            db, employee, user, "Vacaciones",
+            f"Vacaciones utilizadas mediante solicitud #{item.id}",
+            f"Se confirmaron {item.requested_days} día(s) de vacaciones del periodo {item.period_year}, del {item.start_date:%d/%m/%Y} al {item.end_date:%d/%m/%Y}.",
+            item.end_date, item.requested_days,
+        )
+    elif request_kind in {"permiso/licencia", "permiso", "licencia"}:
+        if not item.start_date or not item.end_date or not item.leave_type.strip():
+            raise HTTPException(400, "El permiso o licencia necesita tipo y fechas válidas.")
+        if item.end_date > date.today():
+            raise HTTPException(409, "El permiso o licencia se registra en el expediente una vez finalizado el periodo aprobado.")
+        hours_text = f" Duración declarada: {item.hours_requested} hora(s)." if item.hours_requested is not None else ""
+        add_employee_event(
+            db, employee, user, "Permiso",
+            f"{item.leave_type} registrado mediante solicitud #{item.id}",
+            f"Periodo: {item.start_date:%d/%m/%Y}–{item.end_date:%d/%m/%Y}.{hours_text} Motivo: {item.detail}",
+            item.end_date, None,
+        )
+    else:
+        raise HTTPException(400, "La aplicación de este tipo de trámite debe realizarse desde su módulo específico.")
     workflow.applied = True
     workflow.applied_at = datetime.now(UTC)
     item.status = "Aplicada"
