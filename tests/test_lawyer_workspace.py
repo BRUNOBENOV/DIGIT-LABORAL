@@ -9,7 +9,7 @@ from sqlalchemy import select
 
 from app.auth import hash_password
 from app.database import SessionLocal
-from app.models import Company, CompanyRequest, RequestWorkflow, Studio, User, UserSecurity
+from app.models import Company, CompanyRequest, Employee, RequestWorkflow, Studio, User, UserSecurity
 from app.runtime import app
 
 
@@ -159,20 +159,17 @@ def test_lawyer_workspace_filters_assigned_cases_and_enforces_role_boundaries() 
         # this confirms the lawyer role can reach the document-drafting handler.
         with SessionLocal() as db:
             employee_id = db.scalar(
-                select(Company.id).where(Company.id == company_id)
+                select(Employee.id)
+                .where(Employee.company_id == company_id)
+                .order_by(Employee.id)
             )
-            employee = db.scalar(
-                select(__import__("app.models", fromlist=["Employee"]).Employee.id)
-                .where(__import__("app.models", fromlist=["Employee"]).Employee.company_id == company_id)
-                .order_by(__import__("app.models", fromlist=["Employee"]).Employee.id)
-            )
-            assert employee_id is not None and employee is not None
+            assert employee_id is not None
         draft_attempt = client.post(
             "/app/certificates",
             data={
                 "csrf_token": csrf,
                 "company_id": str(company_id),
-                "employee_id": str(employee),
+                "employee_id": str(employee_id),
                 "document_type": "__invalid_for_test__",
             },
             follow_redirects=False,
