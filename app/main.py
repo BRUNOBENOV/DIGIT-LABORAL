@@ -2870,10 +2870,17 @@ def apply_request(
     item.status = "Aplicada"
     item.resolved_at = workflow.applied_at
     write_audit(db, user, "aplicar_solicitud", "solicitud", str(item.id), f"{previous_salary} → {item.amount}")
+    applied_message = {
+        "cambio salarial": "El cambio salarial aprobado fue aplicado al legajo del funcionario.",
+        "vacaciones": f"Se confirmaron {item.requested_days} día(s) de vacaciones como utilizados y se actualizó el saldo del periodo {item.period_year}.",
+        "permiso/licencia": "El permiso/licencia aprobado quedó registrado en la línea de tiempo del funcionario.",
+        "permiso": "El permiso aprobado quedó registrado en la línea de tiempo del funcionario.",
+        "licencia": "La licencia aprobada quedó registrada en la línea de tiempo del funcionario.",
+    }.get(request_kind, "El trámite aprobado fue aplicado al expediente laboral.")
     _notify_request_counterpart(
         db, background_tasks, item, user,
         event_type="solicitud_aplicada", title=f"Trámite completado · Solicitud #{item.id}",
-        body="El cambio salarial aprobado fue aplicado al legajo del funcionario.",
+        body=applied_message,
     )
     db.commit()
     return RedirectResponse(f"/app/requests/{item.id}", status_code=303)
