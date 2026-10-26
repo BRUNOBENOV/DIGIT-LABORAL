@@ -78,7 +78,7 @@
       <article class="home-module-card">
         <header class="home-module-heading"><span class="home-module-number">04</span><div><h3>Certificados</h3><p>Emisión de documentos y archivo digital.</p></div></header>
         <div class="home-module-links">
-          <a href="/app/certificates"><span><b>Emitir certificados</b><small>Documentos laborales con datos vinculados</small></span><i>↗</i></a>
+          <a href="/app/certificates"><span><b>{{ 'Consultar documentos' if is_company else ('Preparar documentos laborales' if is_lawyer else 'Emitir certificados') }}</b><small>{{ 'Consultá los documentos emitidos y enviá una solicitud al estudio para pedir uno nuevo.' if is_company else ('Prepará borradores de documentos para revisión profesional.' if is_lawyer else 'Documentos laborales con datos vinculados') }}</small></span><i>↗</i></a>
           <a href="/app/documents"><span><b>Archivo documental</b><small>Archivos por empresa y funcionario</small></span><i>↗</i></a>
         </div>
       </article>
