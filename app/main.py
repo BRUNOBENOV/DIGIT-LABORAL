@@ -1088,6 +1088,16 @@ def dashboard(request: Request, user: User = Depends(require_user), db: Session 
     companies_count = len(company_ids)
     employee_count = db.scalar(select(func.count(Employee.id)).where(Employee.company_id.in_(company_ids), Employee.status == "Activo")) if company_ids else 0
     pending_count = db.scalar(select(func.count(CompanyRequest.id)).where(CompanyRequest.company_id.in_(company_ids), CompanyRequest.status.in_(["Pendiente", "En revisión", "Falta información", "Procesando", "Aprobada"]))) if company_ids else 0
+    if user.role == "abogado" and company_ids:
+        pending_count = db.scalar(
+            select(func.count(CompanyRequest.id))
+            .join(RequestWorkflow, RequestWorkflow.request_id == CompanyRequest.id)
+            .where(
+                CompanyRequest.company_id.in_(company_ids),
+                RequestWorkflow.assigned_user_id == user.id,
+                CompanyRequest.status.in_(["Pendiente", "En revisión", "Falta información", "Procesando", "Aprobada"]),
+            )
+        ) or 0
     payroll_count = db.scalar(select(func.count(Payroll.id)).where(Payroll.company_id.in_(company_ids), Payroll.status == "Borrador")) if company_ids else 0
     compliance_pending_count = db.scalar(
         select(func.count(ComplianceEvent.id)).where(
@@ -1103,7 +1113,28 @@ def dashboard(request: Request, user: User = Depends(require_user), db: Session 
         )
     ) if company_ids else 0
     companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids)).order_by(Company.created_at.desc()).limit(5))) if company_ids else []
-    recent_requests = list(db.scalars(select(CompanyRequest).where(CompanyRequest.company_id.in_(company_ids)).order_by(CompanyRequest.created_at.desc()).limit(5))) if company_ids else []
+    if user.role == "abogado" and company_ids:
+        recent_requests = list(
+            db.scalars(
+                select(CompanyRequest)
+                .join(RequestWorkflow, RequestWorkflow.request_id == CompanyRequest.id)
+                .where(
+                    CompanyRequest.company_id.in_(company_ids),
+                    RequestWorkflow.assigned_user_id == user.id,
+                )
+                .order_by(RequestWorkflow.due_date.asc().nullslast(), CompanyRequest.created_at.desc())
+                .limit(5)
+            )
+        )
+    else:
+        recent_requests = list(
+            db.scalars(
+                select(CompanyRequest)
+                .where(CompanyRequest.company_id.in_(company_ids))
+                .order_by(CompanyRequest.created_at.desc())
+                .limit(5)
+            )
+        ) if company_ids else []
     documents_count = db.scalar(select(func.count(Document.id)).where(Document.company_id.in_(company_ids))) if company_ids else 0
     certificates_count = db.scalar(select(func.count(GeneratedCertificate.id)).where(GeneratedCertificate.company_id.in_(company_ids))) if company_ids else 0
     minimum_salary = db.scalar(select(LaborParameter).where(LaborParameter.key == "minimum_monthly_salary_general", LaborParameter.active.is_(True)))
@@ -2327,7 +2358,13 @@ def requests_page(
     employees = list(db.scalars(select(Employee).where(Employee.company_id.in_(company_ids)).order_by(Employee.full_name))) if company_ids else []
 
     allowed_statuses = {"Pendiente", "En revisión", "Falta información", "Procesando", "Aprobada", "Rechazada", "Resuelta", "Aplicada"}
-    allowed_types = {"Alta de funcionario", "Baja de funcionario", "Cambio salarial", "Vacaciones", "Permiso/licencia", "Documento laboral", "Otra consulta"}
+    standard_types = {"Alta de funcionario", "Baja de funcionario", "Cambio salarial", "Vacaciones", "Permiso/licencia", "Documento laboral", "Otra consulta"}
+    stored_types = set(db.scalars(
+        select(CompanyRequest.request_type)
+        .where(CompanyRequest.company_id.in_(company_ids))
+        .distinct()
+    )) if company_ids else set()
+    allowed_types = standard_types | {str(value).strip() for value in stored_types if value and str(value).strip() and len(str(value)) <= 100}
     status_filter = status_filter if status_filter in allowed_statuses else ""
     request_type = request_type if request_type in allowed_types else ""
     if company_id not in company_ids:
