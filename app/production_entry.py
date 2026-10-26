@@ -13,6 +13,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .main import (
+    APP_VERSION,
     app,
     apply_session_tenant_context,
     get_db,
@@ -28,7 +29,7 @@ from .models import ActivationRequest, Company, Studio, StudioPayment, User, Use
 
 logger = logging.getLogger("digit.production_entry")
 
-ADMIN_VERSION = "2.1.0"
+ADMIN_VERSION = APP_VERSION
 ALLOWED_PLANS = {"Inicial", "Profesional", "Estudio Plus"}
 ALLOWED_PAYMENT_STATUS = {"Activo", "Pendiente", "Suspendido"}
 ALLOWED_ACTIVATION_STATUS = {"Pendiente", "Contactado", "Aprobado", "Rechazado"}
