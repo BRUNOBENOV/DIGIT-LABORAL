@@ -1,10 +1,17 @@
-# Digit Laboral 2.5.0
+# Digit Laboral 2.5.2
 
 Plataforma de gestión y cumplimiento laboral para estudios contables paraguayos.
 
-## Alcance de la versión
+## Novedades de la versión 2.5.2
 
-Digit Laboral 2.5.0 integra:
+- Protege las funciones de contexto multiempresa con un `search_path` explícito y una prueba de regresión para el SQL de arranque.
+- Agrega índices a dos claves foráneas que carecían de ellos.
+- Restringe los permisos de los roles de la API pública sobre los metadatos internos de Alembic en la base productiva.
+- Verifica la revisión de base `0013_tenant_function_search_path` y el arranque tras el despliegue.
+
+## Módulos incluidos
+
+El sistema integra:
 
 - estudios, empresas y sucursales;
 - funcionarios y expedientes digitales;
