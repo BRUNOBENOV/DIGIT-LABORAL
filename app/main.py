@@ -4138,7 +4138,7 @@ def ai_assistance(
 
 
 @app.get("/app/payrolls", response_class=HTMLResponse)
-def payrolls_page(request: Request, user: User = Depends(require_user), db: Session = Depends(get_db)):
+def payrolls_page(request: Request, user: User = Depends(require_roles("administrador", "contador", "auxiliar", "empresa")), db: Session = Depends(get_db)):
     company_ids = company_ids_for_user(db, user)
     payrolls = list(db.scalars(select(Payroll).where(Payroll.company_id.in_(company_ids)).order_by(Payroll.period.desc(), Payroll.created_at.desc()))) if company_ids else []
     companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids), Company.status == "Activa").order_by(Company.legal_name))) if company_ids else []
@@ -4199,7 +4199,7 @@ def create_payroll(
 
 
 @app.get("/app/payrolls/{payroll_id}", response_class=HTMLResponse)
-def payroll_detail(request: Request, payroll_id: int, user: User = Depends(require_user), db: Session = Depends(get_db)):
+def payroll_detail(request: Request, payroll_id: int, user: User = Depends(require_roles("administrador", "contador", "auxiliar", "empresa")), db: Session = Depends(get_db)):
     payroll = db.get(Payroll, payroll_id)
     if not payroll or payroll.company_id not in company_ids_for_user(db, user):
         raise HTTPException(404)
