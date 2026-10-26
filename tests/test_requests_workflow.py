@@ -12,7 +12,7 @@ from sqlalchemy import select
 from app.auth import hash_password
 from app.database import SessionLocal
 from app.main import app
-from app.models import Company, CompanyRequest, Employee, Notification, NotificationDelivery, RequestWorkflow, SalaryHistory, Studio, User
+from app.models import Company, CompanyRequest, Employee, EmployeeEvent, Notification, NotificationDelivery, RequestWorkflow, SalaryHistory, Studio, User, Vacation
 
 
 def ensure_admin() -> tuple[str, str, int, int]:
@@ -672,3 +672,260 @@ def test_notification_outbox_recovers_stale_sending_delivery(monkeypatch):
         assert recovered.status == "Pendiente"
         assert recovered.attempts == 1
         assert recovered.last_error == "SMTP no está configurado."
+
+
+
+def test_vacation_balance_endpoint_and_approval_reservation():
+    email, password, company_id, employee_id = ensure_admin()
+    period_year = date.today().year + 1
+    with SessionLocal() as db:
+        admin = db.scalar(select(User).where(User.email == email))
+        assert admin is not None
+        existing = list(db.scalars(select(Vacation).where(
+            Vacation.employee_id == employee_id,
+            Vacation.period_year == period_year,
+        )))
+        for row in existing:
+            db.delete(row)
+        db.flush()
+        ledger = Vacation(
+            employee_id=employee_id,
+            period_year=period_year,
+            entitled_days=18,
+            used_days=5,
+            status="Aprobada",
+            notes="Saldo anual de prueba",
+        )
+        db.add(ledger)
+        reservation = CompanyRequest(
+            company_id=company_id,
+            request_type="Vacaciones",
+            subject="Reserva existente",
+            detail="Reserva aprobada de prueba.",
+            requested_by_user_id=admin.id,
+            employee_id=employee_id,
+            start_date=date(period_year, 6, 1),
+            end_date=date(period_year, 6, 4),
+            period_year=period_year,
+            requested_days=4,
+            priority="Normal",
+            status="Aprobada",
+        )
+        db.add(reservation)
+        db.flush()
+        db.add(RequestWorkflow(
+            request_id=reservation.id,
+            approved_by_user_id=admin.id,
+            approved_at=datetime.now(UTC),
+        ))
+        db.commit()
+
+    with TestClient(app) as client:
+        csrf = login(client, email, password)
+        balance = client.get(
+            "/app/requests/vacation-balance",
+            params={"employee_id": employee_id, "period_year": period_year},
+        )
+        assert balance.status_code == 200
+        assert balance.json() == {
+            "entitled_days": 18,
+            "used_days": 5,
+            "reserved_days": 4,
+            "available_days": 9,
+        }
+
+        rejected = client.post(
+            "/app/requests",
+            data={
+                "csrf_token": csrf,
+                "company_id": str(company_id),
+                "request_type": "Vacaciones",
+                "subject": "Excede saldo",
+                "detail": "Solicitud que excede los días disponibles.",
+                "priority": "Normal",
+                "employee_id": str(employee_id),
+                "period_year": str(period_year),
+                "requested_days": "10",
+                "start_date": f"{period_year}-07-01",
+                "end_date": f"{period_year}-07-10",
+            },
+            follow_redirects=False,
+        )
+        assert rejected.status_code == 400
+        assert "Saldo insuficiente" in rejected.text
+
+        submitted = client.post(
+            "/app/requests",
+            data={
+                "csrf_token": csrf,
+                "company_id": str(company_id),
+                "request_type": "Vacaciones",
+                "subject": "Solicitud dentro del saldo",
+                "detail": "Solicitud que se encuentra dentro del saldo disponible.",
+                "priority": "Normal",
+                "employee_id": str(employee_id),
+                "period_year": str(period_year),
+                "requested_days": "9",
+                "start_date": f"{period_year}-07-01",
+                "end_date": f"{period_year}-07-09",
+            },
+            follow_redirects=False,
+        )
+        assert submitted.status_code == 303
+        request_id = int(submitted.headers["location"].rstrip("/").split("/")[-1])
+        # A pending request does not consume or reserve days until approved.
+        unchanged = client.get(
+            "/app/requests/vacation-balance",
+            params={"employee_id": employee_id, "period_year": period_year},
+        )
+        assert unchanged.status_code == 200
+        assert unchanged.json()["available_days"] == 9
+
+        csrf = token_from_page(client, f"/app/requests/{request_id}")
+        approved = client.post(
+            f"/app/requests/{request_id}/review",
+            data={"csrf_token": csrf, "status": "Aprobada", "response": "Vacaciones aprobadas."},
+            follow_redirects=False,
+        )
+        assert approved.status_code == 303
+        after_approval = client.get(
+            "/app/requests/vacation-balance",
+            params={"employee_id": employee_id, "period_year": period_year},
+        )
+        assert after_approval.status_code == 200
+        assert after_approval.json()["available_days"] == 0
+        assert after_approval.json()["used_days"] == 5
+
+
+def test_completed_vacation_and_permission_requests_apply_only_after_end_date():
+    email, password, company_id, employee_id = ensure_admin()
+    today = date.today()
+    period_year = today.year
+    past_end = today - timedelta(days=5)
+    past_start = past_end - timedelta(days=3)
+    with SessionLocal() as db:
+        admin = db.scalar(select(User).where(User.email == email))
+        assert admin is not None
+        ledger = Vacation(
+            employee_id=employee_id,
+            period_year=period_year,
+            entitled_days=365,
+            used_days=3,
+            start_date=date(period_year, 1, 1),
+            end_date=date(period_year, 12, 31),
+            status="Aprobada",
+            notes="Saldo para prueba de aplicación",
+        )
+        db.add(ledger)
+        vacation_used_before = sum(
+            max(0, int(row.used_days or 0))
+            for row in db.scalars(select(Vacation).where(
+                Vacation.employee_id == employee_id,
+                Vacation.period_year == period_year,
+                Vacation.status.notin_(("Rechazada", "Anulada", "Cancelada")),
+            ))
+        )
+        vacation = CompanyRequest(
+            company_id=company_id,
+            request_type="Vacaciones",
+            subject="Vacaciones finalizadas",
+            detail="Registrar uso después de finalizar el periodo.",
+            requested_by_user_id=admin.id,
+            employee_id=employee_id,
+            start_date=past_start,
+            end_date=past_end,
+            period_year=period_year,
+            requested_days=4,
+            priority="Normal",
+            status="Aprobada",
+        )
+        permission = CompanyRequest(
+            company_id=company_id,
+            request_type="Permiso/licencia",
+            subject="Examen finalizado",
+            detail="Permiso para rendir examen.",
+            requested_by_user_id=admin.id,
+            employee_id=employee_id,
+            start_date=past_start,
+            end_date=past_end,
+            leave_type="Exámenes",
+            hours_requested=None,
+            priority="Normal",
+            status="Aprobada",
+        )
+        db.add_all([vacation, permission])
+        db.flush()
+        db.add_all([
+            RequestWorkflow(request_id=vacation.id, approved_by_user_id=admin.id, approved_at=datetime.now(UTC)),
+            RequestWorkflow(request_id=permission.id, approved_by_user_id=admin.id, approved_at=datetime.now(UTC)),
+        ])
+        vacation_id, permission_id = vacation.id, permission.id
+        db.commit()
+
+    with TestClient(app) as client:
+        csrf = login(client, email, password)
+        token = token_from_page(client, f"/app/requests/{vacation_id}")
+        applied = client.post(f"/app/requests/{vacation_id}/apply", data={"csrf_token": token}, follow_redirects=False)
+        assert applied.status_code == 303
+        applied_again = client.post(f"/app/requests/{vacation_id}/apply", data={"csrf_token": token}, follow_redirects=False)
+        assert applied_again.status_code == 303
+        permission_token = token_from_page(client, f"/app/requests/{permission_id}")
+        permission_applied = client.post(
+            f"/app/requests/{permission_id}/apply",
+            data={"csrf_token": permission_token},
+            follow_redirects=False,
+        )
+        assert permission_applied.status_code == 303
+
+    with SessionLocal() as db:
+        vacation = db.get(CompanyRequest, vacation_id)
+        permission = db.get(CompanyRequest, permission_id)
+        vacation_workflow = db.scalar(select(RequestWorkflow).where(RequestWorkflow.request_id == vacation_id))
+        permission_workflow = db.scalar(select(RequestWorkflow).where(RequestWorkflow.request_id == permission_id))
+        ledgers = list(db.scalars(select(Vacation).where(
+            Vacation.employee_id == employee_id,
+            Vacation.period_year == period_year,
+            Vacation.status.notin_(("Rechazada", "Anulada", "Cancelada")),
+        )))
+        vacation_used_after = sum(max(0, int(row.used_days or 0)) for row in ledgers)
+        assert vacation is not None and vacation.status == "Aplicada"
+        assert vacation_workflow is not None and vacation_workflow.applied is True
+        assert vacation_used_after == vacation_used_before + 4
+        assert permission is not None and permission.status == "Aplicada"
+        assert permission_workflow is not None and permission_workflow.applied is True
+        event = db.scalar(select(EmployeeEvent).where(
+            EmployeeEvent.employee_id == employee_id,
+            EmployeeEvent.title == f"Exámenes registrado mediante solicitud #{permission_id}",
+        ))
+        assert event is not None
+        assert "Exámenes" in event.detail
+
+
+def test_notification_cron_endpoint_requires_bearer_token(monkeypatch):
+    from dataclasses import replace
+
+    from app import main as main_module
+
+    monkeypatch.setattr(
+        main_module,
+        "settings",
+        replace(main_module.settings, notification_cron_token="test-scheduler-secret"),
+    )
+    monkeypatch.setattr(main_module, "create_due_request_notifications", lambda: 2)
+    monkeypatch.setattr(main_module, "create_due_official_certificate_notifications", lambda: 1)
+    monkeypatch.setattr(main_module, "dispatch_notification_outbox", lambda: {"sent": 3, "failed": 0, "checked": 3})
+
+    with TestClient(app) as client:
+        unauthorized = client.post("/internal/cron/notifications")
+        assert unauthorized.status_code == 401
+        authorized = client.post(
+            "/internal/cron/notifications",
+            headers={"Authorization": "Bearer test-scheduler-secret"},
+        )
+        assert authorized.status_code == 200
+        assert authorized.json() == {
+            "ok": True,
+            "request_notices_created": 2,
+            "certificate_notices_created": 1,
+            "deliveries": {"sent": 3, "failed": 0, "checked": 3},
+        }
