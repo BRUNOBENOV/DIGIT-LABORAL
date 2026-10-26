@@ -71,6 +71,22 @@ services:
         sync: false
       - key: SMTP_FROM_NAME
         value: "Digit Laboral"
+      - key: NOTIFICATION_CRON_TOKEN
+        sync: false
+  - type: cron
+    name: digit-laboral-notification-cron
+    runtime: docker
+    plan: 0.5c-512mb
+    region: oregon
+    schedule: "0 * * * *"
+    dockerContext: "."
+    dockerfilePath: "./Dockerfile"
+    dockerCommand: "python scripts/notification_cron.py"
+    envVars:
+      - key: PUBLIC_URL
+        value: https://digit-laboral-app.onrender.com
+      - key: NOTIFICATION_CRON_TOKEN
+        sync: false
 databases:
   - name: digit-laboral-db-demo
     plan: free
