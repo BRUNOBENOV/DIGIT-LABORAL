@@ -625,10 +625,15 @@ def test_review_route_notifies_new_assignee():
 
 
 def test_notification_outbox_recovers_stale_sending_delivery(monkeypatch):
+    from dataclasses import replace
+
     from app import notification_service
 
-    monkeypatch.setattr(notification_service.settings, "smtp_host", "")
-    monkeypatch.setattr(notification_service.settings, "smtp_from_email", "")
+    monkeypatch.setattr(
+        notification_service,
+        "settings",
+        replace(notification_service.settings, smtp_host="", smtp_from_email=""),
+    )
     email, password, _, _ = ensure_admin()
     with SessionLocal() as db:
         recipient = db.scalar(select(User).where(User.email == email))
