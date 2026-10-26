@@ -82,7 +82,7 @@ def test_company_logo_upload_and_retrieval():
         csrf = login(client)
         with SessionLocal() as db:
             company = db.scalar(select(Company).order_by(Company.id))
-        response = client.post(
+        settings_response = client.post(
             f"/app/companies/{company.id}/branding",
             data={
                 "csrf_token": csrf,
@@ -95,11 +95,18 @@ def test_company_logo_upload_and_retrieval():
                 "show_ruc": "on",
                 "show_contact": "on",
             },
+            headers={"x-csrf-token": csrf},
+            follow_redirects=False,
+        )
+        assert settings_response.status_code == 303
+        upload_response = client.post(
+            f"/app/companies/{company.id}/logo",
+            data={"csrf_token": csrf},
             files={"logo": ("logo.png", io.BytesIO(png), "image/png")},
             headers={"x-csrf-token": csrf},
             follow_redirects=False,
         )
-        assert response.status_code == 303
+        assert upload_response.status_code == 303
         logo = client.get(f"/app/companies/{company.id}/logo")
         assert logo.status_code == 200
         assert logo.headers["content-type"].startswith("image/png")
