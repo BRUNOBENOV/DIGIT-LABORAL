@@ -2588,7 +2588,10 @@ async def add_request_attachment(
     storage.put(stored_name, content, content_type)
     attachment = RequestAttachment(
         request_id=item.id, stored_name=stored_name, original_name=safe_filename(file.filename or "archivo"),
-        content_type=content_type, uploaded_by=user.email,
+        content_type=content_type,
+        # Render's local filesystem may be ephemeral. PostgreSQL is the fallback for new uploads.
+        content_bytes=content if settings.storage_backend == "local" else None,
+        uploaded_by=user.email,
     )
     db.add(attachment)
     db.flush()
@@ -2611,13 +2614,28 @@ def download_request_attachment(
     if not item or item.company_id not in company_ids_for_user(db, user) or not attachment or attachment.request_id != item.id:
         raise HTTPException(404)
     storage_key = attachment.stored_name
-    if not storage.exists(storage_key):
-        legacy = UPLOAD_DIR / "requests" / str(item.id) / attachment.stored_name
-        if not legacy.exists():
+    if attachment.content_bytes is not None:
+        content = bytes(attachment.content_bytes)
+    elif storage.exists(storage_key):
+        content = storage.get(storage_key)
+    else:
+        # Support both the current key layout and the older nested attachment directory.
+        legacy_candidates = (
+            UPLOAD_DIR / storage_key,
+            UPLOAD_DIR / "requests" / str(item.id) / Path(storage_key).name,
+        )
+        root = UPLOAD_DIR.resolve()
+        legacy = next(
+            (
+                candidate for candidate in legacy_candidates
+                if candidate.resolve().is_file()
+                and root in candidate.resolve().parents
+            ),
+            None,
+        )
+        if legacy is None:
             raise HTTPException(404, "Archivo no encontrado.")
         content = legacy.read_bytes()
-    else:
-        content = storage.get(storage_key)
     write_audit(db, user, "descargar", "adjunto_solicitud", str(attachment.id), attachment.original_name)
     db.commit()
     return StreamingResponse(io.BytesIO(content), media_type=attachment.content_type, headers={"Content-Disposition": f'attachment; filename="{attachment.original_name}"'})
@@ -4253,7 +4271,18 @@ async def upload_document(
     original = safe_filename(file.filename or "archivo")
     stored = f"documents/{company_id}/{uuid.uuid4().hex}_{original}"
     storage.put(stored, content, file.content_type or "application/octet-stream")
-    document = Document(company_id=company_id, employee_id=employee_id or None, category=category.strip(), title=title.strip(), stored_name=stored, original_name=original, content_type=file.content_type or "application/octet-stream", uploaded_by=user.email)
+    document = Document(
+        company_id=company_id,
+        employee_id=employee_id or None,
+        category=category.strip(),
+        title=title.strip(),
+        stored_name=stored,
+        original_name=original,
+        content_type=file.content_type or "application/octet-stream",
+        # Keep new local uploads recoverable if the deployment filesystem is replaced.
+        content_bytes=content if settings.storage_backend == "local" else None,
+        uploaded_by=user.email,
+    )
     db.add(document)
     db.flush()
     write_audit(db, user, "subir", "documento", str(document.id), original)
@@ -4611,8 +4640,10 @@ def compliance_page(
                     for extension in receipt_extensions
                 ]
                 legacy_keys = linked_receipts.get(batch.id, [])
-                batch_receipt_available[batch.id] = any(
-                    storage.exists(key) for key in (*deterministic_keys, *legacy_keys) if key
+                candidate_keys = (batch.receipt_storage_key, *deterministic_keys, *legacy_keys)
+                batch_receipt_available[batch.id] = (
+                    batch.receipt_bytes is not None
+                    or any(storage.exists(key) for key in candidate_keys if key)
                 )
         rei_errors = validate_company_for_authority(db, selected_company, "REI")
         reop_errors = validate_company_for_authority(db, selected_company, "REOP")
@@ -4912,6 +4943,8 @@ def export_compliance_events(
     key = f"integrations/{company.id}/{batch.file_name}"
     storage.put(key, content, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     batch.storage_key = key
+    # The configured local backend is not a durable file store on Render free.
+    batch.file_bytes = content if settings.storage_backend == "local" else None
     write_audit(db, user, "exportar", "lote_integracion", str(batch.id), f"{authority} · {len(events)} registros")
     db.commit()
     return StreamingResponse(
@@ -4947,6 +4980,8 @@ def export_reop_annual(
     key = f"integrations/{company.id}/{batch.file_name}"
     storage.put(key, content, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     batch.storage_key = key
+    # The configured local backend is not a durable file store on Render free.
+    batch.file_bytes = content if settings.storage_backend == "local" else None
     write_audit(db, user, "exportar", "planillas_reop", str(batch.id), str(year))
     db.commit()
     return StreamingResponse(
@@ -4965,9 +5000,16 @@ def download_integration_batch(
     batch = db.get(IntegrationBatch, batch_id)
     if not batch or batch.company_id not in company_ids_for_user(db, user):
         raise HTTPException(404)
-    if not batch.storage_key or not storage.exists(batch.storage_key):
-        raise HTTPException(404, "El archivo del lote no está disponible.")
-    content = storage.get(batch.storage_key)
+    if batch.file_bytes is not None:
+        content = bytes(batch.file_bytes)
+    elif batch.storage_key and storage.exists(batch.storage_key):
+        content = storage.get(batch.storage_key)
+    else:
+        root = UPLOAD_DIR.resolve()
+        candidate = (UPLOAD_DIR / batch.storage_key).resolve() if batch.storage_key else root
+        if not batch.storage_key or root not in candidate.parents or not candidate.is_file():
+            raise HTTPException(404, "El archivo del lote no está disponible.")
+        content = candidate.read_bytes()
     write_audit(db, user, "descargar", "lote_integracion", str(batch.id), batch.file_name)
     db.commit()
     return StreamingResponse(
@@ -5026,6 +5068,10 @@ async def upload_integration_receipt(
         receipt_key = f"integrations/{batch.company_id}/receipts/batch-{batch.id}.{extension}"
         # Store first; only remove previous formats after the new upload succeeds.
         storage.put(receipt_key, content, content_type)
+        batch.receipt_storage_key = receipt_key
+        batch.receipt_bytes = content if settings.storage_backend == "local" else None
+        batch.receipt_content_type = content_type
+        batch.receipt_file_name = safe_filename(receipt.filename or f"comprobante-lote-{batch.id}.{extension}")
         for old_extension in ("pdf", "png", "jpg"):
             old_key = f"integrations/{batch.company_id}/receipts/batch-{batch.id}.{old_extension}"
             if old_key != receipt_key and storage.exists(old_key):
@@ -5063,34 +5109,62 @@ def download_integration_batch_receipt(
     batch = db.get(IntegrationBatch, batch_id)
     if not batch or batch.company_id not in company_ids_for_user(db, user):
         raise HTTPException(404)
-    receipt_key = ""
-    linked_key = db.scalar(
-        select(ComplianceEvent.receipt_storage_key)
-        .where(ComplianceEvent.batch_id == batch.id, ComplianceEvent.receipt_storage_key != "")
-        .order_by(ComplianceEvent.id.desc())
-        .limit(1)
-    )
-    if linked_key and storage.exists(linked_key):
-        receipt_key = linked_key
+
+    receipt_key = batch.receipt_storage_key or ""
+    download_name = batch.receipt_file_name or ""
+    if batch.receipt_bytes is not None:
+        content = bytes(batch.receipt_bytes)
+        content_type = batch.receipt_content_type or "application/octet-stream"
+        extension = Path(download_name).suffix.lower().lstrip(".")
     else:
-        for extension in ("pdf", "png", "jpg"):
-            candidate = f"integrations/{batch.company_id}/receipts/batch-{batch.id}.{extension}"
-            if storage.exists(candidate):
-                receipt_key = candidate
+        linked_key = db.scalar(
+            select(ComplianceEvent.receipt_storage_key)
+            .where(ComplianceEvent.batch_id == batch.id, ComplianceEvent.receipt_storage_key != "")
+            .order_by(ComplianceEvent.id.desc())
+            .limit(1)
+        )
+        candidates = [
+            receipt_key,
+            linked_key or "",
+            *(f"integrations/{batch.company_id}/receipts/batch-{batch.id}.{ext}" for ext in ("pdf", "png", "jpg")),
+        ]
+        selected_key = ""
+        content = b""
+        root = UPLOAD_DIR.resolve()
+        for key in candidates:
+            if not key:
+                continue
+            if storage.exists(key):
+                selected_key = key
+                content = storage.get(key)
                 break
-    if not receipt_key:
-        raise HTTPException(404, "El comprobante del lote no está disponible.")
-    content = storage.get(receipt_key)
-    extension = receipt_key.lower().rsplit(".", 1)[-1]
-    content_type = {"pdf": "application/pdf", "png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg"}.get(extension, "application/octet-stream")
+            local_candidate = (UPLOAD_DIR / key).resolve()
+            if root in local_candidate.parents and local_candidate.is_file():
+                selected_key = key
+                content = local_candidate.read_bytes()
+                break
+        if not selected_key:
+            raise HTTPException(404, "El comprobante del lote no está disponible.")
+        receipt_key = selected_key
+        extension = Path(download_name or receipt_key).suffix.lower().lstrip(".")
+        content_type = batch.receipt_content_type if batch.receipt_storage_key else ""
+        if not content_type:
+            content_type = {
+                "pdf": "application/pdf",
+                "png": "image/png",
+                "jpg": "image/jpeg",
+                "jpeg": "image/jpeg",
+            }.get(extension, "application/octet-stream")
+    if not download_name:
+        extension = extension or receipt_key.lower().rsplit(".", 1)[-1]
+        download_name = f"comprobante-lote-{batch.id}.{extension or 'bin'}"
     write_audit(db, user, "descargar", "comprobante_integracion", str(batch.id), batch.file_name)
     db.commit()
     return StreamingResponse(
         io.BytesIO(content),
         media_type=content_type,
-        headers={"Content-Disposition": f'attachment; filename="comprobante-lote-{batch.id}.{extension}"'},
+        headers={"Content-Disposition": f'attachment; filename="{safe_filename(download_name)}"'},
     )
-
 
 @app.get("/app/labor-code", response_class=HTMLResponse)
 def labor_code_page(
