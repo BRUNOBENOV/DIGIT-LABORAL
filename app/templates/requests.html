@@ -77,7 +77,7 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <label class="span-2">Empresa
         <select name="company_id" id="requestCompany" required>
-          {% for company in companies %}<option value="{{ company.id }}">{{ company.legal_name }}</option>{% endfor %}
+          {% for company in companies %}<option value="{{ company.id }}" {{ 'selected' if selected_company == company.id }}>{{ company.legal_name }}</option>{% endfor %}
         </select>
       </label>
       <label>Tipo de trámite
