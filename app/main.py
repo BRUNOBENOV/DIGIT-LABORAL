@@ -492,6 +492,20 @@ def company_ids_for_user(db: Session, user: User) -> list[int]:
         if not user.company_id or not user.studio_id:
             return []
         return list(db.scalars(select(Company.id).where(Company.id == user.company_id, Company.studio_id == user.studio_id)))
+    if user.role == "abogado":
+        if not user.id or not user.studio_id:
+            return []
+        return list(db.scalars(
+            select(CompanyRequest.company_id)
+            .join(RequestWorkflow, RequestWorkflow.request_id == CompanyRequest.id)
+            .join(Company, Company.id == CompanyRequest.company_id)
+            .where(
+                Company.studio_id == user.studio_id,
+                RequestWorkflow.assigned_user_id == user.id,
+            )
+            .distinct()
+            .order_by(CompanyRequest.company_id)
+        ))
     if user.studio_id:
         return list(db.scalars(select(Company.id).where(Company.studio_id == user.studio_id)))
     return []
