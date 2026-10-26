@@ -1015,7 +1015,7 @@ def test_local_uploads_remain_downloadable_and_exportable_after_storage_copy_is_
                 authority="REOP",
                 batch_type="Prueba de persistencia",
                 period="2026",
-                status="Exportado",
+                status="Generado",
                 file_name="test-batch.xlsx",
                 storage_key=f"integrations/{company_id}/test-batch.xlsx",
                 file_bytes=batch_content,
@@ -1045,12 +1045,12 @@ def test_local_uploads_remain_downloadable_and_exportable_after_storage_copy_is_
         assert bytes(batch.file_bytes) == batch_content
         assert bytes(batch.receipt_bytes) == receipt_content
         assert batch.receipt_file_name == "comprobante-prueba.pdf"
+        # Simulate Render losing its local filesystem before building the ZIP.
+        for key in (attachment_key, document_key, receipt_key):
+            storage.delete(key)
         studio = db.get(Studio, user.studio_id)
         assert studio is not None
         backup_content = build_studio_export(db, studio, UPLOAD_DIR)
-
-    for key in (attachment_key, document_key, receipt_key):
-        storage.delete(key)
 
     with TestClient(app) as client:
         login(client, email, password)
