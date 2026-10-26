@@ -1,10 +1,10 @@
-# Digit Laboral 2.4.0
+# Digit Laboral 2.5.0
 
 Plataforma de gestión y cumplimiento laboral para estudios contables paraguayos.
 
 ## Alcance de la versión
 
-Digit Laboral 2.4.0 integra:
+Digit Laboral 2.5.0 integra:
 
 - estudios, empresas y sucursales;
 - funcionarios y expedientes digitales;
@@ -105,7 +105,11 @@ El centro de cumplimiento permite:
 
 Documentación: `REI_REOP_INTEGRATION.md`.
 
-## Solicitudes y notificaciones
+## Solicitudes, vacaciones y notificaciones
+
+- Las solicitudes de vacaciones consultan el saldo anual antes de enviarse y vuelven a validarlo al aprobarse para evitar reservas por encima del saldo disponible.
+- Los días aprobados quedan reservados; solo pasan a usados cuando finaliza el periodo y el estudio confirma su utilización. Los permisos/licencias se incorporan a la línea de tiempo del funcionario una vez finalizados.
+- El trabajador periódico se ejecuta cada hora a través de `scripts/notification_cron.py`, que invoca `/internal/cron/notifications` con un token Bearer. Configurá el mismo secreto `NOTIFICATION_CRON_TOKEN` en el servicio web y en el Cron Job de Render. Sin ese secreto, el endpoint no ejecuta el procesamiento.
 
 - Las solicitudes admiten campos estructurados para funcionario, fecha efectiva, periodo, días, importe y permisos/licencias.
 - La bandeja de notificaciones es individual y persistente, con lectura/no lectura, filtros y enlaces al trámite.
