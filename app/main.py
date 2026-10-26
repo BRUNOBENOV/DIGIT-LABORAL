@@ -38,7 +38,7 @@ from .ai_service import generate_assistance
 from .auth import hash_password, verify_password
 from .labor_calculator import amount as round_gs, anniversary as labor_anniversary
 from .config import settings
-from .database import Base, SessionLocal, apply_session_tenant_context, engine
+from .database import Base, SessionLocal, apply_session_tenant_context, engine, postgres_rls_role_issues
 from .document_export import (
     DOCUMENT_LABELS,
     build_document_body,
@@ -237,6 +237,7 @@ async def lifespan(_: FastAPI):
     if settings.rls_enabled:
         apply_postgres_rls(migration_engine)
     issues = settings.production_issues()
+    issues.extend(postgres_rls_role_issues())
     if issues:
         logger.warning("Production readiness issues: %s", " | ".join(issues))
     reminder_task = asyncio.create_task(_periodic_notification_sweep())
@@ -5549,5 +5550,5 @@ def health_ready(db: Session = Depends(get_db)):
             {"status": "not_ready", "checks": {**checks, "database": "error"}, "detail": str(exc)[:180]},
             status_code=503,
         )
-    warnings = settings.production_issues()
+    warnings = [*settings.production_issues(), *postgres_rls_role_issues()]
     return {"status": "ready" if not warnings else "degraded", "checks": checks, "warnings": warnings, "version": APP_VERSION}
