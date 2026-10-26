@@ -31,8 +31,8 @@
     </label>
     <label>Responsable
       <select name="assigned_filter">
-        <option value="">Todos los responsables</option>
-        <option value="mine" {{ 'selected' if assigned_filter == 'mine' }}>Asignados a mí</option>
+        {% if user.role != 'abogado' %}<option value="">Todos los responsables</option>{% endif %}
+        <option value="mine" {{ 'selected' if assigned_filter == 'mine' }}>{{ 'Mis asignaciones' if user.role == 'abogado' else 'Asignados a mí' }}</option>
       </select>
     </label>
     <label class="check-field"><input type="checkbox" name="overdue_only" value="1" {{ 'checked' if overdue_only }}> Solo vencidas</label>
