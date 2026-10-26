@@ -114,3 +114,37 @@ def test_rls_policies_cover_sensitive_identity_tables(monkeypatch) -> None:
     assert "current_setting('app.current_user_role', true) = 'administrador'" in sql
     assert "user_id = digit_current_user_id()" in sql
     assert 'digit_is_superadmin() OR (FALSE)' in sql
+
+def test_runtime_rls_check_warns_when_application_role_owns_tables(monkeypatch) -> None:
+    from app import database
+
+    class FakeResult:
+        def mappings(self):
+            return self
+
+        def one(self):
+            return {"role_name": "digit_app", "can_bypass_rls": False, "owned_tables": 39}
+
+    class FakeConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback) -> bool:  # noqa: ANN001
+            return False
+
+        def execute(self, _statement):  # noqa: ANN001
+            return FakeResult()
+
+    class FakeEngine:
+        dialect = SimpleNamespace(name="postgresql")
+
+        def connect(self):
+            return FakeConnection()
+
+    monkeypatch.setattr(database, "engine", FakeEngine())
+    monkeypatch.setattr(database, "settings", SimpleNamespace(rls_enabled=True))
+
+    warnings = database.postgres_rls_role_issues()
+
+    assert any("propietario de tablas" in warning for warning in warnings)
+    assert not any("BYPASSRLS" in warning for warning in warnings)
