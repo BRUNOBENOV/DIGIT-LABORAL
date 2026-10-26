@@ -62,6 +62,7 @@ def _login(client: TestClient, email: str, password: str) -> str:
 def test_lawyer_workspace_filters_assigned_cases_and_enforces_role_boundaries() -> None:
     with TestClient(app) as client:
         email, password, lawyer_id, company_id = _new_user("abogado")
+        _, _, other_lawyer_id, _ = _new_user("abogado")
         csrf = _login(client, email, password)
 
         with SessionLocal() as db:
@@ -77,15 +78,49 @@ def test_lawyer_workspace_filters_assigned_cases_and_enforces_role_boundaries() 
                 priority="Alta",
                 status="Pendiente",
             )
-            db.add(request_item)
+            other_subject = f"QA-LEGAL-OTHER-{uuid.uuid4().hex[:8]}"
+            other_item = CompanyRequest(
+                company_id=company.id,
+                request_type="Otra consulta",
+                subject=other_subject,
+                detail="Caso asignado a otro profesional.",
+                requested_by_user_id=lawyer_id,
+                priority="Normal",
+                status="Pendiente",
+            )
+            unassigned_subject = f"QA-LEGAL-UNASSIGNED-{uuid.uuid4().hex[:8]}"
+            unassigned_item = CompanyRequest(
+                company_id=company.id,
+                request_type="Otra consulta",
+                subject=unassigned_subject,
+                detail="Caso sin profesional asignado.",
+                requested_by_user_id=lawyer_id,
+                priority="Normal",
+                status="Pendiente",
+            )
+            db.add_all([request_item, other_item, unassigned_item])
             db.flush()
-            db.add(RequestWorkflow(
-                request_id=request_item.id,
-                assigned_user_id=lawyer_id,
-                due_date=date.today() - timedelta(days=1),
-            ))
+            db.add_all([
+                RequestWorkflow(
+                    request_id=request_item.id,
+                    assigned_user_id=lawyer_id,
+                    due_date=date.today() - timedelta(days=1),
+                ),
+                RequestWorkflow(
+                    request_id=other_item.id,
+                    assigned_user_id=other_lawyer_id,
+                    due_date=date.today() + timedelta(days=3),
+                ),
+                RequestWorkflow(
+                    request_id=unassigned_item.id,
+                    assigned_user_id=None,
+                    due_date=date.today() + timedelta(days=2),
+                ),
+            ])
             db.commit()
             request_id = request_item.id
+            other_request_id = other_item.id
+            unassigned_request_id = unassigned_item.id
 
         home = client.get("/app")
         assert home.status_code == 200
@@ -110,8 +145,25 @@ def test_lawyer_workspace_filters_assigned_cases_and_enforces_role_boundaries() 
         )
         assert queue.status_code == 200
         assert subject in queue.text
+        assert other_subject not in queue.text
+        assert unassigned_subject not in queue.text
         assert "Solo vencidas" in queue.text
-        assert "Asignados a mí" in queue.text
+        assert "Mis asignaciones" in queue.text
+
+        # Clearing the query-string filter must not expose another lawyer's or
+        # unassigned request, and guessed detail URLs must return the same 404.
+        unfiltered = client.get("/app/requests", params={"assigned_filter": ""})
+        assert unfiltered.status_code == 200
+        assert subject in unfiltered.text
+        assert other_subject not in unfiltered.text
+        assert unassigned_subject not in unfiltered.text
+        assert client.get(f"/app/requests/{other_request_id}").status_code == 404
+        assert client.get(f"/app/requests/{unassigned_request_id}").status_code == 404
+        assert client.post(
+            f"/app/requests/{unassigned_request_id}/status",
+            data={"csrf_token": csrf, "status": "En revisión"},
+            follow_redirects=False,
+        ).status_code == 404
 
         filtered_out = client.get(
             "/app/requests",
@@ -120,6 +172,26 @@ def test_lawyer_workspace_filters_assigned_cases_and_enforces_role_boundaries() 
         assert filtered_out.status_code == 200
         assert subject not in filtered_out.text
         assert "No hay solicitudes para mostrar" in filtered_out.text
+
+        # A lawyer may update their assigned case, but cannot change its assignee.
+        updated = client.post(
+            f"/app/requests/{request_id}/status",
+            data={
+                "csrf_token": csrf,
+                "status": "En revisión",
+                "response": "Revisión jurídica iniciada",
+                "assigned_user_id": str(other_lawyer_id),
+                "due_date": date.today().isoformat(),
+                "internal_notes": "Nota interna de prueba",
+            },
+            follow_redirects=False,
+        )
+        assert updated.status_code == 303
+        with SessionLocal() as db:
+            workflow = db.scalar(select(RequestWorkflow).where(RequestWorkflow.request_id == request_id))
+            saved_request = db.get(CompanyRequest, request_id)
+            assert workflow is not None and workflow.assigned_user_id == lawyer_id
+            assert saved_request is not None and saved_request.status == "En revisión"
 
         # Legal users can consult the case and draft documents, but cannot administer
         # users, create payrolls, or approve/reject labour requests.
