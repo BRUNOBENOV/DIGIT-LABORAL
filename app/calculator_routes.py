@@ -276,7 +276,7 @@ def payroll_result(payroll, line, detail=None):
 
 @router.get("/app/payrolls/{payroll_id}/recibos.pdf")
 async def payroll_receipts(payroll_id: int, line_id: int | None = None,
-                           user: User = Depends(core.require_user), db: Session = Depends(core.get_db)):
+                           user: User = Depends(core.require_roles("administrador", "contador", "auxiliar", "empresa")), db: Session = Depends(core.get_db)):
     payroll = db.get(Payroll, payroll_id)
     if not payroll or payroll.company_id not in core.company_ids_for_user(db, user):
         raise HTTPException(404)

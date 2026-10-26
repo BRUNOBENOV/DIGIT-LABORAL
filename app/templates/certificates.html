@@ -15,10 +15,10 @@
 </style>
 <div class="page-header certificates-header">
   <div><span class="eyebrow">GENERACIÓN DOCUMENTAL AUTOMATIZADA</span><h1>Certificados y documentos laborales</h1><p>Modelos laborales propios, datos del legajo y numeración automática, con descarga profesional en Word o PDF.</p></div>
-  <div class="header-actions"><a class="btn ghost" href="/app/reports">Informes</a><a class="btn ghost" href="/app/ai{% if selected_company %}?company_id={{ selected_company.id }}{% endif %}">Revisar con IA</a><a class="btn ghost" href="/app/documents">Archivo digital</a></div>
+  <div class="header-actions"><a class="btn ghost" href="/app/reports">Informes</a>{% if user.role in ['administrador', 'contador', 'auxiliar'] %}<a class="btn ghost" href="/app/ai{% if selected_company %}?company_id={{ selected_company.id }}{% endif %}">Revisar con IA</a>{% endif %}<a class="btn ghost" href="/app/documents">Archivo digital</a></div>
 </div>
 {% if request.query_params.get('created') %}<div class="alert success">El documento fue guardado correctamente.</div>{% endif %}
-{% if selected_calculation %}<div class="linked-calculation-banner"><div><b>Cálculo vinculado N.º {{ selected_calculation.id }}</b><span>{{ selected_calculation.calculation_type|capitalize }} · Gs. {{ selected_calculation.amount|gs }} · {{ selected_calculation.reference_period or 'Sin periodo' }}</span></div><a href="/app/calculations">Cambiar cálculo</a></div>{% endif %}
+{% if selected_calculation %}<div class="linked-calculation-banner"><div><b>Cálculo vinculado N.º {{ selected_calculation.id }}</b><span>{{ selected_calculation.calculation_type|capitalize }} · Gs. {{ selected_calculation.amount|gs }} · {{ selected_calculation.reference_period or 'Sin periodo' }}</span></div>{% if user.role != 'abogado' %}<a href="/app/calculations">Cambiar cálculo</a>{% endif %}</div>{% endif %}
 <div class="legal-warning"><b>Control profesional:</b> los datos y montos se completan automáticamente desde el expediente. Antes de firmar o entregar, revisá fechas, causales, periodos, montos y el texto final.</div>
 
 {% if user.role == 'empresa' %}

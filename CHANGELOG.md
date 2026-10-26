@@ -1,5 +1,20 @@
 # Registro de cambios
 
+## 2.5.4 — 26-10-2026
+
+### Flujos de trabajo por perfil
+- Se agregó un espacio funcional para el rol `abogado`, disponible al crear usuarios, con orientación jurídica, consulta de expedientes, documentos laborales y acceso a solicitudes asignadas.
+- La bandeja de solicitudes ahora se filtra en el servidor por empresa, estado, tipo de trámite, responsable y vencimiento.
+- El abogado queda limitado a solicitudes asignadas: no puede abrir trámites de otro profesional por URL, dejar comentarios o adjuntos sobre casos no asignados ni transferir una asignación.
+- Las aprobaciones y rechazos siguen reservados a administrador y contador; el abogado puede registrar seguimiento y respuestas en los casos a su cargo.
+- La agenda laboral es visible para el empleador en modo consulta, mientras que alta y actualización de vencimientos quedan reservadas al equipo del estudio.
+- Se ajustaron las pantallas de empresa, funcionario, informe, cumplimiento y certificado oficial para no ofrecer botones de edición que el perfil no puede ejecutar.
+- Se añadieron pruebas de recorrido para abogado y empleador, incluyendo cola asignada, lecturas rechazadas en casos ajenos y límites de permisos.
+
+### Validación
+- La publicación de esta versión queda supeditada a la suite completa de CI y a la verificación del despliegue de Render.
+- La configuración PostgreSQL de RLS sigue documentada como pendiente de separar rol de aplicación y rol de migraciones; no debe inferirse que este cambio funcional completa ese trabajo.
+
 ## 2.5.3 — 26-10-2026
 
 ### Seguridad multiempresa

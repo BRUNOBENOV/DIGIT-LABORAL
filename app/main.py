@@ -492,6 +492,20 @@ def company_ids_for_user(db: Session, user: User) -> list[int]:
         if not user.company_id or not user.studio_id:
             return []
         return list(db.scalars(select(Company.id).where(Company.id == user.company_id, Company.studio_id == user.studio_id)))
+    if user.role == "abogado":
+        if not user.id or not user.studio_id:
+            return []
+        return list(db.scalars(
+            select(CompanyRequest.company_id)
+            .join(RequestWorkflow, RequestWorkflow.request_id == CompanyRequest.id)
+            .join(Company, Company.id == CompanyRequest.company_id)
+            .where(
+                Company.studio_id == user.studio_id,
+                RequestWorkflow.assigned_user_id == user.id,
+            )
+            .distinct()
+            .order_by(CompanyRequest.company_id)
+        ))
     if user.studio_id:
         return list(db.scalars(select(Company.id).where(Company.studio_id == user.studio_id)))
     return []
@@ -1088,6 +1102,16 @@ def dashboard(request: Request, user: User = Depends(require_user), db: Session 
     companies_count = len(company_ids)
     employee_count = db.scalar(select(func.count(Employee.id)).where(Employee.company_id.in_(company_ids), Employee.status == "Activo")) if company_ids else 0
     pending_count = db.scalar(select(func.count(CompanyRequest.id)).where(CompanyRequest.company_id.in_(company_ids), CompanyRequest.status.in_(["Pendiente", "En revisión", "Falta información", "Procesando", "Aprobada"]))) if company_ids else 0
+    if user.role == "abogado" and company_ids:
+        pending_count = db.scalar(
+            select(func.count(CompanyRequest.id))
+            .join(RequestWorkflow, RequestWorkflow.request_id == CompanyRequest.id)
+            .where(
+                CompanyRequest.company_id.in_(company_ids),
+                RequestWorkflow.assigned_user_id == user.id,
+                CompanyRequest.status.in_(["Pendiente", "En revisión", "Falta información", "Procesando", "Aprobada"]),
+            )
+        ) or 0
     payroll_count = db.scalar(select(func.count(Payroll.id)).where(Payroll.company_id.in_(company_ids), Payroll.status == "Borrador")) if company_ids else 0
     compliance_pending_count = db.scalar(
         select(func.count(ComplianceEvent.id)).where(
@@ -1103,7 +1127,30 @@ def dashboard(request: Request, user: User = Depends(require_user), db: Session 
         )
     ) if company_ids else 0
     companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids)).order_by(Company.created_at.desc()).limit(5))) if company_ids else []
-    recent_requests = list(db.scalars(select(CompanyRequest).where(CompanyRequest.company_id.in_(company_ids)).order_by(CompanyRequest.created_at.desc()).limit(5))) if company_ids else []
+    if user.role == "abogado" and company_ids:
+        recent_requests = list(
+            db.scalars(
+                select(CompanyRequest)
+                .join(RequestWorkflow, RequestWorkflow.request_id == CompanyRequest.id)
+                .where(
+                    CompanyRequest.company_id.in_(company_ids),
+                    RequestWorkflow.assigned_user_id == user.id,
+                )
+                .order_by(RequestWorkflow.due_date.asc().nullslast(), CompanyRequest.created_at.desc())
+                .limit(5)
+            )
+        )
+    else:
+        recent_requests = list(
+            db.scalars(
+                select(CompanyRequest)
+                .where(CompanyRequest.company_id.in_(company_ids))
+                .order_by(CompanyRequest.created_at.desc())
+                .limit(5)
+            )
+        ) if company_ids else []
+    documents_count = db.scalar(select(func.count(Document.id)).where(Document.company_id.in_(company_ids))) if company_ids else 0
+    certificates_count = db.scalar(select(func.count(GeneratedCertificate.id)).where(GeneratedCertificate.company_id.in_(company_ids))) if company_ids else 0
     minimum_salary = db.scalar(select(LaborParameter).where(LaborParameter.key == "minimum_monthly_salary_general", LaborParameter.active.is_(True)))
     low_salary_count = 0
     if company_ids and minimum_salary:
@@ -1154,6 +1201,8 @@ def dashboard(request: Request, user: User = Depends(require_user), db: Session 
         user,
         companies_count=companies_count,
         employee_count=employee_count or 0,
+        documents_count=documents_count or 0,
+        certificates_count=certificates_count or 0,
         pending_count=pending_count or 0,
         payroll_count=payroll_count or 0,
         compliance_pending_count=compliance_pending_count or 0,
@@ -1173,13 +1222,13 @@ def dashboard(request: Request, user: User = Depends(require_user), db: Session 
 def companies_page(request: Request, q: str = "", user: User = Depends(require_user), db: Session = Depends(get_db)):
     if user.role == "empresa":
         return RedirectResponse(f"/app/companies/{user.company_id}", status_code=303)
-    query = select(Company).where(Company.studio_id == user.studio_id)
+    company_ids = company_ids_for_user(db, user)
+    query = select(Company).where(Company.id.in_(company_ids)) if company_ids else select(Company).where(False)
     if q.strip():
         term = f"%{q.strip()}%"
         query = query.where(or_(Company.legal_name.ilike(term), Company.ruc.ilike(term), Company.trade_name.ilike(term)))
     companies = list(db.scalars(query.order_by(Company.legal_name)))
     return render(request, "companies.html", db, user, companies=companies, q=q)
-
 
 @app.post("/app/companies")
 def add_company(
@@ -2308,23 +2357,77 @@ def notification_mark_read(
 
 
 @app.get("/app/requests", response_class=HTMLResponse)
-def requests_page(request: Request, user: User = Depends(require_user), db: Session = Depends(get_db)):
+def requests_page(
+    request: Request,
+    status_filter: str = "",
+    company_id: OptionalQueryId = None,
+    request_type: str = "",
+    assigned_filter: str = "",
+    overdue_only: bool = False,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
     company_ids = company_ids_for_user(db, user)
-    items = list(db.scalars(select(CompanyRequest).where(CompanyRequest.company_id.in_(company_ids)).order_by(CompanyRequest.created_at.desc()))) if company_ids else []
     companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name))) if company_ids else []
     employees = list(db.scalars(select(Employee).where(Employee.company_id.in_(company_ids)).order_by(Employee.full_name))) if company_ids else []
+
+    allowed_statuses = {"Pendiente", "En revisión", "Falta información", "Procesando", "Aprobada", "Rechazada", "Resuelta", "Aplicada"}
+    standard_types = {"Alta de funcionario", "Baja de funcionario", "Cambio salarial", "Vacaciones", "Permiso/licencia", "Documento laboral", "Otra consulta"}
+    stored_types = set(db.scalars(
+        select(CompanyRequest.request_type)
+        .where(CompanyRequest.company_id.in_(company_ids))
+        .distinct()
+    )) if company_ids else set()
+    allowed_types = standard_types | {str(value).strip() for value in stored_types if value and str(value).strip() and len(str(value)) <= 100}
+    status_filter = status_filter if status_filter in allowed_statuses else ""
+    request_type = request_type if request_type in allowed_types else ""
+    if company_id not in company_ids:
+        company_id = None
+    # The lawyer workspace is assignment-based; query parameters cannot expose the full queue.
+    if user.role == "abogado":
+        assigned_filter = "mine"
+    else:
+        assigned_filter = "mine" if assigned_filter == "mine" and user.role != "empresa" else ""
+    overdue_only = bool(overdue_only and user.role != "empresa")
+
+    query = select(CompanyRequest).outerjoin(
+        RequestWorkflow, RequestWorkflow.request_id == CompanyRequest.id
+    ).where(CompanyRequest.company_id.in_(company_ids)) if company_ids else select(CompanyRequest).where(False)
+    if company_id:
+        query = query.where(CompanyRequest.company_id == company_id)
+    if status_filter:
+        query = query.where(CompanyRequest.status == status_filter)
+    if request_type:
+        query = query.where(CompanyRequest.request_type == request_type)
+    if assigned_filter == "mine":
+        query = query.where(RequestWorkflow.assigned_user_id == user.id)
+    if overdue_only:
+        query = query.where(
+            RequestWorkflow.due_date.is_not(None),
+            RequestWorkflow.due_date < date.today(),
+            CompanyRequest.status.notin_({"Resuelta", "Rechazada", "Aplicada"}),
+        )
+
+    items = list(db.scalars(query.order_by(
+        RequestWorkflow.due_date.asc().nullslast(),
+        CompanyRequest.created_at.desc(),
+    ))) if company_ids else []
     request_ids = [item.id for item in items]
     workflows = list(db.scalars(select(RequestWorkflow).where(RequestWorkflow.request_id.in_(request_ids)))) if request_ids else []
     workflow_by_request = {item.request_id: item for item in workflows}
     pending = sum(item.status not in {"Resuelta", "Rechazada", "Aplicada"} for item in items)
     overdue = sum(
-        1
-        for workflow in workflows
-        if workflow.due_date
-        and workflow.due_date < date.today()
+        1 for workflow in workflows
+        if workflow.due_date and workflow.due_date < date.today()
+        and workflow.request_id in {item.id for item in items}
         and next((item.status for item in items if item.id == workflow.request_id), "") not in {"Resuelta", "Rechazada", "Aplicada"}
     )
-    return render(request, "requests.html", db, user, items=items, companies=companies, employees=employees, workflow_by_request=workflow_by_request, pending=pending, overdue=overdue)
+    return render(
+        request, "requests.html", db, user, items=items, companies=companies, employees=employees,
+        workflow_by_request=workflow_by_request, pending=pending, overdue=overdue,
+        selected_status=status_filter, selected_company=company_id, selected_type=request_type,
+        assigned_filter=assigned_filter, overdue_only=overdue_only, request_types=sorted(allowed_types),
+    )
 
 
 def _vacation_balance(
@@ -2412,7 +2515,7 @@ def add_request(
     amount_raw: Annotated[str, Form(alias="amount")] = "",
     leave_type_raw: Annotated[str, Form(alias="leave_type")] = "",
     hours_requested_raw: Annotated[str, Form(alias="hours_requested")] = "",
-    user: User = Depends(require_user),
+    user: User = Depends(require_roles("administrador", "contador", "auxiliar", "empresa")),
     db: Session = Depends(get_db),
 ):
     company = company_allowed(db, user, company_id)
@@ -2523,6 +2626,8 @@ def request_detail_page(
     if not item or item.company_id not in company_ids_for_user(db, user):
         raise HTTPException(404, "Solicitud no encontrada.")
     workflow = db.scalar(select(RequestWorkflow).where(RequestWorkflow.request_id == item.id))
+    if user.role == "abogado" and (not workflow or workflow.assigned_user_id != user.id):
+        raise HTTPException(404, "Solicitud no encontrada.")
     comments_query = select(RequestComment).where(RequestComment.request_id == item.id)
     if user.role == "empresa":
         comments_query = comments_query.where(RequestComment.visibility == "Empresa")
@@ -2541,6 +2646,10 @@ def add_request_comment(
     item = db.get(CompanyRequest, request_id)
     if not item or item.company_id not in company_ids_for_user(db, user):
         raise HTTPException(404)
+    if user.role == "abogado":
+        workflow = db.scalar(select(RequestWorkflow).where(RequestWorkflow.request_id == item.id))
+        if not workflow or workflow.assigned_user_id != user.id:
+            raise HTTPException(404)
     safe_visibility = "Empresa" if user.role == "empresa" else ("Interno" if visibility == "Interno" else "Empresa")
     body_value = body.strip()
     if not body_value:
@@ -2580,6 +2689,10 @@ async def add_request_attachment(
     item = db.get(CompanyRequest, request_id)
     if not item or item.company_id not in company_ids_for_user(db, user):
         raise HTTPException(404)
+    if user.role == "abogado":
+        workflow = db.scalar(select(RequestWorkflow).where(RequestWorkflow.request_id == item.id))
+        if not workflow or workflow.assigned_user_id != user.id:
+            raise HTTPException(404)
     content = await file.read(MAX_UPLOAD_SIZE + 1)
     if len(content) > MAX_UPLOAD_SIZE:
         raise HTTPException(413, "El archivo supera el máximo permitido de 10 MB.")
@@ -2635,6 +2748,10 @@ def download_request_attachment(
     attachment = db.get(RequestAttachment, attachment_id)
     if not item or item.company_id not in company_ids_for_user(db, user) or not attachment or attachment.request_id != item.id:
         raise HTTPException(404)
+    if user.role == "abogado":
+        workflow = db.scalar(select(RequestWorkflow).where(RequestWorkflow.request_id == item.id))
+        if not workflow or workflow.assigned_user_id != user.id:
+            raise HTTPException(404)
     storage_key = attachment.stored_name
     if attachment.content_bytes is not None:
         content = bytes(attachment.content_bytes)
@@ -2672,13 +2789,15 @@ def request_status(
     assigned_user_id_raw: Annotated[str, Form(alias="assigned_user_id")] = "",
     due_date_raw: Annotated[str, Form(alias="due_date")] = "",
     internal_notes: Annotated[str, Form()] = "",
-    user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
+    user: User = Depends(require_roles("administrador", "contador", "auxiliar", "abogado")),
     db: Session = Depends(get_db),
 ):
     item = db.get(CompanyRequest, request_id)
     if not item or item.company_id not in company_ids_for_user(db, user):
         raise HTTPException(404)
     existing_workflow = db.scalar(select(RequestWorkflow).where(RequestWorkflow.request_id == item.id))
+    if user.role == "abogado" and (not existing_workflow or existing_workflow.assigned_user_id != user.id):
+        raise HTTPException(404, "Solicitud no encontrada.")
     if existing_workflow and existing_workflow.applied:
         raise HTTPException(409, "Este trámite ya fue aplicado y su historial no puede modificarse.")
     valid_statuses = {"Pendiente", "En revisión", "Falta información", "Procesando", "Aprobada", "Resuelta", "Rechazada"}
@@ -2691,7 +2810,9 @@ def request_status(
     if item.request_type.strip().casefold() == "cambio salarial" and status_value == "Resuelta":
         raise HTTPException(409, "Un cambio salarial debe aplicarse desde su acción específica o rechazarse; no se puede cerrar como resuelto sin actualizar el legajo.")
     due_date = _parse_optional_form_date(due_date_raw, "fecha límite")
-    assigned_user_id = _parse_optional_form_int(assigned_user_id_raw, "responsable", 1)
+    requested_assigned_user_id = _parse_optional_form_int(assigned_user_id_raw, "responsable", 1)
+    # Lawyers can work assigned cases, not assign or unassign them.
+    assigned_user_id = user.id if user.role == "abogado" else requested_assigned_user_id
     company = db.get(Company, item.company_id)
     previous_status = item.status
     previous_response = item.response
@@ -3275,7 +3396,7 @@ def create_certificate(
     settlement_other_deduction_description: Annotated[str, Form()] = "",
     calculation_id: Annotated[str, Form()] = "",
     intent: Annotated[str, Form()] = "save",
-    user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
+    user: User = Depends(require_roles("administrador", "contador", "auxiliar", "abogado")),
     db: Session = Depends(get_db),
 ):
     if document_type not in CERTIFICATE_TYPES:
@@ -4031,7 +4152,7 @@ def ai_assistance(
 
 
 @app.get("/app/payrolls", response_class=HTMLResponse)
-def payrolls_page(request: Request, user: User = Depends(require_user), db: Session = Depends(get_db)):
+def payrolls_page(request: Request, user: User = Depends(require_roles("administrador", "contador", "auxiliar", "empresa")), db: Session = Depends(get_db)):
     company_ids = company_ids_for_user(db, user)
     payrolls = list(db.scalars(select(Payroll).where(Payroll.company_id.in_(company_ids)).order_by(Payroll.period.desc(), Payroll.created_at.desc()))) if company_ids else []
     companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids), Company.status == "Activa").order_by(Company.legal_name))) if company_ids else []
@@ -4092,7 +4213,7 @@ def create_payroll(
 
 
 @app.get("/app/payrolls/{payroll_id}", response_class=HTMLResponse)
-def payroll_detail(request: Request, payroll_id: int, user: User = Depends(require_user), db: Session = Depends(get_db)):
+def payroll_detail(request: Request, payroll_id: int, user: User = Depends(require_roles("administrador", "contador", "auxiliar", "empresa")), db: Session = Depends(get_db)):
     payroll = db.get(Payroll, payroll_id)
     if not payroll or payroll.company_id not in company_ids_for_user(db, user):
         raise HTTPException(404)
@@ -4474,7 +4595,7 @@ def create_user(
     strength_error = password_strength_error(password)
     if strength_error:
         return RedirectResponse(f"/app/users?password_error={quote(strength_error)}", status_code=303)
-    if role not in {"administrador", "contador", "auxiliar", "empresa"}:
+    if role not in {"administrador", "contador", "auxiliar", "empresa", "abogado"}:
         return RedirectResponse("/app/users?role_error=1", status_code=303)
     if role == "empresa" and not parsed_company_id:
         return RedirectResponse("/app/users?company_required=1", status_code=303)

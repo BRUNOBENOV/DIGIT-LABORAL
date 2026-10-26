@@ -1,14 +1,16 @@
-# Digit Laboral 2.5.3
+# Digit Laboral 2.5.4
 
 Plataforma de gestión y cumplimiento laboral para estudios contables paraguayos.
 
-## Novedades de la versión 2.5.3
+## Novedades de la versión 2.5.4
 
-- Refuerza el aislamiento RLS de `users`, `studios`, `user_security`, `password_reset_tokens` y `activation_requests`.
-- Carga el ID del usuario desde la sesión firmada antes de consultar tablas protegidas por RLS y valida el rol contra el registro de usuario.
-- Añade una función PostgreSQL de contexto de usuario con `search_path` restringido y pruebas de regresión.
-- Detecta en el arranque y en `/health/ready` cuando el rol de ejecución puede omitir RLS por privilegios o propiedad de tablas.
-- Mantiene explícito el bloqueo pendiente: separar los roles PostgreSQL antes de considerar el aislamiento RLS efectivo en producción.
+- Incorpora un espacio diferenciado para abogados, con solicitudes asignadas, consulta de expedientes, documentos laborales y referencia al Código del Trabajo.
+- Convierte la bandeja de solicitudes en una cola operativa con filtros por empresa, estado, tipo, responsable y vencimiento.
+- Restringe los abogados a solicitudes asignadas: pueden registrar seguimiento y respuestas, pero no aprobar/rechazar ni reasignar trámites.
+- Hace que la agenda sea consultable por el empleador sin permitir cambios en el calendario del estudio.
+- Alinea botones, accesos de nómina, cálculos, eventos laborales, cumplimiento y certificados oficiales con las capacidades reales de cada perfil.
+- Añade pruebas de regresión para recorridos de abogado y empleador, filtros y límites de permisos.
+- El refuerzo de seguridad PostgreSQL de v2.5.3 se conserva; la separación de roles de producción sigue siendo un requisito externo antes de certificar el aislamiento RLS.
 
 ## Módulos incluidos
 

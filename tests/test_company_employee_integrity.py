@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import uuid
+from urllib.parse import unquote
 from datetime import date
 
 import pytest
@@ -177,8 +178,9 @@ def test_employee_create_rejects_an_unrelated_branch_before_writing_the_employee
             follow_redirects=False,
         )
 
-        assert response.status_code == 400
-        assert "sucursal seleccionada" in response.text.lower()
+        # This HTML workflow returns to the form with a validation message.
+        assert response.status_code == 303
+        assert "sucursal seleccionada" in unquote(response.headers.get("location", "")).lower()
         with SessionLocal() as db:
             assert db.scalar(
                 select(Employee).where(

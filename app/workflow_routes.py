@@ -9,7 +9,7 @@ from .calculator_fields import GROUPS
 from .calculator_routes import HEADERS, context, download
 from .labor_calculator import CalculationError, SOURCE, TITLES, calculate, checked, clean
 from .labor_examples import example_values
-from .models import CalculationRecord, Employee, Payroll, User
+from .models import CalculationRecord, CompanyRequest, Document, Employee, GeneratedCertificate, Payroll, RequestWorkflow, User
 
 router = APIRouter()
 PROFILES = {
@@ -25,12 +25,12 @@ PROFILES = {
                ("Liquidar la nómina", "Prepará el período y descargá los recibos guardados.", "/app/payrolls"),
                ("Abrir historial de cálculos", "Recuperá resultados y usalos como base del siguiente período.", "/app/liquidaciones")],
         prepare=["Listado de empresas y funcionarios actualizado.", "Novedades del período y conceptos revisados.", "Bases y tasas del régimen aplicable."]),
-    "abogado": dict(label="Abogados", title="Compará supuestos con el detalle a la vista.",
-        intro="Analizá bases, fechas y conceptos; distinguí un cálculo completo de un subtotal que requiere revisión.",
-        tasks=[("Comparar dos escenarios", "Cambios de fechas, bases o causa de egreso con desglose A y B.", "/herramientas/comparar?tipo=settlement"),
-               ("Analizar una liquidación final", "Salarios pendientes, aguinaldo, vacaciones y conceptos de egreso.", "/herramientas?tipo=settlement"),
-               ("Consultar fuentes oficiales", "Cada resultado enlaza las fuentes y muestra los criterios del cálculo.", "/herramientas?tipo=settlement")],
-        prepare=["Fechas de ingreso y egreso y documentación de la relación.", "Salarios, remuneraciones del año y pagos acreditados.", "Causa invocada, preaviso, vacaciones y posibles protecciones especiales."]),
+    "abogado": dict(label="Abogados", title="Expedientes, plazos y documentos jurídicos en un solo espacio.",
+        intro="Consultá los antecedentes del caso, seguí las solicitudes asignadas, contrastá la norma aplicable y prepará documentos laborales para revisión profesional.",
+        tasks=[("Abrir mis trámites asignados", "Priorizá solicitudes por responsable, estado y fecha límite; registrá respuestas en el expediente.", "/app/requests?assigned_filter=mine"),
+               ("Consultar el Código Laboral", "Buscá artículos y consultá el estado de la referencia normativa.", "/app/labor-code"),
+               ("Preparar un documento laboral", "Generá un borrador con los datos del legajo y revisá fechas, causal y firma antes de emitir.", "/app/certificates")],
+        prepare=["Contrato, comunicaciones y demás documentos de la relación laboral.", "Fechas de ingreso y egreso, salario, jornada y pagos acreditados.", "Causa alegada, antecedentes del trámite, plazo aplicable y respaldo de cada conclusión."]),
     "empleado": dict(label="Empleados", title="Entendé y revisá tu liquidación.",
         intro="Consultá sin cuenta. Podés ingresar importes sin completar tu nombre o documento y ver cómo se forma el resultado.",
         tasks=[("Revisar mi recibo", "Ingresá los conceptos y el neto informado para ver la diferencia.", "/herramientas?tipo=salary#f-reported_net"),
@@ -57,15 +57,31 @@ def workspace_guide(request: Request, user: User = Depends(core.require_user), d
     calculation_count = db.scalar(select(func.count(CalculationRecord.id)).where(
         CalculationRecord.company_id.in_(ids), CalculationRecord.source == SOURCE)) or 0
     payroll_count = db.scalar(select(func.count(Payroll.id)).where(Payroll.company_id.in_(ids))) or 0
-    steps = [
-        dict(title="Empresas", count=len(ids), href="/app/companies", description="Revisá razón social, RUC y datos del expediente."),
-        dict(title="Funcionarios", count=employee_count, href="/app/employees", description="Comprobá fechas, salarios y régimen de aporte."),
-        dict(title="Liquidaciones guardadas", count=calculation_count, href="/app/liquidaciones", description="Calculá, revisá el desglose y recuperá el PDF desde el historial."),
-    ]
-    if user.role != "empresa":
-        steps.append(dict(title="Nóminas", count=payroll_count, href="/app/payrolls", description="Guardá los cambios de cada funcionario antes de descargar los recibos."))
+    if user.role == "abogado":
+        assigned_count = db.scalar(
+            select(func.count(CompanyRequest.id))
+            .join(RequestWorkflow, RequestWorkflow.request_id == CompanyRequest.id)
+            .where(CompanyRequest.company_id.in_(ids), RequestWorkflow.assigned_user_id == user.id)
+        ) or 0
+        document_count = db.scalar(select(func.count(Document.id)).where(Document.company_id.in_(ids))) or 0
+        certificate_count = db.scalar(select(func.count(GeneratedCertificate.id)).where(GeneratedCertificate.company_id.in_(ids))) or 0
+        steps = [
+            dict(title="Expedientes", count=len(ids), href="/app/companies", description="Consultá razón social, RUC, sucursales y datos patronales."),
+            dict(title="Solicitudes asignadas", count=assigned_count, href="/app/requests?assigned_filter=mine", description="Priorizá tus trámites, revisá plazos y documentá cada respuesta."),
+            dict(title="Documentos laborales", count=certificate_count, href="/app/certificates", description="Prepará documentos y verificá fechas, causales y respaldo antes de entregar."),
+            dict(title="Archivo documental", count=document_count, href="/app/documents", description="Consultá contratos, comprobantes y documentos vinculados al legajo."),
+        ]
+    else:
+        steps = [
+            dict(title="Empresas", count=len(ids), href="/app/companies", description="Revisá razón social, RUC y datos del expediente."),
+            dict(title="Funcionarios", count=employee_count, href="/app/employees", description="Comprobá fechas, salarios y régimen de aporte."),
+            dict(title="Liquidaciones guardadas", count=calculation_count, href="/app/liquidaciones", description="Calculá, revisá el desglose y recuperá el PDF desde el historial."),
+        ]
+        if user.role in {"administrador", "contador", "auxiliar"}:
+            steps.append(dict(title="Nóminas", count=payroll_count, href="/app/payrolls", description="Guardá los cambios de cada funcionario antes de descargar los recibos."))
+    selected_profile = "empresa" if user.role == "empresa" else ("abogado" if user.role == "abogado" else "contador")
     response = core.render(request, "labor_guide.html", db, user, private=True, steps=steps,
-                           profiles=PROFILES, profile="empresa" if user.role == "empresa" else "contador")
+                           profiles=PROFILES, profile=selected_profile)
     response.headers.update(HEADERS)
     return response
 

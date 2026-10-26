@@ -72,17 +72,16 @@ def test_saved_calculation_can_be_linked_to_certificate():
 
 
 def test_company_logo_upload_and_retrieval():
-    png = (
-        b"\x89PNG\r\n\x1a\n"
-        b"\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89"
-        b"\x00\x00\x00\rIDAT\x08\xd7c\xf8\xcf\xc0\xf0\x1f\x00\x05\x00\x01\xff\x89\x99=\x1d"
-        b"\x00\x00\x00\x00IEND\xaeB`\x82"
-    )
+    from PIL import Image
+
+    image_buffer = io.BytesIO()
+    Image.new("RGBA", (2, 2), (23, 59, 134, 255)).save(image_buffer, format="PNG")
+    png = image_buffer.getvalue()
     with TestClient(app) as client:
         csrf = login(client)
         with SessionLocal() as db:
             company = db.scalar(select(Company).order_by(Company.id))
-        response = client.post(
+        settings_response = client.post(
             f"/app/companies/{company.id}/branding",
             data={
                 "csrf_token": csrf,
@@ -95,11 +94,18 @@ def test_company_logo_upload_and_retrieval():
                 "show_ruc": "on",
                 "show_contact": "on",
             },
+            headers={"x-csrf-token": csrf},
+            follow_redirects=False,
+        )
+        assert settings_response.status_code == 303
+        upload_response = client.post(
+            f"/app/companies/{company.id}/logo",
+            data={"csrf_token": csrf},
             files={"logo": ("logo.png", io.BytesIO(png), "image/png")},
             headers={"x-csrf-token": csrf},
             follow_redirects=False,
         )
-        assert response.status_code == 303
+        assert upload_response.status_code == 303
         logo = client.get(f"/app/companies/{company.id}/logo")
         assert logo.status_code == 200
         assert logo.headers["content-type"].startswith("image/png")

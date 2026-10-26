@@ -116,7 +116,7 @@ def test_module_navigation_and_assets_are_versioned():
 
     assert "v23.js') }}?v=20261023b" in base
     assert "v23.css') }}?v=20261022c" in base
-    assert "experience.css') }}?v=20261022c" in base
+    assert "experience.css') }}?v=20261026a" in base
     assert ".calculation-index-card" in css
 
 
