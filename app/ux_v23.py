@@ -73,7 +73,7 @@ _remove_route("/app/companies/{company_id}/branding", "POST")
 @app.get("/app/companies/{company_id}/logo")
 def company_logo_v23(
     company_id: int,
-    user: User = Depends(require_roles("administrador", "contador", "auxiliar", "empresa")),
+    user: User = Depends(require_roles("administrador", "contador", "auxiliar", "empresa", "abogado")),
     db: Session = Depends(get_db),
 ):
     company = company_allowed(db, user, company_id)
@@ -90,7 +90,7 @@ def company_logo_v23(
 @app.get("/app/companies/{company_id}/logo/print")
 def company_logo_print_v23(
     company_id: int,
-    user: User = Depends(require_roles("administrador", "contador", "auxiliar", "empresa")),
+    user: User = Depends(require_roles("administrador", "contador", "auxiliar", "empresa", "abogado")),
     db: Session = Depends(get_db),
 ):
     """Serve the same presentation-ready logo used by Word/PDF for print previews."""
