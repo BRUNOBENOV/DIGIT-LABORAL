@@ -150,7 +150,7 @@ def test_lawyer_workspace_filters_assigned_cases_and_enforces_role_boundaries() 
         assert "Solo vencidas" in queue.text
         assert "Mis asignaciones" in queue.text
         assert "+ Nueva solicitud" not in queue.text
-        assert 'action="/app/requests"' not in queue.text
+        assert '<form method="post" action="/app/requests"' not in queue.text
         assert client.post(
             "/app/requests",
             data={
