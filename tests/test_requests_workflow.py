@@ -4,6 +4,7 @@ import csv
 import io
 import re
 import uuid
+import zipfile
 from datetime import UTC, date, datetime, timedelta
 
 from fastapi.testclient import TestClient
@@ -11,8 +12,11 @@ from sqlalchemy import select
 
 from app.auth import hash_password
 from app.database import SessionLocal
-from app.main import app
-from app.models import Company, CompanyRequest, Employee, EmployeeEvent, Notification, NotificationDelivery, RequestWorkflow, SalaryHistory, Studio, User, Vacation
+from app.main import UPLOAD_DIR, app
+from app.backup_service import build_studio_export
+from app.config import settings
+from app.models import Company, CompanyRequest, Document, Employee, EmployeeEvent, IntegrationBatch, Notification, NotificationDelivery, RequestAttachment, RequestWorkflow, SalaryHistory, Studio, User, Vacation
+from app.storage_service import storage
 
 
 def ensure_admin() -> tuple[str, str, int, int]:
@@ -938,3 +942,137 @@ def test_notification_cron_endpoint_requires_bearer_token(monkeypatch):
             "certificate_notices_created": 1,
             "deliveries": {"sent": 3, "failed": 0, "checked": 3},
         }
+
+
+def test_local_uploads_remain_downloadable_and_exportable_after_storage_copy_is_lost():
+    if settings.storage_backend != "local":
+        import pytest
+        pytest.skip("Este escenario verifica el respaldo para el backend local.")
+
+    email, password, company_id, employee_id = ensure_admin()
+    attachment_content = b"%PDF-1.7\nDigit Laboral attachment durability test\n"
+    document_content = b"%PDF-1.7\nDigit Laboral document durability test\n"
+    batch_content = b"synthetic-xlsx-content-for-durability-test"
+    receipt_content = b"%PDF-1.7\nDigit Laboral receipt durability test\n"
+    request_id = document_id = attachment_id = batch_id = None
+    attachment_key = document_key = receipt_key = ""
+
+    with TestClient(app) as client:
+        csrf = login(client, email, password)
+        request_response = client.post(
+            "/app/requests",
+            data={
+                "csrf_token": csrf, "company_id": str(company_id), "request_type": "Otra consulta",
+                "subject": "Prueba de persistencia", "detail": "Verificar que el archivo no dependa del disco local.",
+                "priority": "Normal", "employee_id": "", "effective_date": "", "start_date": "",
+                "end_date": "", "period_year": "", "requested_days": "", "entitled_days": "",
+                "amount": "", "leave_type": "", "hours_requested": "",
+            },
+            follow_redirects=False,
+        )
+        assert request_response.status_code == 303
+        request_id = int(request_response.headers["location"].rstrip("/").split("/")[-1])
+
+        attachment_response = client.post(
+            f"/app/requests/{request_id}/attachments",
+            data={"csrf_token": csrf},
+            files={"file": ("prueba-adjunto.pdf", attachment_content, "application/pdf")},
+            follow_redirects=False,
+        )
+        assert attachment_response.status_code == 303
+
+        document_response = client.post(
+            "/app/documents",
+            data={
+                "csrf_token": csrf, "company_id": str(company_id), "employee_id": str(employee_id),
+                "title": "Documento persistente de prueba", "category": "Prueba",
+            },
+            files={"file": ("prueba-documento.pdf", document_content, "application/pdf")},
+            follow_redirects=False,
+        )
+        assert document_response.status_code == 303
+
+        with SessionLocal() as db:
+            user = db.scalar(select(User).where(User.email == email))
+            assert user is not None and user.studio_id is not None
+            attachment = db.scalar(
+                select(RequestAttachment).where(RequestAttachment.request_id == request_id)
+                .order_by(RequestAttachment.id.desc())
+            )
+            document = db.scalar(
+                select(Document).where(Document.title == "Documento persistente de prueba")
+                .order_by(Document.id.desc())
+            )
+            assert attachment is not None and document is not None
+            attachment_id, attachment_key = attachment.id, attachment.stored_name
+            document_id, document_key = document.id, document.stored_name
+            assert bytes(attachment.content_bytes) == attachment_content
+            assert bytes(document.content_bytes) == document_content
+
+            batch = IntegrationBatch(
+                studio_id=user.studio_id,
+                company_id=company_id,
+                authority="REOP",
+                batch_type="Prueba de persistencia",
+                period="2026",
+                status="Generado",
+                file_name="test-batch.xlsx",
+                storage_key=f"integrations/{company_id}/test-batch.xlsx",
+                file_bytes=batch_content,
+                file_sha256="a" * 64,
+                item_count=1,
+                created_by=email,
+            )
+            db.add(batch)
+            db.commit()
+            batch_id = batch.id
+
+        receipt_response = client.post(
+            f"/app/compliance/batches/{batch_id}/receipt",
+            data={"csrf_token": csrf, "status": "Presentado", "external_reference": "TEST-RECIBO-001"},
+            files={"receipt": ("comprobante-prueba.pdf", receipt_content, "application/pdf")},
+            follow_redirects=False,
+        )
+        assert receipt_response.status_code == 303
+
+    with SessionLocal() as db:
+        attachment = db.get(RequestAttachment, attachment_id)
+        document = db.get(Document, document_id)
+        batch = db.get(IntegrationBatch, batch_id)
+        user = db.scalar(select(User).where(User.email == email))
+        assert attachment is not None and document is not None and batch is not None and user is not None
+        receipt_key = batch.receipt_storage_key
+        assert bytes(batch.file_bytes) == batch_content
+        assert bytes(batch.receipt_bytes) == receipt_content
+        assert batch.receipt_file_name == "comprobante-prueba.pdf"
+        # Simulate Render losing its local filesystem before building the ZIP.
+        for key in (attachment_key, document_key, receipt_key):
+            storage.delete(key)
+        studio = db.get(Studio, user.studio_id)
+        assert studio is not None
+        backup_content = build_studio_export(db, studio, UPLOAD_DIR)
+
+    with TestClient(app) as client:
+        login(client, email, password)
+        attachment_download = client.get(
+            f"/app/requests/{request_id}/attachments/{attachment_id}/download"
+        )
+        document_download = client.get(f"/app/documents/{document_id}/download")
+        batch_download = client.get(f"/app/compliance/batches/{batch_id}/download")
+        receipt_download = client.get(f"/app/compliance/batches/{batch_id}/receipt")
+        assert attachment_download.status_code == 200 and attachment_download.content == attachment_content
+        assert document_download.status_code == 200 and document_download.content == document_content
+        assert batch_download.status_code == 200 and batch_download.content == batch_content
+        assert receipt_download.status_code == 200 and receipt_download.content == receipt_content
+        assert receipt_download.headers["content-type"].startswith("application/pdf")
+
+    with zipfile.ZipFile(io.BytesIO(backup_content)) as archive:
+        names = archive.namelist()
+        attachment_path = next(n for n in names if n.endswith(f"/{attachment_id}_prueba-adjunto.pdf"))
+        document_path = next(n for n in names if n.endswith(f"/{document_id}_prueba-documento.pdf"))
+        batch_path = next(n for n in names if n.endswith(f"/lotes/{batch_id}_test-batch.xlsx"))
+        receipt_path = next(n for n in names if n.endswith(f"/comprobantes/{batch_id}_comprobante-prueba.pdf"))
+        assert archive.read(attachment_path) == attachment_content
+        assert archive.read(document_path) == document_content
+        assert archive.read(batch_path) == batch_content
+        assert archive.read(receipt_path) == receipt_content

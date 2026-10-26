@@ -168,23 +168,53 @@ def build_studio_export(db: Session, studio: Studio, upload_dir: Path) -> bytes:
             archive.writestr(archive_name, content)
             archived_keys.add(key)
 
+        def add_database_artifact(key: str, archive_name: str, content: bytes | None) -> bool:
+            if content is None:
+                return False
+            # Count a PostgreSQL-backed copy as the archived artifact for this storage key.
+            if key:
+                if key in archived_keys:
+                    return True
+                attempted_keys.add(key)
+                archived_keys.add(key)
+            archive.writestr(archive_name, bytes(content))
+            return True
+
         for item in documents:
             filename = _safe_archive_component(item.original_name, f"documento-{item.id}")
             archive_name = f"archivos/documentos/{item.company_id}/{item.id}_{filename}"
-            if item.content_bytes is not None:
-                archive.writestr(archive_name, bytes(item.content_bytes))
-            else:
+            if not add_database_artifact(item.stored_name, archive_name, item.content_bytes):
                 add_artifact(item.stored_name, archive_name, "documento", item.id)
 
         for item in attachments:
             filename = _safe_archive_component(item.original_name, f"adjunto-{item.id}")
             archive_name = f"archivos/solicitudes/{item.request_id}/{item.id}_{filename}"
-            add_artifact(item.stored_name, archive_name, "adjunto_solicitud", item.id)
+            if not add_database_artifact(item.stored_name, archive_name, item.content_bytes):
+                add_artifact(item.stored_name, archive_name, "adjunto_solicitud", item.id)
 
         for batch in integration_batches:
             filename = _safe_archive_component(batch.file_name, f"lote-{batch.id}.xlsx")
             archive_name = f"archivos/integraciones/{batch.company_id}/lotes/{batch.id}_{filename}"
-            add_artifact(batch.storage_key, archive_name, "lote_integracion", batch.id)
+            if not add_database_artifact(batch.storage_key, archive_name, batch.file_bytes):
+                add_artifact(batch.storage_key, archive_name, "lote_integracion", batch.id)
+
+            receipt_key = batch.receipt_storage_key or next(
+                (
+                    event.receipt_storage_key for event in compliance_events
+                    if event.batch_id == batch.id and event.receipt_storage_key
+                ),
+                "",
+            )
+            receipt_name = _safe_archive_component(
+                batch.receipt_file_name or (Path(receipt_key).name if receipt_key else ""),
+                f"comprobante-{batch.id}",
+            )
+            receipt_archive_name = (
+                f"archivos/integraciones/{batch.company_id}/comprobantes/{batch.id}_{receipt_name}"
+            )
+            if not add_database_artifact(receipt_key, receipt_archive_name, batch.receipt_bytes):
+                if receipt_key and batch.receipt_storage_key:
+                    add_artifact(receipt_key, receipt_archive_name, "comprobante_integracion", batch.id)
 
         for event in compliance_events:
             if not event.receipt_storage_key:
@@ -210,15 +240,17 @@ def build_studio_export(db: Session, studio: Studio, upload_dir: Path) -> bytes:
                     "counts": counts,
                     "artifacts": {
                         "expected": len({
-                            x.stored_name for x in documents if x.content_bytes is None and x.stored_name
+                            x.stored_name for x in documents if x.stored_name
                         } | {
                             x.stored_name for x in attachments if x.stored_name
                         } | {
                             x.storage_key for x in integration_batches if x.storage_key
                         } | {
+                            x.receipt_storage_key for x in integration_batches if x.receipt_storage_key
+                        } | {
                             x.receipt_storage_key for x in compliance_events if x.receipt_storage_key
-                        }) + sum(1 for x in documents if x.content_bytes is not None),
-                        "archived": len(archived_keys) + sum(1 for x in documents if x.content_bytes is not None),
+                        }),
+                        "archived": len(archived_keys),
                         "missing": len(missing_artifacts),
                         "status": "complete" if not missing_artifacts else "incomplete",
                     },
