@@ -4,7 +4,7 @@ import csv
 import io
 import re
 import uuid
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -12,7 +12,7 @@ from sqlalchemy import select
 from app.auth import hash_password
 from app.database import SessionLocal
 from app.main import app
-from app.models import Company, CompanyRequest, Employee, Notification, RequestWorkflow, SalaryHistory, Studio, User
+from app.models import Company, CompanyRequest, Employee, Notification, NotificationDelivery, RequestWorkflow, SalaryHistory, Studio, User
 
 
 def ensure_admin() -> tuple[str, str, int, int]:
@@ -560,3 +560,115 @@ def test_request_comments_and_attachments_reject_empty_or_misrepresented_content
             follow_redirects=False,
         )
         assert empty_pdf.status_code == 400
+
+
+
+def test_review_route_notifies_new_assignee():
+    email, password, company_id, _ = ensure_admin()
+    with SessionLocal() as db:
+        admin = db.scalar(select(User).where(User.email == email))
+        assert admin is not None and admin.studio_id is not None
+        assignee_email = "workflow-assignee@test.py"
+        assignee = db.scalar(select(User).where(User.email == assignee_email))
+        if assignee is None:
+            assignee = User(
+                studio_id=admin.studio_id,
+                full_name="Workflow Assignee",
+                email=assignee_email,
+                password_hash=hash_password("demo123"),
+                role="auxiliar",
+                active=True,
+                must_change_password=False,
+            )
+            db.add(assignee)
+            db.commit()
+        assignee_id = assignee.id
+
+    with TestClient(app) as client:
+        csrf = login(client, email, password)
+        created = client.post(
+            "/app/requests",
+            data={
+                "csrf_token": csrf,
+                "company_id": str(company_id),
+                "request_type": "Otra consulta",
+                "subject": "Prueba de asignación",
+                "detail": "Comprobar que la ruta de revisión notifica al nuevo responsable.",
+                "priority": "Normal",
+            },
+            follow_redirects=False,
+        )
+        assert created.status_code == 303
+        request_id = int(created.headers["location"].rstrip("/").split("/")[-1])
+
+        csrf = token_from_page(client, f"/app/requests/{request_id}")
+        reviewed = client.post(
+            f"/app/requests/{request_id}/review",
+            data={
+                "csrf_token": csrf,
+                "status": "En revisión",
+                "response": "",
+                "assigned_user_id": str(assignee_id),
+            },
+            follow_redirects=False,
+        )
+        assert reviewed.status_code == 303
+
+    with SessionLocal() as db:
+        notice = db.scalar(select(Notification).where(
+            Notification.recipient_user_id == assignee_id,
+            Notification.related_request_id == request_id,
+            Notification.event_type == "solicitud_asignada",
+        ))
+        assert notice is not None
+        assert notice.target_url == f"/app/requests/{request_id}"
+
+
+def test_notification_outbox_recovers_stale_sending_delivery(monkeypatch):
+    from dataclasses import replace
+
+    from app import notification_service
+
+    monkeypatch.setattr(
+        notification_service,
+        "settings",
+        replace(notification_service.settings, smtp_host="", smtp_from_email=""),
+    )
+    email, password, _, _ = ensure_admin()
+    with SessionLocal() as db:
+        recipient = db.scalar(select(User).where(User.email == email))
+        assert recipient is not None
+        now = datetime.now(UTC)
+        notice = Notification(
+            studio_id=recipient.studio_id,
+            recipient_user_id=recipient.id,
+            event_type="prueba_recuperacion",
+            title="Recuperación de cola",
+            body="Prueba de recuperación de un proceso interrumpido.",
+            target_url="/app/notifications",
+            created_at=now - timedelta(hours=1),
+        )
+        db.add(notice)
+        db.flush()
+        delivery = NotificationDelivery(
+            studio_id=recipient.studio_id,
+            notification_id=notice.id,
+            channel="email",
+            status="Enviando",
+            attempts=1,
+            last_error="",
+            created_at=now - timedelta(hours=1),
+            updated_at=now - timedelta(minutes=30),
+        )
+        db.add(delivery)
+        db.commit()
+        delivery_id = delivery.id
+
+    notification_service.dispatch_notification_outbox(limit=500)
+
+    with SessionLocal() as db:
+        recovered = db.get(NotificationDelivery, delivery_id)
+        assert recovered is not None
+        assert recovered.status == "Pendiente"
+        assert recovered.attempts == 1
+        assert recovered.last_error == "SMTP no está configurado."

@@ -2640,6 +2640,7 @@ def review_request(
         workflow = RequestWorkflow(request_id=item.id)
         db.add(workflow)
         db.flush()
+    old_assigned_id = workflow.assigned_user_id
     assigned_id = _parse_optional_form_int(assigned_user_id_raw, "responsable", 1)
     if not assigned_id and assigned_to.strip():
         assigned = db.scalar(select(User).where(
@@ -2656,6 +2657,16 @@ def review_request(
         if not company or not assigned or not assigned.active or assigned.studio_id != company.studio_id or assigned.role == "empresa":
             raise HTTPException(400, "Responsable inválido.")
         workflow.assigned_user_id = assigned.id
+    if workflow.assigned_user_id and workflow.assigned_user_id != old_assigned_id:
+        assigned_user = db.get(User, workflow.assigned_user_id)
+        if assigned_user and assigned_user.id != user.id:
+            _create_in_app_notification(
+                db, background_tasks, assigned_user,
+                event_type="solicitud_asignada",
+                title=f"Solicitud asignada · #{item.id}",
+                body=f"Se te asignó el trámite «{item.subject or item.request_type}».",
+                target_url=f"/app/requests/{item.id}", request_id=item.id,
+            )
     now = datetime.now(UTC)
     old_status = item.status
     item.status = status_value
