@@ -149,6 +149,18 @@ def test_lawyer_workspace_filters_assigned_cases_and_enforces_role_boundaries() 
         assert unassigned_subject not in queue.text
         assert "Solo vencidas" in queue.text
         assert "Mis asignaciones" in queue.text
+        assert "+ Nueva solicitud" not in queue.text
+        assert client.post(
+            "/app/requests",
+            data={
+                "csrf_token": csrf,
+                "company_id": str(company_id),
+                "request_type": "Otra consulta",
+                "subject": "Intento de crear trámite",
+                "detail": "El abogado debe trabajar sobre asignaciones existentes.",
+            },
+            follow_redirects=False,
+        ).status_code == 403
 
         # Clearing the query-string filter must not expose another lawyer's or
         # unassigned request, and guessed detail URLs must return the same 404.
