@@ -67,7 +67,7 @@
 {% endfor %}
 </section>
 
-<div class="modal" id="requestModal" aria-hidden="true">
+{% if user.role != 'abogado' %}<div class="modal" id="requestModal" aria-hidden="true">
   <div class="modal-backdrop" data-modal-close></div>
   <section class="modal-card">
     <button class="modal-x" type="button" data-modal-close>×</button>
@@ -118,6 +118,7 @@
     </form>
   </section>
 </div>
+{% endif %}
 <script>
 (function () {
   const type = document.getElementById('requestType');
