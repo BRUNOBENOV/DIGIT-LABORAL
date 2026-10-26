@@ -2,27 +2,33 @@
 {% block title %}Inicio | Digit Laboral{% endblock %}
 {% block content %}
 {% set is_company = user.role == 'empresa' %}
+{% set is_lawyer = user.role == 'abogado' %}
 <div class="home-dashboard">
   <section class="home-welcome">
     <div class="home-welcome-copy"><span class="eyebrow">PANEL DE TRABAJO</span>
-      <h1>{% if is_company %}Tu empresa, sin vueltas{% else %}Todo tu trabajo, organizado por área{% endif %}</h1>
-      <p>{% if is_company %}Consultá el expediente de tu empresa, revisá documentos y seguí tus solicitudes desde un solo lugar.{% else %}Accedé a mantenimientos, cálculos, informes, certificados y utilitarios sin buscar opciones entre menús dispersos.{% endif %}</p>
+      <h1>{% if is_company %}Tu empresa, sin vueltas{% elif is_lawyer %}Tu trabajo jurídico-laboral, ordenado{% else %}Todo tu trabajo, organizado por área{% endif %}</h1>
+      <p>{% if is_company %}Consultá el expediente de tu empresa, revisá documentos y seguí tus solicitudes desde un solo lugar.{% elif is_lawyer %}Consultá expedientes, revisá la normativa laboral, prepará documentos y seguí los trámites asignados sin entrar en tareas de nómina que no corresponden a tu rol.{% else %}Accedé a mantenimientos, cálculos, informes, certificados y utilitarios sin buscar opciones entre menús dispersos.{% endif %}</p>
     </div>
     <div class="home-welcome-actions"><a class="btn outline" href="/app/guia">Guía de uso</a>
-      {% if is_company %}<a class="btn primary" href="/app/requests">+ Nueva solicitud</a>{% else %}<a class="btn primary" href="/app/companies?open=companyModal">+ Nueva empresa</a>{% endif %}
+      {% if is_company %}<a class="btn primary" href="/app/requests">+ Nueva solicitud</a>{% elif is_lawyer %}<a class="btn primary" href="/app/requests?assigned_filter=mine">Mis trámites asignados</a>{% elif user.role in ['administrador', 'contador'] %}<a class="btn primary" href="/app/companies?open=companyModal">+ Nueva empresa</a>{% else %}<a class="btn primary" href="/app/employees?open=employeeModal">+ Nuevo funcionario</a>{% endif %}
     </div>
   </section>
 
   {% if not is_company and companies_count == 0 %}
-  <section class="home-onboarding"><div class="home-onboarding-number">01</div><div class="home-onboarding-copy"><span class="eyebrow">CONFIGURACIÓN INICIAL</span><h2>Empezá por registrar una empresa</h2><p>Después podrás cargar funcionarios, registrar operaciones, emitir certificados y preparar informes.</p></div><a class="btn primary" href="/app/companies?open=companyModal">Registrar empresa</a></section>
+  <section class="home-onboarding"><div class="home-onboarding-number">01</div><div class="home-onboarding-copy"><span class="eyebrow">CONFIGURACIÓN INICIAL</span><h2>{% if user.role in ['administrador', 'contador'] %}Empezá por registrar una empresa{% else %}Todavía no hay expedientes vinculados{% endif %}</h2><p>{% if user.role in ['administrador', 'contador'] %}Después podrás cargar funcionarios, registrar operaciones, emitir certificados y preparar informes.{% else %}Solicitá al administrador del estudio que registre o vincule una empresa antes de comenzar tu trabajo.{% endif %}</p></div>{% if user.role in ['administrador', 'contador'] %}<a class="btn primary" href="/app/companies?open=companyModal">Registrar empresa</a>{% endif %}</section>
   {% endif %}
 
-  <section class="home-stat-grid" aria-label="Resumen del estudio">
+  <section class="home-stat-grid" aria-label="Resumen del espacio">
     {% if is_company %}
       <a class="home-stat" href="/app/companies"><span>Mi empresa</span><b>{{ companies_count }}</b><small>Expediente vinculado</small><i>↗</i></a>
       <a class="home-stat" href="/app/employees"><span>Funcionarios activos</span><b>{{ employee_count }}</b><small>Legajos disponibles</small><i>↗</i></a>
       <a class="home-stat {{ 'attention' if pending_count else '' }}" href="/app/requests"><span>Solicitudes</span><b>{{ pending_count }}</b><small>{{ 'En seguimiento' if pending_count else 'Sin pendientes' }}</small><i>↗</i></a>
-      <a class="home-stat" href="/app/documents"><span>Archivo digital</span><b>↗</b><small>Documentos compartidos</small><i>↗</i></a>
+      <a class="home-stat" href="/app/documents"><span>Archivo digital</span><b>{{ documents_count }}</b><small>Documentos compartidos</small><i>↗</i></a>
+    {% elif is_lawyer %}
+      <a class="home-stat" href="/app/companies"><span>Expedientes</span><b>{{ companies_count }}</b><small>Empresas vinculadas al estudio</small><i>↗</i></a>
+      <a class="home-stat" href="/app/employees"><span>Legajos consultables</span><b>{{ employee_count }}</b><small>Funcionarios activos</small><i>↗</i></a>
+      <a class="home-stat" href="/app/certificates"><span>Documentos laborales</span><b>{{ certificates_count }}</b><small>Documentos generados</small><i>↗</i></a>
+      <a class="home-stat {{ 'attention' if pending_count else '' }}" href="/app/requests?assigned_filter=mine"><span>Solicitudes</span><b>{{ pending_count }}</b><small>Trámites en seguimiento del estudio</small><i>↗</i></a>
     {% else %}
       <a class="home-stat" href="/app/companies"><span>Empresas</span><b>{{ companies_count }}</b><small>{% if studio %}{{ companies_count }}/{{ studio.company_limit }} del plan{% else %}Expedientes vinculados{% endif %}</small><i>↗</i></a>
       <a class="home-stat" href="/app/employees"><span>Funcionarios</span><b>{{ employee_count }}</b><small>Legajos registrados</small><i>↗</i></a>
@@ -35,7 +41,7 @@
     <div class="home-section-heading"><div><span class="eyebrow">NAVEGACIÓN PRINCIPAL</span><h2>Áreas de trabajo</h2></div><p>Elegí un área para ver sus funciones y subsecciones.</p></div>
     <div class="home-module-grid">
       <article class="home-module-card">
-        <header class="home-module-heading"><span class="home-module-number">01</span><div><h3>Mantenimientos</h3><p>Administración de empresas, funcionarios y datos base.</p></div></header>
+        <header class="home-module-heading"><span class="home-module-number">01</span><div><h3>Mantenimientos</h3><p>{% if is_lawyer %}Consulta de expedientes, funcionarios y antecedentes para el trabajo jurídico.{% else %}Administración de empresas, funcionarios y datos base.{% endif %}</p></div></header>
         <div class="home-module-links">
           <a href="/app/companies"><span><b>{{ 'Mi empresa' if is_company else 'Empresas' }}</b><small>Expedientes, RUC, sucursales e identidad</small></span><i>↗</i></a>
           <a href="/app/employees"><span><b>Funcionarios</b><small>Legajos, salarios, IPS e historial laboral</small></span><i>↗</i></a>
@@ -43,7 +49,7 @@
         </div>
       </article>
 
-      {% if not is_company %}
+      {% if user.role in ['administrador', 'contador', 'auxiliar'] %}
       <article class="home-module-card">
         <header class="home-module-heading"><span class="home-module-number">02</span><div><h3>Cálculo</h3><p>Cálculos laborales y operaciones por periodo.</p></div></header>
         <div class="home-module-links">
@@ -57,6 +63,8 @@
         </div>
       </article>
 
+      {% endif %}
+      {% if not is_company %}
       <article class="home-module-card">
         <header class="home-module-heading"><span class="home-module-number">03</span><div><h3>Informes</h3><p>Consulta, seguimiento y controles del estudio.</p></div></header>
         <div class="home-module-links">
@@ -83,7 +91,7 @@
           <a href="/app/notifications"><span><b>Notificaciones</b><small>Asignaciones, respuestas y avisos</small></span><i>↗</i></a>
           <a href="/herramientas/comparar"><span><b>Comparar escenarios</b><small>Contrastar resultados de dos supuestos</small></span><i>↗</i></a>
           <a href="/app/labor-code"><span><b>Código Laboral</b><small>Consulta jurídica de referencia</small></span><i>↗</i></a>
-          {% if user.role != 'empresa' %}<a href="/app/ai"><span><b>Asistente laboral</b><small>Ayuda para revisión y orientación</small></span><i>↗</i></a>{% endif %}
+          {% if user.role in ['administrador', 'contador', 'auxiliar'] %}<a href="/app/ai"><span><b>Asistente laboral</b><small>Ayuda para revisión y orientación</small></span><i>↗</i></a>{% endif %}
           <a href="/app/guia"><span><b>Guía de mi espacio</b><small>Instrucciones y recorridos por perfil</small></span><i>↗</i></a>
           <a href="/app/security"><span><b>Seguridad de la cuenta</b><small>Contraseña, sesiones y doble factor</small></span><i>↗</i></a>
           {% if user.role == 'administrador' %}<a data-download-action href="/app/export/studio.zip"><span><b>Respaldo del estudio</b><small>Exportación de datos y archivos</small></span><i>↗</i></a>{% endif %}
@@ -100,6 +108,12 @@
           {% if pending_count %}<a class="home-attention-item warning" href="/app/requests"><b>{{ pending_count }} solicitud(es) en seguimiento</b><small>Consultá el estado y revisá las respuestas.</small></a>{% endif %}
           {% if missing_logo_count and companies %}<a class="home-attention-item info" href="/app/companies/{{ companies[0].id }}?open=brandingModal"><b>Falta el logo de la empresa</b><small>Completá la identidad del expediente.</small></a>{% endif %}
           {% if not pending_count and not missing_logo_count %}<div class="home-attention-empty"><b>No hay pendientes destacados</b><small>Las novedades aparecerán aquí cuando existan.</small></div>{% endif %}
+        {% elif is_lawyer %}
+          {% set has_attention = compliance_overdue_count or pending_count or incomplete_company_count %}
+          {% if pending_count %}<a class="home-attention-item warning" href="/app/requests?assigned_filter=mine"><b>{{ pending_count }} solicitud(es) en seguimiento</b><small>Revisá trámites, respuestas y fechas límite.</small></a>{% endif %}
+          {% if compliance_overdue_count %}<a class="home-attention-item danger" href="/app/compliance"><b>{{ compliance_overdue_count }} obligación(es) con fecha superada</b><small>Consultá el estado del expediente y la evidencia disponible.</small></a>{% endif %}
+          {% if incomplete_company_count %}<a class="home-attention-item info" href="/app/companies"><b>{{ incomplete_company_count }} expediente(s) incompleto(s)</b><small>Faltan datos que podrían ser necesarios para preparar documentos.</small></a>{% endif %}
+          {% if not has_attention %}<div class="home-attention-empty"><b>No hay alertas jurídicas destacadas</b><small>Revisá los trámites asignados para confirmar los próximos pasos.</small><a href="/app/requests?assigned_filter=mine">Abrir mis trámites</a></div>{% endif %}
         {% else %}
           {% set has_attention = compliance_overdue_count or pending_count or payroll_count or missing_logo_count or incomplete_company_count or low_salary_count %}
           {% if compliance_overdue_count %}<a class="home-attention-item danger" href="/app/compliance"><b>{{ compliance_overdue_count }} vencimiento(s) REI / REOP</b><small>Revisá las obligaciones con fecha superada.</small></a>{% endif %}
@@ -119,7 +133,7 @@
         {% for company in companies[:5] %}
           <a href="/app/companies/{{ company.id }}"><span class="home-company-mark">{{ company.legal_name[:2]|upper }}</span><span class="home-recent-copy"><b>{{ company.legal_name }}</b><small>{{ company.city or 'Sin ciudad registrada' }} · {{ company.employees|length }} funcionario(s)</small></span><span class="status-pill {{ company.status|lower }}">{{ company.status }}</span></a>
         {% else %}
-          <div class="home-attention-empty"><b>No hay empresas registradas</b>{% if not is_company %}<a href="/app/companies?open=companyModal">Registrar la primera empresa</a>{% endif %}</div>
+          <div class="home-attention-empty"><b>No hay empresas registradas</b>{% if user.role in ['administrador', 'contador'] %}<a href="/app/companies?open=companyModal">Registrar la primera empresa</a>{% elif is_lawyer %}<small>Solicitá al administrador acceso a un expediente.</small>{% endif %}</div>
         {% endfor %}
       </div>
     </article>
