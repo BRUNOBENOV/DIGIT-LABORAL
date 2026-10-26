@@ -2869,7 +2869,7 @@ def apply_request(
             db, employee, user, "Vacaciones",
             f"Vacaciones utilizadas mediante solicitud #{item.id}",
             f"Se confirmaron {item.requested_days} día(s) de vacaciones del periodo {item.period_year}, del {item.start_date:%d/%m/%Y} al {item.end_date:%d/%m/%Y}.",
-            item.end_date, item.requested_days,
+            item.end_date, None,
         )
     elif request_kind in {"permiso/licencia", "permiso", "licencia"}:
         if not item.start_date or not item.end_date or not item.leave_type.strip():
