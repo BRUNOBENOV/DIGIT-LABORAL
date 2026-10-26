@@ -124,8 +124,25 @@ def test_lawyer_workspace_filters_assigned_cases_and_enforces_role_boundaries() 
         # Legal users can consult the case and draft documents, but cannot administer
         # users, create payrolls, or approve/reject labour requests.
         assert client.get("/app/requests/" + str(request_id)).status_code == 200
+        company_page = client.get("/app/companies/" + str(company_id))
+        assert company_page.status_code == 200
+        assert "Editar datos" not in company_page.text
+        assert "Agregar sucursal" not in company_page.text
+        assert 'href="/app/payrolls?company_id=' not in company_page.text
         assert client.get("/app/companies").status_code == 200
         assert client.get("/app/employees").status_code == 200
+        with SessionLocal() as db:
+            employee_id = db.scalar(
+                select(Employee.id)
+                .where(Employee.company_id == company_id)
+                .order_by(Employee.id)
+            )
+            assert employee_id is not None
+        employee_page = client.get("/app/employees/" + str(employee_id))
+        assert employee_page.status_code == 200
+        assert "Editar ficha" not in employee_page.text
+        assert "Registrar evento" not in employee_page.text
+        assert 'href="/app/calculations?company_id=' not in employee_page.text
         assert client.get("/app/documents").status_code == 200
         assert client.get("/app/certificates").status_code == 200
         assert 'href="/app/ai' not in client.get("/app/certificates").text
@@ -136,6 +153,18 @@ def test_lawyer_workspace_filters_assigned_cases_and_enforces_role_boundaries() 
         assert calendar.status_code == 200
         assert "+ Nuevo vencimiento" not in calendar.text
         assert not re.search(r'action="/app/calendar/\d+/status"', calendar.text)
+
+        reports = client.get("/app/reports")
+        assert reports.status_code == 200
+        assert "Informes del expediente" in reports.text
+        assert "Analizar con IA" not in reports.text
+        assert "Nuevo cálculo" not in reports.text
+        assert "Administrar" not in reports.text
+
+        compliance = client.get("/app/compliance")
+        assert compliance.status_code == 200
+        assert 'action="/app/compliance/events"' not in compliance.text
+        assert 'action="/app/compliance/company-profile"' not in compliance.text
 
         assert client.get("/app/users").status_code == 403
         assert client.get("/app/payrolls").status_code == 403
@@ -197,6 +226,12 @@ def test_employer_sees_request_centric_dashboard_without_staff_calculation_tools
         assert requests.status_code == 200
         assert 'name="status_filter"' not in requests.text
         assert 'name="assigned_filter"' not in requests.text
+
+        calendar = client.get("/app/calendar")
+        assert calendar.status_code == 200
+        assert "Agenda laboral" in home.text
+        assert "+ Nuevo vencimiento" not in calendar.text
+        assert not re.search(r'action="/app/calendar/\d+/status"', calendar.text)
 
         certificates = client.get("/app/certificates")
         assert certificates.status_code == 200
