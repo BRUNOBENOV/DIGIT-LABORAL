@@ -117,7 +117,7 @@
           <summary><span class="workspace-group-symbol">05</span><span class="workspace-group-name">Utilitarios</span><span class="workspace-group-chevron">⌄</span></summary>
           <div class="workspace-submenu">
             <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/requests') else '' }}" href="/app/requests">Solicitudes y trámites</a>
-            {% if user.role != 'empresa' %}<a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/calendar') else '' }}" href="/app/calendar">Agenda laboral</a>{% endif %}
+            <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/calendar') else '' }}" href="/app/calendar">Agenda laboral</a>
             <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/notifications') else '' }}" href="/app/notifications">Notificaciones <span class="notification-count" {% if not notification_unread_count %}hidden{% endif %}>{{ notification_unread_count if notification_unread_count < 100 else '99+' if notification_unread_count else '' }}</span></a>
             <a class="workspace-nav-link {{ 'active' if active_path.startswith('/herramientas/comparar') else '' }}" href="/herramientas/comparar">Comparar escenarios</a>
             <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/labor-code') else '' }}" href="/app/labor-code">Código Laboral</a>
