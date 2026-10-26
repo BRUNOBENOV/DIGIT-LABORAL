@@ -35,3 +35,5 @@ def test_rls_tenant_functions_pin_search_path(monkeypatch) -> None:
     assert "CREATE OR REPLACE FUNCTION public.digit_current_studio_id()" in sql
     assert "CREATE OR REPLACE FUNCTION public.digit_is_superadmin()" in sql
     assert sql.count("SET search_path = pg_catalog, pg_temp") == 2
+    assert sql.count("AS $digit$") == 2
+    assert sql.count("\n            $digit$") == 2
