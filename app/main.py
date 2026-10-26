@@ -2507,7 +2507,7 @@ def request_detail_page(
     comments = list(db.scalars(comments_query.order_by(RequestComment.created_at)))
     attachments = list(db.scalars(select(RequestAttachment).where(RequestAttachment.request_id == item.id).order_by(RequestAttachment.created_at.desc())))
     users = list(db.scalars(select(User).where(User.studio_id == user.studio_id, User.active.is_(True), User.role != "empresa").order_by(User.full_name))) if user.studio_id else []
-    return render(request, "request_detail.html", db, user, item=item, workflow=workflow, comments=comments, attachments=attachments, users=users)
+    return render(request, "request_detail.html", db, user, item=item, workflow=workflow, comments=comments, attachments=attachments, users=users, today=date.today())
 
 
 @app.post("/app/requests/{request_id}/comments")
