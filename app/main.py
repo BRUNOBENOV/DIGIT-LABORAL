@@ -2369,7 +2369,11 @@ def requests_page(
     request_type = request_type if request_type in allowed_types else ""
     if company_id not in company_ids:
         company_id = None
-    assigned_filter = "mine" if assigned_filter == "mine" and user.role != "empresa" else ""
+    # The lawyer workspace is assignment-based; query parameters cannot expose the full queue.
+    if user.role == "abogado":
+        assigned_filter = "mine"
+    else:
+        assigned_filter = "mine" if assigned_filter == "mine" and user.role != "empresa" else ""
     overdue_only = bool(overdue_only and user.role != "empresa")
 
     query = select(CompanyRequest).outerjoin(
@@ -2608,6 +2612,8 @@ def request_detail_page(
     if not item or item.company_id not in company_ids_for_user(db, user):
         raise HTTPException(404, "Solicitud no encontrada.")
     workflow = db.scalar(select(RequestWorkflow).where(RequestWorkflow.request_id == item.id))
+    if user.role == "abogado" and (not workflow or workflow.assigned_user_id != user.id):
+        raise HTTPException(404, "Solicitud no encontrada.")
     comments_query = select(RequestComment).where(RequestComment.request_id == item.id)
     if user.role == "empresa":
         comments_query = comments_query.where(RequestComment.visibility == "Empresa")
@@ -2626,6 +2632,10 @@ def add_request_comment(
     item = db.get(CompanyRequest, request_id)
     if not item or item.company_id not in company_ids_for_user(db, user):
         raise HTTPException(404)
+    if user.role == "abogado":
+        workflow = db.scalar(select(RequestWorkflow).where(RequestWorkflow.request_id == item.id))
+        if not workflow or workflow.assigned_user_id != user.id:
+            raise HTTPException(404)
     safe_visibility = "Empresa" if user.role == "empresa" else ("Interno" if visibility == "Interno" else "Empresa")
     body_value = body.strip()
     if not body_value:
@@ -2665,6 +2675,10 @@ async def add_request_attachment(
     item = db.get(CompanyRequest, request_id)
     if not item or item.company_id not in company_ids_for_user(db, user):
         raise HTTPException(404)
+    if user.role == "abogado":
+        workflow = db.scalar(select(RequestWorkflow).where(RequestWorkflow.request_id == item.id))
+        if not workflow or workflow.assigned_user_id != user.id:
+            raise HTTPException(404)
     content = await file.read(MAX_UPLOAD_SIZE + 1)
     if len(content) > MAX_UPLOAD_SIZE:
         raise HTTPException(413, "El archivo supera el máximo permitido de 10 MB.")
@@ -2720,6 +2734,10 @@ def download_request_attachment(
     attachment = db.get(RequestAttachment, attachment_id)
     if not item or item.company_id not in company_ids_for_user(db, user) or not attachment or attachment.request_id != item.id:
         raise HTTPException(404)
+    if user.role == "abogado":
+        workflow = db.scalar(select(RequestWorkflow).where(RequestWorkflow.request_id == item.id))
+        if not workflow or workflow.assigned_user_id != user.id:
+            raise HTTPException(404)
     storage_key = attachment.stored_name
     if attachment.content_bytes is not None:
         content = bytes(attachment.content_bytes)
@@ -2764,6 +2782,8 @@ def request_status(
     if not item or item.company_id not in company_ids_for_user(db, user):
         raise HTTPException(404)
     existing_workflow = db.scalar(select(RequestWorkflow).where(RequestWorkflow.request_id == item.id))
+    if user.role == "abogado" and (not existing_workflow or existing_workflow.assigned_user_id != user.id):
+        raise HTTPException(404, "Solicitud no encontrada.")
     if existing_workflow and existing_workflow.applied:
         raise HTTPException(409, "Este trámite ya fue aplicado y su historial no puede modificarse.")
     valid_statuses = {"Pendiente", "En revisión", "Falta información", "Procesando", "Aprobada", "Resuelta", "Rechazada"}
@@ -2776,7 +2796,9 @@ def request_status(
     if item.request_type.strip().casefold() == "cambio salarial" and status_value == "Resuelta":
         raise HTTPException(409, "Un cambio salarial debe aplicarse desde su acción específica o rechazarse; no se puede cerrar como resuelto sin actualizar el legajo.")
     due_date = _parse_optional_form_date(due_date_raw, "fecha límite")
-    assigned_user_id = _parse_optional_form_int(assigned_user_id_raw, "responsable", 1)
+    requested_assigned_user_id = _parse_optional_form_int(assigned_user_id_raw, "responsable", 1)
+    # Lawyers can work assigned cases, not assign or unassign them.
+    assigned_user_id = user.id if user.role == "abogado" else requested_assigned_user_id
     company = db.get(Company, item.company_id)
     previous_status = item.status
     previous_response = item.response
