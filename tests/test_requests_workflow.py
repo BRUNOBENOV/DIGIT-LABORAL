@@ -788,6 +788,13 @@ def test_vacation_balance_endpoint_and_approval_reservation():
             follow_redirects=False,
         )
         assert approved.status_code == 303
+        csrf = token_from_page(client, f"/app/requests/{request_id}")
+        premature_usage = client.post(
+            f"/app/requests/{request_id}/apply",
+            data={"csrf_token": csrf},
+            follow_redirects=False,
+        )
+        assert premature_usage.status_code == 409
         after_approval = client.get(
             "/app/requests/vacation-balance",
             params={"employee_id": employee_id, "period_year": period_year},
