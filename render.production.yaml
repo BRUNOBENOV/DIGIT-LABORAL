@@ -61,12 +61,28 @@ services:
         sync: false
       - key: SMTP_FROM_NAME
         value: "Digit Laboral"
+      - key: NOTIFICATION_CRON_TOKEN
+        sync: false
       - key: AI_ENABLED
         value: "false"
       - key: REI_DIRECT_ENABLED
         value: "false"
       - key: REOP_DIRECT_ENABLED
         value: "false"
+  - type: cron
+    name: digit-laboral-notification-cron-production
+    runtime: docker
+    plan: 0.5c-512mb
+    region: oregon
+    schedule: "0 * * * *"
+    dockerContext: "."
+    dockerfilePath: "./Dockerfile"
+    dockerCommand: "python scripts/notification_cron.py"
+    envVars:
+      - key: PUBLIC_URL
+        sync: false
+      - key: NOTIFICATION_CRON_TOKEN
+        sync: false
 databases:
   - name: digit-laboral-production-db
     plan: basic-256mb

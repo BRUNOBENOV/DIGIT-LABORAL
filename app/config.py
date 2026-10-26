@@ -36,6 +36,7 @@ class Settings:
     smtp_from_email: str = os.getenv("SMTP_FROM_EMAIL", "")
     smtp_from_name: str = os.getenv("SMTP_FROM_NAME", "Digit Laboral")
     smtp_use_tls: bool = _bool("SMTP_USE_TLS", "true")
+    notification_cron_token: str = os.getenv("NOTIFICATION_CRON_TOKEN", "").strip()
     rls_enabled: bool = _bool("RLS_ENABLED")
     rls_force: bool = _bool("RLS_FORCE")
     csrf_enabled: bool = _bool("CSRF_ENABLED")

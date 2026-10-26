@@ -69,6 +69,7 @@
         <label>Días solicitados<input name="requested_days" type="number" min="1" step="1" placeholder="Cantidad de días"></label>
         <label>Desde<input name="start_date" type="date"></label>
         <label>Hasta<input name="end_date" type="date"></label>
+        <div class="v24-vacation-reference span-2" id="requestVacationBalance" role="status" aria-live="polite" hidden>Seleccioná funcionario y periodo para consultar el saldo disponible.</div>
       </div>
       <div class="span-2 request-kind-fields" data-kinds="Permiso/licencia">
         <label>Tipo de permiso/licencia
@@ -88,6 +89,9 @@
   const type = document.getElementById('requestType');
   const company = document.getElementById('requestCompany');
   const employee = document.getElementById('requestEmployee');
+  const periodYear = document.querySelector('#requestCreateForm [name="period_year"]');
+  const requestedDays = document.querySelector('#requestCreateForm [name="requested_days"]');
+  const balancePanel = document.getElementById('requestVacationBalance');
   if (!type || !company || !employee) return;
   const requiredByType = {
     'Cambio salarial': ['employee_id', 'amount', 'effective_date'],
@@ -114,9 +118,51 @@
       if (!visible && option.selected) employee.value = '';
     });
   };
-  type.addEventListener('change', updateFields);
-  company.addEventListener('change', filterEmployees);
-  updateFields(); filterEmployees();
+  let currentBalance = null;
+  let balanceSequence = 0;
+  const refreshVacationBalance = async () => {
+    if (!balancePanel || type.value !== 'Vacaciones') {
+      if (balancePanel) balancePanel.hidden = true;
+      currentBalance = null;
+      return;
+    }
+    balancePanel.hidden = false;
+    currentBalance = null;
+    if (!employee.value || !periodYear.value) {
+      balancePanel.textContent = 'Seleccioná funcionario y periodo para consultar el saldo disponible.';
+      return;
+    }
+    const sequence = ++balanceSequence;
+    balancePanel.textContent = 'Consultando saldo de vacaciones…';
+    try {
+      const query = new URLSearchParams({employee_id: employee.value, period_year: periodYear.value});
+      const response = await fetch('/app/requests/vacation-balance?' + query.toString(), {
+        headers: {'Accept': 'application/json'}, credentials: 'same-origin'
+      });
+      const data = await response.json();
+      if (sequence !== balanceSequence) return;
+      if (!response.ok) {
+        balancePanel.textContent = data.detail || 'No se pudo consultar el saldo. Se validará de nuevo al enviar.';
+        return;
+      }
+      currentBalance = data;
+      const available = Math.max(0, Number(data.available_days) || 0);
+      const days = Number.parseInt(requestedDays.value || '0', 10) || 0;
+      balancePanel.textContent = 'Saldo disponible: ' + available + ' día(s). Concedidos: ' + data.entitled_days +
+        '; utilizados: ' + data.used_days + '; reservados por otras solicitudes aprobadas: ' + data.reserved_days + '.' +
+        (days > available
+          ? ' La solicitud de ' + days + ' día(s) supera el saldo disponible.'
+          : ' La aprobación reserva los días; solo se descuentan como utilizados al confirmar la finalización del periodo.');
+    } catch (_) {
+      if (sequence === balanceSequence) balancePanel.textContent = 'No se pudo consultar el saldo. Se validará de nuevo al enviar.';
+    }
+  };
+  type.addEventListener('change', () => { updateFields(); refreshVacationBalance(); });
+  company.addEventListener('change', () => { filterEmployees(); refreshVacationBalance(); });
+  employee.addEventListener('change', refreshVacationBalance);
+  if (periodYear) periodYear.addEventListener('input', refreshVacationBalance);
+  if (requestedDays) requestedDays.addEventListener('input', refreshVacationBalance);
+  updateFields(); filterEmployees(); refreshVacationBalance();
 })();
 </script>
 {% endblock %}

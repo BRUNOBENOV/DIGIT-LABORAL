@@ -1,10 +1,10 @@
-# Digit Laboral 2.4.0
+# Digit Laboral 2.5.0
 
 Plataforma de gestión y cumplimiento laboral para estudios contables paraguayos.
 
 ## Alcance de la versión
 
-Digit Laboral 2.4.0 integra:
+Digit Laboral 2.5.0 integra:
 
 - estudios, empresas y sucursales;
 - funcionarios y expedientes digitales;
@@ -105,13 +105,17 @@ El centro de cumplimiento permite:
 
 Documentación: `REI_REOP_INTEGRATION.md`.
 
-## Solicitudes y notificaciones
+## Solicitudes, vacaciones y notificaciones
+
+- Las solicitudes de vacaciones consultan el saldo anual antes de enviarse y vuelven a validarlo al aprobarse para evitar reservas por encima del saldo disponible.
+- Los días aprobados quedan reservados; solo pasan a usados cuando finaliza el periodo y el estudio confirma su utilización. Los permisos/licencias se incorporan a la línea de tiempo del funcionario una vez finalizados.
+- El trabajador periódico se ejecuta cada hora a través de `scripts/notification_cron.py`, que invoca `/internal/cron/notifications` con un token Bearer. Configurá el mismo secreto `NOTIFICATION_CRON_TOKEN` en el servicio web y en el Cron Job de Render. Sin ese secreto, el endpoint no ejecuta el procesamiento.
 
 - Las solicitudes admiten campos estructurados para funcionario, fecha efectiva, periodo, días, importe y permisos/licencias.
 - La bandeja de notificaciones es individual y persistente, con lectura/no lectura, filtros y enlaces al trámite.
 - La creación, asignación, comentarios, adjuntos y decisiones generan avisos según roles y visibilidad.
 - Los cambios salariales requieren aprobación explícita; su aplicación registra el historial salarial y la auditoría.
-- Si SMTP está configurado, los correos se registran en una cola persistente y se intentan enviar en segundo plano. Para recuperar entregas pendientes y generar recordatorios por vencimiento, ejecutá diariamente `python -m app.notification_worker` como Render Cron Job, con las mismas variables de entorno seguras del servicio web.
+- Si SMTP está configurado, los correos se registran en una cola persistente y se intentan enviar en segundo plano. El Cron Job horario llama al endpoint autenticado del servicio web para generar recordatorios y procesar la cola usando la configuración SMTP ya definida en el servicio.
 - Si SMTP no está configurado, las notificaciones internas siguen funcionando.
 
 ## Seguridad

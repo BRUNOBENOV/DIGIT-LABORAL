@@ -265,7 +265,7 @@ class CSRFMiddleware:
             return
         method = scope.get("method", "GET").upper()
         path = scope.get("path", "")
-        protected = method in {"POST", "PUT", "PATCH", "DELETE"} and path not in {"/health", "/health/live", "/health/ready"}
+        protected = method in {"POST", "PUT", "PATCH", "DELETE"} and path not in {"/health", "/health/live", "/health/ready", "/internal/cron/notifications"}
         session = scope.get("session") or {}
         expected = session.get("csrf_token", "")
         if not protected:
@@ -2173,6 +2173,26 @@ def _sync_due_notifications_for_user(
 
 
 
+@app.post("/internal/cron/notifications")
+def run_notification_cron(request: Request):
+    """Run periodic notices using the web service's existing database and SMTP settings."""
+    expected = settings.notification_cron_token
+    authorization = request.headers.get("authorization", "")
+    supplied = authorization[7:].strip() if authorization.lower().startswith("bearer ") else ""
+    if not expected or not supplied or not hmac.compare_digest(expected, supplied):
+        raise HTTPException(401, "Autorización de trabajador inválida.")
+
+    request_notices = create_due_request_notifications()
+    certificate_notices = create_due_official_certificate_notifications()
+    deliveries = dispatch_notification_outbox()
+    return JSONResponse({
+        "ok": True,
+        "request_notices_created": request_notices,
+        "certificate_notices_created": certificate_notices,
+        "deliveries": deliveries,
+    })
+
+
 @app.get("/app/notifications", response_class=HTMLResponse)
 def notifications_page(
     request: Request,
@@ -2285,6 +2305,73 @@ def requests_page(request: Request, user: User = Depends(require_user), db: Sess
     return render(request, "requests.html", db, user, items=items, companies=companies, employees=employees, workflow_by_request=workflow_by_request, pending=pending, overdue=overdue)
 
 
+def _vacation_balance(
+    db: Session, employee_id: int, period_year: int, *, excluding_request_id: int | None = None,
+) -> dict[str, int]:
+    """Calculate annual entitlement minus used days and active approved reservations."""
+    ledger_rows = list(db.scalars(
+        select(Vacation).where(
+            Vacation.employee_id == employee_id,
+            Vacation.period_year == period_year,
+            Vacation.status.notin_(("Rechazada", "Anulada", "Cancelada")),
+        ).order_by(Vacation.created_at, Vacation.id)
+    ))
+    entitled = sum(max(0, int(row.entitled_days or 0)) for row in ledger_rows)
+    used = sum(max(0, int(row.used_days or 0)) for row in ledger_rows)
+
+    reservation_query = select(CompanyRequest).where(
+        CompanyRequest.employee_id == employee_id,
+        CompanyRequest.period_year == period_year,
+        CompanyRequest.status == "Aprobada",
+    )
+    if excluding_request_id is not None:
+        reservation_query = reservation_query.where(CompanyRequest.id != excluding_request_id)
+    reservations = list(db.scalars(reservation_query))
+    reserved = 0
+    for request_item in reservations:
+        if request_item.request_type.strip().casefold() != "vacaciones":
+            continue
+        workflow = db.scalar(select(RequestWorkflow).where(RequestWorkflow.request_id == request_item.id))
+        if workflow and workflow.applied:
+            continue
+        reserved += max(0, int(request_item.requested_days or 0))
+
+    return {
+        "entitled_days": entitled,
+        "used_days": used,
+        "reserved_days": reserved,
+        "available_days": entitled - used - reserved,
+    }
+
+
+def _validate_vacation_balance(db: Session, item: CompanyRequest) -> None:
+    if (
+        not item.employee_id or not item.period_year or not item.requested_days
+        or not item.start_date or not item.end_date
+    ):
+        raise HTTPException(400, "La solicitud de vacaciones necesita funcionario, periodo, días y fechas válidas.")
+    balance = _vacation_balance(db, item.employee_id, item.period_year, excluding_request_id=item.id)
+    if balance["entitled_days"] <= 0:
+        raise HTTPException(409, "No hay saldo anual cargado para ese funcionario y periodo. Registrá primero su derecho de vacaciones.")
+    if item.requested_days > balance["available_days"]:
+        raise HTTPException(
+            409,
+            f"Saldo insuficiente: hay {max(0, balance['available_days'])} días disponibles y la solicitud requiere {item.requested_days}.",
+        )
+
+
+@app.get("/app/requests/vacation-balance")
+def request_vacation_balance(
+    employee_id: int, period_year: int, user: User = Depends(require_user), db: Session = Depends(get_db),
+):
+    employee = db.get(Employee, employee_id)
+    if not employee or employee.company_id not in company_ids_for_user(db, user):
+        raise HTTPException(404, "Funcionario no encontrado.")
+    if not 1900 <= period_year <= date.today().year + 2:
+        raise HTTPException(400, "El año del periodo no es válido.")
+    return JSONResponse(_vacation_balance(db, employee_id, period_year))
+
+
 @app.post("/app/requests")
 def add_request(
     background_tasks: BackgroundTasks,
@@ -2357,6 +2444,11 @@ def add_request(
             raise HTTPException(400, "Una solicitud de vacaciones requiere funcionario, periodo, días solicitados y fechas desde/hasta.")
         if requested_days > 365:
             raise HTTPException(400, "Los días solicitados de vacaciones no pueden superar 365.")
+        balance = _vacation_balance(db, employee.id, period_year)
+        if balance["entitled_days"] <= 0:
+            raise HTTPException(409, "No hay saldo anual cargado para ese funcionario y periodo. Registrá primero su derecho de vacaciones.")
+        if requested_days > balance["available_days"]:
+            raise HTTPException(400, f"Saldo insuficiente: hay {max(0, balance['available_days'])} días disponibles para el periodo solicitado.")
     elif request_kind in {"permiso/licencia", "permiso", "licencia"}:
         if not employee or not leave_type_raw.strip() or not start_date or not end_date:
             raise HTTPException(400, "Un permiso o licencia requiere funcionario, tipo de permiso y fechas desde/hasta.")
@@ -2415,7 +2507,7 @@ def request_detail_page(
     comments = list(db.scalars(comments_query.order_by(RequestComment.created_at)))
     attachments = list(db.scalars(select(RequestAttachment).where(RequestAttachment.request_id == item.id).order_by(RequestAttachment.created_at.desc())))
     users = list(db.scalars(select(User).where(User.studio_id == user.studio_id, User.active.is_(True), User.role != "empresa").order_by(User.full_name))) if user.studio_id else []
-    return render(request, "request_detail.html", db, user, item=item, workflow=workflow, comments=comments, attachments=attachments, users=users)
+    return render(request, "request_detail.html", db, user, item=item, workflow=workflow, comments=comments, attachments=attachments, users=users, today=date.today())
 
 
 @app.post("/app/requests/{request_id}/comments")
@@ -2554,6 +2646,8 @@ def request_status(
         raise HTTPException(400, "Estado inválido.")
     if status_value in {"Aprobada", "Rechazada"} and user.role not in {"administrador", "contador"}:
         raise HTTPException(403, "Solo un administrador o contador puede aprobar o rechazar un trámite.")
+    if status_value == "Aprobada" and item.request_type.strip().casefold() == "vacaciones":
+        _validate_vacation_balance(db, item)
     if item.request_type.strip().casefold() == "cambio salarial" and status_value == "Resuelta":
         raise HTTPException(409, "Un cambio salarial debe aplicarse desde su acción específica o rechazarse; no se puede cerrar como resuelto sin actualizar el legajo.")
     due_date = _parse_optional_form_date(due_date_raw, "fecha límite")
@@ -2631,6 +2725,8 @@ def review_request(
         raise HTTPException(404, "Solicitud no encontrada.")
     if status_value not in {"Aprobada", "Rechazada", "En revisión", "Falta información"}:
         raise HTTPException(400, "La decisión seleccionada no es válida.")
+    if status_value == "Aprobada" and item.request_type.strip().casefold() == "vacaciones":
+        _validate_vacation_balance(db, item)
     existing_workflow = db.scalar(select(RequestWorkflow).where(RequestWorkflow.request_id == item.id))
     if existing_workflow and existing_workflow.applied:
         raise HTTPException(409, "Este trámite ya fue aplicado y no admite nuevas decisiones.")
@@ -2711,41 +2807,106 @@ def apply_request(
         return RedirectResponse(f"/app/requests/{item.id}", status_code=303)
     if item.status != "Aprobada" or not workflow or not workflow.approved_at:
         raise HTTPException(409, "El trámite debe estar aprobado antes de aplicarse.")
-    if item.request_type.strip().casefold() != "cambio salarial":
-        raise HTTPException(400, "La aplicación automática está habilitada únicamente para cambios salariales. Los demás trámites deben completarse desde su módulo correspondiente.")
+    request_kind = item.request_type.strip().casefold()
     employee = db.get(Employee, item.employee_id) if item.employee_id else None
-    if (
-        not employee or employee.company_id != item.company_id
-        or item.amount is None or item.amount <= 0 or item.amount > 2147483647
-        or item.effective_date is None
-    ):
-        raise HTTPException(400, "La solicitud salarial necesita un funcionario, un salario mensual positivo y una fecha efectiva válida.")
-    previous_salary = employee.base_salary
-    effective_from = item.effective_date or date.today()
-    employee.base_salary = item.amount
-    db.add(SalaryHistory(
-        employee_id=employee.id,
-        previous_salary=previous_salary,
-        new_salary=item.amount,
-        effective_from=effective_from,
-        reason=f"Cambio salarial aprobado mediante solicitud #{item.id}",
-        created_by=user.email,
-    ))
-    add_employee_event(
-        db, employee, user, "Salario",
-        f"Cambio salarial aplicado por solicitud #{item.id}",
-        f"Salario anterior: {previous_salary}; nuevo salario: {item.amount}.",
-        effective_from, item.amount,
-    )
+    if not employee or employee.company_id != item.company_id:
+        raise HTTPException(400, "La solicitud requiere un funcionario válido de la misma empresa.")
+
+    if request_kind == "cambio salarial":
+        if (
+            item.amount is None or item.amount <= 0 or item.amount > 2147483647
+            or item.effective_date is None
+        ):
+            raise HTTPException(400, "La solicitud salarial necesita un salario mensual positivo y una fecha efectiva válida.")
+        previous_salary = employee.base_salary
+        effective_from = item.effective_date
+        employee.base_salary = item.amount
+        db.add(SalaryHistory(
+            employee_id=employee.id,
+            previous_salary=previous_salary,
+            new_salary=item.amount,
+            effective_from=effective_from,
+            reason=f"Cambio salarial aprobado mediante solicitud #{item.id}",
+            created_by=user.email,
+        ))
+        add_employee_event(
+            db, employee, user, "Salario",
+            f"Cambio salarial aplicado por solicitud #{item.id}",
+            f"Salario anterior: {previous_salary}; nuevo salario: {item.amount}.",
+            effective_from, item.amount,
+        )
+    elif request_kind == "vacaciones":
+        if (
+            item.period_year is None or item.requested_days is None or item.requested_days <= 0
+            or item.start_date is None or item.end_date is None
+        ):
+            raise HTTPException(400, "La solicitud de vacaciones necesita periodo, días y fechas válidas.")
+        if item.end_date > date.today():
+            raise HTTPException(409, "Los días de vacaciones se registran como utilizados solo después de finalizar el periodo aprobado.")
+        _validate_vacation_balance(db, item)
+        ledger_rows = list(db.scalars(
+            select(Vacation).where(
+                Vacation.employee_id == employee.id,
+                Vacation.period_year == item.period_year,
+                Vacation.status.notin_(("Rechazada", "Anulada", "Cancelada")),
+            ).order_by(Vacation.created_at, Vacation.id)
+        ))
+        remaining_to_allocate = item.requested_days
+        for ledger in ledger_rows:
+            capacity = max(0, int(ledger.entitled_days or 0) - int(ledger.used_days or 0))
+            if capacity <= 0:
+                continue
+            used_now = min(capacity, remaining_to_allocate)
+            ledger.used_days = int(ledger.used_days or 0) + used_now
+            note = f"Uso confirmado mediante solicitud #{item.id}: {used_now} día(s), {item.start_date:%d/%m/%Y}–{item.end_date:%d/%m/%Y}."
+            ledger.notes = f"{ledger.notes.rstrip()}\n{note}".strip()
+            remaining_to_allocate -= used_now
+            if remaining_to_allocate == 0:
+                break
+        if remaining_to_allocate:
+            raise HTTPException(409, "No se pudo asignar el uso al saldo anual. Revisá los registros de vacaciones del periodo.")
+        add_employee_event(
+            db, employee, user, "Vacaciones",
+            f"Vacaciones utilizadas mediante solicitud #{item.id}",
+            f"Se confirmaron {item.requested_days} día(s) de vacaciones del periodo {item.period_year}, del {item.start_date:%d/%m/%Y} al {item.end_date:%d/%m/%Y}.",
+            item.end_date, None,
+        )
+    elif request_kind in {"permiso/licencia", "permiso", "licencia"}:
+        if not item.start_date or not item.end_date or not item.leave_type.strip():
+            raise HTTPException(400, "El permiso o licencia necesita tipo y fechas válidas.")
+        if item.end_date > date.today():
+            raise HTTPException(409, "El permiso o licencia se registra en el expediente una vez finalizado el periodo aprobado.")
+        hours_text = f" Duración declarada: {item.hours_requested} hora(s)." if item.hours_requested is not None else ""
+        add_employee_event(
+            db, employee, user, "Permiso",
+            f"{item.leave_type} registrado mediante solicitud #{item.id}",
+            f"Periodo: {item.start_date:%d/%m/%Y}–{item.end_date:%d/%m/%Y}.{hours_text} Motivo: {item.detail}",
+            item.end_date, None,
+        )
+    else:
+        raise HTTPException(400, "La aplicación de este tipo de trámite debe realizarse desde su módulo específico.")
     workflow.applied = True
     workflow.applied_at = datetime.now(UTC)
     item.status = "Aplicada"
     item.resolved_at = workflow.applied_at
-    write_audit(db, user, "aplicar_solicitud", "solicitud", str(item.id), f"{previous_salary} → {item.amount}")
+    if request_kind == "cambio salarial":
+        audit_detail = f"{previous_salary} → {item.amount}"
+    elif request_kind == "vacaciones":
+        audit_detail = f"{item.requested_days} días utilizados; periodo {item.period_year}"
+    else:
+        audit_detail = f"{item.leave_type}; {item.start_date:%d/%m/%Y}–{item.end_date:%d/%m/%Y}"
+    write_audit(db, user, "aplicar_solicitud", "solicitud", str(item.id), audit_detail)
+    applied_message = {
+        "cambio salarial": "El cambio salarial aprobado fue aplicado al legajo del funcionario.",
+        "vacaciones": f"Se confirmaron {item.requested_days} día(s) de vacaciones como utilizados y se actualizó el saldo del periodo {item.period_year}.",
+        "permiso/licencia": "El permiso/licencia aprobado quedó registrado en la línea de tiempo del funcionario.",
+        "permiso": "El permiso aprobado quedó registrado en la línea de tiempo del funcionario.",
+        "licencia": "La licencia aprobada quedó registrada en la línea de tiempo del funcionario.",
+    }.get(request_kind, "El trámite aprobado fue aplicado al expediente laboral.")
     _notify_request_counterpart(
         db, background_tasks, item, user,
         event_type="solicitud_aplicada", title=f"Trámite completado · Solicitud #{item.id}",
-        body="El cambio salarial aprobado fue aplicado al legajo del funcionario.",
+        body=applied_message,
     )
     db.commit()
     return RedirectResponse(f"/app/requests/{item.id}", status_code=303)
