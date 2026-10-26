@@ -109,13 +109,13 @@ Documentación: `REI_REOP_INTEGRATION.md`.
 
 - Las solicitudes de vacaciones consultan el saldo anual antes de enviarse y vuelven a validarlo al aprobarse para evitar reservas por encima del saldo disponible.
 - Los días aprobados quedan reservados; solo pasan a usados cuando finaliza el periodo y el estudio confirma su utilización. Los permisos/licencias se incorporan a la línea de tiempo del funcionario una vez finalizados.
-- El trabajador periódico se ejecuta cada hora a través de `scripts/notification_cron.py`, que invoca `/internal/cron/notifications` con un token Bearer. Configurá el mismo secreto `NOTIFICATION_CRON_TOKEN` en el servicio web y en el Cron Job de Render. Sin ese secreto, el endpoint no ejecuta el procesamiento.
+- El propio servicio web ejecuta recordatorios y recuperación de entregas cada hora mientras el proceso está activo, sin crear un servicio de pago adicional. En el plan gratuito de Render la aplicación puede entrar en suspensión por inactividad; al reiniciarse, el trabajador vuelve a ejecutarse. Para una ejecución garantizada incluso durante la suspensión, se requiere un programador externo.
 
 - Las solicitudes admiten campos estructurados para funcionario, fecha efectiva, periodo, días, importe y permisos/licencias.
 - La bandeja de notificaciones es individual y persistente, con lectura/no lectura, filtros y enlaces al trámite.
 - La creación, asignación, comentarios, adjuntos y decisiones generan avisos según roles y visibilidad.
 - Los cambios salariales requieren aprobación explícita; su aplicación registra el historial salarial y la auditoría.
-- Si SMTP está configurado, los correos se registran en una cola persistente y se intentan enviar en segundo plano. El Cron Job horario llama al endpoint autenticado del servicio web para generar recordatorios y procesar la cola usando la configuración SMTP ya definida en el servicio.
+- Si SMTP está configurado, los correos se registran en una cola persistente y se intentan enviar en segundo plano. El barrido horario genera recordatorios y procesa la cola usando la configuración SMTP del servicio. El endpoint `/internal/cron/notifications` permanece protegido por `NOTIFICATION_CRON_TOKEN` para permitir un programador externo en el futuro.
 - Si SMTP no está configurado, las notificaciones internas siguen funcionando.
 
 ## Seguridad
