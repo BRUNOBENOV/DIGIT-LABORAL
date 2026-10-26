@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import logging
 import smtplib
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from email.message import EmailMessage
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from .config import settings
@@ -56,61 +56,104 @@ def create_notification(
 
 
 def send_notification_delivery(delivery_id: int, studio_id: int | None = None) -> bool:
-    """Deliver one queued email after the business transaction commits."""
+    """Deliver one queued email with an atomic claim to prevent concurrent sends."""
+    now = datetime.now(UTC)
     with SessionLocal() as db:
         db.info["studio_id"] = studio_id
         db.info["is_superadmin"] = False
         apply_session_tenant_context(db)
         delivery = db.get(NotificationDelivery, delivery_id)
-        if not delivery or delivery.status == "Enviado" or delivery.status == "Enviando":
-            return delivery is not None and delivery.status == "Enviado"
+        if not delivery:
+            return False
+        if delivery.status == "Enviado":
+            return True
+        if delivery.status == "Enviando":
+            # An active worker owns this delivery. A scheduled sweep recovers it
+            # only after it has remained in this state past the stale threshold.
+            return False
         if delivery.attempts >= 5:
             delivery.status = "Fallido"
+            delivery.last_error = delivery.last_error or "Se agotaron los intentos de entrega."
+            delivery.updated_at = now
             db.commit()
             return False
+
         notification = db.get(Notification, delivery.notification_id)
         recipient = db.get(User, notification.recipient_user_id) if notification else None
         if not notification or not recipient or not recipient.active or not recipient.email:
             delivery.status = "Fallido"
             delivery.last_error = "Destinatario o notificación no disponible."
+            delivery.updated_at = now
             db.commit()
             return False
         if not settings.smtp_host or not settings.smtp_from_email:
             delivery.status = "Pendiente"
             delivery.last_error = "SMTP no está configurado."
+            delivery.updated_at = now
             db.commit()
             return False
-        delivery.status = "Enviando"
-        delivery.attempts += 1
-        delivery.updated_at = datetime.now(UTC)
+
+        # Claim only if the row is still eligible. Concurrent workers attempting
+        # the same ID cannot both transition it from Pendiente/Fallido to Enviando.
+        claim = db.execute(
+            update(NotificationDelivery)
+            .where(
+                NotificationDelivery.id == delivery_id,
+                NotificationDelivery.status.in_(("Pendiente", "Fallido")),
+                NotificationDelivery.attempts < 5,
+            )
+            .values(
+                status="Enviando",
+                attempts=NotificationDelivery.attempts + 1,
+                last_error="",
+                updated_at=now,
+            )
+            .execution_options(synchronize_session=False)
+        )
+        if claim.rowcount != 1:
+            db.rollback()
+            current = db.get(NotificationDelivery, delivery_id)
+            return bool(current and current.status == "Enviado")
         db.commit()
+
         recipient_email = recipient.email
         subject = f"Digit Laboral: {notification.title}"
         body = (
             f"{notification.title}\n\n{notification.body}\n\n"
             f"Abrí Digit Laboral para continuar: {settings.public_url}{notification.target_url}\n"
         )
+        smtp_host = settings.smtp_host
+        smtp_port = settings.smtp_port
+        smtp_use_tls = settings.smtp_use_tls
+        smtp_username = settings.smtp_username
+        smtp_password = settings.smtp_password
+        smtp_from_email = settings.smtp_from_email
+        smtp_from_name = settings.smtp_from_name
 
     message = EmailMessage()
     message["Subject"] = subject[:200]
-    message["From"] = f"{settings.smtp_from_name} <{settings.smtp_from_email}>"
+    message["From"] = f"{smtp_from_name} <{smtp_from_email}>"
     message["To"] = recipient_email
     message.set_content(body)
     try:
-        with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=20) as smtp:
-            if settings.smtp_use_tls:
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=20) as smtp:
+            if smtp_use_tls:
                 smtp.starttls()
-            if settings.smtp_username:
-                smtp.login(settings.smtp_username, settings.smtp_password)
+            if smtp_username:
+                smtp.login(smtp_username, smtp_password)
             smtp.send_message(message)
     except Exception as exc:
-        logger.warning("Notification email delivery failed: %s", str(exc)[:250], extra={"delivery_id": delivery_id})
+        logger.warning(
+            "Notification email delivery failed: %s",
+            str(exc)[:250],
+            extra={"delivery_id": delivery_id},
+        )
         with SessionLocal() as db:
             db.info["studio_id"] = studio_id
             db.info["is_superadmin"] = False
             apply_session_tenant_context(db)
             delivery = db.get(NotificationDelivery, delivery_id)
-            if delivery:
+            if delivery and delivery.status == "Enviando":
                 delivery.status = "Fallido" if delivery.attempts >= 5 else "Pendiente"
                 delivery.last_error = str(exc)[:1000]
                 delivery.updated_at = datetime.now(UTC)
@@ -122,7 +165,7 @@ def send_notification_delivery(delivery_id: int, studio_id: int | None = None) -
         db.info["is_superadmin"] = False
         apply_session_tenant_context(db)
         delivery = db.get(NotificationDelivery, delivery_id)
-        if delivery:
+        if delivery and delivery.status == "Enviando":
             delivery.status = "Enviado"
             delivery.last_error = ""
             delivery.sent_at = datetime.now(UTC)
@@ -132,8 +175,11 @@ def send_notification_delivery(delivery_id: int, studio_id: int | None = None) -
 
 
 def dispatch_notification_outbox(limit: int = 100) -> dict[str, int]:
-    """Retry pending or transiently failed SMTP messages across tenant scopes."""
+    """Recover interrupted sends, then dispatch eligible notifications across tenants."""
     pending: list[tuple[datetime, int, int | None]] = []
+    now = datetime.now(UTC)
+    stale_before = now - timedelta(minutes=15)
+    per_tenant_limit = max(1, min(limit, 500))
     with SessionLocal() as db:
         # Studios are not row-level protected; set each tenant context before
         # touching tenant-scoped notification tables.
@@ -142,15 +188,38 @@ def dispatch_notification_outbox(limit: int = 100) -> dict[str, int]:
             db.info["studio_id"] = studio_id
             db.info["is_superadmin"] = False
             apply_session_tenant_context(db)
+
+            # A worker may be terminated while its email is being sent. Recover
+            # only claims that have been untouched for 15 minutes; keep attempt
+            # counts so repeated process crashes eventually stop retrying.
+            stale = list(db.scalars(
+                select(NotificationDelivery).where(
+                    NotificationDelivery.status == "Enviando",
+                    NotificationDelivery.updated_at < stale_before,
+                )
+            ))
+            for item in stale:
+                item.updated_at = now
+                if item.attempts >= 5:
+                    item.status = "Fallido"
+                    item.last_error = "El envío quedó interrumpido y agotó los intentos permitidos."
+                else:
+                    item.status = "Pendiente"
+                    item.last_error = "El envío anterior quedó interrumpido; se reintentará."
+            db.commit()
+
             rows = list(db.scalars(
                 select(NotificationDelivery)
-                .where(NotificationDelivery.status.in_(("Pendiente", "Fallido")), NotificationDelivery.attempts < 5)
+                .where(
+                    NotificationDelivery.status.in_(("Pendiente", "Fallido")),
+                    NotificationDelivery.attempts < 5,
+                )
                 .order_by(NotificationDelivery.created_at, NotificationDelivery.id)
-                .limit(max(1, min(limit, 500)))
+                .limit(per_tenant_limit)
             ))
             pending.extend((item.created_at, item.id, studio_id) for item in rows)
     pending.sort(key=lambda row: (row[0], row[1]))
-    pending = pending[:max(1, min(limit, 500))]
+    pending = pending[:per_tenant_limit]
     sent = failed = 0
     for _, delivery_id, studio_id in pending:
         if send_notification_delivery(delivery_id, studio_id):
