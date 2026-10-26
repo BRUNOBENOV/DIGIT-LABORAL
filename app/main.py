@@ -2626,6 +2626,8 @@ def request_status(
         raise HTTPException(400, "Estado inválido.")
     if status_value in {"Aprobada", "Rechazada"} and user.role not in {"administrador", "contador"}:
         raise HTTPException(403, "Solo un administrador o contador puede aprobar o rechazar un trámite.")
+    if status_value == "Aprobada" and item.request_type.strip().casefold() == "vacaciones":
+        _validate_vacation_balance(db, item)
     if item.request_type.strip().casefold() == "cambio salarial" and status_value == "Resuelta":
         raise HTTPException(409, "Un cambio salarial debe aplicarse desde su acción específica o rechazarse; no se puede cerrar como resuelto sin actualizar el legajo.")
     due_date = _parse_optional_form_date(due_date_raw, "fecha límite")
