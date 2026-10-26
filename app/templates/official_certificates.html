@@ -60,7 +60,7 @@
         </details>
         <div class="official-source-actions">
           <a href="{{ info.source_url }}" target="_blank" rel="noopener noreferrer">{{ info.portal_label }} ↗</a>
-          <a href="/app/certificates/official?certificate_type={{ key }}#officialCertificateCreateForm">Registrar seguimiento</a>
+          {% if user.role in ['administrador', 'contador', 'auxiliar'] %}<a href="/app/certificates/official?certificate_type={{ key }}#officialCertificateCreateForm">Registrar seguimiento</a>{% elif user.role == 'empresa' %}<a href="/app/requests">Solicitar al estudio</a>{% else %}<span class="official-hint">Consulta de referencia</span>{% endif %}
         </div>
       </article>
       {% endfor %}
@@ -68,7 +68,7 @@
     <div id="officialCatalogEmpty" class="empty-state" hidden>No se encontraron certificados con esos filtros.</div>
   </section>
 
-  {% if user.role != 'empresa' %}
+  {% if user.role in ['administrador', 'contador', 'auxiliar'] %}
   <section class="panel">
     <div class="panel-head"><div><span>NUEVO SEGUIMIENTO</span><h2>Registrar certificado o constancia</h2></div></div>
     <p class="official-hint">El registro comienza en estado Pendiente. Después de tramitarlo en el portal institucional, actualizá el estado y adjuntá el original emitido.</p>
@@ -151,7 +151,7 @@
             {% if view.days_remaining is not none %}<span class="official-hint">{% if view.days_remaining < 0 %}Venció hace {{ -view.days_remaining }} día(s).{% elif view.days_remaining == 0 %}Vence hoy.{% else %}{{ view.days_remaining }} día(s) restantes.{% endif %}</span>{% endif %}
           </div>
 
-          {% if user.role != 'empresa' %}
+          {% if user.role in ['administrador', 'contador', 'auxiliar'] %}
           <details class="official-record-form">
             <summary>Actualizar trámite, adjuntar original o registrar vencimiento</summary>
             <form method="post" action="/app/certificates/official/{{ item.id }}/update" enctype="multipart/form-data" class="form-grid official-form-grid">
