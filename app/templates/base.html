@@ -76,7 +76,7 @@
           </div>
         </details>
 
-        {% if user.role != 'empresa' %}
+        {% if user.role in ['administrador', 'contador', 'auxiliar'] %}
         <details class="workspace-nav-group" {% if active_path.startswith('/app/liquidaciones') or active_path.startswith('/app/payrolls') or active_path.startswith('/app/vacations') or active_path.startswith('/app/aguinaldo') or active_path.startswith('/app/calculations') %}open{% endif %}>
           <summary><span class="workspace-group-symbol">02</span><span class="workspace-group-name">Cálculo</span><span class="workspace-group-chevron">⌄</span></summary>
           <div class="workspace-submenu">
@@ -92,7 +92,9 @@
             <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/aguinaldo') else '' }}" href="/app/aguinaldo">Registro de aguinaldos</a>
           </div>
         </details>
+        {% endif %}
 
+        {% if user.role != 'empresa' %}
         <details class="workspace-nav-group" {% if active_path.startswith('/app/reports') or active_path.startswith('/app/compliance') or active_path.startswith('/app/audit') %}open{% endif %}>
           <summary><span class="workspace-group-symbol">03</span><span class="workspace-group-name">Informes</span><span class="workspace-group-chevron">⌄</span></summary>
           <div class="workspace-submenu">
@@ -119,7 +121,7 @@
             <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/notifications') else '' }}" href="/app/notifications">Notificaciones <span class="notification-count" {% if not notification_unread_count %}hidden{% endif %}>{{ notification_unread_count if notification_unread_count < 100 else '99+' if notification_unread_count else '' }}</span></a>
             <a class="workspace-nav-link {{ 'active' if active_path.startswith('/herramientas/comparar') else '' }}" href="/herramientas/comparar">Comparar escenarios</a>
             <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/labor-code') else '' }}" href="/app/labor-code">Código Laboral</a>
-            {% if user.role != 'empresa' %}<a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/ai') else '' }}" href="/app/ai">Asistente laboral</a>{% endif %}
+            {% if user.role in ['administrador', 'contador', 'auxiliar'] %}<a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/ai') else '' }}" href="/app/ai">Asistente laboral</a>{% endif %}
             <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/guia') else '' }}" href="/app/guia">Guía de mi espacio</a>
             <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/security') else '' }}" href="/app/security">Seguridad de la cuenta</a>
             {% if user.role == 'administrador' %}<a class="workspace-nav-link" data-download-action href="/app/export/studio.zip">Respaldo del estudio</a>{% endif %}
