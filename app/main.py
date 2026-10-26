@@ -1104,6 +1104,8 @@ def dashboard(request: Request, user: User = Depends(require_user), db: Session 
     ) if company_ids else 0
     companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids)).order_by(Company.created_at.desc()).limit(5))) if company_ids else []
     recent_requests = list(db.scalars(select(CompanyRequest).where(CompanyRequest.company_id.in_(company_ids)).order_by(CompanyRequest.created_at.desc()).limit(5))) if company_ids else []
+    documents_count = db.scalar(select(func.count(Document.id)).where(Document.company_id.in_(company_ids))) if company_ids else 0
+    certificates_count = db.scalar(select(func.count(GeneratedCertificate.id)).where(GeneratedCertificate.company_id.in_(company_ids))) if company_ids else 0
     minimum_salary = db.scalar(select(LaborParameter).where(LaborParameter.key == "minimum_monthly_salary_general", LaborParameter.active.is_(True)))
     low_salary_count = 0
     if company_ids and minimum_salary:
@@ -1154,6 +1156,8 @@ def dashboard(request: Request, user: User = Depends(require_user), db: Session 
         user,
         companies_count=companies_count,
         employee_count=employee_count or 0,
+        documents_count=documents_count or 0,
+        certificates_count=certificates_count or 0,
         pending_count=pending_count or 0,
         payroll_count=payroll_count or 0,
         compliance_pending_count=compliance_pending_count or 0,
@@ -2308,23 +2312,67 @@ def notification_mark_read(
 
 
 @app.get("/app/requests", response_class=HTMLResponse)
-def requests_page(request: Request, user: User = Depends(require_user), db: Session = Depends(get_db)):
+def requests_page(
+    request: Request,
+    status_filter: str = "",
+    company_id: OptionalQueryId = None,
+    request_type: str = "",
+    assigned_filter: str = "",
+    overdue_only: bool = False,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
     company_ids = company_ids_for_user(db, user)
-    items = list(db.scalars(select(CompanyRequest).where(CompanyRequest.company_id.in_(company_ids)).order_by(CompanyRequest.created_at.desc()))) if company_ids else []
     companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name))) if company_ids else []
     employees = list(db.scalars(select(Employee).where(Employee.company_id.in_(company_ids)).order_by(Employee.full_name))) if company_ids else []
+
+    allowed_statuses = {"Pendiente", "En revisión", "Falta información", "Procesando", "Aprobada", "Rechazada", "Resuelta", "Aplicada"}
+    allowed_types = {"Alta de funcionario", "Baja de funcionario", "Cambio salarial", "Vacaciones", "Permiso/licencia", "Documento laboral", "Otra consulta"}
+    status_filter = status_filter if status_filter in allowed_statuses else ""
+    request_type = request_type if request_type in allowed_types else ""
+    if company_id not in company_ids:
+        company_id = None
+    assigned_filter = "mine" if assigned_filter == "mine" and user.role != "empresa" else ""
+    overdue_only = bool(overdue_only and user.role != "empresa")
+
+    query = select(CompanyRequest).outerjoin(
+        RequestWorkflow, RequestWorkflow.request_id == CompanyRequest.id
+    ).where(CompanyRequest.company_id.in_(company_ids)) if company_ids else select(CompanyRequest).where(False)
+    if company_id:
+        query = query.where(CompanyRequest.company_id == company_id)
+    if status_filter:
+        query = query.where(CompanyRequest.status == status_filter)
+    if request_type:
+        query = query.where(CompanyRequest.request_type == request_type)
+    if assigned_filter == "mine":
+        query = query.where(RequestWorkflow.assigned_user_id == user.id)
+    if overdue_only:
+        query = query.where(
+            RequestWorkflow.due_date.is_not(None),
+            RequestWorkflow.due_date < date.today(),
+            CompanyRequest.status.notin_({"Resuelta", "Rechazada", "Aplicada"}),
+        )
+
+    items = list(db.scalars(query.order_by(
+        RequestWorkflow.due_date.asc().nullslast(),
+        CompanyRequest.created_at.desc(),
+    ))) if company_ids else []
     request_ids = [item.id for item in items]
     workflows = list(db.scalars(select(RequestWorkflow).where(RequestWorkflow.request_id.in_(request_ids)))) if request_ids else []
     workflow_by_request = {item.request_id: item for item in workflows}
     pending = sum(item.status not in {"Resuelta", "Rechazada", "Aplicada"} for item in items)
     overdue = sum(
-        1
-        for workflow in workflows
-        if workflow.due_date
-        and workflow.due_date < date.today()
+        1 for workflow in workflows
+        if workflow.due_date and workflow.due_date < date.today()
+        and workflow.request_id in {item.id for item in items}
         and next((item.status for item in items if item.id == workflow.request_id), "") not in {"Resuelta", "Rechazada", "Aplicada"}
     )
-    return render(request, "requests.html", db, user, items=items, companies=companies, employees=employees, workflow_by_request=workflow_by_request, pending=pending, overdue=overdue)
+    return render(
+        request, "requests.html", db, user, items=items, companies=companies, employees=employees,
+        workflow_by_request=workflow_by_request, pending=pending, overdue=overdue,
+        selected_status=status_filter, selected_company=company_id, selected_type=request_type,
+        assigned_filter=assigned_filter, overdue_only=overdue_only, request_types=sorted(allowed_types),
+    )
 
 
 def _vacation_balance(
@@ -2672,7 +2720,7 @@ def request_status(
     assigned_user_id_raw: Annotated[str, Form(alias="assigned_user_id")] = "",
     due_date_raw: Annotated[str, Form(alias="due_date")] = "",
     internal_notes: Annotated[str, Form()] = "",
-    user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
+    user: User = Depends(require_roles("administrador", "contador", "auxiliar", "abogado")),
     db: Session = Depends(get_db),
 ):
     item = db.get(CompanyRequest, request_id)
@@ -3275,7 +3323,7 @@ def create_certificate(
     settlement_other_deduction_description: Annotated[str, Form()] = "",
     calculation_id: Annotated[str, Form()] = "",
     intent: Annotated[str, Form()] = "save",
-    user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
+    user: User = Depends(require_roles("administrador", "contador", "auxiliar", "abogado")),
     db: Session = Depends(get_db),
 ):
     if document_type not in CERTIFICATE_TYPES:
@@ -4474,7 +4522,7 @@ def create_user(
     strength_error = password_strength_error(password)
     if strength_error:
         return RedirectResponse(f"/app/users?password_error={quote(strength_error)}", status_code=303)
-    if role not in {"administrador", "contador", "auxiliar", "empresa"}:
+    if role not in {"administrador", "contador", "auxiliar", "empresa", "abogado"}:
         return RedirectResponse("/app/users?role_error=1", status_code=303)
     if role == "empresa" and not parsed_company_id:
         return RedirectResponse("/app/users?company_required=1", status_code=303)
