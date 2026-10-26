@@ -1,13 +1,14 @@
-# Digit Laboral 2.5.2
+# Digit Laboral 2.5.3
 
 Plataforma de gestión y cumplimiento laboral para estudios contables paraguayos.
 
-## Novedades de la versión 2.5.2
+## Novedades de la versión 2.5.3
 
-- Protege las funciones de contexto multiempresa con un `search_path` explícito y una prueba de regresión para el SQL de arranque.
-- Agrega índices a dos claves foráneas que carecían de ellos.
-- Restringe los permisos de los roles de la API pública sobre los metadatos internos de Alembic en la base productiva.
-- Verifica la revisión de base `0013_tenant_function_search_path` y el arranque tras el despliegue.
+- Refuerza el aislamiento RLS de `users`, `studios`, `user_security`, `password_reset_tokens` y `activation_requests`.
+- Carga el ID del usuario desde la sesión firmada antes de consultar tablas protegidas por RLS y valida el rol contra el registro de usuario.
+- Añade una función PostgreSQL de contexto de usuario con `search_path` restringido y pruebas de regresión.
+- Detecta en el arranque y en `/health/ready` cuando el rol de ejecución puede omitir RLS por privilegios o propiedad de tablas.
+- Mantiene explícito el bloqueo pendiente: separar los roles PostgreSQL antes de considerar el aislamiento RLS efectivo en producción.
 
 ## Módulos incluidos
 
