@@ -218,7 +218,7 @@ logger = logging.getLogger("digit.main")
 
 
 async def _periodic_notification_sweep() -> None:
-    """Run durable reminder sweeps daily without requiring a paid Render Cron service."""
+    """Run reminder sweeps hourly while the web service process is awake."""
     await asyncio.sleep(60)
     while True:
         try:
@@ -227,7 +227,7 @@ async def _periodic_notification_sweep() -> None:
             await asyncio.to_thread(dispatch_notification_outbox)
         except Exception:
             logger.exception("Scheduled notification sweep failed")
-        await asyncio.sleep(24 * 60 * 60)
+        await asyncio.sleep(60 * 60)
 
 
 @asynccontextmanager
