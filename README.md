@@ -115,7 +115,7 @@ Documentación: `REI_REOP_INTEGRATION.md`.
 - La bandeja de notificaciones es individual y persistente, con lectura/no lectura, filtros y enlaces al trámite.
 - La creación, asignación, comentarios, adjuntos y decisiones generan avisos según roles y visibilidad.
 - Los cambios salariales requieren aprobación explícita; su aplicación registra el historial salarial y la auditoría.
-- Si SMTP está configurado, los correos se registran en una cola persistente y se intentan enviar en segundo plano. Para recuperar entregas pendientes y generar recordatorios por vencimiento, ejecutá diariamente `python -m app.notification_worker` como Render Cron Job, con las mismas variables de entorno seguras del servicio web.
+- Si SMTP está configurado, los correos se registran en una cola persistente y se intentan enviar en segundo plano. El Cron Job horario llama al endpoint autenticado del servicio web para generar recordatorios y procesar la cola usando la configuración SMTP ya definida en el servicio.
 - Si SMTP no está configurado, las notificaciones internas siguen funcionando.
 
 ## Seguridad
