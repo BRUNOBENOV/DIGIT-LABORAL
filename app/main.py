@@ -1222,13 +1222,13 @@ def dashboard(request: Request, user: User = Depends(require_user), db: Session 
 def companies_page(request: Request, q: str = "", user: User = Depends(require_user), db: Session = Depends(get_db)):
     if user.role == "empresa":
         return RedirectResponse(f"/app/companies/{user.company_id}", status_code=303)
-    query = select(Company).where(Company.studio_id == user.studio_id)
+    company_ids = company_ids_for_user(db, user)
+    query = select(Company).where(Company.id.in_(company_ids)) if company_ids else select(Company).where(False)
     if q.strip():
         term = f"%{q.strip()}%"
         query = query.where(or_(Company.legal_name.ilike(term), Company.ruc.ilike(term), Company.trade_name.ilike(term)))
     companies = list(db.scalars(query.order_by(Company.legal_name)))
     return render(request, "companies.html", db, user, companies=companies, q=q)
-
 
 @app.post("/app/companies")
 def add_company(
