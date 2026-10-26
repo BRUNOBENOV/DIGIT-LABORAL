@@ -2173,6 +2173,26 @@ def _sync_due_notifications_for_user(
 
 
 
+@app.post("/internal/cron/notifications")
+def run_notification_cron(request: Request):
+    """Run periodic notices using the web service's existing database and SMTP settings."""
+    expected = settings.notification_cron_token
+    authorization = request.headers.get("authorization", "")
+    supplied = authorization[7:].strip() if authorization.lower().startswith("bearer ") else ""
+    if not expected or not supplied or not hmac.compare_digest(expected, supplied):
+        raise HTTPException(401, "Autorización de trabajador inválida.")
+
+    request_notices = create_due_request_notifications()
+    certificate_notices = create_due_official_certificate_notifications()
+    deliveries = dispatch_notification_outbox()
+    return JSONResponse({
+        "ok": True,
+        "request_notices_created": request_notices,
+        "certificate_notices_created": certificate_notices,
+        "deliveries": deliveries,
+    })
+
+
 @app.get("/app/notifications", response_class=HTMLResponse)
 def notifications_page(
     request: Request,
