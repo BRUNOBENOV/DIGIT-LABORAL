@@ -4,7 +4,7 @@
 {% block content %}
 <div class="page-header">
   <div><span class="eyebrow">PORTAL VINCULADO</span><h1>{% if user.role == 'abogado' %}Mis expedientes y trámites{% elif user.role == 'empresa' %}Mis solicitudes{% else %}Solicitudes y trámites{% endif %}</h1><p>{% if user.role == 'empresa' %}Seguí cada pedido, respondé cuando el estudio solicite información y consultá la fecha de la próxima gestión.{% elif user.role == 'abogado' %}Priorizá tus asignaciones por responsable, estado y fecha límite. Las aprobaciones laborales siguen reservadas al contador o administrador.{% else %}Gestioná la bandeja del estudio por empresa, tipo de trámite, responsable, estado y vencimiento.{% endif %}</p></div>
-  <button class="btn primary" type="button" data-modal-open="requestModal">+ Nueva solicitud</button>
+  {% if user.role != 'abogado' %}<button class="btn primary" type="button" data-modal-open="requestModal">+ Nueva solicitud</button>{% endif %}
 </div>
 {% if user.role != 'empresa' %}
 <section class="panel request-filter-panel">
