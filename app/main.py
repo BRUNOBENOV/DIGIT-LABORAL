@@ -430,10 +430,25 @@ def get_db():
 
 
 def current_user(request: Request, db: Session) -> User | None:
-    user_id = request.session.get("user_id")
-    if not user_id:
+    session_user_id = request.session.get("user_id")
+    if not session_user_id:
         return None
-    user = db.get(User, int(user_id))
+    try:
+        user_id = int(session_user_id)
+    except (TypeError, ValueError):
+        request.session.clear()
+        return None
+
+    # RLS must allow the signed-in user's row to be loaded before the user's
+    # studio and role are known. The session cookie is signed by SessionMiddleware;
+    # only the user ID is supplied at this stage, never a client-provided role.
+    db.info["user_id"] = user_id
+    db.info["user_role"] = ""
+    db.info["studio_id"] = None
+    db.info["is_superadmin"] = False
+    apply_session_tenant_context(db)
+
+    user = db.get(User, user_id)
     if not user:
         request.session.clear()
         return None
@@ -442,7 +457,11 @@ def current_user(request: Request, db: Session) -> User | None:
     if session_version != security.session_version:
         request.session.clear()
         return None
+
+    # Populate the remaining RLS context only after reading the canonical user
+    # record from PostgreSQL, so tenant and role values cannot come from a form.
     db.info["studio_id"] = user.studio_id
+    db.info["user_role"] = user.role
     db.info["is_superadmin"] = user.role == "superadmin"
     apply_session_tenant_context(db)
     return user
@@ -503,7 +522,9 @@ def client_ip(request: Request) -> str:
 
 
 def use_privileged_auth_context(db: Session) -> None:
-    """Allow pre-authentication security operations under forced PostgreSQL RLS."""
+    """Allow trusted pre-authentication/startup operations under PostgreSQL RLS."""
+    db.info["user_id"] = None
+    db.info["user_role"] = "superadmin"
     db.info["studio_id"] = None
     db.info["is_superadmin"] = True
     apply_session_tenant_context(db)
