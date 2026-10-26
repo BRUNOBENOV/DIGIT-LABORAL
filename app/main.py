@@ -2889,7 +2889,13 @@ def apply_request(
     workflow.applied_at = datetime.now(UTC)
     item.status = "Aplicada"
     item.resolved_at = workflow.applied_at
-    write_audit(db, user, "aplicar_solicitud", "solicitud", str(item.id), f"{previous_salary} → {item.amount}")
+    if request_kind == "cambio salarial":
+        audit_detail = f"{previous_salary} → {item.amount}"
+    elif request_kind == "vacaciones":
+        audit_detail = f"{item.requested_days} días utilizados; periodo {item.period_year}"
+    else:
+        audit_detail = f"{item.leave_type}; {item.start_date:%d/%m/%Y}–{item.end_date:%d/%m/%Y}"
+    write_audit(db, user, "aplicar_solicitud", "solicitud", str(item.id), audit_detail)
     applied_message = {
         "cambio salarial": "El cambio salarial aprobado fue aplicado al legajo del funcionario.",
         "vacaciones": f"Se confirmaron {item.requested_days} día(s) de vacaciones como utilizados y se actualizó el saldo del periodo {item.period_year}.",
