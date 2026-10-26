@@ -62,17 +62,17 @@ def apply_postgres_rls(engine: Engine) -> None:
             CREATE OR REPLACE FUNCTION public.digit_current_studio_id() RETURNS BIGINT
             LANGUAGE SQL STABLE
             SET search_path = pg_catalog, pg_temp
-            AS $
+            AS $digit$
                 SELECT NULLIF(current_setting('app.current_studio_id', true), '')::BIGINT
-            $
+            $digit$
         """))
         connection.execute(text("""
             CREATE OR REPLACE FUNCTION public.digit_is_superadmin() RETURNS BOOLEAN
             LANGUAGE SQL STABLE
             SET search_path = pg_catalog, pg_temp
-            AS $
+            AS $digit$
                 SELECT COALESCE(current_setting('app.is_superadmin', true), 'false') = 'true'
-            $
+            $digit$
         """))
         for table, condition in policies.items():
             if table not in existing_tables:
