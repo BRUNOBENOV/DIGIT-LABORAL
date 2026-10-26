@@ -24,6 +24,7 @@ from .main import (
     write_audit,
 )
 from .models import CompanyBranding, User
+from .logo_presentation import prepare_company_logo
 
 logger = logging.getLogger("digit.logo_upload")
 LOGO_UPLOAD_LIMIT = max(settings.max_logo_size, 8 * 1024 * 1024)
@@ -83,6 +84,36 @@ def company_logo_v23(
         content=branding.logo_bytes,
         media_type=branding.logo_content_type or "image/png",
         headers={"Cache-Control": "private, no-cache, no-store, must-revalidate"},
+    )
+
+
+@app.get("/app/companies/{company_id}/logo/print")
+def company_logo_print_v23(
+    company_id: int,
+    user: User = Depends(require_roles("administrador", "contador", "auxiliar", "empresa")),
+    db: Session = Depends(get_db),
+):
+    """Serve the same presentation-ready logo used by Word/PDF for print previews."""
+    company = company_allowed(db, user, company_id)
+    branding = db.scalar(select(CompanyBranding).where(CompanyBranding.company_id == company.id))
+    if not branding or not branding.logo_bytes:
+        return Response(status_code=404)
+    prepared = prepare_company_logo(
+        branding.logo_bytes,
+        fit=branding.logo_fit,
+        scale=branding.logo_scale,
+        alignment=branding.logo_alignment,
+        background=branding.logo_background,
+    )
+    if not prepared:
+        return Response(status_code=404)
+    return Response(
+        content=prepared,
+        media_type="image/png",
+        headers={
+            "Cache-Control": "private, no-store, max-age=0",
+            "X-Content-Type-Options": "nosniff",
+        },
     )
 
 
