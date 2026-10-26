@@ -251,10 +251,7 @@ def test_lawyer_workspace_filters_assigned_cases_and_enforces_role_boundaries() 
         assert 'action="/app/compliance/company-profile"' not in compliance.text
 
         assert client.get("/app/users").status_code == 403
-        payroll_list = client.get("/app/payrolls")
-        assert payroll_list.status_code == 200
-        assert "+ Nueva liquidación" not in payroll_list.text
-        assert '<form method="post" action="/app/payrolls"' not in payroll_list.text
+        assert client.get("/app/payrolls").status_code == 403
         assert client.post(
             "/app/payrolls",
             data={"csrf_token": csrf, "company_id": str(company_id), "period": "2026-10"},
