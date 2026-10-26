@@ -5,6 +5,24 @@ from sqlalchemy import Engine, inspect, text
 from .config import settings
 
 DIRECT_POLICIES = {
+    # Sensitive identity tables: a signed session exposes only its own user before
+    # tenant context is known; studio administrators may manage users/security in
+    # their own studio. Superadmin access remains an explicit policy override.
+    "studios": "id = digit_current_studio_id()",
+    "users": (
+        "id = digit_current_user_id() OR "
+        "(studio_id = digit_current_studio_id() "
+        "AND current_setting('app.current_user_role', true) = 'administrador')"
+    ),
+    "user_security": (
+        "user_id = digit_current_user_id() OR "
+        "(user_id IN (SELECT u.id FROM users u WHERE u.studio_id = digit_current_studio_id()) "
+        "AND current_setting('app.current_user_role', true) = 'administrador')"
+    ),
+    "password_reset_tokens": "user_id = digit_current_user_id()",
+    # Public activation intake explicitly sets the trusted pre-auth context in
+    # activation_submit; regular tenants must not enumerate or edit requests.
+    "activation_requests": "FALSE",
     "companies": "studio_id = digit_current_studio_id()",
     "audit_logs": "studio_id = digit_current_studio_id()",
     "security_events": "studio_id = digit_current_studio_id()",
@@ -64,6 +82,14 @@ def apply_postgres_rls(engine: Engine) -> None:
             SET search_path = pg_catalog, pg_temp
             AS $digit$
                 SELECT NULLIF(current_setting('app.current_studio_id', true), '')::BIGINT
+            $digit$
+        """))
+        connection.execute(text("""
+            CREATE OR REPLACE FUNCTION public.digit_current_user_id() RETURNS BIGINT
+            LANGUAGE SQL STABLE
+            SET search_path = pg_catalog, pg_temp
+            AS $digit$
+                SELECT NULLIF(current_setting('app.current_user_id', true), '')::BIGINT
             $digit$
         """))
         connection.execute(text("""

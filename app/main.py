@@ -38,7 +38,7 @@ from .ai_service import generate_assistance
 from .auth import hash_password, verify_password
 from .labor_calculator import amount as round_gs, anniversary as labor_anniversary
 from .config import settings
-from .database import Base, SessionLocal, apply_session_tenant_context, engine
+from .database import Base, SessionLocal, apply_session_tenant_context, engine, postgres_rls_role_issues
 from .document_export import (
     DOCUMENT_LABELS,
     build_document_body,
@@ -237,6 +237,7 @@ async def lifespan(_: FastAPI):
     if settings.rls_enabled:
         apply_postgres_rls(migration_engine)
     issues = settings.production_issues()
+    issues.extend(postgres_rls_role_issues())
     if issues:
         logger.warning("Production readiness issues: %s", " | ".join(issues))
     reminder_task = asyncio.create_task(_periodic_notification_sweep())
@@ -430,10 +431,25 @@ def get_db():
 
 
 def current_user(request: Request, db: Session) -> User | None:
-    user_id = request.session.get("user_id")
-    if not user_id:
+    session_user_id = request.session.get("user_id")
+    if not session_user_id:
         return None
-    user = db.get(User, int(user_id))
+    try:
+        user_id = int(session_user_id)
+    except (TypeError, ValueError):
+        request.session.clear()
+        return None
+
+    # RLS must allow the signed-in user's row to be loaded before the user's
+    # studio and role are known. The session cookie is signed by SessionMiddleware;
+    # only the user ID is supplied at this stage, never a client-provided role.
+    db.info["user_id"] = user_id
+    db.info["user_role"] = ""
+    db.info["studio_id"] = None
+    db.info["is_superadmin"] = False
+    apply_session_tenant_context(db)
+
+    user = db.get(User, user_id)
     if not user:
         request.session.clear()
         return None
@@ -442,7 +458,11 @@ def current_user(request: Request, db: Session) -> User | None:
     if session_version != security.session_version:
         request.session.clear()
         return None
+
+    # Populate the remaining RLS context only after reading the canonical user
+    # record from PostgreSQL, so tenant and role values cannot come from a form.
     db.info["studio_id"] = user.studio_id
+    db.info["user_role"] = user.role
     db.info["is_superadmin"] = user.role == "superadmin"
     apply_session_tenant_context(db)
     return user
@@ -503,7 +523,9 @@ def client_ip(request: Request) -> str:
 
 
 def use_privileged_auth_context(db: Session) -> None:
-    """Allow pre-authentication security operations under forced PostgreSQL RLS."""
+    """Allow trusted pre-authentication/startup operations under PostgreSQL RLS."""
+    db.info["user_id"] = None
+    db.info["user_role"] = "superadmin"
     db.info["studio_id"] = None
     db.info["is_superadmin"] = True
     apply_session_tenant_context(db)
@@ -5528,5 +5550,5 @@ def health_ready(db: Session = Depends(get_db)):
             {"status": "not_ready", "checks": {**checks, "database": "error"}, "detail": str(exc)[:180]},
             status_code=503,
         )
-    warnings = settings.production_issues()
+    warnings = [*settings.production_issues(), *postgres_rls_role_issues()]
     return {"status": "ready" if not warnings else "degraded", "checks": checks, "warnings": warnings, "version": APP_VERSION}

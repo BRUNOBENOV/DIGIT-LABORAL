@@ -1,5 +1,18 @@
 # Registro de cambios
 
+## 2.5.3 — 26-10-2026
+
+### Seguridad multiempresa
+- Se añadieron políticas RLS para `studios`, `users`, `user_security`, `password_reset_tokens` y `activation_requests`.
+- Se incorporó `digit_current_user_id()` con `search_path = pg_catalog, pg_temp` y migración Alembic `0014_tenant_user_context`.
+- La sesión firmada establece primero el ID del usuario; después de leer el registro canónico se establece el estudio y el rol. Esto permite la consulta inicial segura cuando el usuario de ejecución no es propietario de las tablas.
+- Se añadieron pruebas de regresión para el contexto de sesión y las políticas de las tablas sensibles.
+- El arranque y `/health/ready` informan si el rol PostgreSQL de ejecución tiene `BYPASSRLS`, es superusuario o es propietario de tablas.
+
+### Límites de publicación
+- La separación real de roles PostgreSQL sigue pendiente: el rol actual `digit_app` es propietario de la mayoría de las tablas y `RLS_FORCE` permanece desactivado deliberadamente. Las políticas añadidas no deben interpretarse como aislamiento RLS efectivo hasta que la conexión de ejecución use un rol no propietario y sin `BYPASSRLS`.
+- El almacenamiento S3 compatible, SMTP y una restauración probada desde copias externas requieren credenciales y servicios configurados.
+
 ## 2.5.2 — 26-10-2026
 
 ### Seguridad
