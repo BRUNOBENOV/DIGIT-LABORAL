@@ -3578,6 +3578,11 @@ def certificates_page(
     if selected_calculation:
         company_id = selected_calculation.company_id
         employee_id = selected_calculation.employee_id
+        request.session["labor_context_company_id"] = str(company_id)
+        if employee_id:
+            request.session["labor_context_employee_id"] = str(employee_id)
+        else:
+            request.session.pop("labor_context_employee_id", None)
     selected_company = db.get(Company, company_id) if company_id in company_ids else None
     selected_employee = db.get(Employee, employee_id) if employee_id else None
     if company_id and not selected_company:
@@ -3815,6 +3820,8 @@ def create_certificate(
     employee = db.get(Employee, employee_id)
     if not employee or employee.company_id != company.id:
         raise HTTPException(400, "El funcionario no pertenece a la empresa seleccionada.")
+    request.session["labor_context_company_id"] = str(company.id)
+    request.session["labor_context_employee_id"] = str(employee.id)
 
     calculation = db.get(CalculationRecord, calculation_id) if calculation_id else None
     if calculation and (calculation.company_id != company.id or calculation.company_id not in company_ids_for_user(db, user)):
