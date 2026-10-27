@@ -115,8 +115,10 @@ def public_page(request: Request, tipo: str = "salary", ejemplo: bool = False):
 @router.get("/app/liquidaciones")
 def professional_page(request: Request, tipo: str = "settlement", company_id: OptionalQueryId = None, employee_id: OptionalQueryId = None,
                       user: User = Depends(core.require_user), db: Session = Depends(core.get_db)):
-    if company_id is None and employee_id is None:
-        company_id, employee_id = core.active_labor_context(request, db, user)
+    allowed_company_ids = core.company_ids_for_user(db, user)
+    company_id, employee_id = core.default_labor_context(
+        request, db, user, allowed_company_ids, company_id, employee_id
+    )
     values = dict(context(tipo)["values"], company_id=company_id or 0, employee_id=employee_id or 0, prepared_by=user.full_name)
     scoped = private_context(db, user, values)
     remember_context(request, scoped)
