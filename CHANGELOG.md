@@ -5,9 +5,9 @@
 - Código Legajo numérico único dentro de cada empresa, con asignación retroactiva a los funcionarios existentes.
 - Búsqueda y autocompletado por empresa + legajo; filtros por legajo, nombre, cédula, cargo, empresa, sección y estado.
 - Nueva entidad Secciones, separada de las sucursales físicas, con creación, edición y desactivación lógica.
-- Integración de nacionalidad, estado civil, categoría laboral, jornada, turno y horas semanales mediante el perfil complementario existente.
+- Integración de nacionalidad, estado civil, categoría laboral, jornada, turno, horas diarias/semanales y número IPS mediante el perfil complementario existente.
 - Registro del usuario y fecha de última modificación.
-- Endpoints REST autenticados para consulta, alta, edición y archivo lógico de funcionarios y secciones.
+- Endpoints REST autenticados para consulta, alta, edición y archivo lógico de funcionarios y secciones; política RLS por estudio para la nueva tabla.
 - Importaciones nuevas asignan Código Legajo. Las modificaciones salariales continúan sujetas a aprobación.
 - Esta versión está en una rama de trabajo y requiere CI y verificación de despliegue antes de declararse publicada.
 
