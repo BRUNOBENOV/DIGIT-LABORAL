@@ -767,13 +767,15 @@ def labor_context_employees(
 @app.post("/app/context")
 def set_labor_context(
     request: Request,
-    company_id: Annotated[int | None, Form()] = None,
-    employee_id: Annotated[int | None, Form()] = None,
+    company_id: Annotated[str, Form()] = "",
+    employee_id: Annotated[str, Form()] = "",
     return_to: Annotated[str, Form()] = "/app",
     user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ):
     """Persist a validated company/employee selection for the user's next modules."""
+    company_id = optional_int(company_id, field="empresa")
+    employee_id = optional_int(employee_id, field="funcionario")
     allowed_ids = company_ids_for_user(db, user)
     company = None
     if employee_id:
