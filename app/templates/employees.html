@@ -35,6 +35,7 @@
 <nav class="maintenance-subnav" aria-label="Subsecciones de mantenimiento">
   <a href="/app/companies">Empresas <span>Directorio patronal</span></a>
   <a class="is-active" href="/app/employees" aria-current="page">Funcionarios <span>Legajos y secciones</span></a>
+  <a href="/app/sections{% if selected_company %}?company_id={{ selected_company }}{% endif %}">Secciones <span>Áreas internas</span></a>
 </nav>
 {% if request.query_params.get('form_error') %}<div class="alert danger v24-form-error" role="alert">{{ request.query_params.get('form_error') }}</div>{% endif %}
 {% if request.query_params.get('duplicate') %}<div class="alert danger" role="alert">Ya existe un funcionario con esa cédula dentro de la empresa.</div>{% endif %}

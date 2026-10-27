@@ -73,11 +73,12 @@
       {% else %}
         <a class="workspace-home-link {{ 'active' if active_path == '/app' else '' }}" href="/app"><span class="workspace-home-symbol">⌂</span><span>Inicio</span></a>
 
-        <details class="workspace-nav-group" {% if active_path.startswith('/app/companies') or active_path.startswith('/app/employees') or active_path.startswith('/app/users') or active_path.startswith('/app/parameters') %}open{% endif %}>
+        <details class="workspace-nav-group" {% if active_path.startswith('/app/companies') or active_path.startswith('/app/employees') or active_path.startswith('/app/users') or active_path.startswith('/app/parameters') or active_path.startswith('/app/sections') %}open{% endif %}>
           <summary><span class="workspace-group-symbol">01</span><span class="workspace-group-name">Mantenimientos</span><span class="workspace-group-chevron">⌄</span></summary>
           <div class="workspace-submenu">
             <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/companies') else '' }}" href="/app/companies">{{ 'Mi empresa' if user.role == 'empresa' else 'Empresas' }}</a>
             <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/employees') else '' }}" href="/app/employees">Funcionarios</a>
+            <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/sections') else '' }}" href="/app/sections">Secciones</a>
             {% if user.role == 'administrador' %}
               <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/users') else '' }}" href="/app/users">Usuarios y permisos</a>
               <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/parameters') else '' }}" href="/app/parameters">Parámetros</a>

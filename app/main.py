@@ -2323,6 +2323,84 @@ def add_branch(
     return RedirectResponse(f"/app/companies/{company_id}", status_code=303)
 
 
+
+@app.get("/app/sections", response_class=HTMLResponse)
+def sections_page(
+    request: Request,
+    q: str = "",
+    company_id: OptionalQueryId = None,
+    include_inactive: bool = False,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    """Gestión de secciones dentro de Mantenimientos, limitada a las empresas autorizadas."""
+    company_ids = company_ids_for_user(db, user)
+    companies_query = (
+        select(Company)
+        .where(Company.id.in_(company_ids), Company.status != "Archivada")
+        .order_by(Company.legal_name)
+        if company_ids
+        else select(Company).where(False)
+    )
+    companies = list(db.scalars(companies_query))
+    active_company_ids = {company.id for company in companies}
+
+    company_id, _ = default_labor_context(request, db, user, company_ids, company_id, None)
+    if company_id is not None and company_id not in active_company_ids:
+        raise HTTPException(404, "Empresa no encontrada o archivada.")
+    if company_id is None and companies:
+        company_id = companies[0].id
+    selected_company = next((item for item in companies if item.id == company_id), None)
+
+    sections = []
+    all_sections_count = 0
+    active_sections_count = 0
+    employee_counts = {}
+    if company_id is not None:
+        all_sections_count = db.scalar(
+            select(func.count(CompanySection.id)).where(CompanySection.company_id == company_id)
+        ) or 0
+        active_sections_count = db.scalar(
+            select(func.count(CompanySection.id)).where(
+                CompanySection.company_id == company_id,
+                CompanySection.active.is_(True),
+            )
+        ) or 0
+
+        section_query = select(CompanySection).where(CompanySection.company_id == company_id)
+        if not include_inactive:
+            section_query = section_query.where(CompanySection.active.is_(True))
+        if q.strip():
+            term = f"%{q.strip()}%"
+            section_query = section_query.where(or_(
+                func.cast(CompanySection.section_code, String).ilike(term),
+                CompanySection.name.ilike(term),
+            ))
+        sections = list(db.scalars(section_query.order_by(CompanySection.section_code, CompanySection.name)))
+        employee_counts = dict(db.execute(
+            select(Employee.section_id, func.count(Employee.id))
+            .where(Employee.company_id == company_id, Employee.section_id.is_not(None))
+            .group_by(Employee.section_id)
+        ).all())
+
+    return render(
+        request,
+        "sections.html",
+        db,
+        user,
+        companies=companies,
+        selected_company=selected_company,
+        selected_company_id=company_id,
+        q=q,
+        include_inactive=include_inactive,
+        sections=sections,
+        all_sections_count=all_sections_count,
+        active_sections_count=active_sections_count,
+        employee_counts=employee_counts,
+        can_manage_sections=user.role in {"administrador", "contador"},
+    )
+
+
 @app.get("/api/sections")
 def api_list_company_sections(
     company_id: int,
@@ -2399,6 +2477,78 @@ async def api_create_company_section(
         "name": section.name, "active": section.active,
         "updated_at": section.updated_at.isoformat() if section.updated_at else None,
         "updated_by": section.updated_by,
+    }
+
+
+
+@app.post("/api/sections/examples", status_code=201)
+async def api_create_company_section_examples(
+    request: Request,
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    """Carga un conjunto opcional de datos de prueba en una empresa vacía."""
+    payload = await _json_object(request)
+    company_id = optional_int(payload.get("company_id"), field="empresa")
+    if not company_id:
+        raise HTTPException(422, "Seleccioná una empresa para cargar los ejemplos.")
+    company = company_allowed(db, user, company_id)
+    if company.status == "Archivada":
+        raise HTTPException(409, "No se pueden agregar secciones a una empresa archivada.")
+
+    existing_count = db.scalar(
+        select(func.count(CompanySection.id)).where(CompanySection.company_id == company.id)
+    ) or 0
+    if existing_count:
+        raise HTTPException(409, "Los ejemplos solo se pueden cargar cuando la empresa no tiene secciones.")
+
+    examples = [
+        (1, "Administración"),
+        (2, "Contabilidad"),
+        (3, "Ventas"),
+        (4, "Operaciones"),
+    ]
+    created = []
+    try:
+        for section_code, name in examples:
+            section = CompanySection(
+                company_id=company.id,
+                section_code=section_code,
+                name=name,
+                active=True,
+                updated_by=user.email,
+                updated_at=datetime.now(UTC),
+            )
+            db.add(section)
+            db.flush()
+            write_audit(
+                db,
+                user,
+                "crear",
+                "seccion",
+                str(section.id),
+                f"Ejemplo inicial · {section.section_code} · {section.name}",
+            )
+            created.append(section)
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(409, "No se pudieron cargar los ejemplos por una duplicidad de código o nombre.") from exc
+
+    return {
+        "created": len(created),
+        "items": [
+            {
+                "id": item.id,
+                "company_id": item.company_id,
+                "section_code": item.section_code,
+                "name": item.name,
+                "active": item.active,
+                "updated_at": item.updated_at.isoformat() if item.updated_at else None,
+                "updated_by": item.updated_by,
+            }
+            for item in created
+        ],
     }
 
 

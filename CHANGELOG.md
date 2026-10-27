@@ -1,4 +1,16 @@
 # Registro de cambios
+## 2.6.6 — Módulo Secciones dentro de Mantenimientos
+
+- Añade una pantalla de gestión dedicada en `/app/sections`, accesible como subapartado de **Mantenimientos** junto a Empresas y Funcionarios.
+- Incorpora filtros por código y nombre, selección de empresa, visualización de secciones activas/inactivas y recuento de funcionarios vinculados.
+- Permite crear, editar, desactivar y reactivar secciones; la fecha y el usuario de actualización se generan en el backend y se muestran como auditoría de solo lectura.
+- Añade carga opcional y transaccional de cuatro ejemplos de prueba para empresas que aún no tienen secciones.
+- Mantiene la API existente, el vínculo `Employee.section_id`, el aislamiento por empresa y los controles de rol; la desactivación conserva las referencias históricas.
+- Conserva FastAPI/Jinja2, SQLAlchemy y la configuración de despliegue de Render; no crea una aplicación paralela ni requiere una tabla nueva.
+
+### Validación
+- Añade pruebas para la navegación, los filtros del módulo, los metadatos de auditoría, la desactivación segura y el registro de la ruta.
+
 ## 2.6.5 — Corrección de contraste en la sidebar
 
 - Corrige exclusivamente la barra lateral izquierda: textos de subapartados más claros, encabezados de categorías con mayor contraste y espaciado legible.
