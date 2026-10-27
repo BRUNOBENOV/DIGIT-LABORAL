@@ -34,6 +34,8 @@ def test_employee_maintenance_ui_contains_legajo_lookup_and_section_filters():
             'id="employeeCode"',
             'name="section_id"',
             'name="status_filter"',
+            'name="daily_hours"',
+            'name="ips_number"',
             "Administrar secciones",
             "/api/employees/by-code/",
             "employeeCodeFeedback",
