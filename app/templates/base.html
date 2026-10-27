@@ -28,6 +28,11 @@
     @media(max-width:1100px){.app-version-indicator .app-version-label{display:none}.app-version-indicator{padding:7px 8px;gap:5px}}
     @media(max-width:760px){.modern-topbar{gap:9px;padding:0 10px}.app-version-indicator{padding:7px;border-radius:8px;margin-left:auto}.app-version-indicator .app-version-divider,.app-version-indicator small{display:none}.app-version-indicator b{font-size:.68rem}.modern-brand{min-width:0;gap:7px}.modern-brand-mark.modern-brand-image{width:36px;height:36px;flex-basis:36px}.modern-brand-copy small{letter-spacing:.04em;font-size:.49rem}}
     @media(max-width:380px){.app-version-indicator{padding:6px}.modern-topbar{padding:0 7px}.modern-brand-copy b{font-size:.88rem}}
+    .module-selection-form{display:flex;align-items:end;gap:12px;flex-wrap:wrap;margin:14px 0 18px;padding:14px}
+    .module-selection-form label{display:grid;gap:6px;min-width:210px;flex:1;color:var(--text-secondary,#aab8cc);font-size:.8rem;font-weight:700}
+    .module-selection-form select{width:100%;min-width:0;padding:10px 12px;border:1px solid var(--border-color,#334155);border-radius:9px;background:var(--input-bg,#101a2d);color:var(--text-primary,#f3f6fb);font:inherit}
+    .module-selection-form button{white-space:nowrap}
+    @media(max-width:680px){.module-selection-form{display:grid;grid-template-columns:1fr}.module-selection-form label{min-width:0}.module-selection-form button{width:100%}}
   </style>
 
 </head>
@@ -162,6 +167,31 @@
     } catch (_) { /* Se mantiene el último contador si falla la consulta. */ }
   };
   window.setInterval(refresh, 60000);
+})();
+</script>
+
+<script>
+(() => {
+  document.querySelectorAll("form[data-module-selection]").forEach(form => {
+    const company = form.querySelector("[data-module-company]");
+    const employee = form.querySelector("[data-module-employee]");
+    if (!company || !employee) return;
+    const sync = () => {
+      const chosenCompany = company.value;
+      Array.from(employee.options).forEach(option => {
+        if (!option.dataset.company) return;
+        const visible = !chosenCompany || option.dataset.company === chosenCompany;
+        option.hidden = !visible;
+        option.disabled = !visible;
+      });
+      const selected = employee.selectedOptions[0];
+      if (selected && selected.dataset.company && chosenCompany && selected.dataset.company !== chosenCompany) {
+        employee.value = "";
+      }
+    };
+    company.addEventListener("change", sync);
+    sync();
+  });
 })();
 </script>
 </body>
