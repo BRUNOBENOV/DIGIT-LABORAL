@@ -751,6 +751,8 @@ def _employee_api_record(db: Session, employee: Employee) -> dict:
         "work_schedule": profile.work_schedule if profile else "",
         "shift": profile.shift if profile else "Diurno",
         "weekly_hours": int(profile.weekly_hours if profile else 48),
+        "daily_hours": int(profile.daily_hours if profile else 8),
+        "ips_number": profile.ips_number if profile else "",
         "email": employee.email or "",
         "phone": employee.phone or "",
         "address": employee.address or "",
@@ -896,6 +898,19 @@ def _validate_employee_payload(
         raise HTTPException(422, "Las horas semanales deben ser un número entero.")
     if not 1 <= weekly_hours <= 96:
         raise HTTPException(422, "Las horas semanales deben estar entre 1 y 96.")
+    daily_hours_raw = payload.get("daily_hours", profile.daily_hours if profile else 8)
+    try:
+        daily_hours = int(daily_hours_raw or 8)
+    except (TypeError, ValueError):
+        raise HTTPException(422, "Las horas diarias deben ser un número entero.")
+    if not 1 <= daily_hours <= 24:
+        raise HTTPException(422, "Las horas diarias deben estar entre 1 y 24.")
+    ips_number = re.sub(
+        r"[\\s.-]+", "",
+        str(payload.get("ips_number", profile.ips_number if profile else "") or "")
+    )
+    if ips_number and not ips_number.isdigit():
+        raise HTTPException(422, "El número IPS del funcionario debe contener solamente dígitos.")
 
     values = {
         "employee_code": employee_code,
@@ -933,6 +948,8 @@ def _validate_employee_payload(
         ),
         "shift": clean_text(payload.get("shift", profile.shift if profile else "Diurno"), max_length=60) or "Diurno",
         "weekly_hours": weekly_hours,
+        "daily_hours": daily_hours,
+        "ips_number": ips_number,
         "salary_type": clean_text(
             payload.get("salary_type", profile.salary_type if profile else payment_frequency), max_length=40
         ) or payment_frequency,
@@ -983,6 +1000,8 @@ def _apply_employee_payload(
     profile.work_schedule = values["work_schedule"]
     profile.shift = values["shift"]
     profile.weekly_hours = values["weekly_hours"]
+    profile.daily_hours = values["daily_hours"]
+    profile.ips_number = values["ips_number"]
     profile.salary_type = values["salary_type"]
 
 
@@ -2922,6 +2941,8 @@ def add_employee(
     work_schedule: Annotated[str, Form()] = "",
     shift: Annotated[str, Form()] = "Diurno",
     weekly_hours: Annotated[int, Form()] = 48,
+    daily_hours: Annotated[int, Form()] = 8,
+    ips_number: Annotated[str, Form()] = "",
     salary_type: Annotated[str, Form()] = "Mensual",
     email: Annotated[str, Form()] = "",
     phone: Annotated[str, Form()] = "",
@@ -3022,6 +3043,8 @@ def add_employee(
             work_schedule=clean_text(work_schedule, max_length=120),
             shift=clean_text(shift, max_length=60) or "Diurno",
             weekly_hours=int(weekly_hours or 48),
+            daily_hours=int(daily_hours or 8),
+            ips_number=re.sub(r"[\\s.-]+", "", ips_number.strip()),
             salary_type=clean_text(salary_type, max_length=40) or payment_frequency.strip() or "Mensual",
         )
         db.add(profile)
@@ -3068,6 +3091,8 @@ def edit_employee(
     work_schedule: Annotated[str | None, Form()] = None,
     shift: Annotated[str | None, Form()] = None,
     weekly_hours: Annotated[str | None, Form()] = None,
+    daily_hours: Annotated[str | None, Form()] = None,
+    ips_number: Annotated[str | None, Form()] = None,
     salary_type: Annotated[str | None, Form()] = None,
     ips_contributor: Annotated[str | None, Form()] = None,
     email: Annotated[str | None, Form()] = None,
@@ -3098,6 +3123,8 @@ def edit_employee(
         "work_schedule": work_schedule,
         "shift": shift,
         "weekly_hours": weekly_hours,
+        "daily_hours": daily_hours,
+        "ips_number": ips_number,
         "salary_type": salary_type,
         "ips_contributor": ips_contributor,
         "email": email,
