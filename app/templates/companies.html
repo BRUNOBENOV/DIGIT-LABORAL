@@ -69,7 +69,7 @@
 <label>Código Empresa<input name="company_code" id="companyCode" type="number" min="1" max="2147483647" step="1" inputmode="numeric" required aria-describedby="companyCodeFeedback"><small class="company-field-help">Código numérico único dentro del estudio.</small></label>
 <label>Nombre Empresa<input name="legal_name" required maxlength="200" autocomplete="organization"></label>
 <label>Nombre comercial<input name="trade_name" maxlength="160"></label>
-<label>N.º RUC<input name="ruc" id="companyRuc" required inputmode="numeric" pattern="[0-9.\- ]{6,14}" maxlength="14" placeholder="Ej.: 80012345-6"><small class="company-field-help">Entre 6 y 10 dígitos. El sistema normaliza el formato.</small></label>
+<label>N.º RUC<input name="ruc" id="companyRuc" required inputmode="numeric" pattern="[0-9.\- ]{4,14}" maxlength="14" placeholder="Ej.: 80000519-8"><small class="company-field-help">RUC con 3 a 8 dígitos base y verificador módulo 11.</small></label>
 <div class="company-code-feedback" id="companyCodeFeedback" role="status" aria-live="polite"></div>
 <div class="company-form-section">RESPONSABLES Y CONTACTO</div>
 <label>Propietario<input name="owner_name" maxlength="180"></label>
@@ -208,9 +208,18 @@
       return;
     }
     const rucDigits = form.elements.namedItem("ruc").value.replace(/\D/g, "");
-    if (rucDigits.length < 6 || rucDigits.length > 10) {
+    const rucBase = rucDigits.slice(0, -1);
+    let rucSum = 0;
+    let rucFactor = 2;
+    for (let index = rucBase.length - 1; index >= 0; index -= 1) {
+      rucSum += Number(rucBase[index]) * rucFactor;
+      rucFactor = rucFactor === 11 ? 2 : rucFactor + 1;
+    }
+    const rucRemainder = rucSum % 11;
+    const expectedRucDv = rucRemainder <= 1 ? 0 : 11 - rucRemainder;
+    if (rucBase.length < 3 || rucBase.length > 8 || Number(rucDigits.slice(-1)) !== expectedRucDv) {
       event.preventDefault();
-      setFeedback("El RUC debe contener entre 6 y 10 dígitos.", "error");
+      setFeedback("El RUC no es válido: revisá la cantidad de dígitos y el verificador módulo 11.", "error");
       form.elements.namedItem("ruc").focus();
       return;
     }
