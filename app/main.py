@@ -3002,6 +3002,13 @@ def add_employee(
         ))
         if not section:
             raise HTTPException(400, "La sección seleccionada no pertenece a la empresa o está inactiva.")
+    if not 1 <= weekly_hours <= 96:
+        raise HTTPException(400, "Las horas semanales deben estar entre 1 y 96.")
+    if not 1 <= daily_hours <= 24:
+        raise HTTPException(400, "Las horas diarias deben estar entre 1 y 24.")
+    ips_number_value = re.sub(r"[\\s.-]+", "", ips_number.strip())
+    if ips_number_value and not ips_number_value.isdigit():
+        raise HTTPException(400, "El número IPS del funcionario debe contener solamente dígitos.")
     if any(
         normalize_document_number(value) == document_number_value
         for value in db.scalars(select(Employee.document_number).where(Employee.company_id == company.id))
@@ -3033,8 +3040,6 @@ def add_employee(
     db.add(employee)
     try:
         db.flush()
-        if not 1 <= int(weekly_hours or 48) <= 96:
-            raise HTTPException(400, "Las horas semanales deben estar entre 1 y 96.")
         profile = EmployeeComplianceProfile(
             employee_id=employee.id,
             nationality=clean_text(nationality, max_length=80) or "Paraguaya",
@@ -3044,7 +3049,7 @@ def add_employee(
             shift=clean_text(shift, max_length=60) or "Diurno",
             weekly_hours=int(weekly_hours or 48),
             daily_hours=int(daily_hours or 8),
-            ips_number=re.sub(r"[\\s.-]+", "", ips_number.strip()),
+            ips_number=ips_number_value,
             salary_type=clean_text(salary_type, max_length=40) or payment_frequency.strip() or "Mensual",
         )
         db.add(profile)
