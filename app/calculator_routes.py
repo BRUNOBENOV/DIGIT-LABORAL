@@ -67,7 +67,7 @@ def private_context(db, user, data):
     employee = db.get(Employee, employee_id) if employee_id else None
     if employee_id and (not employee or not company or employee.company_id != company.id):
         raise HTTPException(404, "Funcionario no encontrado en la empresa seleccionada.")
-    employees = list(db.scalars(select(Employee).where(Employee.company_id == company_id).order_by(Employee.full_name))) if company else []
+    employees = list(db.scalars(select(Employee).where(Employee.company_id.in_(company_ids)).order_by(Employee.full_name))) if company_ids else []
     query = select(CalculationRecord).where(CalculationRecord.company_id.in_(company_ids), CalculationRecord.source == SOURCE)
     if company:
         query = query.where(CalculationRecord.company_id == company.id)
