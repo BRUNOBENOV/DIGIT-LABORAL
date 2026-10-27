@@ -511,6 +511,34 @@ def company_ids_for_user(db: Session, user: User) -> list[int]:
     return []
 
 
+def assigned_employee_ids_for_lawyer(db: Session, user: User) -> list[int]:
+    """Return only employees attached to requests actively assigned to this lawyer."""
+    if user.role != "abogado" or not user.id or not user.studio_id:
+        return []
+    values = db.scalars(
+        select(CompanyRequest.employee_id)
+        .join(RequestWorkflow, RequestWorkflow.request_id == CompanyRequest.id)
+        .join(Company, Company.id == CompanyRequest.company_id)
+        .where(
+            Company.studio_id == user.studio_id,
+            RequestWorkflow.assigned_user_id == user.id,
+            CompanyRequest.employee_id.is_not(None),
+        )
+        .distinct()
+        .order_by(CompanyRequest.employee_id)
+    )
+    return [int(value) for value in values if value is not None]
+
+
+def employee_allowed_for_user(db: Session, user: User, employee_id: int) -> Employee:
+    employee = db.get(Employee, employee_id)
+    if not employee or employee.company_id not in company_ids_for_user(db, user):
+        raise HTTPException(404, "Funcionario no encontrado.")
+    if user.role == "abogado" and employee.id not in set(assigned_employee_ids_for_lawyer(db, user)):
+        raise HTTPException(404, "Funcionario no encontrado.")
+    return employee
+
+
 def company_allowed(db: Session, user: User, company_id: int) -> Company:
     company = db.get(Company, company_id)
     if not company or company_id not in company_ids_for_user(db, user):
@@ -1292,15 +1320,38 @@ def add_company(
 @app.get("/app/companies/{company_id}", response_class=HTMLResponse)
 def company_detail(request: Request, company_id: int, user: User = Depends(require_user), db: Session = Depends(get_db)):
     company = company_allowed(db, user, company_id)
-    employees = list(db.scalars(select(Employee).where(Employee.company_id == company_id).order_by(Employee.full_name)))
-    requests_list = list(db.scalars(select(CompanyRequest).where(CompanyRequest.company_id == company_id).order_by(CompanyRequest.created_at.desc()).limit(10)))
+    lawyer_employee_ids = set(assigned_employee_ids_for_lawyer(db, user)) if user.role == "abogado" else set()
+    employee_query = select(Employee).where(Employee.company_id == company_id)
+    if user.role == "abogado":
+        employee_query = employee_query.where(Employee.id.in_(lawyer_employee_ids)) if lawyer_employee_ids else employee_query.where(False)
+    employees = list(db.scalars(employee_query.order_by(Employee.full_name)))
+
+    requests_query = select(CompanyRequest).where(CompanyRequest.company_id == company_id)
+    if user.role == "abogado":
+        requests_query = requests_query.join(RequestWorkflow, RequestWorkflow.request_id == CompanyRequest.id).where(
+            RequestWorkflow.assigned_user_id == user.id
+        )
+    requests_list = list(db.scalars(requests_query.order_by(CompanyRequest.created_at.desc()).limit(10)))
     branches = list(db.scalars(select(Branch).where(Branch.company_id == company_id).order_by(Branch.name)))
-    payrolls = list(db.scalars(select(Payroll).where(Payroll.company_id == company_id).order_by(Payroll.period.desc()).limit(6)))
-    documents = list(db.scalars(select(Document).where(Document.company_id == company_id).order_by(Document.created_at.desc()).limit(8)))
+    payrolls = [] if user.role == "abogado" else list(
+        db.scalars(select(Payroll).where(Payroll.company_id == company_id).order_by(Payroll.period.desc()).limit(6))
+    )
+
+    documents_query = select(Document).where(Document.company_id == company_id)
+    if user.role == "abogado":
+        documents_query = documents_query.where(
+            (Document.employee_id.is_(None)) | Document.employee_id.in_(lawyer_employee_ids)
+        ) if lawyer_employee_ids else documents_query.where(Document.employee_id.is_(None))
+    documents = list(db.scalars(documents_query.order_by(Document.created_at.desc()).limit(8)))
     branding = get_or_create_branding(db, company)
     completeness_score, missing_fields = company_completeness(company, branding)
-    calculations = list(db.scalars(select(CalculationRecord).where(CalculationRecord.company_id == company_id).order_by(CalculationRecord.created_at.desc()).limit(6)))
-    certificates_count = db.scalar(select(func.count(GeneratedCertificate.id)).where(GeneratedCertificate.company_id == company_id)) or 0
+    calculations_query = select(CalculationRecord).where(CalculationRecord.company_id == company_id)
+    certificates_query = select(GeneratedCertificate.id).where(GeneratedCertificate.company_id == company_id)
+    if user.role == "abogado":
+        calculations_query = calculations_query.where(CalculationRecord.employee_id.in_(lawyer_employee_ids)) if lawyer_employee_ids else calculations_query.where(False)
+        certificates_query = certificates_query.where(GeneratedCertificate.employee_id.in_(lawyer_employee_ids)) if lawyer_employee_ids else certificates_query.where(False)
+    calculations = list(db.scalars(calculations_query.order_by(CalculationRecord.created_at.desc()).limit(6)))
+    certificates_count = db.scalar(select(func.count()).select_from(certificates_query.subquery())) or 0
     db.commit()
     return render(
         request,
@@ -1538,6 +1589,9 @@ def add_branch(
 def employees_page(request: Request, q: str = "", company_id: OptionalQueryId = None, user: User = Depends(require_user), db: Session = Depends(get_db)):
     company_ids = company_ids_for_user(db, user)
     query = select(Employee).where(Employee.company_id.in_(company_ids)) if company_ids else select(Employee).where(False)
+    if user.role == "abogado":
+        visible_employee_ids = assigned_employee_ids_for_lawyer(db, user)
+        query = query.where(Employee.id.in_(visible_employee_ids)) if visible_employee_ids else query.where(False)
     if company_id and company_id in company_ids:
         query = query.where(Employee.company_id == company_id)
     if q.strip():
@@ -1557,9 +1611,7 @@ def employee_detail_page(
     user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ):
-    employee = db.get(Employee, employee_id)
-    if not employee or employee.company_id not in company_ids_for_user(db, user):
-        raise HTTPException(404, "Funcionario no encontrado.")
+    employee = employee_allowed_for_user(db, user, employee_id)
     events = list(db.scalars(select(EmployeeEvent).where(EmployeeEvent.employee_id == employee.id).order_by(EmployeeEvent.effective_date.desc(), EmployeeEvent.created_at.desc())))
     salaries = list(db.scalars(select(SalaryHistory).where(SalaryHistory.employee_id == employee.id).order_by(SalaryHistory.effective_from.desc(), SalaryHistory.created_at.desc())))
     documents = list(db.scalars(select(Document).where(Document.employee_id == employee.id).order_by(Document.created_at.desc())))
@@ -1922,11 +1974,18 @@ def calendar_page(
 ):
     company_ids = company_ids_for_user(db, user)
     companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name))) if company_ids else []
+    lawyer_employee_ids = set(assigned_employee_ids_for_lawyer(db, user)) if user.role == "abogado" else set()
     employees_query = select(Employee).where(Employee.company_id.in_(company_ids)) if company_ids else select(Employee).where(False)
+    if user.role == "abogado":
+        employees_query = employees_query.where(Employee.id.in_(lawyer_employee_ids)) if lawyer_employee_ids else employees_query.where(False)
     if company_id and company_id in company_ids:
         employees_query = employees_query.where(Employee.company_id == company_id)
     employees = list(db.scalars(employees_query.order_by(Employee.full_name)))
     query = select(LaborDeadline).where(LaborDeadline.company_id.in_(company_ids)) if company_ids else select(LaborDeadline).where(False)
+    if user.role == "abogado":
+        query = query.where(
+            (LaborDeadline.employee_id.is_(None)) | LaborDeadline.employee_id.in_(lawyer_employee_ids)
+        ) if lawyer_employee_ids else query.where(LaborDeadline.employee_id.is_(None))
     if company_id and company_id in company_ids:
         query = query.where(LaborDeadline.company_id == company_id)
     if employee_id:
@@ -2036,7 +2095,15 @@ def send_calendar_reminders(
 @app.get("/app/calendar.ics")
 def calendar_ics(user: User = Depends(require_user), db: Session = Depends(get_db)):
     company_ids = company_ids_for_user(db, user)
-    items = list(db.scalars(select(LaborDeadline).where(LaborDeadline.company_id.in_(company_ids), LaborDeadline.status == "Pendiente").order_by(LaborDeadline.due_date))) if company_ids else []
+    query = select(LaborDeadline).where(
+        LaborDeadline.company_id.in_(company_ids), LaborDeadline.status == "Pendiente"
+    ) if company_ids else select(LaborDeadline).where(False)
+    if user.role == "abogado":
+        lawyer_employee_ids = set(assigned_employee_ids_for_lawyer(db, user))
+        query = query.where(
+            (LaborDeadline.employee_id.is_(None)) | LaborDeadline.employee_id.in_(lawyer_employee_ids)
+        ) if lawyer_employee_ids else query.where(LaborDeadline.employee_id.is_(None))
+    items = list(db.scalars(query.order_by(LaborDeadline.due_date)))
     lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Digit Laboral//Agenda Laboral//ES"]
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     for item in items:
