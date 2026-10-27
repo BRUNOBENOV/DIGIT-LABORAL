@@ -12,9 +12,8 @@
 <section class="ui-section-card{% if class_name %} {{ class_name }}{% endif %}">
   <header class="ui-section-card-head">
     <div>{% if eyebrow %}<span class="eyebrow">{{ eyebrow }}</span>{% endif %}<h2>{{ title }}</h2>{% if description %}<p>{{ description }}</p>{% endif %}</div>
-    {% if caller is defined %}{{ caller() }}{% endif %}
   </header>
-  {{ caller_content if caller_content is defined else '' }}
+  <div class="ui-section-card-body">{{ caller() }}</div>
 </section>
 {%- endmacro %}
 
