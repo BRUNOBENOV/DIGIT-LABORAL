@@ -1,4 +1,14 @@
 # Registro de cambios
+## 2.6.5 — Corrección de contraste en la sidebar
+
+- Corrige exclusivamente la barra lateral izquierda: textos de subapartados más claros, encabezados de categorías con mayor contraste y espaciado legible.
+- Destaca el subapartado activo con azul más visible, texto blanco y un indicador lateral claro; el hover también mantiene alto contraste.
+- Mejora la visibilidad de numeración de grupos, flechas, contador de notificaciones y foco de teclado.
+- Conserva el resto de la interfaz y los enlaces existentes; no cambia rutas, permisos, cálculos ni datos.
+
+### Validación
+- Añade una prueba para comprobar que la hoja de contraste se carga después del tema global y que define estados normal, hover y activo.
+
 ## 2.6.4 — Sistema visual global y navegación modular
 
 - Extiende la paleta azul/blanco/gris, tarjetas, espaciado, tipografía, paneles y feedback de estado a las pantallas autenticadas de los distintos módulos.
