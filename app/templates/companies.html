@@ -25,6 +25,7 @@
 <nav class="maintenance-subnav" aria-label="Subsecciones de mantenimiento">
   <a class="is-active" href="/app/companies" aria-current="page">Empresas <span>Directorio patronal</span></a>
   <a href="/app/employees">Funcionarios <span>Legajos y secciones</span></a>
+  <a href="/app/sections">Secciones <span>Áreas internas</span></a>
 </nav>
 {% if request.query_params.get('form_error') %}<div class="alert danger v24-form-error" role="alert">{{ request.query_params.get('form_error') }}</div>{% endif %}
 {% if request.query_params.get('limit') %}<div class="alert warning" role="status">El plan alcanzó su límite de empresas.</div>{% endif %}
