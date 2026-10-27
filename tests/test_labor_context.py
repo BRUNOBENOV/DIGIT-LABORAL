@@ -58,8 +58,8 @@ def test_context_persists_company_and_employee_across_modules():
         else:
             employee_id = int(employee_rows[0]["id"])
 
-        login_page = client.get("/login")
-        csrf_match = re.search(r'name="csrf_token" value="([^"]+)"', login_page.text)
+        app_page = client.get("/app")
+        csrf_match = re.search(r'name="csrf_token" value="([^"]+)"', app_page.text)
         assert csrf_match
         data = {
             "company_id": str(company_id),
@@ -74,7 +74,7 @@ def test_context_persists_company_and_employee_across_modules():
         assert response.status_code == 200
         assert f'value="{company_id}" selected' in response.text
         if employee_id:
-            assert f'value="{employee_id}" selected' in response.text
+            assert f'value="{employee_id}" data-company="{company_id}" selected' in response.text
             liquidation = client.get("/app/liquidaciones?tipo=settlement")
             assert liquidation.status_code == 200
             assert f'name="employee_id"' in liquidation.text
@@ -84,8 +84,8 @@ def test_context_persists_company_and_employee_across_modules():
 def test_context_rejects_external_return_url():
     with TestClient(app) as client:
         _login(client)
-        login_page = client.get("/login")
-        csrf_match = re.search(r'name="csrf_token" value="([^"]+)"', login_page.text)
+        app_page = client.get("/app")
+        csrf_match = re.search(r'name="csrf_token" value="([^"]+)"', app_page.text)
         assert csrf_match
         response = client.post(
             "/app/context",
