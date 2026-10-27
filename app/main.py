@@ -3243,8 +3243,6 @@ def calculations_page(
     )
     companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name))) if company_ids else []
     employees_query = select(Employee).where(Employee.company_id.in_(company_ids), Employee.status == "Activo") if company_ids else select(Employee).where(False)
-    if company_id and company_id in company_ids:
-        employees_query = employees_query.where(Employee.company_id == company_id)
     employees = list(db.scalars(employees_query.order_by(Employee.full_name)))
     recent_query = select(CalculationRecord).where(CalculationRecord.company_id.in_(company_ids), CalculationRecord.source != "Centro laboral") if company_ids else select(CalculationRecord).where(False)
     if company_id and company_id in company_ids:
