@@ -9,7 +9,7 @@
   <div class="employee-profile-main">
     <span class="eyebrow">EXPEDIENTE DIGITAL DEL FUNCIONARIO</span>
     <h1>{{ employee.full_name }}</h1>
-    <p>{{ employee.position or 'Sin cargo' }} · C.I. {{ employee.document_number }} · {{ employee.company.legal_name }}</p>
+    <p>Legajo {{ employee.employee_code if employee.employee_code is not none else 'Sin asignar' }} · {{ employee.position or 'Sin cargo' }} · C.I. {{ employee.document_number }} · {{ employee.company.legal_name }}</p>
     <div class="tag-row"><span>{{ employee.contract_type }}</span><span>{{ employee.payment_frequency }}</span><span class="status-pill {{ employee.status|lower }}">{{ employee.status }}</span></div>
   </div>
   {% if user.role in ['administrador', 'contador', 'auxiliar'] %}<button class="btn outline" type="button" data-modal-open="editEmployeeDetail">Editar ficha</button>{% endif %}
@@ -28,12 +28,20 @@
     <dl class="info-list">
       <div><dt>Empresa</dt><dd>{{ employee.company.legal_name }}</dd></div>
       <div><dt>Sucursal</dt><dd>{{ employee.branch.name if employee.branch else 'No asignada' }}</dd></div>
+      <div><dt>Sección / departamento</dt><dd>{{ employee.section.name if employee.section else 'No asignada' }}</dd></div>
       <div><dt>Fecha de nacimiento</dt><dd>{{ employee.birth_date|fecha }}</dd></div>
+      <div><dt>Nacionalidad</dt><dd>{{ employee_profile.nationality if employee_profile and employee_profile.nationality else 'No informada' }}</dd></div>
+      <div><dt>Estado civil</dt><dd>{{ employee_profile.marital_status if employee_profile and employee_profile.marital_status else 'No informado' }}</dd></div>
+      <div><dt>Categoría laboral</dt><dd>{{ employee_profile.position_category if employee_profile and employee_profile.position_category else 'No informada' }}</dd></div>
+      <div><dt>Jornada / horario</dt><dd>{{ employee_profile.work_schedule if employee_profile and employee_profile.work_schedule else 'No informado' }}</dd></div>
+      <div><dt>Horas semanales</dt><dd>{{ employee_profile.weekly_hours if employee_profile else 48 }}</dd></div>
       <div><dt>Correo</dt><dd>{{ employee.email or 'No informado' }}</dd></div>
       <div><dt>Teléfono</dt><dd>{{ employee.phone or 'No informado' }}</dd></div>
       <div><dt>Dirección</dt><dd>{{ employee.address or 'No informada' }}</dd></div>
       <div><dt>Fecha de salida</dt><dd>{{ employee.termination_date|fecha }}</dd></div>
       <div><dt>Observaciones</dt><dd>{{ employee.notes or 'Sin observaciones' }}</dd></div>
+      <div><dt>Última modificación</dt><dd>{% if employee.updated_at %}{{ employee.updated_at.strftime('%d/%m/%Y %H:%M') }}{% else %}No disponible{% endif %}</dd></div>
+      <div><dt>Modificado por</dt><dd>{{ employee.updated_by or 'No disponible' }}</dd></div>
     </dl>
   </article>
   <article class="panel">
