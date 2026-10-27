@@ -3158,6 +3158,8 @@ def calculations_page(
     user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ):
+    if user.role == "abogado":
+        raise HTTPException(403, "El espacio jurídico no permite operar las calculadoras del estudio.")
     if tipo and tipo not in CALCULATION_MODULES:
         raise HTTPException(404, "Calculadora no encontrada.")
     company_ids = company_ids_for_user(db, user)
@@ -3309,16 +3311,16 @@ def certificates_page(
 ):
     company_ids = company_ids_for_user(db, user)
     companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name))) if company_ids else []
-    employees = list(db.scalars(select(Employee).where(Employee.company_id.in_(company_ids)).order_by(Employee.full_name))) if company_ids else []
-    generated = list(
-        db.scalars(
-            select(GeneratedCertificate)
-            .where(GeneratedCertificate.company_id.in_(company_ids))
-            .order_by(GeneratedCertificate.created_at.desc())
-            .limit(30)
-        )
-    ) if company_ids else []
-    selected_calculation = db.get(CalculationRecord, calculation_id) if calculation_id else None
+    lawyer_employee_ids = set(assigned_employee_ids_for_lawyer(db, user)) if user.role == "abogado" else set()
+    employees_query = select(Employee).where(Employee.company_id.in_(company_ids)) if company_ids else select(Employee).where(False)
+    certificates_query = select(GeneratedCertificate).where(GeneratedCertificate.company_id.in_(company_ids)) if company_ids else select(GeneratedCertificate).where(False)
+    if user.role == "abogado":
+        employees_query = employees_query.where(Employee.id.in_(lawyer_employee_ids)) if lawyer_employee_ids else employees_query.where(False)
+        certificates_query = certificates_query.where(GeneratedCertificate.employee_id.in_(lawyer_employee_ids)) if lawyer_employee_ids else certificates_query.where(False)
+        if calculation_id:
+            raise HTTPException(403, "El espacio jurídico no permite vincular cálculos internos.")
+    employees = list(db.scalars(employees_query.order_by(Employee.full_name)))
+    generated = list(db.scalars(certificates_query.order_by(GeneratedCertificate.created_at.desc()).limit(30)))
     if calculation_id and (not selected_calculation or selected_calculation.company_id not in company_ids):
         raise HTTPException(404)
     if selected_calculation:
@@ -3328,7 +3330,11 @@ def certificates_page(
     selected_employee = db.get(Employee, employee_id) if employee_id else None
     if company_id and not selected_company:
         raise HTTPException(404, "Empresa no encontrada.")
-    if employee_id and (not selected_employee or selected_employee.company_id not in company_ids):
+    if employee_id and (
+        not selected_employee
+        or selected_employee.company_id not in company_ids
+        or (user.role == "abogado" and selected_employee.id not in lawyer_employee_ids)
+    ):
         raise HTTPException(404, "Funcionario no encontrado.")
     vacation_by_employee: dict[int, Vacation] = {}
     employee_ids = [employee.id for employee in employees]
@@ -3561,6 +3567,8 @@ def create_certificate(
     employee = db.get(Employee, employee_id)
     if not employee or employee.company_id != company.id:
         raise HTTPException(400, "El funcionario no pertenece a la empresa seleccionada.")
+    if user.role == "abogado" and employee.id not in set(assigned_employee_ids_for_lawyer(db, user)):
+        raise HTTPException(404, "El funcionario no pertenece a un expediente asignado.")
 
     calculation = db.get(CalculationRecord, calculation_id) if calculation_id else None
     if calculation and (calculation.company_id != company.id or calculation.company_id not in company_ids_for_user(db, user)):
@@ -3776,6 +3784,11 @@ def create_certificate(
 def get_allowed_certificate(certificate_id: int, user: User, db: Session) -> GeneratedCertificate:
     item = db.get(GeneratedCertificate, certificate_id)
     if not item or item.company_id not in company_ids_for_user(db, user):
+        raise HTTPException(404, "Documento no encontrado.")
+    if user.role == "abogado" and (
+        item.employee_id is None
+        or item.employee_id not in set(assigned_employee_ids_for_lawyer(db, user))
+    ):
         raise HTTPException(404, "Documento no encontrado.")
     return item
 
@@ -4031,17 +4044,27 @@ def reports_page(
     companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name))) if company_ids else []
     if company_id not in company_ids:
         company_id = company_ids[0] if company_ids else None
-    employees = list(db.scalars(select(Employee).where(Employee.company_id == company_id).order_by(Employee.full_name))) if company_id else []
+    lawyer_employee_ids = set(assigned_employee_ids_for_lawyer(db, user)) if user.role == "abogado" else set()
+    employees_query = select(Employee).where(Employee.company_id == company_id) if company_id else select(Employee).where(False)
+    if user.role == "abogado":
+        employees_query = employees_query.where(Employee.id.in_(lawyer_employee_ids)) if lawyer_employee_ids else employees_query.where(False)
+    employees = list(db.scalars(employees_query.order_by(Employee.full_name)))
     if employee_id and employee_id not in {item.id for item in employees}:
         employee_id = None
     calculations_query = select(CalculationRecord).where(CalculationRecord.company_id == company_id) if company_id else select(CalculationRecord).where(False)
     certificates_query = select(GeneratedCertificate).where(GeneratedCertificate.company_id == company_id) if company_id else select(GeneratedCertificate).where(False)
+    if user.role == "abogado":
+        calculations_query = calculations_query.where(CalculationRecord.employee_id.in_(lawyer_employee_ids)) if lawyer_employee_ids else calculations_query.where(False)
+        certificates_query = certificates_query.where(GeneratedCertificate.employee_id.in_(lawyer_employee_ids)) if lawyer_employee_ids else certificates_query.where(False)
     if employee_id:
         calculations_query = calculations_query.where(CalculationRecord.employee_id == employee_id)
         certificates_query = certificates_query.where(GeneratedCertificate.employee_id == employee_id)
     calculations = list(db.scalars(calculations_query.order_by(CalculationRecord.created_at.desc()).limit(50)))
     certificates = list(db.scalars(certificates_query.order_by(GeneratedCertificate.created_at.desc()).limit(50)))
-    payrolls = list(db.scalars(select(Payroll).where(Payroll.company_id == company_id).order_by(Payroll.period.desc()).limit(24))) if company_id else []
+    payrolls = [] if user.role == "abogado" else (
+        list(db.scalars(select(Payroll).where(Payroll.company_id == company_id).order_by(Payroll.period.desc()).limit(24)))
+        if company_id else []
+    )
     return render(
         request,
         "reports.html",
@@ -4067,9 +4090,14 @@ def reports_export_csv(
 ):
     company = company_allowed(db, user, company_id)
     query = select(CalculationRecord).where(CalculationRecord.company_id == company.id)
+    if user.role == "abogado":
+        allowed_employee_ids = set(assigned_employee_ids_for_lawyer(db, user))
+        query = query.where(CalculationRecord.employee_id.in_(allowed_employee_ids)) if allowed_employee_ids else query.where(False)
     if employee_id:
         employee = db.get(Employee, employee_id)
         if not employee or employee.company_id != company.id:
+            raise HTTPException(404)
+        if user.role == "abogado" and employee.id not in set(assigned_employee_ids_for_lawyer(db, user)):
             raise HTTPException(404)
         query = query.where(CalculationRecord.employee_id == employee.id)
     items = list(db.scalars(query.order_by(CalculationRecord.created_at.desc())))
@@ -4102,9 +4130,7 @@ def employee_integral_report(
     user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ):
-    employee = db.get(Employee, employee_id)
-    if not employee or employee.company_id not in company_ids_for_user(db, user):
-        raise HTTPException(404)
+    employee = employee_allowed_for_user(db, user, employee_id)
     company = employee.company
     calculations = list(db.scalars(select(CalculationRecord).where(CalculationRecord.employee_id == employee.id).order_by(CalculationRecord.created_at.desc())))
     certificates = list(db.scalars(select(GeneratedCertificate).where(GeneratedCertificate.employee_id == employee.id).order_by(GeneratedCertificate.created_at.desc())))
@@ -4453,8 +4479,16 @@ def create_aguinaldo(
 def documents_page(request: Request, user: User = Depends(require_user), db: Session = Depends(get_db)):
     company_ids = company_ids_for_user(db, user)
     companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name))) if company_ids else []
-    employees = list(db.scalars(select(Employee).where(Employee.company_id.in_(company_ids)).order_by(Employee.full_name))) if company_ids else []
-    documents = list(db.scalars(select(Document).where(Document.company_id.in_(company_ids)).order_by(Document.created_at.desc()))) if company_ids else []
+    lawyer_employee_ids = set(assigned_employee_ids_for_lawyer(db, user)) if user.role == "abogado" else set()
+    employees_query = select(Employee).where(Employee.company_id.in_(company_ids)) if company_ids else select(Employee).where(False)
+    documents_query = select(Document).where(Document.company_id.in_(company_ids)) if company_ids else select(Document).where(False)
+    if user.role == "abogado":
+        employees_query = employees_query.where(Employee.id.in_(lawyer_employee_ids)) if lawyer_employee_ids else employees_query.where(False)
+        documents_query = documents_query.where(
+            (Document.employee_id.is_(None)) | Document.employee_id.in_(lawyer_employee_ids)
+        ) if lawyer_employee_ids else documents_query.where(Document.employee_id.is_(None))
+    employees = list(db.scalars(employees_query.order_by(Employee.full_name)))
+    documents = list(db.scalars(documents_query.order_by(Document.created_at.desc())))
     return render(request, "documents.html", db, user, companies=companies, employees=employees, documents=documents)
 
 
@@ -4465,7 +4499,7 @@ async def upload_document(
     category: Annotated[str, Form()] = "General",
     employee_id: Annotated[int | None, Form()] = None,
     file: UploadFile = File(...),
-    user: User = Depends(require_user),
+    user: User = Depends(require_roles("administrador", "contador", "auxiliar", "empresa")),
     db: Session = Depends(get_db),
 ):
     company_allowed(db, user, company_id)
@@ -4505,6 +4539,9 @@ def download_document(document_id: int, user: User = Depends(require_user), db: 
     document = db.get(Document, document_id)
     if not document or document.company_id not in company_ids_for_user(db, user):
         raise HTTPException(404)
+    if user.role == "abogado" and document.employee_id is not None:
+        if document.employee_id not in set(assigned_employee_ids_for_lawyer(db, user)):
+            raise HTTPException(404)
     if document.content_bytes is not None:
         # Official certificate originals use PostgreSQL as a durable fallback when
         # the deployment's local filesystem is ephemeral.
@@ -5602,7 +5639,11 @@ def export_studio_backup(
 @app.get("/app/export/employees.csv")
 def export_employees(user: User = Depends(require_user), db: Session = Depends(get_db)):
     company_ids = company_ids_for_user(db, user)
-    employees = list(db.scalars(select(Employee).where(Employee.company_id.in_(company_ids)).order_by(Employee.full_name))) if company_ids else []
+    query = select(Employee).where(Employee.company_id.in_(company_ids)) if company_ids else select(Employee).where(False)
+    if user.role == "abogado":
+        allowed_employee_ids = assigned_employee_ids_for_lawyer(db, user)
+        query = query.where(Employee.id.in_(allowed_employee_ids)) if allowed_employee_ids else query.where(False)
+    employees = list(db.scalars(query.order_by(Employee.full_name)))
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(["Empresa", "RUC", "Funcionario", "Documento", "Cargo", "Ingreso", "Salario", "IPS", "Estado"])
