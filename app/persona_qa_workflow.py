@@ -53,12 +53,16 @@ def run_admin_workflow(check, client, password: str) -> dict:  # noqa: ANN001
         'economic_activity': 'Servicios profesionales',
         'contact_name': 'Contacto QA', 'responsible_name': 'Contador QA',
     }
-    response = client.post('/app/companies', data=company_payload, follow_redirects=False)
-    expect_status(check, response, {303}, 'crear empresa')
+    response = client.post('/api/companies', json=company_payload, headers={'Accept': 'application/json'})
+    if response.status_code != 201:
+        raise RuntimeError(
+            f"QA no pudo crear la empresa por API: HTTP {response.status_code}; respuesta={response.text[:1000]}"
+        )
+    company_id = int(response.json()['id'])
     with SessionLocal() as db:
-        company = db.scalar(select(Company).where(Company.ruc == company_ruc))
-        check(company is not None, 'empresa QA no persistió')
-        company_id = company.id if company else 0
+        company = db.get(Company, company_id)
+        if company is None:
+            raise RuntimeError("QA API devolvió un ID de empresa que no existe en la base")
 
     for fmt, mime, ext in (('PNG', 'image/png', 'png'), ('JPEG', 'image/jpeg', 'jpg'), ('WEBP', 'image/webp', 'webp')):
         response = client.post(f'/app/companies/{company_id}/logo', files={'logo': (f'logo.{ext}', _image_bytes(fmt), mime)}, follow_redirects=False)
