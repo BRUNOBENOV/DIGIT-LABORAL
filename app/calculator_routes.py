@@ -102,7 +102,7 @@ def public_page(request: Request, tipo: str = "salary", ejemplo: bool = False):
 
 @router.get("/app/liquidaciones")
 def professional_page(request: Request, tipo: str = "settlement", company_id: OptionalQueryId = None, employee_id: OptionalQueryId = None,
-                      user: User = Depends(core.require_user), db: Session = Depends(core.get_db)):
+                      user: User = Depends(core.require_roles("administrador", "contador", "auxiliar", "empresa")), db: Session = Depends(core.get_db)):
     values = dict(context(tipo)["values"], company_id=company_id or 0, employee_id=employee_id or 0, prepared_by=user.full_name)
     scoped = private_context(db, user, values)
     if employee := scoped["employee"]:
@@ -123,7 +123,7 @@ async def public_calculate(request: Request):
 
 
 @router.post("/app/liquidaciones/calcular")
-async def professional_calculate(request: Request, user: User = Depends(core.require_user),
+async def professional_calculate(request: Request, user: User = Depends(core.require_roles("administrador", "contador", "auxiliar", "empresa")),
                                  db: Session = Depends(core.get_db)):
     data = await form_values(request)
     private_context(db, user, data)
@@ -159,7 +159,7 @@ async def public_export(request: Request, fmt: str):
 
 
 @router.post("/app/liquidaciones/exportar/{fmt}")
-async def professional_export(request: Request, fmt: str, user: User = Depends(core.require_user),
+async def professional_export(request: Request, fmt: str, user: User = Depends(core.require_roles("administrador", "contador", "auxiliar", "empresa")),
                               db: Session = Depends(core.get_db)):
     data = await form_values(request)
     private_context(db, user, data)
@@ -204,7 +204,7 @@ def saved_result(db, user, record_id):
 
 
 @router.get("/app/liquidaciones/{record_id}")
-def saved_page(request: Request, record_id: int, user: User = Depends(core.require_user), db: Session = Depends(core.get_db)):
+def saved_page(request: Request, record_id: int, user: User = Depends(core.require_roles("administrador", "contador", "auxiliar", "empresa")), db: Session = Depends(core.get_db)):
     item, result = saved_result(db, user, record_id)
     response = core.render(request, "liquidation_saved.html", db, user, item=item, result=result)
     response.headers.update(HEADERS)
@@ -212,7 +212,7 @@ def saved_page(request: Request, record_id: int, user: User = Depends(core.requi
 
 
 @router.get("/app/liquidaciones/{record_id}/copiar")
-def copy_saved_calculation(request: Request, record_id: int, user: User = Depends(core.require_user),
+def copy_saved_calculation(request: Request, record_id: int, user: User = Depends(core.require_roles("administrador", "contador", "auxiliar", "empresa")),
                            db: Session = Depends(core.get_db)):
     item, _ = saved_result(db, user, record_id)
     values = json.loads(item.input_json)
@@ -223,7 +223,7 @@ def copy_saved_calculation(request: Request, record_id: int, user: User = Depend
 
 
 @router.get("/app/liquidaciones/{record_id}/exportar/{fmt}")
-async def saved_export(record_id: int, fmt: str, user: User = Depends(core.require_user), db: Session = Depends(core.get_db)):
+async def saved_export(record_id: int, fmt: str, user: User = Depends(core.require_roles("administrador", "contador", "auxiliar", "empresa")), db: Session = Depends(core.get_db)):
     _, result = saved_result(db, user, record_id)
     return await download(result, fmt)
 
