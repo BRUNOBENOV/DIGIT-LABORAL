@@ -1,5 +1,22 @@
 # Registro de cambios
 
+## 2.6.0 — 27-10-2026
+
+### Mantenimientos · formulario principal de Empresas
+- Se incorpora el Código Empresa numérico, único por estudio, con asignación retroactiva a empresas existentes.
+- Se amplía la ficha con propietario, C.I. del representante, sector/lugar de trabajo, actividad económica, contacto y datos patronales.
+- Ciudad y departamento se eligen mediante listas de localidades paraguayas.
+- La búsqueda admite código, nombre o RUC y filtros por ciudad y departamento.
+- La carga por código recupera la empresa existente mediante API autenticada.
+- Se agregan endpoints JSON de consulta, creación, actualización y archivado con validaciones de datos, permisos, CSRF y aislamiento por estudio.
+- El botón Eliminar archiva el registro para conservar nóminas, cálculos, certificados, trámites y auditoría; el registro puede volver a mostrarse y restaurarse.
+- No se insertan empresas ficticias en producción.
+
+### Validación
+- Se agregan pruebas para el formulario, la normalización del RUC y la consulta por código.
+- La publicación requiere CI en verde y confirmación del despliegue de Render.
+
+
 ## 2.5.5 — 27-10-2026
 
 ### Autorización por rol
