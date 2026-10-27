@@ -28,7 +28,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import func, or_, select, text
+from sqlalchemy import String, func, or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from starlette.middleware.sessions import SessionMiddleware
@@ -53,6 +53,7 @@ from .document_export import (
     safe_download_name,
 )
 from .period_coverage import build_annual_coverage, current_paraguay_date
+from .paraguay_locations import PARAGUAY_CITIES, PARAGUAY_CITY_NAMES, PARAGUAY_DEPARTMENTS
 from .models import (
     ActivationRequest,
     AIInteraction,
@@ -518,6 +519,177 @@ def company_allowed(db: Session, user: User, company_id: int) -> Company:
     if not company or company_id not in company_ids_for_user(db, user):
         raise HTTPException(404, "Empresa no encontrada.")
     return company
+
+
+def _ruc_digits(value: str | None) -> str:
+    return re.sub(r"\D+", "", str(value or ""))
+
+
+def normalize_company_ruc(value: str | None) -> str | None:
+    """Normalize the displayed RUC format after basic numeric length validation.
+
+    This validates numeric shape and length; it does not claim to verify DNIT's
+    official check digit or query DNIT records.
+    """
+    digits = _ruc_digits(value)
+    if not 6 <= len(digits) <= 10:
+        return None
+    return f"{digits[:-1]}-{digits[-1]}"
+
+
+def _company_profile(db: Session, company_id: int) -> CompanyComplianceProfile | None:
+    return db.scalar(select(CompanyComplianceProfile).where(CompanyComplianceProfile.company_id == company_id))
+
+
+def _company_api_record(db: Session, company: Company) -> dict:
+    profile = _company_profile(db, company.id)
+    updated_at = company.updated_at or company.created_at
+    return {
+        "id": company.id,
+        "company_code": company.company_code,
+        "legal_name": company.legal_name,
+        "trade_name": company.trade_name or "",
+        "owner_name": company.owner_name or "",
+        "legal_representative": company.legal_representative or "",
+        "address": company.address or "",
+        "city": company.city or "",
+        "department": profile.department if profile else "",
+        "work_sector": company.work_sector or "",
+        "work_location": company.work_location or "",
+        "economic_activity": profile.economic_activity if profile else "",
+        "phone": company.phone or "",
+        "contact_name": company.contact_name or "",
+        "email": company.email or "",
+        "ips_employer_number": company.ips_employer_number or "",
+        "mtess_employer_number": company.mtess_employer_number or "",
+        "ruc": company.ruc or "",
+        "legal_representative_document": profile.legal_representative_document if profile else "",
+        "responsible_name": company.responsible_name or "",
+        "notes": company.notes or "",
+        "status": company.status or "Activa",
+        "updated_at": updated_at.isoformat() if updated_at else None,
+    }
+
+
+def _validate_company_payload(db: Session, payload: dict, existing: Company | None = None) -> dict:
+    profile = _company_profile(db, existing.id) if existing else None
+    raw_code = payload.get("company_code")
+    if raw_code in (None, "") and existing:
+        raw_code = existing.company_code
+    try:
+        company_code = int(str(raw_code).strip())
+    except (TypeError, ValueError):
+        raise HTTPException(422, "El Código Empresa es obligatorio y debe ser numérico.")
+    if company_code <= 0 or company_code > 2_147_483_647:
+        raise HTTPException(422, "El Código Empresa debe ser un entero positivo.")
+
+    legal_name = str(payload.get("legal_name", existing.legal_name if existing else "") or "").strip()
+    if not legal_name:
+        raise HTTPException(422, "El nombre de la empresa es obligatorio.")
+    if len(legal_name) > 200:
+        raise HTTPException(422, "El nombre de la empresa no puede superar los 200 caracteres.")
+
+    raw_ruc = payload.get("ruc", existing.ruc if existing else "")
+    if raw_ruc in (None, "") and existing:
+        raw_ruc = existing.ruc
+    ruc = normalize_company_ruc(str(raw_ruc or ""))
+    if not ruc:
+        raise HTTPException(422, "El RUC debe contener entre 6 y 10 dígitos numéricos.")
+
+    city = str(payload.get("city", existing.city if existing else "Ciudad del Este") or "").strip()
+    if city and city not in PARAGUAY_CITY_NAMES and not (existing and city == existing.city):
+        raise HTTPException(422, "Seleccioná una ciudad de la lista de localidades paraguayas.")
+    department = str(payload.get("department", profile.department if profile else "") or "").strip()
+    if department and department not in PARAGUAY_DEPARTMENTS and not (profile and department == profile.department):
+        raise HTTPException(422, "Seleccioná un departamento válido de Paraguay.")
+
+    ips = re.sub(r"[\s.-]+", "", str(payload.get("ips_employer_number", existing.ips_employer_number if existing else "") or ""))
+    mjt = re.sub(r"[\s.-]+", "", str(payload.get("mtess_employer_number", existing.mtess_employer_number if existing else "") or ""))
+    ci = re.sub(r"[\s.-]+", "", str(payload.get("legal_representative_document", profile.legal_representative_document if profile else "") or ""))
+    if ips and not ips.isdigit():
+        raise HTTPException(422, "El número patronal IPS debe contener solamente dígitos.")
+    if mjt and not mjt.isdigit():
+        raise HTTPException(422, "El número patronal MJT debe contener solamente dígitos.")
+    if ci and not ci.isdigit():
+        raise HTTPException(422, "El número de C.I. debe contener solamente dígitos.")
+
+    values = {
+        "company_code": company_code,
+        "legal_name": legal_name,
+        "trade_name": str(payload.get("trade_name", existing.trade_name if existing else "") or "").strip(),
+        "owner_name": str(payload.get("owner_name", existing.owner_name if existing else "") or "").strip(),
+        "legal_representative": str(payload.get("legal_representative", existing.legal_representative if existing else "") or "").strip(),
+        "address": str(payload.get("address", existing.address if existing else "") or "").strip(),
+        "city": city,
+        "department": department,
+        "work_sector": str(payload.get("work_sector", existing.work_sector if existing else "") or "").strip(),
+        "work_location": str(payload.get("work_location", existing.work_location if existing else "") or "").strip(),
+        "economic_activity": str(payload.get("economic_activity", profile.economic_activity if profile else "") or "").strip(),
+        "phone": str(payload.get("phone", existing.phone if existing else "") or "").strip(),
+        "contact_name": str(payload.get("contact_name", existing.contact_name if existing else "") or "").strip(),
+        "email": str(payload.get("email", existing.email if existing else "") or "").strip(),
+        "ips_employer_number": ips,
+        "mtess_employer_number": mjt,
+        "ruc": ruc,
+        "legal_representative_document": ci,
+        "responsible_name": str(payload.get("responsible_name", existing.responsible_name if existing else "Sin asignar") or "Sin asignar").strip(),
+        "notes": str(payload.get("notes", existing.notes if existing else "") or "").strip(),
+    }
+    limits = {
+        "trade_name": 160, "owner_name": 180, "legal_representative": 180, "address": 240,
+        "work_sector": 160, "work_location": 180, "economic_activity": 220,
+        "phone": 60, "contact_name": 180, "email": 180, "ips_employer_number": 80,
+        "mtess_employer_number": 80, "legal_representative_document": 40, "responsible_name": 160,
+    }
+    for field, maximum in limits.items():
+        if len(values[field]) > maximum:
+            raise HTTPException(422, f"El campo {field.replace('_', ' ')} supera el máximo de {maximum} caracteres.")
+    return values
+
+
+def _check_company_uniqueness(db: Session, studio_id: int, values: dict, exclude_id: int | None = None) -> None:
+    code_query = select(Company.id).where(
+        Company.studio_id == studio_id, Company.company_code == values["company_code"]
+    )
+    if exclude_id is not None:
+        code_query = code_query.where(Company.id != exclude_id)
+    if db.scalar(code_query) is not None:
+        raise HTTPException(409, "El Código Empresa ya existe dentro de este estudio.")
+
+    new_ruc_digits = _ruc_digits(values["ruc"])
+    existing_companies = db.scalars(select(Company).where(Company.studio_id == studio_id))
+    for current in existing_companies:
+        if exclude_id is not None and current.id == exclude_id:
+            continue
+        if _ruc_digits(current.ruc) == new_ruc_digits:
+            raise HTTPException(409, "Ya existe una empresa con ese RUC dentro del estudio.")
+
+
+def _apply_company_payload(db: Session, company: Company, values: dict) -> None:
+    for field in (
+        "company_code", "legal_name", "trade_name", "owner_name", "legal_representative", "address",
+        "city", "work_sector", "work_location", "phone", "contact_name", "email",
+        "ips_employer_number", "mtess_employer_number", "ruc", "responsible_name", "notes",
+    ):
+        setattr(company, field, values[field])
+    company.updated_at = datetime.now(UTC)
+    profile = _company_profile(db, company.id)
+    if profile is None:
+        profile = CompanyComplianceProfile(company_id=company.id)
+        db.add(profile)
+    profile.department = values["department"]
+    profile.economic_activity = values["economic_activity"]
+    profile.legal_representative_document = values["legal_representative_document"]
+
+
+async def _json_object(request: Request) -> dict:
+    try:
+        payload = await request.json()
+    except Exception as exc:
+        raise HTTPException(400, "El cuerpo de la solicitud debe ser JSON válido.") from exc
+    if not isinstance(payload, dict):
+        raise HTTPException(422, "El cuerpo JSON debe ser un objeto.")
+    return payload
 
 
 def default_labor_context(
@@ -1248,73 +1420,158 @@ def dashboard(request: Request, user: User = Depends(require_user), db: Session 
 
 
 @app.get("/app/companies", response_class=HTMLResponse)
-def companies_page(request: Request, q: str = "", user: User = Depends(require_user), db: Session = Depends(get_db)):
+def companies_page(
+    request: Request,
+    q: str = "",
+    city: str = "",
+    department: str = "",
+    show_archived: bool = False,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
     if user.role == "empresa":
         return RedirectResponse(f"/app/companies/{user.company_id}", status_code=303)
     company_ids = company_ids_for_user(db, user)
     query = select(Company).where(Company.id.in_(company_ids)) if company_ids else select(Company).where(False)
+    if not show_archived:
+        query = query.where(Company.status != "Archivada")
     if q.strip():
         term = f"%{q.strip()}%"
-        query = query.where(or_(Company.legal_name.ilike(term), Company.ruc.ilike(term), Company.trade_name.ilike(term)))
+        query = query.where(or_(
+            Company.legal_name.ilike(term),
+            Company.ruc.ilike(term),
+            Company.trade_name.ilike(term),
+            func.cast(Company.company_code, String).ilike(term),
+        ))
+    if city.strip():
+        query = query.where(Company.city == city.strip())
+    if department.strip():
+        query = query.where(Company.id.in_(
+            select(CompanyComplianceProfile.company_id).where(CompanyComplianceProfile.department == department.strip())
+        ))
     companies = list(db.scalars(query.order_by(Company.legal_name)))
-    return render(request, "companies.html", db, user, companies=companies, q=q)
+    return render(
+        request, "companies.html", db, user, companies=companies, q=q, selected_city=city,
+        selected_department=department, show_archived=show_archived,
+        departments=PARAGUAY_DEPARTMENTS, cities=PARAGUAY_CITIES,
+    )
+
 
 @app.post("/app/companies")
 def add_company(
     legal_name: Annotated[str, Form()],
     ruc: Annotated[str, Form()],
+    company_code: Annotated[str, Form()] = "",
     trade_name: Annotated[str, Form()] = "",
+    owner_name: Annotated[str, Form()] = "",
     city: Annotated[str, Form()] = "Ciudad del Este",
+    department: Annotated[str, Form()] = "",
     address: Annotated[str, Form()] = "",
+    work_sector: Annotated[str, Form()] = "",
+    work_location: Annotated[str, Form()] = "",
+    economic_activity: Annotated[str, Form()] = "",
     phone: Annotated[str, Form()] = "",
+    contact_name: Annotated[str, Form()] = "",
     email: Annotated[str, Form()] = "",
     legal_representative: Annotated[str, Form()] = "",
+    legal_representative_document: Annotated[str, Form()] = "",
     ips_employer_number: Annotated[str, Form()] = "",
     mtess_employer_number: Annotated[str, Form()] = "",
     responsible_name: Annotated[str, Form()] = "Sin asignar",
     user: User = Depends(require_roles("administrador", "contador")),
     db: Session = Depends(get_db),
 ):
-    legal_name_value = legal_name.strip()
-    ruc_value = re.sub(r"\s+", "", ruc)
-    if not legal_name_value:
+    def form_error(message: str) -> RedirectResponse:
         return RedirectResponse(
-            f"/app/companies?form_error={quote('La razón social es obligatoria.')}&open=companyModal",
+            f"/app/companies?form_error={quote(message)}&open=companyModal",
             status_code=303,
         )
-    if not ruc_value:
+
+    name_value = legal_name.strip()
+    if not name_value:
+        return form_error("El nombre de la empresa es obligatorio.")
+    if len(name_value) > 200:
+        return form_error("El nombre de la empresa no puede superar los 200 caracteres.")
+    if not ruc.strip():
+        return form_error("El RUC es obligatorio.")
+    normalized_ruc = normalize_company_ruc(ruc)
+    if not normalized_ruc:
+        return form_error("El RUC debe contener entre 6 y 10 dígitos numéricos.")
+    try:
+        code_value = int(company_code.strip())
+        if code_value <= 0 or code_value > 2_147_483_647:
+            raise ValueError
+    except ValueError:
+        return form_error("El Código Empresa es obligatorio y debe ser numérico.")
+    if department.strip() and department.strip() not in PARAGUAY_DEPARTMENTS:
+        return form_error("Seleccioná un departamento válido de Paraguay.")
+    if city.strip() and city.strip() not in PARAGUAY_CITY_NAMES:
+        return form_error("Seleccioná una ciudad de la lista de localidades paraguayas.")
+    ips_clean = re.sub(r"[\s.-]+", "", ips_employer_number)
+    mjt_clean = re.sub(r"[\s.-]+", "", mtess_employer_number)
+    ci_clean = re.sub(r"[\s.-]+", "", legal_representative_document)
+    if ips_clean and not ips_clean.isdigit():
+        return form_error("El número patronal IPS debe contener solamente dígitos.")
+    if mjt_clean and not mjt_clean.isdigit():
+        return form_error("El número patronal MJT debe contener solamente dígitos.")
+    if ci_clean and not ci_clean.isdigit():
+        return form_error("El número de C.I. debe contener solamente dígitos.")
+
+    code_exists = db.scalar(select(Company.id).where(
+        Company.studio_id == user.studio_id, Company.company_code == code_value
+    ))
+    if code_exists:
         return RedirectResponse(
-            f"/app/companies?form_error={quote('El RUC es obligatorio.')}&open=companyModal",
+            f"/app/companies?code_duplicate=1&open=companyModal&company_code={code_value}",
             status_code=303,
         )
+    duplicate_ruc = any(
+        _ruc_digits(current.ruc) == _ruc_digits(normalized_ruc)
+        for current in db.scalars(select(Company).where(Company.studio_id == user.studio_id))
+    )
+    if duplicate_ruc:
+        return RedirectResponse("/app/companies?duplicate=1&open=companyModal", status_code=303)
+
     studio = db.get(Studio, user.studio_id)
     count = db.scalar(select(func.count(Company.id)).where(Company.studio_id == user.studio_id)) or 0
     if studio and count >= studio.company_limit:
         return RedirectResponse("/app/companies?limit=1", status_code=303)
     company = Company(
         studio_id=user.studio_id,
-        legal_name=legal_name_value,
+        company_code=code_value,
+        legal_name=name_value,
         trade_name=trade_name.strip(),
-        ruc=ruc_value,
+        owner_name=owner_name.strip(),
+        ruc=normalized_ruc,
         city=city.strip(),
         address=address.strip(),
+        work_sector=work_sector.strip(),
+        work_location=work_location.strip(),
         phone=phone.strip(),
+        contact_name=contact_name.strip(),
         email=email.strip(),
         legal_representative=legal_representative.strip(),
-        ips_employer_number=ips_employer_number.strip(),
-        mtess_employer_number=mtess_employer_number.strip(),
+        ips_employer_number=ips_clean,
+        mtess_employer_number=mjt_clean,
         responsible_name=responsible_name.strip() or "Sin asignar",
+        updated_at=datetime.now(UTC),
     )
     db.add(company)
     try:
         db.flush()
+        db.add(CompanyComplianceProfile(
+            company_id=company.id,
+            department=department.strip(),
+            economic_activity=economic_activity.strip(),
+            legal_representative_document=ci_clean,
+        ))
+        db.add(Branch(company_id=company.id, name="Casa central", city=company.city, address=company.address))
+        get_or_create_branding(db, company)
+        write_audit(db, user, "crear", "empresa", str(company.id), f"Código {company.company_code} · {company.legal_name}")
+        db.commit()
     except IntegrityError:
         db.rollback()
-        return RedirectResponse("/app/companies?duplicate=1", status_code=303)
-    db.add(Branch(company_id=company.id, name="Casa central", city=company.city, address=company.address))
-    get_or_create_branding(db, company)
-    write_audit(db, user, "crear", "empresa", str(company.id), company.legal_name)
-    db.commit()
+        return RedirectResponse("/app/companies?duplicate=1&open=companyModal", status_code=303)
     return RedirectResponse(f"/app/companies/{company.id}", status_code=303)
 
 
@@ -1327,6 +1584,7 @@ def company_detail(request: Request, company_id: int, user: User = Depends(requi
     payrolls = list(db.scalars(select(Payroll).where(Payroll.company_id == company_id).order_by(Payroll.period.desc()).limit(6)))
     documents = list(db.scalars(select(Document).where(Document.company_id == company_id).order_by(Document.created_at.desc()).limit(8)))
     branding = get_or_create_branding(db, company)
+    compliance_profile = _company_profile(db, company.id)
     completeness_score, missing_fields = company_completeness(company, branding)
     calculations = list(db.scalars(select(CalculationRecord).where(CalculationRecord.company_id == company_id).order_by(CalculationRecord.created_at.desc()).limit(6)))
     certificates_count = db.scalar(select(func.count(GeneratedCertificate.id)).where(GeneratedCertificate.company_id == company_id)) or 0
@@ -1347,6 +1605,9 @@ def company_detail(request: Request, company_id: int, user: User = Depends(requi
         missing_fields=missing_fields,
         calculations=calculations,
         certificates_count=certificates_count,
+        compliance_profile=compliance_profile,
+        departments=PARAGUAY_DEPARTMENTS,
+        cities=PARAGUAY_CITIES,
     )
 
 
@@ -1491,12 +1752,21 @@ def delete_company_logo(
 def edit_company(
     company_id: int,
     legal_name: Annotated[str, Form()],
+    company_code: Annotated[str, Form()] = "",
+    ruc: Annotated[str, Form()] = "",
     trade_name: Annotated[str, Form()] = "",
+    owner_name: Annotated[str, Form()] = "",
     city: Annotated[str, Form()] = "",
+    department: Annotated[str, Form()] = "",
     address: Annotated[str, Form()] = "",
+    work_sector: Annotated[str, Form()] = "",
+    work_location: Annotated[str, Form()] = "",
+    economic_activity: Annotated[str, Form()] = "",
     phone: Annotated[str, Form()] = "",
+    contact_name: Annotated[str, Form()] = "",
     email: Annotated[str, Form()] = "",
     legal_representative: Annotated[str, Form()] = "",
+    legal_representative_document: Annotated[str, Form()] = "",
     ips_employer_number: Annotated[str, Form()] = "",
     mtess_employer_number: Annotated[str, Form()] = "",
     responsible_name: Annotated[str, Form()] = "",
@@ -1505,39 +1775,191 @@ def edit_company(
     db: Session = Depends(get_db),
 ):
     company = company_allowed(db, user, company_id)
-    legal_name_value = legal_name.strip()
-    if not legal_name_value:
-        raise HTTPException(400, "La razón social de la empresa no puede quedar vacía.")
-    if len(legal_name_value) > 200:
-        raise HTTPException(400, "La razón social no puede superar los 200 caracteres.")
-    for attr, value in {
-        "legal_name": legal_name_value,
+    submitted_code = company_code.strip() or str(company.company_code or "")
+    if not submitted_code and company.company_code is None:
+        current_max = db.scalar(select(func.max(Company.company_code)).where(Company.studio_id == company.studio_id)) or 0
+        submitted_code = str(int(current_max) + 1)
+    values = _validate_company_payload(db, {
+        "company_code": submitted_code,
+        "legal_name": legal_name,
+        "ruc": ruc.strip() or company.ruc,
         "trade_name": trade_name,
-        "city": city,
-        "address": address,
-        "phone": phone,
-        "email": email,
+        "owner_name": owner_name,
         "legal_representative": legal_representative,
+        "legal_representative_document": legal_representative_document,
+        "address": address,
+        "city": city or company.city,
+        "department": department,
+        "work_sector": work_sector,
+        "work_location": work_location,
+        "economic_activity": economic_activity,
+        "phone": phone,
+        "contact_name": contact_name,
+        "email": email,
         "ips_employer_number": ips_employer_number,
         "mtess_employer_number": mtess_employer_number,
         "responsible_name": responsible_name,
         "notes": notes,
-    }.items():
-        setattr(company, attr, value.strip())
-    write_audit(db, user, "editar", "empresa", str(company.id), company.legal_name)
-    db.commit()
-    return RedirectResponse(f"/app/companies/{company_id}", status_code=303)
+    }, existing=company)
+    _check_company_uniqueness(db, company.studio_id, values, exclude_id=company.id)
+    _apply_company_payload(db, company, values)
+    write_audit(db, user, "editar", "empresa", str(company.id), f"Código {company.company_code} · {company.legal_name}")
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(409, "El Código Empresa o el RUC ya está registrado.") from exc
+    return RedirectResponse(f"/app/companies/{company_id}?company_saved=1", status_code=303)
 
 
 @app.post("/app/companies/{company_id}/status")
 def update_company_status(company_id: int, status_value: Annotated[str, Form(alias="status")], user: User = Depends(require_roles("administrador", "contador")), db: Session = Depends(get_db)):
     company = company_allowed(db, user, company_id)
-    if status_value not in {"Activa", "Pendiente", "Suspendida"}:
+    if status_value not in {"Activa", "Pendiente", "Suspendida", "Archivada"}:
         raise HTTPException(400, "El estado seleccionado para la empresa no es válido.")
     company.status = status_value
+    company.updated_at = datetime.now(UTC)
     write_audit(db, user, "actualizar_estado", "empresa", str(company.id), status_value)
     db.commit()
     return RedirectResponse(f"/app/companies/{company_id}", status_code=303)
+
+
+@app.post("/app/companies/{company_id}/delete")
+def archive_company(
+    company_id: int,
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    company = company_allowed(db, user, company_id)
+    company.status = "Archivada"
+    company.updated_at = datetime.now(UTC)
+    write_audit(db, user, "archivar", "empresa", str(company.id), f"Código {company.company_code} · {company.legal_name}")
+    db.commit()
+    return RedirectResponse("/app/companies?archived=1", status_code=303)
+
+
+@app.get("/api/companies")
+def api_list_companies(
+    q: str = "",
+    city: str = "",
+    department: str = "",
+    include_archived: bool = False,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    company_ids = company_ids_for_user(db, user)
+    query = select(Company).where(Company.id.in_(company_ids)) if company_ids else select(Company).where(False)
+    if not include_archived:
+        query = query.where(Company.status != "Archivada")
+    if q.strip():
+        term = f"%{q.strip()}%"
+        query = query.where(or_(
+            Company.legal_name.ilike(term), Company.ruc.ilike(term), Company.trade_name.ilike(term),
+            func.cast(Company.company_code, String).ilike(term),
+        ))
+    if city.strip():
+        query = query.where(Company.city == city.strip())
+    if department.strip():
+        query = query.where(Company.id.in_(
+            select(CompanyComplianceProfile.company_id).where(CompanyComplianceProfile.department == department.strip())
+        ))
+    records = list(db.scalars(query.order_by(Company.legal_name)))
+    return {"count": len(records), "items": [_company_api_record(db, company) for company in records]}
+
+
+@app.get("/api/companies/by-code/{company_code}")
+def api_company_by_code(
+    company_code: int,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    if company_code <= 0:
+        raise HTTPException(422, "El Código Empresa debe ser positivo.")
+    company = db.scalar(select(Company).where(
+        Company.company_code == company_code,
+        Company.id.in_(company_ids_for_user(db, user)),
+    ))
+    if not company or company.status == "Archivada":
+        raise HTTPException(404, "No se encontró una empresa activa con ese código en tu espacio de trabajo.")
+    return _company_api_record(db, company)
+
+
+@app.get("/api/companies/{company_id}")
+def api_company_by_id(
+    company_id: int,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    company = company_allowed(db, user, company_id)
+    return _company_api_record(db, company)
+
+
+@app.post("/api/companies", status_code=201)
+async def api_create_company(
+    request: Request,
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    payload = await _json_object(request)
+    values = _validate_company_payload(db, payload)
+    _check_company_uniqueness(db, user.studio_id, values)
+    studio = db.get(Studio, user.studio_id)
+    count = db.scalar(select(func.count(Company.id)).where(Company.studio_id == user.studio_id)) or 0
+    if studio and count >= studio.company_limit:
+        raise HTTPException(409, "El estudio alcanzó el límite de empresas de su plan.")
+    company = Company(studio_id=user.studio_id)
+    db.add(company)
+    db.flush()
+    _apply_company_payload(db, company, values)
+    db.add(Branch(company_id=company.id, name="Casa central", city=company.city, address=company.address))
+    get_or_create_branding(db, company)
+    write_audit(db, user, "crear", "empresa", str(company.id), f"Código {company.company_code} · {company.legal_name}")
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(409, "El Código Empresa o el RUC ya está registrado.") from exc
+    db.refresh(company)
+    return _company_api_record(db, company)
+
+
+@app.put("/api/companies/{company_id}")
+async def api_update_company(
+    company_id: int,
+    request: Request,
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    company = company_allowed(db, user, company_id)
+    payload = await _json_object(request)
+    merged = _company_api_record(db, company)
+    merged.update(payload)
+    values = _validate_company_payload(db, merged, existing=company)
+    _check_company_uniqueness(db, company.studio_id, values, exclude_id=company.id)
+    _apply_company_payload(db, company, values)
+    write_audit(db, user, "editar", "empresa", str(company.id), f"Código {company.company_code} · {company.legal_name}")
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(409, "El Código Empresa o el RUC ya está registrado.") from exc
+    db.refresh(company)
+    return _company_api_record(db, company)
+
+
+@app.delete("/api/companies/{company_id}")
+def api_archive_company(
+    company_id: int,
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    # Logical deletion preserves payrolls, calculations, certificates, requests and audit history.
+    company = company_allowed(db, user, company_id)
+    company.status = "Archivada"
+    company.updated_at = datetime.now(UTC)
+    write_audit(db, user, "archivar", "empresa", str(company.id), f"Código {company.company_code} · {company.legal_name}")
+    db.commit()
+    return {"ok": True, "id": company.id, "company_code": company.company_code, "status": company.status}
 
 
 @app.post("/app/companies/{company_id}/branches")
