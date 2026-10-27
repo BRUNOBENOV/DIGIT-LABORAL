@@ -86,6 +86,21 @@ def upgrade() -> None:
                 {"employee_id": row["id"]},
             )
 
+    if "employee_compliance_profiles" in set(sa.inspect(bind).get_table_names()):
+        profile_columns = {
+            item["name"] for item in sa.inspect(bind).get_columns("employee_compliance_profiles")
+        }
+        if "daily_hours" not in profile_columns:
+            op.add_column(
+                "employee_compliance_profiles",
+                sa.Column("daily_hours", sa.Integer(), nullable=False, server_default="8"),
+            )
+        if "ips_number" not in profile_columns:
+            op.add_column(
+                "employee_compliance_profiles",
+                sa.Column("ips_number", sa.String(length=80), nullable=False, server_default=""),
+            )
+
     inspector = sa.inspect(bind)
     employee_indexes = {item["name"] for item in inspector.get_indexes("employees")}
     employee_constraints = {item.get("name") for item in inspector.get_unique_constraints("employees")}
@@ -109,6 +124,14 @@ def downgrade() -> None:
     for name in ("updated_by", "updated_at", "section_id", "employee_code"):
         if name in columns:
             op.drop_column("employees", name)
+
+    if "employee_compliance_profiles" in sa.inspect(bind).get_table_names():
+        profile_columns = {
+            item["name"] for item in sa.inspect(bind).get_columns("employee_compliance_profiles")
+        }
+        for name in ("ips_number", "daily_hours"):
+            if name in profile_columns:
+                op.drop_column("employee_compliance_profiles", name)
 
     if "company_sections" in sa.inspect(bind).get_table_names():
         section_indexes = {item["name"] for item in sa.inspect(bind).get_indexes("company_sections")}
