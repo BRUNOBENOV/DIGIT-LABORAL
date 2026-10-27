@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import uuid
 
 from PIL import Image
 from sqlalchemy import func, select
@@ -37,7 +38,8 @@ def run_admin_workflow(check, client, password: str) -> dict:  # noqa: ANN001
         next_company_code = (db.scalar(
             select(func.max(Company.company_code)).where(Company.studio_id == studio_id)
         ) or 0) + 1
-    ruc_base = '80999001'
+    # QA uses a unique syntactically valid RUC so repeated CI runs cannot collide with seeded fixtures.
+    ruc_base = str(81_000_000 + uuid.uuid4().int % 999_999)
     company_ruc = f'{ruc_base}-{ruc_check_digit(ruc_base)}'
     company_payload = {
         'company_code': str(next_company_code),
