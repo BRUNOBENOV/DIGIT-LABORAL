@@ -51,6 +51,7 @@ from .document_export import (
     format_date_long_es,
     safe_download_name,
 )
+from .period_coverage import build_annual_coverage, current_paraguay_date
 from .models import (
     ActivationRequest,
     AIInteraction,
@@ -3082,12 +3083,120 @@ CALCULATION_MODULES = {
 }
 
 
+def _employee_annual_coverage(db: Session, company: Company, employee: Employee, year: int, today: date):
+    """Build coverage from payroll rows and saved monthly salary calculations."""
+    period_start, period_end = f"{year:04d}-01", f"{year:04d}-12"
+    payroll_rows = db.execute(
+        select(Payroll, PayrollLine)
+        .join(PayrollLine, PayrollLine.payroll_id == Payroll.id)
+        .where(
+            Payroll.company_id == company.id,
+            PayrollLine.employee_id == employee.id,
+            Payroll.period >= period_start,
+            Payroll.period <= period_end,
+        )
+        .order_by(Payroll.period)
+    ).all()
+    payroll_by_period = {}
+    for payroll, line in payroll_rows:
+        gross_components = (
+            line.base_salary + line.overtime + line.commissions
+            + line.bonuses + line.other_income
+        )
+        amounts_consistent = (
+            min(line.base_salary, line.overtime, line.commissions, line.bonuses, line.other_income) >= 0
+            and line.gross >= 0
+            and line.gross == gross_components
+        )
+        payroll_by_period[payroll.period] = {
+            "status": payroll.status,
+            "gross": line.gross,
+            "base_salary": line.base_salary,
+            "amounts_consistent": amounts_consistent,
+        }
+    calc_periods = db.scalars(
+        select(CalculationRecord.reference_period).where(
+            CalculationRecord.company_id == company.id,
+            CalculationRecord.employee_id == employee.id,
+            CalculationRecord.calculation_type == "salary",
+            CalculationRecord.reference_period.like(f"{year:04d}-%"),
+            CalculationRecord.status != "Anulado",
+        )
+    )
+    saved_salary_periods = {str(period) for period in calc_periods if period}
+    return build_annual_coverage(
+        year=year,
+        admission_date=employee.admission_date,
+        termination_date=employee.termination_date,
+        payroll_by_period=payroll_by_period,
+        saved_salary_periods=saved_salary_periods,
+        today=today,
+    )
+
+
+@app.get("/app/calculations/periodos", response_class=HTMLResponse)
+def calculation_period_coverage(
+    request: Request,
+    company_id: int | None = None,
+    employee_id: int | None = None,
+    year: int | None = None,
+    user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
+    db: Session = Depends(get_db),
+):
+    """Show monthly record coverage without treating missing data as zero."""
+    today = current_paraguay_date()
+    target_year = year or today.year
+    if target_year < 1900 or target_year > today.year:
+        raise HTTPException(422, "Seleccioná un año entre 1900 y el año actual.")
+    company_ids = company_ids_for_user(db, user)
+    companies = list(
+        db.scalars(select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name))
+    ) if company_ids else []
+    employees = list(
+        db.scalars(
+            select(Employee).where(Employee.company_id.in_(company_ids)).order_by(Employee.full_name)
+        )
+    ) if company_ids else []
+    selected_company = None
+    selected_employee = None
+    coverage = None
+    if employee_id:
+        selected_employee = db.get(Employee, employee_id)
+        if not selected_employee or selected_employee.company_id not in company_ids:
+            raise HTTPException(404, "Funcionario no encontrado en tu espacio de trabajo.")
+        if company_id and selected_employee.company_id != company_id:
+            raise HTTPException(400, "El funcionario no pertenece a la empresa seleccionada.")
+        company_id = selected_employee.company_id
+    if company_id:
+        selected_company = company_allowed(db, user, company_id)
+    if selected_employee and selected_company:
+        coverage = _employee_annual_coverage(db, selected_company, selected_employee, target_year, today)
+    return render(
+        request,
+        "period_coverage.html",
+        db,
+        user,
+        companies=companies,
+        employees=employees,
+        selected_company=company_id,
+        selected_employee=employee_id,
+        selected_company_name=selected_company.legal_name if selected_company else "",
+        selected_employee_name=selected_employee.full_name if selected_employee else "",
+        year=target_year,
+        today=today,
+        coverage=coverage,
+        format_gs=format_gs,
+    )
+
+
 @app.get("/app/calculations", response_class=HTMLResponse)
 def calculations_page(
     request: Request,
     company_id: OptionalQueryId = None,
     employee_id: OptionalQueryId = None,
     tipo: str | None = None,
+    reuse_history: bool = False,
+    year: int | None = None,
     user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
     db: Session = Depends(get_db),
 ):
@@ -3107,6 +3216,25 @@ def calculations_page(
     if tipo:
         recent_query = recent_query.where(CalculationRecord.calculation_type == tipo)
     recent_calculations = list(db.scalars(recent_query.order_by(CalculationRecord.created_at.desc()).limit(30)))
+    prefill_total_remunerations = 0
+    prefill_notes = ""
+    period_reuse_warning = ""
+    prefill_year = year or current_paraguay_date().year
+    if reuse_history and tipo == "aguinaldo" and company_id and employee_id:
+        if prefill_year < 1900 or prefill_year > current_paraguay_date().year:
+            raise HTTPException(422, "El año de reutilización debe estar entre 1900 y el año actual.")
+        company = company_allowed(db, user, company_id)
+        employee = db.get(Employee, employee_id)
+        if not employee or employee.company_id != company.id:
+            raise HTTPException(404, "Funcionario no encontrado en la empresa seleccionada.")
+        coverage = _employee_annual_coverage(db, company, employee, prefill_year, current_paraguay_date())
+        prefill_total_remunerations = coverage["suggested_total"]
+        period_reuse_warning = coverage["coverage_note"] + " " + coverage["legal_note"]
+        prefill_notes = (
+            f"Propuesta desde historial de nóminas {prefill_year}: suma bruta de nóminas cerradas y consistentes "
+            f"Gs. {format_gs(prefill_total_remunerations)}; cobertura {coverage['closed_count']}/"
+            f"{coverage['expected_count']} periodos esperados. Revisar conceptos computables, ajustes y anticipos."
+        )
     return render(
         request,
         "calculations.html",
@@ -3123,6 +3251,10 @@ def calculations_page(
         calculation_labels={key: calculation_label(key) for key in ("salary", "hours", "aguinaldo", "vacation", "notice")},
         active_calculation_type=tipo or "",
         calculation_module=CALCULATION_MODULES.get(tipo),
+        prefill_total_remunerations=prefill_total_remunerations,
+        prefill_notes=prefill_notes,
+        period_reuse_warning=period_reuse_warning,
+        prefill_year=prefill_year,
     )
 
 
