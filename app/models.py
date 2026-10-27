@@ -756,6 +756,8 @@ class EmployeeComplianceProfile(Base):
     shift: Mapped[str] = mapped_column(String(60), default="Diurno")
     weekly_hours: Mapped[int] = mapped_column(Integer, default=48)
     salary_type: Mapped[str] = mapped_column(String(40), default="Mensual")
+    daily_hours: Mapped[int] = mapped_column(Integer, default=8)
+    ips_number: Mapped[str] = mapped_column(String(80), default="")
     dependent_children: Mapped[int] = mapped_column(Integer, default=0)
     indigenous: Mapped[bool] = mapped_column(Boolean, default=False)
     disability: Mapped[bool] = mapped_column(Boolean, default=False)
