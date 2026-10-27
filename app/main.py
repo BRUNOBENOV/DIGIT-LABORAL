@@ -577,13 +577,26 @@ def default_labor_context(
     company_id: int | None,
     employee_id: int | None,
 ) -> tuple[int | None, int | None]:
-    """Apply remembered context only when a page URL did not explicitly select records."""
+    """Use remembered context by default and synchronize authorized explicit selections."""
     if company_id is None and employee_id is None:
         return active_labor_context(request, db, user, allowed_company_ids)
-    if employee_id is not None and company_id is None:
+    if employee_id is not None:
         employee = db.get(Employee, employee_id)
-        if employee and employee.company_id in allowed_company_ids:
-            company_id = employee.company_id
+        if not employee or employee.company_id not in allowed_company_ids:
+            raise HTTPException(404, "Funcionario no encontrado en tu espacio de trabajo.")
+        if company_id is not None and employee.company_id != company_id:
+            raise HTTPException(400, "El funcionario no pertenece a la empresa seleccionada.")
+        company_id = employee.company_id
+    if company_id is not None and company_id not in allowed_company_ids:
+        raise HTTPException(404, "Empresa no encontrada.")
+    if company_id is not None:
+        request.session["labor_context_company_id"] = str(company_id)
+    else:
+        request.session.pop("labor_context_company_id", None)
+    if employee_id is not None:
+        request.session["labor_context_employee_id"] = str(employee_id)
+    else:
+        request.session.pop("labor_context_employee_id", None)
     return company_id, employee_id
 
 
@@ -1680,9 +1693,14 @@ def add_branch(
 @app.get("/app/employees", response_class=HTMLResponse)
 def employees_page(request: Request, q: str = "", company_id: OptionalQueryId = None, user: User = Depends(require_user), db: Session = Depends(get_db)):
     company_ids = company_ids_for_user(db, user)
+    company_id, active_employee_id = default_labor_context(
+        request, db, user, company_ids, company_id, None
+    )
     query = select(Employee).where(Employee.company_id.in_(company_ids)) if company_ids else select(Employee).where(False)
     if company_id and company_id in company_ids:
         query = query.where(Employee.company_id == company_id)
+    if active_employee_id:
+        query = query.where(Employee.id == active_employee_id)
     if q.strip():
         term = f"%{q.strip()}%"
         query = query.where(or_(Employee.full_name.ilike(term), Employee.document_number.ilike(term), Employee.position.ilike(term)))
@@ -1690,7 +1708,7 @@ def employees_page(request: Request, q: str = "", company_id: OptionalQueryId = 
     companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name))) if company_ids else []
     branches = list(db.scalars(select(Branch).where(Branch.company_id.in_(company_ids)).order_by(Branch.name))) if company_ids else []
     minimum_salary = db.scalar(select(LaborParameter).where(LaborParameter.key == "minimum_monthly_salary_general", LaborParameter.active.is_(True)))
-    return render(request, "employees.html", db, user, employees=employees, companies=companies, branches=branches, q=q, selected_company=company_id, minimum_salary=minimum_salary)
+    return render(request, "employees.html", db, user, employees=employees, companies=companies, branches=branches, q=q, selected_company=company_id, selected_employee=active_employee_id, minimum_salary=minimum_salary)
 
 
 @app.get("/app/employees/{employee_id}", response_class=HTMLResponse)
@@ -3453,6 +3471,11 @@ def save_calculation(
         total_remunerations=total_remunerations,
         days=days,
     )
+    request.session["labor_context_company_id"] = str(company.id)
+    if employee:
+        request.session["labor_context_employee_id"] = str(employee.id)
+    else:
+        request.session.pop("labor_context_employee_id", None)
     item = CalculationRecord(
         company_id=company.id,
         employee_id=employee.id if employee else None,
@@ -4471,6 +4494,8 @@ def create_payroll(
         date.fromisoformat(period + "-01")
     except ValueError:
         raise HTTPException(400, "Periodo inválido")
+    request.session["labor_context_company_id"] = str(company_id)
+    request.session.pop("labor_context_employee_id", None)
     payroll = Payroll(company_id=company_id, period=period, notes=notes.strip(), created_by=user.email)
     db.add(payroll)
     try:
@@ -4617,6 +4642,7 @@ def vacations_page(request: Request, user: User = Depends(require_user), db: Ses
 
 @app.post("/app/vacations")
 def create_vacation(
+    request: Request,
     employee_id: Annotated[int, Form()],
     period_year: Annotated[int, Form()],
     entitled_days: Annotated[int, Form()],
@@ -4631,6 +4657,8 @@ def create_vacation(
     employee = db.get(Employee, employee_id)
     if not employee or employee.company_id not in company_ids_for_user(db, user):
         raise HTTPException(404)
+    request.session["labor_context_company_id"] = str(employee.company_id)
+    request.session["labor_context_employee_id"] = str(employee.id)
     item = Vacation(employee_id=employee_id, period_year=period_year, entitled_days=max(0, entitled_days), used_days=max(0, used_days), start_date=start_date, end_date=end_date, status=status_value, notes=notes.strip())
     db.add(item)
     db.flush()
@@ -4681,6 +4709,7 @@ def aguinaldo_page(request: Request, user: User = Depends(require_user), db: Ses
 
 @app.post("/app/aguinaldo")
 def create_aguinaldo(
+    request: Request,
     employee_id: Annotated[int, Form()],
     year: Annotated[int, Form()],
     total_remunerations: Annotated[int, Form()],
@@ -4696,6 +4725,8 @@ def create_aguinaldo(
     if not 0 <= total_remunerations <= 2147483647:
         raise HTTPException(400, "Las remuneraciones computables deben estar entre 0 y 2.147.483.647 Gs.")
     amount = round_gs(total_remunerations / 12)
+    request.session["labor_context_company_id"] = str(employee.company_id)
+    request.session["labor_context_employee_id"] = str(employee.id)
     item = Aguinaldo(employee_id=employee_id, year=year, total_remunerations=total_remunerations, calculated_amount=amount, notes=notes.strip())
     db.add(item)
     try:
@@ -4748,6 +4779,11 @@ async def upload_document(
     db: Session = Depends(get_db),
 ):
     company_allowed(db, user, company_id)
+    request.session["labor_context_company_id"] = str(company_id)
+    if employee_id:
+        request.session["labor_context_employee_id"] = str(employee_id)
+    else:
+        request.session.pop("labor_context_employee_id", None)
     if file.content_type not in ALLOWED_UPLOAD_TYPES:
         raise HTTPException(400, "Formato no permitido.")
     content = await file.read(MAX_UPLOAD_SIZE + 1)
