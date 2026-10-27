@@ -19,7 +19,7 @@ from contextlib import asynccontextmanager
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Annotated
-from urllib.parse import parse_qs, quote
+from urllib.parse import parse_qs, quote, urlencode
 
 from PIL import Image, ImageChops, ImageOps
 
@@ -810,6 +810,19 @@ def set_labor_context(
     # Only redirect within this application; reject absolute and scheme-relative URLs.
     if not (return_to == "/app" or return_to.startswith("/app/")) or return_to.startswith("//") or "://" in return_to or "\\" in return_to:
         return_to = "/app"
+    # A page may carry stale company_id/employee_id query parameters. Replace
+    # those with the newly saved context so the destination does not undo the
+    # user's selection as soon as it loads.
+    return_path, _, return_query = return_to.partition("?")
+    return_params = parse_qs(return_query, keep_blank_values=True)
+    return_params.pop("company_id", None)
+    return_params.pop("employee_id", None)
+    if company_id:
+        return_params["company_id"] = [str(company_id)]
+    if employee_id:
+        return_params["employee_id"] = [str(employee_id)]
+    encoded_query = urlencode(return_params, doseq=True)
+    return_to = return_path + (f"?{encoded_query}" if encoded_query else "")
     return RedirectResponse(return_to, status_code=303)
 
 
