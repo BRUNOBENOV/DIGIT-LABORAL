@@ -9,6 +9,7 @@ from app.config import settings
 from app.database import SessionLocal
 from app.main import app, normalize_company_ruc
 from app.models import Company, CompanyComplianceProfile, User
+from app.paraguay_locations import PARAGUAY_CITIES, PARAGUAY_CITY_NAMES, PARAGUAY_DEPARTMENTS
 
 
 def _login(client: TestClient) -> str:
@@ -32,6 +33,14 @@ def test_ruc_normalization_checks_numeric_length_and_standardizes_display():
     assert normalize_company_ruc("80.012.345 6") == "80012345-6"
     assert normalize_company_ruc("ABC-123") is None
     assert normalize_company_ruc("123") is None
+
+
+def test_paraguay_city_catalog_has_262_unique_municipalities_and_valid_departments():
+    assert len(PARAGUAY_CITIES) == 262
+    assert len(PARAGUAY_CITY_NAMES) == len(PARAGUAY_CITIES)
+    assert len(PARAGUAY_DEPARTMENTS) == 18
+    assert all(item["department"] in PARAGUAY_DEPARTMENTS for item in PARAGUAY_CITIES)
+    assert any(item["name"] == "Ciudad del Este" and item["department"] == "Alto Paraná" for item in PARAGUAY_CITIES)
 
 
 def test_company_form_contains_required_maintenance_fields_and_paraguayan_selectors():
