@@ -29,8 +29,9 @@ def _login(client: TestClient) -> str:
 
 
 def test_ruc_normalization_checks_numeric_length_and_standardizes_display():
-    assert normalize_company_ruc("80012345-6") == "80012345-6"
-    assert normalize_company_ruc("80.012.345 6") == "80012345-6"
+    assert normalize_company_ruc("80000519-8") == "80000519-8"
+    assert normalize_company_ruc("80.000.519 8") == "80000519-8"
+    assert normalize_company_ruc("80000519-9") is None
     assert normalize_company_ruc("ABC-123") is None
     assert normalize_company_ruc("123") is None
 
