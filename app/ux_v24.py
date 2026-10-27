@@ -232,8 +232,6 @@ async def create_vacation_v24(
     employee = db.get(Employee, employee_id)
     if not employee or employee.company_id not in core.company_ids_for_user(db, user):
         raise HTTPException(404, "Funcionario no encontrado.")
-    request.session["labor_context_company_id"] = str(employee.company_id)
-    request.session["labor_context_employee_id"] = str(employee.id)
     period_year_raw = _clean(form.get("period_year"), 10)
     try:
         period_year = int(period_year_raw) if period_year_raw else date.today().year
