@@ -120,7 +120,7 @@
     }
 
     // Mensajes de validación junto al campo, una vez que el usuario lo visitó o modificó.
-    document.querySelectorAll("#companyForm, #employeeForm, #editEmployeeDetail form.form-grid, #eventModal form.form-grid").forEach(form => {
+    document.querySelectorAll("#companyForm, #employeeForm, #editCompanyModal form.form-grid, #branchModal form.form-grid, #editEmployeeDetail form.form-grid, #eventModal form.form-grid").forEach(form => {
       const controls = Array.from(form.querySelectorAll("input, select, textarea")).filter(field =>
         !["hidden","submit","button","reset","file","checkbox","radio"].includes((field.type || "").toLowerCase())
       );
