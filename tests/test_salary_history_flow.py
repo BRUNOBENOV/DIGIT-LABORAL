@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
@@ -51,7 +51,7 @@ def _employee(db: Session, *, salary: int, admission: date = date(2024, 1, 1)) -
 
 def _history(db: Session, employee: Employee, effective: date, salary: int) -> None:
     previous = db.scalar(
-        __import__("sqlalchemy").select(SalaryHistory.new_salary)
+        select(SalaryHistory.new_salary)
         .where(
             SalaryHistory.employee_id == employee.id,
             SalaryHistory.effective_from < effective,
