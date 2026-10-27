@@ -4277,9 +4277,14 @@ def reports_page(
     db: Session = Depends(get_db),
 ):
     company_ids = company_ids_for_user(db, user)
+    company_id, employee_id = default_labor_context(
+        request, db, user, company_ids, company_id, employee_id
+    )
     companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name))) if company_ids else []
     if company_id not in company_ids:
         company_id = company_ids[0] if company_ids else None
+        if company_id:
+            request.session["labor_context_company_id"] = str(company_id)
     employees = list(db.scalars(select(Employee).where(Employee.company_id == company_id).order_by(Employee.full_name))) if company_id else []
     if employee_id and employee_id not in {item.id for item in employees}:
         employee_id = None
