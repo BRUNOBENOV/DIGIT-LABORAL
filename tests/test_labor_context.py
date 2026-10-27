@@ -24,78 +24,109 @@ def _login(client: TestClient) -> None:
     assert response.status_code == 303
 
 
-def test_global_context_selector_is_available_after_login():
+def _calculation_selectors(client: TestClient):
+    response = client.get("/app/calculations?tipo=salary")
+    assert response.status_code == 200
+    company_html = re.search(
+        r'id="calculationCompanyFilter"[^>]*>(.*?)</select>', response.text, re.DOTALL
+    )
+    employee_html = re.search(
+        r'id="calculationEmployeeFilter"[^>]*>(.*?)</select>', response.text, re.DOTALL
+    )
+    assert company_html and employee_html
+    company_ids = re.findall(r'<option value="(\d+)"', company_html.group(1))
+    employees = [
+        (int(employee_id), int(company_id))
+        for employee_id, company_id in re.findall(
+            r'<option value="(\d+)" data-company="(\d+)"', employee_html.group(1)
+        )
+    ]
+    return response, [int(value) for value in company_ids], employees
+
+
+def test_sidebar_has_no_global_company_or_employee_selector():
     with TestClient(app) as client:
         _login(client)
         response = client.get("/app")
         assert response.status_code == 200
-        assert 'data-labor-context' in response.text
-        assert 'action="/app/context"' in response.text
-        assert "Contexto de trabajo" in response.text
+        assert "Contexto de trabajo" not in response.text
+        assert "data-labor-context" not in response.text
+        assert "labor-context-panel" not in response.text
 
 
-def test_context_employee_endpoint_requires_an_authenticated_session():
-    with TestClient(app) as client:
-        response = client.get("/app/context/employees?company_id=1", follow_redirects=False)
-        assert response.status_code in {302, 303, 307, 401, 403}
-
-
-def test_context_persists_company_and_employee_across_modules():
-    with TestClient(app) as client:
-        _login(client)
-        companies_page = client.get("/app/companies")
-        assert companies_page.status_code == 200
-        company_match = re.search(r'<option value="(\d+)"', companies_page.text)
-        assert company_match, "La base de prueba debe incluir al menos una empresa."
-        company_id = int(company_match.group(1))
-
-        response = client.get(f"/app/context/employees?company_id={company_id}")
-        assert response.status_code == 200
-        employee_rows = response.json()
-        # Salary calculators offer active employees; the shared context can still
-        # be used for former employees in certificates and final liquidation.
-        active_rows = [row for row in employee_rows if row.get("status") == "Activo"]
-        employee_id = int(active_rows[0]["id"]) if active_rows else None
-
-        app_page = client.get("/app")
-        csrf_match = re.search(r'name="csrf_token" value="([^"]+)"', app_page.text)
-        assert csrf_match
-        data = {
-            "company_id": str(company_id),
-            "employee_id": str(employee_id or ""),
-            "return_to": "/app/calculations?tipo=salary&company_id=999&employee_id=999",
-            "csrf_token": csrf_match.group(1),
-        }
-        saved = client.post("/app/context", data=data, follow_redirects=False)
-        assert saved.status_code == 303
-        assert saved.headers["location"].startswith("/app/calculations?tipo=salary")
-        assert f"company_id={company_id}" in saved.headers["location"]
-        if employee_id:
-            assert f"employee_id={employee_id}" in saved.headers["location"]
-        else:
-            assert "employee_id=" not in saved.headers["location"]
-
-        response = client.get(saved.headers["location"])
-        assert response.status_code == 200
-        assert f'value="{company_id}" selected' in response.text
-        if employee_id:
-            assert f'value="{employee_id}" data-company="{company_id}" selected' in response.text
-            liquidation = client.get("/app/liquidaciones?tipo=settlement")
-            assert liquidation.status_code == 200
-            assert f'name="employee_id"' in liquidation.text
-            assert str(employee_id) in liquidation.text
-
-
-def test_context_rejects_external_return_url():
+def test_each_operational_module_has_its_own_selectors():
+    paths = [
+        "/app/calculations?tipo=salary",
+        "/app/calculations/periodos?year=2026",
+        "/app/payrolls",
+        "/app/vacations",
+        "/app/aguinaldo",
+        "/app/documents",
+        "/app/reports",
+        "/app/certificates",
+        "/app/liquidaciones?tipo=settlement",
+    ]
     with TestClient(app) as client:
         _login(client)
-        app_page = client.get("/app")
-        csrf_match = re.search(r'name="csrf_token" value="([^"]+)"', app_page.text)
-        assert csrf_match
-        response = client.post(
-            "/app/context",
-            data={"return_to": "https://example.invalid/", "csrf_token": csrf_match.group(1)},
-            follow_redirects=False,
+        for path in paths:
+            response = client.get(path)
+            assert response.status_code == 200, path
+            assert "data-module-selection" in response.text, path
+            assert "data-module-company" in response.text, path
+            assert "data-module-employee" in response.text, path
+
+
+def test_a_module_selection_does_not_leak_into_another_module():
+    with TestClient(app) as client:
+        _login(client)
+        _, company_ids, employees = _calculation_selectors(client)
+        assert company_ids and employees
+        employee_id, company_id = employees[0]
+
+        selected = client.get(
+            f"/app/calculations?tipo=salary&company_id={company_id}&employee_id={employee_id}"
         )
-        assert response.status_code == 303
-        assert response.headers["location"] == "/app"
+        assert selected.status_code == 200
+        filter_form = re.search(
+            r'<form method="get" action="/app/calculations".*?</form>',
+            selected.text,
+            re.DOTALL,
+        )
+        assert filter_form
+        assert f'value="{company_id}" selected' in filter_form.group(0)
+        assert f'value="{employee_id}" data-company="{company_id}" selected' in filter_form.group(0)
+
+        # Opening another module without query selections must not inherit the
+        # previous module's company or employee from session state.
+        vacations = client.get("/app/vacations")
+        assert vacations.status_code == 200
+        vacations_filter = re.search(
+            r'<form method="get" action="/app/vacations".*?</form>',
+            vacations.text,
+            re.DOTALL,
+        )
+        assert vacations_filter
+        assert f'value="{company_id}" selected' not in vacations_filter.group(0)
+        assert f'value="{employee_id}" data-company="{company_id}" selected' not in vacations_filter.group(0)
+
+
+def test_module_selector_rejects_employee_from_a_different_company():
+    with TestClient(app) as client:
+        _login(client)
+        _, company_ids, employees = _calculation_selectors(client)
+        assert len(company_ids) >= 2
+        if not employees:
+            return
+        first_employee_id, first_company = employees[0]
+        different_employee = next(
+            ((employee, company) for employee, company in employees if company != first_company),
+            None,
+        )
+        if different_employee is None:
+            # Some reduced CI fixtures contain only one company.
+            return
+        employee_id, other_company = different_employee
+        response = client.get(
+            f"/app/calculations?tipo=salary&company_id={first_company}&employee_id={employee_id}"
+        )
+        assert response.status_code == 400

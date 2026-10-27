@@ -24,9 +24,9 @@
     <h2>Empresa, funcionario y año</h2>
     <p>Seleccioná el trabajador y el ejercicio que necesitás revisar.</p>
   </div>
-  <form method="get" action="/app/calculations/periodos" class="calculation-context-form">
+  <form method="get" action="/app/calculations/periodos" class="calculation-context-form module-selection-form" data-module-selection>
     <label>Empresa
-      <select name="company_id" id="coverageCompany" required>
+      <select name="company_id" id="coverageCompany" data-module-company required>
         <option value="">Seleccionar empresa</option>
         {% for company in companies %}
         <option value="{{ company.id }}" {{ 'selected' if selected_company == company.id }}>{{ company.legal_name }}</option>
@@ -34,7 +34,7 @@
       </select>
     </label>
     <label>Funcionario
-      <select name="employee_id" id="coverageEmployee" required>
+      <select name="employee_id" id="coverageEmployee" data-module-employee required>
         <option value="">Seleccionar funcionario</option>
         {% for employee in employees %}
         <option value="{{ employee.id }}" data-company="{{ employee.company_id }}" {{ 'selected' if selected_employee == employee.id }}>{{ employee.full_name }} · {{ employee.company.legal_name }}</option>
