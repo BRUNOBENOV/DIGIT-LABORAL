@@ -2640,25 +2640,60 @@ def api_archive_employee(
 
 
 @app.get("/app/employees", response_class=HTMLResponse)
-def employees_page(request: Request, q: str = "", company_id: OptionalQueryId = None, user: User = Depends(require_user), db: Session = Depends(get_db)):
+def employees_page(
+    request: Request,
+    q: str = "",
+    company_id: OptionalQueryId = None,
+    section_id: OptionalQueryId = None,
+    status_filter: str = "",
+    show_archived: bool = False,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
     company_ids = company_ids_for_user(db, user)
     company_id, active_employee_id = default_labor_context(
         request, db, user, company_ids, company_id, None
     )
     query = select(Employee).where(Employee.company_id.in_(company_ids)) if company_ids else select(Employee).where(False)
+    query = query.join(Company, Company.id == Employee.company_id).where(Company.status != "Archivada")
     if company_id and company_id in company_ids:
         query = query.where(Employee.company_id == company_id)
     if active_employee_id:
         query = query.where(Employee.id == active_employee_id)
+    if not show_archived:
+        query = query.where(Employee.status != "Archivado")
+    if status_filter:
+        if status_filter not in {"Activo", "Inactivo", "Desvinculado", "Archivado"}:
+            raise HTTPException(422, "El estado seleccionado no es válido.")
+        query = query.where(Employee.status == status_filter)
+    if section_id:
+        query = query.where(Employee.section_id == section_id)
     if q.strip():
         term = f"%{q.strip()}%"
-        query = query.where(or_(Employee.full_name.ilike(term), Employee.document_number.ilike(term), Employee.position.ilike(term)))
+        query = query.where(or_(
+            Employee.full_name.ilike(term),
+            Employee.document_number.ilike(term),
+            Employee.position.ilike(term),
+            func.cast(Employee.employee_code, String).ilike(term),
+        ))
     employees = list(db.scalars(query.order_by(Employee.full_name)))
-    companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name))) if company_ids else []
-    branches = list(db.scalars(select(Branch).where(Branch.company_id.in_(company_ids)).order_by(Branch.name))) if company_ids else []
-    minimum_salary = db.scalar(select(LaborParameter).where(LaborParameter.key == "minimum_monthly_salary_general", LaborParameter.active.is_(True)))
-    return render(request, "employees.html", db, user, employees=employees, companies=companies, branches=branches, q=q, selected_company=company_id, selected_employee=active_employee_id, minimum_salary=minimum_salary)
-
+    companies_query = select(Company).where(Company.id.in_(company_ids), Company.status != "Archivada")
+    companies = list(db.scalars(companies_query.order_by(Company.legal_name))) if company_ids else []
+    branch_query = select(Branch).where(Branch.company_id.in_(company_ids)).order_by(Branch.name) if company_ids else select(Branch).where(False)
+    branches = list(db.scalars(branch_query))
+    section_query = select(CompanySection).where(CompanySection.company_id.in_(company_ids)).order_by(CompanySection.company_id, CompanySection.section_code, CompanySection.name) if company_ids else select(CompanySection).where(False)
+    sections = list(db.scalars(section_query))
+    employee_profiles = {item.id: _employee_profile(db, item.id) for item in employees}
+    minimum_salary = db.scalar(select(LaborParameter).where(
+        LaborParameter.key == "minimum_monthly_salary_general", LaborParameter.active.is_(True)
+    ))
+    return render(
+        request, "employees.html", db, user,
+        employees=employees, companies=companies, branches=branches, sections=sections,
+        employee_profiles=employee_profiles, q=q, selected_company=company_id,
+        selected_section=section_id, status_filter=status_filter, show_archived=show_archived,
+        selected_employee=active_employee_id, minimum_salary=minimum_salary,
+    )
 
 @app.get("/app/employees/{employee_id}", response_class=HTMLResponse)
 def employee_detail_page(
