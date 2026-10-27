@@ -34,7 +34,9 @@
       <div><dt>Estado civil</dt><dd>{{ employee_profile.marital_status if employee_profile and employee_profile.marital_status else 'No informado' }}</dd></div>
       <div><dt>Categoría laboral</dt><dd>{{ employee_profile.position_category if employee_profile and employee_profile.position_category else 'No informada' }}</dd></div>
       <div><dt>Jornada / horario</dt><dd>{{ employee_profile.work_schedule if employee_profile and employee_profile.work_schedule else 'No informado' }}</dd></div>
+      <div><dt>Horas diarias</dt><dd>{{ employee_profile.daily_hours if employee_profile else 8 }}</dd></div>
       <div><dt>Horas semanales</dt><dd>{{ employee_profile.weekly_hours if employee_profile else 48 }}</dd></div>
+      <div><dt>Número IPS del funcionario</dt><dd>{{ employee_profile.ips_number if employee_profile and employee_profile.ips_number else 'No informado' }}</dd></div>
       <div><dt>Correo</dt><dd>{{ employee.email or 'No informado' }}</dd></div>
       <div><dt>Teléfono</dt><dd>{{ employee.phone or 'No informado' }}</dd></div>
       <div><dt>Dirección</dt><dd>{{ employee.address or 'No informada' }}</dd></div>
