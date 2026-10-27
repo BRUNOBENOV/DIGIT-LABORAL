@@ -4712,7 +4712,7 @@ def create_vacation(
 def aguinaldo_page(request: Request, user: User = Depends(require_user), db: Session = Depends(get_db)):
     company_ids = company_ids_for_user(db, user)
     selected_company_id, selected_employee_id = active_labor_context(request, db, user, company_ids)
-    employee_query = select(Employee).where(Employee.company_id.in_(company_ids), Employee.status == "Activo") if company_ids else select(Employee).where(False)
+    employee_query = select(Employee).where(Employee.company_id.in_(company_ids)) if company_ids else select(Employee).where(False)
     aguinaldo_query = select(Aguinaldo).join(Employee).where(Employee.company_id.in_(company_ids)) if company_ids else select(Aguinaldo).where(False)
     if selected_company_id:
         employee_query = employee_query.where(Employee.company_id == selected_company_id)
@@ -4722,23 +4722,24 @@ def aguinaldo_page(request: Request, user: User = Depends(require_user), db: Ses
         aguinaldo_query = aguinaldo_query.where(Aguinaldo.employee_id == selected_employee_id)
     employees = list(db.scalars(employee_query.order_by(Employee.full_name)))
     items = list(db.scalars(aguinaldo_query.order_by(Aguinaldo.year.desc(), Aguinaldo.created_at.desc())))
-    suggested_total = 0
+    suggested_total = None
     suggestion_note = ""
+    suggested_year = current_paraguay_date().year
     selected_employee = db.get(Employee, selected_employee_id) if selected_employee_id else None
     if selected_employee and selected_company_id and selected_employee.company_id == selected_company_id:
-        current_year = current_paraguay_date().year
         coverage = _employee_annual_coverage(
-            db, db.get(Company, selected_company_id), selected_employee, current_year, current_paraguay_date()
+            db, db.get(Company, selected_company_id), selected_employee, suggested_year, current_paraguay_date()
         )
-        suggested_total = coverage["suggested_total"]
+        suggested_total = coverage["suggested_total"] if coverage["closed_count"] else None
         suggestion_note = (
-            f"Propuesta automática del historial: Gs. {format_gs(suggested_total)} de nóminas cerradas y consistentes; "
-            f"{coverage['closed_count']} de {coverage['expected_count']} periodos esperados cubiertos. "
-            "Verificá los conceptos computables, ajustes y anticipos antes de aprobar."
+            f"Propuesta automática para el ejercicio {suggested_year}: Gs. {format_gs(coverage['suggested_total'])} "
+            f"de nóminas cerradas y consistentes; {coverage['closed_count']} de {coverage['expected_count']} "
+            "periodos esperados cubiertos. Si no hay nóminas cerradas, el importe queda vacío. "
+            "Verificá conceptos computables, ajustes y anticipos antes de aprobar."
         )
     return render(request, "aguinaldo.html", db, user, employees=employees, items=items,
                   selected_company_id=selected_company_id, selected_employee_id=selected_employee_id,
-                  suggested_total=suggested_total, suggestion_note=suggestion_note)
+                  suggested_total=suggested_total, suggested_year=suggested_year, suggestion_note=suggestion_note)
 
 
 @app.post("/app/aguinaldo")
