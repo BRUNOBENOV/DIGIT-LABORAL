@@ -10,7 +10,7 @@
 - La carga por código recupera la empresa existente mediante API autenticada.
 - Se agregan endpoints JSON de consulta, creación, actualización y archivado con validaciones de datos, permisos, CSRF y aislamiento por estudio.
 - El botón Eliminar archiva el registro para conservar nóminas, cálculos, certificados, trámites y auditoría; el registro puede volver a mostrarse y restaurarse.
-- No se insertan empresas ficticias en producción.
+- Se completan las empresas sintéticas del seed de desarrollo con códigos numéricos, RUC de prueba módulo 11, registros patronales numéricos y perfil de cumplimiento; el seed no se ejecuta para insertar estas empresas en producción.
 
 ### Validación
 - Se agregan pruebas para el formulario, catálogo paraguayo, RUC módulo 11, consulta por código y operaciones CRUD de la API.
