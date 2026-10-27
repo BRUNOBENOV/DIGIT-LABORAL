@@ -140,8 +140,12 @@ body.app-body{
 .app-body .panel-head{border-bottom-color:#E5E7EB}
 .app-body .panel-head h2,
 .app-body .panel h2,
-.app-body .v23-card-head h2,
-.app-body .home-module-heading h3{color:#111827!important}
+.app-body .v23-card-head h2{color:#111827!important;font-size:1.25rem;font-weight:650}
+.app-body .home-module-heading h3{color:#111827!important;font-size:1.125rem;font-weight:650}
+.app-body .form-grid label,
+.app-body .form-grid .field-label,
+.app-body .search-form label,
+.app-body .calculator-panel>label{font-size:.875rem;font-weight:600}
 .app-body .panel-head>div>span,
 .app-body .panel-head span,
 .app-body .v23-card-head .eyebrow-label{color:#6B7280}
