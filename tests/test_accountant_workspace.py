@@ -76,6 +76,7 @@ def test_accountant_workbench_keeps_operational_tools_and_request_approval() -> 
             assert response.status_code == 200, path
 
         assert "Revisar con IA" in client.get("/app/certificates").text
+        assert client.get("/app/ai").status_code == 200
         queue = client.get("/app/requests")
         assert queue.status_code == 200
         assert 'name="status_filter"' in queue.text
