@@ -3646,6 +3646,7 @@ def certificates_page(
 
 @app.post("/app/certificates")
 def create_certificate(
+    request: Request,
     company_id: Annotated[int, Form()],
     employee_id: Annotated[int, Form()],
     document_type: Annotated[str, Form()],
@@ -4676,7 +4677,6 @@ def vacations_page(request: Request, user: User = Depends(require_user), db: Ses
 
 @app.post("/app/vacations")
 def create_vacation(
-    request: Request,
     employee_id: Annotated[int, Form()],
     period_year: Annotated[int, Form()],
     entitled_days: Annotated[int, Form()],
@@ -4691,8 +4691,6 @@ def create_vacation(
     employee = db.get(Employee, employee_id)
     if not employee or employee.company_id not in company_ids_for_user(db, user):
         raise HTTPException(404)
-    request.session["labor_context_company_id"] = str(employee.company_id)
-    request.session["labor_context_employee_id"] = str(employee.id)
     item = Vacation(employee_id=employee_id, period_year=period_year, entitled_days=max(0, entitled_days), used_days=max(0, used_days), start_date=start_date, end_date=end_date, status=status_value, notes=notes.strip())
     db.add(item)
     db.flush()
