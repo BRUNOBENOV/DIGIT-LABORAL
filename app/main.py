@@ -3432,6 +3432,7 @@ def calculations_page(
 
 @app.post("/app/calculations")
 def save_calculation(
+    request: Request,
     calculation_type: Annotated[str, Form()],
     company_id: Annotated[int, Form()],
     employee_id: Annotated[int | None, Form()] = None,
@@ -4481,6 +4482,7 @@ def payrolls_page(request: Request, user: User = Depends(require_roles("administ
 
 @app.post("/app/payrolls")
 def create_payroll(
+    request: Request,
     company_id: Annotated[int, Form()],
     period: Annotated[str, Form()],
     notes: Annotated[str, Form()] = "",
@@ -4770,6 +4772,7 @@ def documents_page(request: Request, user: User = Depends(require_user), db: Ses
 
 @app.post("/app/documents")
 async def upload_document(
+    request: Request,
     company_id: Annotated[int, Form()],
     title: Annotated[str, Form()],
     category: Annotated[str, Form()] = "General",
