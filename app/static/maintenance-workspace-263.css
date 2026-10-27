@@ -43,6 +43,8 @@
 .app-body .maintenance-live-count{margin:0;color:#6B7280;font-size:.8rem;white-space:nowrap}
 .app-body [data-company-card][hidden],
 .app-body [data-employee-row][hidden]{display:none!important}
+.app-body #companyQuickEmpty[hidden],
+.app-body #employeeClientEmpty[hidden]{display:none!important}
 .app-body .company-card-grid{gap:16px;align-items:stretch}
 .app-body .company-card{
   min-width:0;border:1px solid #E5E7EB!important;border-radius:14px!important;
