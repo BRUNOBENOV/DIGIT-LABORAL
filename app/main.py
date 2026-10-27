@@ -519,56 +519,6 @@ def company_allowed(db: Session, user: User, company_id: int) -> Company:
     return company
 
 
-def active_labor_context(
-    request: Request, db: Session, user: User, allowed_company_ids: list[int] | None = None
-) -> tuple[int | None, int | None]:
-    """Return the authenticated user's remembered company/employee after tenant validation."""
-    if user.role == "superadmin":
-        return None, None
-
-    allowed_ids = set(allowed_company_ids if allowed_company_ids is not None else company_ids_for_user(db, user))
-
-    def read_id(key: str) -> int | None:
-        try:
-            value = int(request.session.get(key) or 0)
-            return value if value > 0 else None
-        except (TypeError, ValueError):
-            return None
-
-    company_id = read_id("labor_context_company_id")
-    employee_id = read_id("labor_context_employee_id")
-
-    # Employer accounts cannot switch to another company's context.
-    if user.role == "empresa":
-        company_id = user.company_id if user.company_id in allowed_ids else None
-        if company_id:
-            request.session["labor_context_company_id"] = str(company_id)
-
-    if company_id not in allowed_ids:
-        company_id = None
-        request.session.pop("labor_context_company_id", None)
-        request.session.pop("labor_context_employee_id", None)
-        employee_id = None
-
-    employee = db.get(Employee, employee_id) if employee_id else None
-    if employee_id and (
-        not employee or employee.company_id not in allowed_ids
-        or (company_id is not None and employee.company_id != company_id)
-    ):
-        employee = None
-        employee_id = None
-        request.session.pop("labor_context_employee_id", None)
-
-    if employee:
-        company_id = employee.company_id
-
-    if company_id is not None:
-        request.session["labor_context_company_id"] = str(company_id)
-    if employee_id is not None:
-        request.session["labor_context_employee_id"] = str(employee_id)
-    return company_id, employee_id
-
-
 def default_labor_context(
     request: Request,
     db: Session,
@@ -726,87 +676,6 @@ templates.env.filters["fecha"] = format_date
 CERTIFICATE_TYPES = DOCUMENT_LABELS
 
 templates.env.filters["fecha_larga"] = format_date_long_es
-
-
-@app.get("/app/context/employees", response_class=JSONResponse)
-def labor_context_employees(
-    company_id: int = 0,
-    user: User = Depends(require_user),
-    db: Session = Depends(get_db),
-):
-    """Return employees for the requested company, scoped to the signed-in user."""
-    if not company_id:
-        return JSONResponse([])
-    company = company_allowed(db, user, company_id)
-    employees = list(
-        db.scalars(select(Employee).where(Employee.company_id == company.id).order_by(Employee.full_name))
-    )
-    return JSONResponse([
-        {
-            "id": employee.id,
-            "name": employee.full_name,
-            "company_id": employee.company_id,
-            "status": employee.status,
-        }
-        for employee in employees
-    ])
-
-
-@app.post("/app/context")
-def set_labor_context(
-    request: Request,
-    company_id: Annotated[str, Form()] = "",
-    employee_id: Annotated[str, Form()] = "",
-    return_to: Annotated[str, Form()] = "/app",
-    user: User = Depends(require_user),
-    db: Session = Depends(get_db),
-):
-    """Persist a validated company/employee selection for the user's next modules."""
-    company_id = optional_int(company_id, field="empresa")
-    employee_id = optional_int(employee_id, field="funcionario")
-    allowed_ids = company_ids_for_user(db, user)
-    company = None
-    if employee_id:
-        employee = db.get(Employee, employee_id)
-        if not employee or employee.company_id not in allowed_ids:
-            raise HTTPException(404, "Funcionario no encontrado en tu espacio de trabajo.")
-        if company_id and employee.company_id != company_id:
-            raise HTTPException(400, "El funcionario no pertenece a la empresa seleccionada.")
-        company_id = employee.company_id
-    if company_id:
-        company = company_allowed(db, user, company_id)
-    if user.role == "empresa":
-        if not user.company_id or user.company_id not in allowed_ids:
-            raise HTTPException(403, "La cuenta no tiene una empresa asignada.")
-        if company and company.id != user.company_id:
-            raise HTTPException(403, "No podés cambiar el contexto a otra empresa.")
-        company_id = user.company_id
-    if company_id:
-        request.session["labor_context_company_id"] = str(company_id)
-    else:
-        request.session.pop("labor_context_company_id", None)
-    if employee_id:
-        request.session["labor_context_employee_id"] = str(employee_id)
-    else:
-        request.session.pop("labor_context_employee_id", None)
-
-    # Only redirect within this application; reject absolute and scheme-relative URLs.
-    if not (return_to == "/app" or return_to.startswith("/app/")) or return_to.startswith("//") or "://" in return_to or "\\" in return_to:
-        return_to = "/app"
-    # A page may carry stale company_id/employee_id query parameters. Replace
-    # those with the newly saved context so the destination does not undo the
-    # user's selection as soon as it loads.
-    return_path, _, return_query = return_to.partition("?")
-    return_params = parse_qs(return_query, keep_blank_values=True)
-    return_params.pop("company_id", None)
-    return_params.pop("employee_id", None)
-    if company_id:
-        return_params["company_id"] = [str(company_id)]
-    if employee_id:
-        return_params["employee_id"] = [str(employee_id)]
-    encoded_query = urlencode(return_params, doseq=True)
-    return_to = return_path + (f"?{encoded_query}" if encoded_query else "")
-    return RedirectResponse(return_to, status_code=303)
 
 
 def build_certificate_body(
@@ -3475,11 +3344,6 @@ def save_calculation(
         total_remunerations=total_remunerations,
         days=days,
     )
-    request.session["labor_context_company_id"] = str(company.id)
-    if employee:
-        request.session["labor_context_employee_id"] = str(employee.id)
-    else:
-        request.session.pop("labor_context_employee_id", None)
     item = CalculationRecord(
         company_id=company.id,
         employee_id=employee.id if employee else None,
@@ -3574,11 +3438,6 @@ def certificates_page(
     if selected_calculation:
         company_id = selected_calculation.company_id
         employee_id = selected_calculation.employee_id
-        request.session["labor_context_company_id"] = str(company_id)
-        if employee_id:
-            request.session["labor_context_employee_id"] = str(employee_id)
-        else:
-            request.session.pop("labor_context_employee_id", None)
     selected_company = db.get(Company, company_id) if company_id in company_ids else None
     selected_employee = db.get(Employee, employee_id) if employee_id else None
     if company_id and not selected_company:
@@ -3817,9 +3676,6 @@ def create_certificate(
     employee = db.get(Employee, employee_id)
     if not employee or employee.company_id != company.id:
         raise HTTPException(400, "El funcionario no pertenece a la empresa seleccionada.")
-    request.session["labor_context_company_id"] = str(company.id)
-    request.session["labor_context_employee_id"] = str(employee.id)
-
     calculation = db.get(CalculationRecord, calculation_id) if calculation_id else None
     if calculation and (calculation.company_id != company.id or calculation.company_id not in company_ids_for_user(db, user)):
         raise HTTPException(400, "El cálculo vinculado no corresponde a la empresa seleccionada.")
@@ -4292,7 +4148,7 @@ def reports_page(
     companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name))) if company_ids else []
     if company_id not in company_ids:
         company_id = None
-    employees = list(db.scalars(select(Employee).where(Employee.company_id == company_id).order_by(Employee.full_name))) if company_id else []
+    employees = list(db.scalars(select(Employee).where(Employee.company_id.in_(company_ids)).order_by(Employee.full_name))) if company_ids else []
     if employee_id and employee_id not in {item.id for item in employees}:
         employee_id = None
     calculations_query = select(CalculationRecord).where(CalculationRecord.company_id == company_id) if company_id else select(CalculationRecord).where(False)
@@ -4520,8 +4376,6 @@ def create_payroll(
         date.fromisoformat(period + "-01")
     except ValueError:
         raise HTTPException(400, "Periodo inválido")
-    request.session["labor_context_company_id"] = str(company_id)
-    request.session.pop("labor_context_employee_id", None)
     payroll = Payroll(company_id=company_id, period=period, notes=notes.strip(), created_by=user.email)
     db.add(payroll)
     try:
@@ -4666,7 +4520,6 @@ def vacations_page(
         employee_query = employee_query.where(Employee.company_id == selected_company_id)
         vacation_query = vacation_query.where(Employee.company_id == selected_company_id)
     if selected_employee_id:
-        employee_query = employee_query.where(Employee.id == selected_employee_id)
         vacation_query = vacation_query.where(Vacation.employee_id == selected_employee_id)
     employees = list(db.scalars(employee_query.order_by(Employee.full_name)))
     items = list(db.scalars(vacation_query.order_by(Vacation.created_at.desc())))
@@ -4726,7 +4579,6 @@ def aguinaldo_page(
         employee_query = employee_query.where(Employee.company_id == selected_company_id)
         aguinaldo_query = aguinaldo_query.where(Employee.company_id == selected_company_id)
     if selected_employee_id:
-        employee_query = employee_query.where(Employee.id == selected_employee_id)
         aguinaldo_query = aguinaldo_query.where(Aguinaldo.employee_id == selected_employee_id)
     employees = list(db.scalars(employee_query.order_by(Employee.full_name)))
     items = list(db.scalars(aguinaldo_query.order_by(Aguinaldo.year.desc(), Aguinaldo.created_at.desc())))
@@ -4811,7 +4663,6 @@ def documents_page(
         employee_query = employee_query.where(Employee.company_id == selected_company_id)
         document_query = document_query.where(Document.company_id == selected_company_id)
     if selected_employee_id:
-        employee_query = employee_query.where(Employee.id == selected_employee_id)
         document_query = document_query.where(
             or_(Document.employee_id == selected_employee_id, Document.employee_id.is_(None))
         )
@@ -4837,11 +4688,6 @@ async def upload_document(
     db: Session = Depends(get_db),
 ):
     company_allowed(db, user, company_id)
-    request.session["labor_context_company_id"] = str(company_id)
-    if employee_id:
-        request.session["labor_context_employee_id"] = str(employee_id)
-    else:
-        request.session.pop("labor_context_employee_id", None)
     if file.content_type not in ALLOWED_UPLOAD_TYPES:
         raise HTTPException(400, "Formato no permitido.")
     content = await file.read(MAX_UPLOAD_SIZE + 1)
