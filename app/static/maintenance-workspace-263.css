@@ -28,7 +28,7 @@
 .app-body .maintenance-filter-chip{
   display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:34px;padding:7px 11px;
   border:1px solid #D1D5DB;border-radius:999px;background:#FFFFFF;color:#4B5563;
-  font:600 .8rem/1.2 inherit;white-space:nowrap;cursor:pointer;
+  font-family:inherit;font-size:.8rem;font-weight:600;line-height:1.2;white-space:nowrap;cursor:pointer;
 }
 .app-body .maintenance-filter-chip:hover{border-color:#93C5FD;background:#EFF6FF;color:#1E40AF}
 .app-body .maintenance-filter-chip.is-active,
@@ -41,6 +41,8 @@
   border:1px solid #D1D5DB;border-radius:8px;background:#FFFFFF;color:#111827;font:inherit;
 }
 .app-body .maintenance-live-count{margin:0;color:#6B7280;font-size:.8rem;white-space:nowrap}
+.app-body [data-company-card][hidden],
+.app-body [data-employee-row][hidden]{display:none!important}
 .app-body .company-card-grid{gap:16px;align-items:stretch}
 .app-body .company-card{
   min-width:0;border:1px solid #E5E7EB!important;border-radius:14px!important;
