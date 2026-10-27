@@ -122,7 +122,7 @@ def professional_page(request: Request, tipo: str = "settlement", company_id: Op
         effective_on = today
         if tipo == "salary":
             month = str(values.get("month") or "")
-            if re.fullmatch(r"\\d{4}-\\d{2}", month):
+            if re.fullmatch(r"\d{4}-\d{2}", month):
                 try:
                     effective_on = date.fromisoformat(month + "-01")
                 except ValueError:
