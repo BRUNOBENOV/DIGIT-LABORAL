@@ -13,7 +13,7 @@
 - No se insertan empresas ficticias en producción.
 
 ### Validación
-- Se agregan pruebas para el formulario, la normalización del RUC y la consulta por código.
+- Se agregan pruebas para el formulario, catálogo paraguayo, RUC módulo 11, consulta por código y operaciones CRUD de la API.
 - La publicación requiere CI en verde y confirmación del despliegue de Render.
 
 
