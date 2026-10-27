@@ -24,7 +24,7 @@
 {% else %}<fieldset class="dl-form-section"><legend>{{ group.title }}</legend><div class="dl-fields">{% for field in group.fields %}{{ input_field(field) }}{% endfor %}</div></fieldset>{% endif %}
 {% endfor %}
 {% if private and employee and kind == 'salary' %}
-<p id="salary-history-hint" class="dl-caption" aria-live="polite">El salario se precarga según la vigencia registrada al inicio del mes. Si hubo un cambio salarial dentro del período, revisá el importe antes de cerrar.</p>
+<p id="salary-history-hint" class="dl-caption" aria-live="polite">La sugerencia usa la vigencia registrada al inicio del mes. Si falta un salario vigente para ese período, verificá el importe manualmente; revisá también cambios ocurridos dentro del mes.</p>
 {% elif private and employee and kind == 'settlement' %}
 <p id="salary-history-hint" class="dl-caption" aria-live="polite">El salario se propone según la vigencia registrada a la fecha de egreso. Verificá el período y los componentes del promedio antes de emitir.</p>
 {% endif %}
