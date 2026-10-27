@@ -525,16 +525,31 @@ def _ruc_digits(value: str | None) -> str:
     return re.sub(r"\D+", "", str(value or ""))
 
 
-def normalize_company_ruc(value: str | None) -> str | None:
-    """Normalize the displayed RUC format after basic numeric length validation.
+def ruc_check_digit(base_ruc: str) -> int:
+    """Return the Paraguayan RUC verifier using the DNIT module-11 rule."""
+    total = 0
+    factor = 2
+    for digit in reversed(base_ruc):
+        total += int(digit) * factor
+        factor = 2 if factor == 11 else factor + 1
+    remainder = total % 11
+    return 0 if remainder <= 1 else 11 - remainder
 
-    This validates numeric shape and length; it does not claim to verify DNIT's
-    official check digit or query DNIT records.
+
+def normalize_company_ruc(value: str | None) -> str | None:
+    """Normalize a Paraguayan RUC and verify its module-11 check digit.
+
+    DNIT's SIFEN technical manual defines the RUC base field separately from
+    its one-digit verifier. This local check validates the formula only; it
+    does not query DNIT to confirm registration or current taxpayer status.
     """
     digits = _ruc_digits(value)
-    if not 6 <= len(digits) <= 10:
+    if not 4 <= len(digits) <= 9:
         return None
-    return f"{digits[:-1]}-{digits[-1]}"
+    base_ruc, check_digit = digits[:-1], int(digits[-1])
+    if not 3 <= len(base_ruc) <= 8 or ruc_check_digit(base_ruc) != check_digit:
+        return None
+    return f"{base_ruc}-{check_digit}"
 
 
 def _company_profile(db: Session, company_id: int) -> CompanyComplianceProfile | None:
@@ -593,8 +608,15 @@ def _validate_company_payload(db: Session, payload: dict, existing: Company | No
     if raw_ruc in (None, "") and existing:
         raw_ruc = existing.ruc
     ruc = normalize_company_ruc(str(raw_ruc or ""))
+    if not ruc and existing and _ruc_digits(str(raw_ruc or "")) == _ruc_digits(existing.ruc):
+        # Legacy records were not all digit-verified. Let users edit other fields
+        # without forcing an unverified historical RUC to change.
+        ruc = existing.ruc
     if not ruc:
-        raise HTTPException(422, "El RUC debe contener entre 6 y 10 dígitos numéricos.")
+        raise HTTPException(
+            422,
+            "El RUC debe tener entre 3 y 8 dígitos base y un dígito verificador válido (módulo 11).",
+        )
 
     city = str(payload.get("city", existing.city if existing else "Ciudad del Este") or "").strip()
     if city and city not in PARAGUAY_CITY_NAMES and not (existing and city == existing.city):
@@ -1501,7 +1523,7 @@ def add_company(
         return form_error("El RUC es obligatorio.")
     normalized_ruc = normalize_company_ruc(ruc)
     if not normalized_ruc:
-        return form_error("El RUC debe contener entre 6 y 10 dígitos numéricos.")
+        return form_error("El RUC debe tener entre 3 y 8 dígitos base y un dígito verificador válido (módulo 11).")
     try:
         code_value = int(company_code.strip())
         if code_value <= 0 or code_value > 2_147_483_647:
