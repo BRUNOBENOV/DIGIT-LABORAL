@@ -56,7 +56,7 @@
       <h2>{{ selected_employee_name }}</h2>
       <p>{{ selected_company_name }} · Ejercicio {{ coverage.year }}</p>
     </div>
-    <span class="status-pill {{ 'success' if coverage.is_complete else 'warning' }}">{% if coverage.year == today.year %}{{ 'Al día hasta el mes actual' if coverage.is_complete else 'Cobertura incompleta' }}{% else %}{{ 'Año cubierto' if coverage.is_complete else 'Requiere revisión' }}{% endif %}</span>
+    <span class="status-pill {{ 'secondary' if coverage.expected_count == 0 else ('success' if coverage.is_complete else 'warning') }}">{% if coverage.expected_count == 0 %}Sin período esperado{% elif coverage.year == today.year %}{{ 'Al día hasta el mes actual' if coverage.is_complete else 'Cobertura incompleta' }}{% else %}{{ 'Año cubierto' if coverage.is_complete else 'Requiere revisión' }}{% endif %}</span>
   </div>
   <p>{{ coverage.coverage_note }}</p>
   <div class="stats-grid">
