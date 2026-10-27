@@ -74,6 +74,9 @@ def test_rls_policies_cover_sensitive_identity_tables(monkeypatch) -> None:
         "user_security",
         "password_reset_tokens",
         "activation_requests",
+        "companies",
+        "employees",
+        "company_sections",
     }
 
     class FakeConnection:
@@ -114,6 +117,8 @@ def test_rls_policies_cover_sensitive_identity_tables(monkeypatch) -> None:
     assert "current_setting('app.current_user_role', true) = 'administrador'" in sql
     assert "user_id = digit_current_user_id()" in sql
     assert 'digit_is_superadmin() OR (FALSE)' in sql
+    assert 'CREATE POLICY "digit_tenant_company_sections" ON "company_sections"' in sql
+    assert "company_id IN (SELECT id FROM companies WHERE studio_id = digit_current_studio_id())" in sql
 
 def test_runtime_rls_check_warns_when_application_role_owns_tables(monkeypatch) -> None:
     from app import database
