@@ -777,6 +777,11 @@ def _validate_employee_payload(
     raw_code = payload.get("employee_code", existing.employee_code if existing else None)
     if raw_code in (None, "") and existing:
         raw_code = existing.employee_code
+    # Legacy fixtures/import paths may create an employee row without a legajo;
+    # when editing that existing row, assign the next code instead of blocking
+    # unrelated changes. New employee creation still requires a code in the API.
+    if raw_code in (None, "") and existing:
+        raw_code = _next_employee_code(db, company_id)
     if raw_code in (None, ""):
         raise HTTPException(422, "El Código Legajo es obligatorio.")
     try:
