@@ -19,7 +19,7 @@ from contextlib import asynccontextmanager
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Annotated
-from urllib.parse import parse_qs, quote
+from urllib.parse import parse_qs, quote, urlencode
 
 from PIL import Image, ImageChops, ImageOps
 
@@ -519,6 +519,87 @@ def company_allowed(db: Session, user: User, company_id: int) -> Company:
     return company
 
 
+def active_labor_context(
+    request: Request, db: Session, user: User, allowed_company_ids: list[int] | None = None
+) -> tuple[int | None, int | None]:
+    """Return the authenticated user's remembered company/employee after tenant validation."""
+    if user.role == "superadmin":
+        return None, None
+
+    allowed_ids = set(allowed_company_ids if allowed_company_ids is not None else company_ids_for_user(db, user))
+
+    def read_id(key: str) -> int | None:
+        try:
+            value = int(request.session.get(key) or 0)
+            return value if value > 0 else None
+        except (TypeError, ValueError):
+            return None
+
+    company_id = read_id("labor_context_company_id")
+    employee_id = read_id("labor_context_employee_id")
+
+    # Employer accounts cannot switch to another company's context.
+    if user.role == "empresa":
+        company_id = user.company_id if user.company_id in allowed_ids else None
+        if company_id:
+            request.session["labor_context_company_id"] = str(company_id)
+
+    if company_id not in allowed_ids:
+        company_id = None
+        request.session.pop("labor_context_company_id", None)
+        request.session.pop("labor_context_employee_id", None)
+        employee_id = None
+
+    employee = db.get(Employee, employee_id) if employee_id else None
+    if employee_id and (
+        not employee or employee.company_id not in allowed_ids
+        or (company_id is not None and employee.company_id != company_id)
+    ):
+        employee = None
+        employee_id = None
+        request.session.pop("labor_context_employee_id", None)
+
+    if employee:
+        company_id = employee.company_id
+
+    if company_id is not None:
+        request.session["labor_context_company_id"] = str(company_id)
+    if employee_id is not None:
+        request.session["labor_context_employee_id"] = str(employee_id)
+    return company_id, employee_id
+
+
+def default_labor_context(
+    request: Request,
+    db: Session,
+    user: User,
+    allowed_company_ids: list[int],
+    company_id: int | None,
+    employee_id: int | None,
+) -> tuple[int | None, int | None]:
+    """Use remembered context by default and synchronize authorized explicit selections."""
+    if company_id is None and employee_id is None:
+        return active_labor_context(request, db, user, allowed_company_ids)
+    if employee_id is not None:
+        employee = db.get(Employee, employee_id)
+        if not employee or employee.company_id not in allowed_company_ids:
+            raise HTTPException(404, "Funcionario no encontrado en tu espacio de trabajo.")
+        if company_id is not None and employee.company_id != company_id:
+            raise HTTPException(400, "El funcionario no pertenece a la empresa seleccionada.")
+        company_id = employee.company_id
+    if company_id is not None and company_id not in allowed_company_ids:
+        raise HTTPException(404, "Empresa no encontrada.")
+    if company_id is not None:
+        request.session["labor_context_company_id"] = str(company_id)
+    else:
+        request.session.pop("labor_context_company_id", None)
+    if employee_id is not None:
+        request.session["labor_context_employee_id"] = str(employee_id)
+    else:
+        request.session.pop("labor_context_employee_id", None)
+    return company_id, employee_id
+
+
 def write_audit(db: Session, user: User, action: str, entity: str, entity_id: str = "", detail: str = "") -> None:
     db.add(
         AuditLog(
@@ -628,6 +709,19 @@ def render(request: Request, template: str, db: Session, user: User | None = Non
                 Notification.read_at.is_(None),
             )
         ) or 0
+    if user and user.role != "superadmin":
+        allowed_ids = company_ids_for_user(db, user)
+        active_company_id, active_employee_id = active_labor_context(request, db, user, allowed_ids)
+        data["context_companies"] = list(
+            db.scalars(select(Company).where(Company.id.in_(allowed_ids)).order_by(Company.legal_name))
+        ) if allowed_ids else []
+        data["context_employees"] = list(
+            db.scalars(
+                select(Employee).where(Employee.company_id == active_company_id).order_by(Employee.full_name)
+            )
+        ) if active_company_id else []
+        data["active_context_company_id"] = active_company_id
+        data["active_context_employee_id"] = active_employee_id
     if user and user.studio_id:
         data["studio"] = db.get(Studio, user.studio_id)
     return templates.TemplateResponse(request=request, name=template, context=data)
@@ -649,6 +743,87 @@ templates.env.filters["fecha"] = format_date
 CERTIFICATE_TYPES = DOCUMENT_LABELS
 
 templates.env.filters["fecha_larga"] = format_date_long_es
+
+
+@app.get("/app/context/employees", response_class=JSONResponse)
+def labor_context_employees(
+    company_id: int = 0,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    """Return employees for the requested company, scoped to the signed-in user."""
+    if not company_id:
+        return JSONResponse([])
+    company = company_allowed(db, user, company_id)
+    employees = list(
+        db.scalars(select(Employee).where(Employee.company_id == company.id).order_by(Employee.full_name))
+    )
+    return JSONResponse([
+        {
+            "id": employee.id,
+            "name": employee.full_name,
+            "company_id": employee.company_id,
+            "status": employee.status,
+        }
+        for employee in employees
+    ])
+
+
+@app.post("/app/context")
+def set_labor_context(
+    request: Request,
+    company_id: Annotated[str, Form()] = "",
+    employee_id: Annotated[str, Form()] = "",
+    return_to: Annotated[str, Form()] = "/app",
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    """Persist a validated company/employee selection for the user's next modules."""
+    company_id = optional_int(company_id, field="empresa")
+    employee_id = optional_int(employee_id, field="funcionario")
+    allowed_ids = company_ids_for_user(db, user)
+    company = None
+    if employee_id:
+        employee = db.get(Employee, employee_id)
+        if not employee or employee.company_id not in allowed_ids:
+            raise HTTPException(404, "Funcionario no encontrado en tu espacio de trabajo.")
+        if company_id and employee.company_id != company_id:
+            raise HTTPException(400, "El funcionario no pertenece a la empresa seleccionada.")
+        company_id = employee.company_id
+    if company_id:
+        company = company_allowed(db, user, company_id)
+    if user.role == "empresa":
+        if not user.company_id or user.company_id not in allowed_ids:
+            raise HTTPException(403, "La cuenta no tiene una empresa asignada.")
+        if company and company.id != user.company_id:
+            raise HTTPException(403, "No podés cambiar el contexto a otra empresa.")
+        company_id = user.company_id
+    if company_id:
+        request.session["labor_context_company_id"] = str(company_id)
+    else:
+        request.session.pop("labor_context_company_id", None)
+    if employee_id:
+        request.session["labor_context_employee_id"] = str(employee_id)
+    else:
+        request.session.pop("labor_context_employee_id", None)
+
+    # Only redirect within this application; reject absolute and scheme-relative URLs.
+    if not (return_to == "/app" or return_to.startswith("/app/")) or return_to.startswith("//") or "://" in return_to or "\\" in return_to:
+        return_to = "/app"
+    # A page may carry stale company_id/employee_id query parameters. Replace
+    # those with the newly saved context so the destination does not undo the
+    # user's selection as soon as it loads.
+    return_path, _, return_query = return_to.partition("?")
+    return_params = parse_qs(return_query, keep_blank_values=True)
+    return_params.pop("company_id", None)
+    return_params.pop("employee_id", None)
+    if company_id:
+        return_params["company_id"] = [str(company_id)]
+    if employee_id:
+        return_params["employee_id"] = [str(employee_id)]
+    encoded_query = urlencode(return_params, doseq=True)
+    return_to = return_path + (f"?{encoded_query}" if encoded_query else "")
+    return RedirectResponse(return_to, status_code=303)
 
 
 def build_certificate_body(
@@ -1538,9 +1713,14 @@ def add_branch(
 @app.get("/app/employees", response_class=HTMLResponse)
 def employees_page(request: Request, q: str = "", company_id: OptionalQueryId = None, user: User = Depends(require_user), db: Session = Depends(get_db)):
     company_ids = company_ids_for_user(db, user)
+    company_id, active_employee_id = default_labor_context(
+        request, db, user, company_ids, company_id, None
+    )
     query = select(Employee).where(Employee.company_id.in_(company_ids)) if company_ids else select(Employee).where(False)
     if company_id and company_id in company_ids:
         query = query.where(Employee.company_id == company_id)
+    if active_employee_id:
+        query = query.where(Employee.id == active_employee_id)
     if q.strip():
         term = f"%{q.strip()}%"
         query = query.where(or_(Employee.full_name.ilike(term), Employee.document_number.ilike(term), Employee.position.ilike(term)))
@@ -1548,7 +1728,7 @@ def employees_page(request: Request, q: str = "", company_id: OptionalQueryId = 
     companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name))) if company_ids else []
     branches = list(db.scalars(select(Branch).where(Branch.company_id.in_(company_ids)).order_by(Branch.name))) if company_ids else []
     minimum_salary = db.scalar(select(LaborParameter).where(LaborParameter.key == "minimum_monthly_salary_general", LaborParameter.active.is_(True)))
-    return render(request, "employees.html", db, user, employees=employees, companies=companies, branches=branches, q=q, selected_company=company_id, minimum_salary=minimum_salary)
+    return render(request, "employees.html", db, user, employees=employees, companies=companies, branches=branches, q=q, selected_company=company_id, selected_employee=active_employee_id, minimum_salary=minimum_salary)
 
 
 @app.get("/app/employees/{employee_id}", response_class=HTMLResponse)
@@ -3149,6 +3329,9 @@ def calculation_period_coverage(
     if target_year < 1900 or target_year > today.year:
         raise HTTPException(422, "Seleccioná un año entre 1900 y el año actual.")
     company_ids = company_ids_for_user(db, user)
+    company_id, employee_id = default_labor_context(
+        request, db, user, company_ids, company_id, employee_id
+    )
     companies = list(
         db.scalars(select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name))
     ) if company_ids else []
@@ -3203,6 +3386,9 @@ def calculations_page(
     if tipo and tipo not in CALCULATION_MODULES:
         raise HTTPException(404, "Calculadora no encontrada.")
     company_ids = company_ids_for_user(db, user)
+    company_id, employee_id = default_labor_context(
+        request, db, user, company_ids, company_id, employee_id
+    )
     companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name))) if company_ids else []
     employees_query = select(Employee).where(Employee.company_id.in_(company_ids), Employee.status == "Activo") if company_ids else select(Employee).where(False)
     if company_id and company_id in company_ids:
@@ -3235,6 +3421,11 @@ def calculations_page(
             f"Gs. {format_gs(prefill_total_remunerations)}; cobertura {coverage['closed_count']}/"
             f"{coverage['expected_count']} periodos esperados. Revisar conceptos computables, ajustes y anticipos."
         )
+    selected_employee_record = next((item for item in employees if item.id == employee_id), None)
+    minimum_salary = get_parameter(db, "minimum_monthly_salary_general", 0)
+    calculation_salary_default = (
+        int(selected_employee_record.base_salary or 0) if selected_employee_record else int(minimum_salary or 0)
+    )
     return render(
         request,
         "calculations.html",
@@ -3246,7 +3437,8 @@ def calculations_page(
         selected_company=company_id,
         selected_employee=employee_id,
         ips_rate=get_parameter(db, "ips_employee_rate_general", 9),
-        minimum_salary=get_parameter(db, "minimum_monthly_salary_general", 0),
+        minimum_salary=minimum_salary,
+        calculation_salary_default=calculation_salary_default,
         hourly_reference=get_parameter(db, "minimum_hourly_wage_general", 0),
         calculation_labels={key: calculation_label(key) for key in ("salary", "hours", "aguinaldo", "vacation", "notice")},
         active_calculation_type=tipo or "",
@@ -3260,6 +3452,7 @@ def calculations_page(
 
 @app.post("/app/calculations")
 def save_calculation(
+    request: Request,
     calculation_type: Annotated[str, Form()],
     company_id: Annotated[int, Form()],
     employee_id: Annotated[int | None, Form()] = None,
@@ -3299,6 +3492,11 @@ def save_calculation(
         total_remunerations=total_remunerations,
         days=days,
     )
+    request.session["labor_context_company_id"] = str(company.id)
+    if employee:
+        request.session["labor_context_employee_id"] = str(employee.id)
+    else:
+        request.session.pop("labor_context_employee_id", None)
     item = CalculationRecord(
         company_id=company.id,
         employee_id=employee.id if employee else None,
@@ -3373,6 +3571,10 @@ def certificates_page(
     db: Session = Depends(get_db),
 ):
     company_ids = company_ids_for_user(db, user)
+    if not calculation_id:
+        company_id, employee_id = default_labor_context(
+            request, db, user, company_ids, company_id, employee_id
+        )
     companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name))) if company_ids else []
     employees = list(db.scalars(select(Employee).where(Employee.company_id.in_(company_ids)).order_by(Employee.full_name))) if company_ids else []
     generated = list(
@@ -3389,6 +3591,11 @@ def certificates_page(
     if selected_calculation:
         company_id = selected_calculation.company_id
         employee_id = selected_calculation.employee_id
+        request.session["labor_context_company_id"] = str(company_id)
+        if employee_id:
+            request.session["labor_context_employee_id"] = str(employee_id)
+        else:
+            request.session.pop("labor_context_employee_id", None)
     selected_company = db.get(Company, company_id) if company_id in company_ids else None
     selected_employee = db.get(Employee, employee_id) if employee_id else None
     if company_id and not selected_company:
@@ -3439,6 +3646,7 @@ def certificates_page(
 
 @app.post("/app/certificates")
 def create_certificate(
+    request: Request,
     company_id: Annotated[int, Form()],
     employee_id: Annotated[int, Form()],
     document_type: Annotated[str, Form()],
@@ -3626,6 +3834,8 @@ def create_certificate(
     employee = db.get(Employee, employee_id)
     if not employee or employee.company_id != company.id:
         raise HTTPException(400, "El funcionario no pertenece a la empresa seleccionada.")
+    request.session["labor_context_company_id"] = str(company.id)
+    request.session["labor_context_employee_id"] = str(employee.id)
 
     calculation = db.get(CalculationRecord, calculation_id) if calculation_id else None
     if calculation and (calculation.company_id != company.id or calculation.company_id not in company_ids_for_user(db, user)):
@@ -4093,9 +4303,14 @@ def reports_page(
     db: Session = Depends(get_db),
 ):
     company_ids = company_ids_for_user(db, user)
+    company_id, employee_id = default_labor_context(
+        request, db, user, company_ids, company_id, employee_id
+    )
     companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name))) if company_ids else []
     if company_id not in company_ids:
         company_id = company_ids[0] if company_ids else None
+        if company_id:
+            request.session["labor_context_company_id"] = str(company_id)
     employees = list(db.scalars(select(Employee).where(Employee.company_id == company_id).order_by(Employee.full_name))) if company_id else []
     if employee_id and employee_id not in {item.id for item in employees}:
         employee_id = None
@@ -4286,13 +4501,21 @@ def ai_assistance(
 @app.get("/app/payrolls", response_class=HTMLResponse)
 def payrolls_page(request: Request, user: User = Depends(require_roles("administrador", "contador", "auxiliar", "empresa")), db: Session = Depends(get_db)):
     company_ids = company_ids_for_user(db, user)
-    payrolls = list(db.scalars(select(Payroll).where(Payroll.company_id.in_(company_ids)).order_by(Payroll.period.desc(), Payroll.created_at.desc()))) if company_ids else []
+    selected_company_id, selected_employee_id = active_labor_context(request, db, user, company_ids)
+    payroll_query = select(Payroll).where(Payroll.company_id.in_(company_ids)) if company_ids else select(Payroll).where(False)
+    if selected_company_id:
+        payroll_query = payroll_query.where(Payroll.company_id == selected_company_id)
+    if selected_employee_id:
+        payroll_query = payroll_query.join(PayrollLine).where(PayrollLine.employee_id == selected_employee_id)
+    payrolls = list(db.scalars(payroll_query.order_by(Payroll.period.desc(), Payroll.created_at.desc()).distinct()))
     companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids), Company.status == "Activa").order_by(Company.legal_name))) if company_ids else []
-    return render(request, "payrolls.html", db, user, payrolls=payrolls, companies=companies)
+    return render(request, "payrolls.html", db, user, payrolls=payrolls, companies=companies,
+                  selected_company_id=selected_company_id, selected_employee_id=selected_employee_id)
 
 
 @app.post("/app/payrolls")
 def create_payroll(
+    request: Request,
     company_id: Annotated[int, Form()],
     period: Annotated[str, Form()],
     notes: Annotated[str, Form()] = "",
@@ -4306,6 +4529,8 @@ def create_payroll(
         date.fromisoformat(period + "-01")
     except ValueError:
         raise HTTPException(400, "Periodo inválido")
+    request.session["labor_context_company_id"] = str(company_id)
+    request.session.pop("labor_context_employee_id", None)
     payroll = Payroll(company_id=company_id, period=period, notes=notes.strip(), created_by=user.email)
     db.add(payroll)
     try:
@@ -4435,9 +4660,19 @@ def payroll_status(
 @app.get("/app/vacations", response_class=HTMLResponse)
 def vacations_page(request: Request, user: User = Depends(require_user), db: Session = Depends(get_db)):
     company_ids = company_ids_for_user(db, user)
-    employees = list(db.scalars(select(Employee).where(Employee.company_id.in_(company_ids), Employee.status == "Activo").order_by(Employee.full_name))) if company_ids else []
-    items = list(db.scalars(select(Vacation).join(Employee).where(Employee.company_id.in_(company_ids)).order_by(Vacation.created_at.desc()))) if company_ids else []
-    return render(request, "vacations.html", db, user, employees=employees, items=items)
+    selected_company_id, selected_employee_id = active_labor_context(request, db, user, company_ids)
+    employee_query = select(Employee).where(Employee.company_id.in_(company_ids), Employee.status == "Activo") if company_ids else select(Employee).where(False)
+    vacation_query = select(Vacation).join(Employee).where(Employee.company_id.in_(company_ids)) if company_ids else select(Vacation).where(False)
+    if selected_company_id:
+        employee_query = employee_query.where(Employee.company_id == selected_company_id)
+        vacation_query = vacation_query.where(Employee.company_id == selected_company_id)
+    if selected_employee_id:
+        employee_query = employee_query.where(Employee.id == selected_employee_id)
+        vacation_query = vacation_query.where(Vacation.employee_id == selected_employee_id)
+    employees = list(db.scalars(employee_query.order_by(Employee.full_name)))
+    items = list(db.scalars(vacation_query.order_by(Vacation.created_at.desc())))
+    return render(request, "vacations.html", db, user, employees=employees, items=items,
+                  selected_company_id=selected_company_id, selected_employee_id=selected_employee_id)
 
 
 @app.post("/app/vacations")
@@ -4474,13 +4709,40 @@ def create_vacation(
 @app.get("/app/aguinaldo", response_class=HTMLResponse)
 def aguinaldo_page(request: Request, user: User = Depends(require_user), db: Session = Depends(get_db)):
     company_ids = company_ids_for_user(db, user)
-    employees = list(db.scalars(select(Employee).where(Employee.company_id.in_(company_ids), Employee.status == "Activo").order_by(Employee.full_name))) if company_ids else []
-    items = list(db.scalars(select(Aguinaldo).join(Employee).where(Employee.company_id.in_(company_ids)).order_by(Aguinaldo.year.desc(), Aguinaldo.created_at.desc()))) if company_ids else []
-    return render(request, "aguinaldo.html", db, user, employees=employees, items=items)
+    selected_company_id, selected_employee_id = active_labor_context(request, db, user, company_ids)
+    employee_query = select(Employee).where(Employee.company_id.in_(company_ids)) if company_ids else select(Employee).where(False)
+    aguinaldo_query = select(Aguinaldo).join(Employee).where(Employee.company_id.in_(company_ids)) if company_ids else select(Aguinaldo).where(False)
+    if selected_company_id:
+        employee_query = employee_query.where(Employee.company_id == selected_company_id)
+        aguinaldo_query = aguinaldo_query.where(Employee.company_id == selected_company_id)
+    if selected_employee_id:
+        employee_query = employee_query.where(Employee.id == selected_employee_id)
+        aguinaldo_query = aguinaldo_query.where(Aguinaldo.employee_id == selected_employee_id)
+    employees = list(db.scalars(employee_query.order_by(Employee.full_name)))
+    items = list(db.scalars(aguinaldo_query.order_by(Aguinaldo.year.desc(), Aguinaldo.created_at.desc())))
+    suggested_total = None
+    suggestion_note = ""
+    suggested_year = current_paraguay_date().year
+    selected_employee = db.get(Employee, selected_employee_id) if selected_employee_id else None
+    if selected_employee and selected_company_id and selected_employee.company_id == selected_company_id:
+        coverage = _employee_annual_coverage(
+            db, db.get(Company, selected_company_id), selected_employee, suggested_year, current_paraguay_date()
+        )
+        suggested_total = coverage["suggested_total"] if coverage["closed_count"] else None
+        suggestion_note = (
+            f"Propuesta automática para el ejercicio {suggested_year}: Gs. {format_gs(coverage['suggested_total'])} "
+            f"de nóminas cerradas y consistentes; {coverage['closed_count']} de {coverage['expected_count']} "
+            "periodos esperados cubiertos. Si no hay nóminas cerradas, el importe queda vacío. "
+            "Verificá conceptos computables, ajustes y anticipos antes de aprobar."
+        )
+    return render(request, "aguinaldo.html", db, user, employees=employees, items=items,
+                  selected_company_id=selected_company_id, selected_employee_id=selected_employee_id,
+                  suggested_total=suggested_total, suggested_year=suggested_year, suggestion_note=suggestion_note)
 
 
 @app.post("/app/aguinaldo")
 def create_aguinaldo(
+    request: Request,
     employee_id: Annotated[int, Form()],
     year: Annotated[int, Form()],
     total_remunerations: Annotated[int, Form()],
@@ -4496,6 +4758,8 @@ def create_aguinaldo(
     if not 0 <= total_remunerations <= 2147483647:
         raise HTTPException(400, "Las remuneraciones computables deben estar entre 0 y 2.147.483.647 Gs.")
     amount = round_gs(total_remunerations / 12)
+    request.session["labor_context_company_id"] = str(employee.company_id)
+    request.session["labor_context_employee_id"] = str(employee.id)
     item = Aguinaldo(employee_id=employee_id, year=year, total_remunerations=total_remunerations, calculated_amount=amount, notes=notes.strip())
     db.add(item)
     try:
@@ -4517,14 +4781,29 @@ def create_aguinaldo(
 @app.get("/app/documents", response_class=HTMLResponse)
 def documents_page(request: Request, user: User = Depends(require_user), db: Session = Depends(get_db)):
     company_ids = company_ids_for_user(db, user)
-    companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name))) if company_ids else []
-    employees = list(db.scalars(select(Employee).where(Employee.company_id.in_(company_ids)).order_by(Employee.full_name))) if company_ids else []
-    documents = list(db.scalars(select(Document).where(Document.company_id.in_(company_ids)).order_by(Document.created_at.desc()))) if company_ids else []
-    return render(request, "documents.html", db, user, companies=companies, employees=employees, documents=documents)
+    selected_company_id, selected_employee_id = active_labor_context(request, db, user, company_ids)
+    company_query = select(Company).where(Company.id.in_(company_ids)) if company_ids else select(Company).where(False)
+    employee_query = select(Employee).where(Employee.company_id.in_(company_ids)) if company_ids else select(Employee).where(False)
+    document_query = select(Document).where(Document.company_id.in_(company_ids)) if company_ids else select(Document).where(False)
+    if selected_company_id:
+        company_query = company_query.where(Company.id == selected_company_id)
+        employee_query = employee_query.where(Employee.company_id == selected_company_id)
+        document_query = document_query.where(Document.company_id == selected_company_id)
+    if selected_employee_id:
+        employee_query = employee_query.where(Employee.id == selected_employee_id)
+        document_query = document_query.where(
+            or_(Document.employee_id == selected_employee_id, Document.employee_id.is_(None))
+        )
+    companies = list(db.scalars(company_query.order_by(Company.legal_name)))
+    employees = list(db.scalars(employee_query.order_by(Employee.full_name)))
+    documents = list(db.scalars(document_query.order_by(Document.created_at.desc())))
+    return render(request, "documents.html", db, user, companies=companies, employees=employees, documents=documents,
+                  selected_company_id=selected_company_id, selected_employee_id=selected_employee_id)
 
 
 @app.post("/app/documents")
 async def upload_document(
+    request: Request,
     company_id: Annotated[int, Form()],
     title: Annotated[str, Form()],
     category: Annotated[str, Form()] = "General",
@@ -4534,6 +4813,11 @@ async def upload_document(
     db: Session = Depends(get_db),
 ):
     company_allowed(db, user, company_id)
+    request.session["labor_context_company_id"] = str(company_id)
+    if employee_id:
+        request.session["labor_context_employee_id"] = str(employee_id)
+    else:
+        request.session.pop("labor_context_employee_id", None)
     if file.content_type not in ALLOWED_UPLOAD_TYPES:
         raise HTTPException(400, "Formato no permitido.")
     content = await file.read(MAX_UPLOAD_SIZE + 1)

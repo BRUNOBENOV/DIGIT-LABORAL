@@ -82,6 +82,18 @@ def private_context(db, user, data):
                 employee=employee, company_id=company_id, employee_id=employee_id, history=history)
 
 
+def remember_context(request, scoped):
+    """Persist only the tenant-validated context returned by private_context."""
+    company = scoped.get("company") if scoped else None
+    employee = scoped.get("employee") if scoped else None
+    if company:
+        request.session["labor_context_company_id"] = str(company.id)
+    if employee:
+        request.session["labor_context_employee_id"] = str(employee.id)
+    elif company:
+        request.session.pop("labor_context_employee_id", None)
+
+
 def page(request, kind, data=None, result=None, error=None, db=None, user=None, copied_from=None):
     values = dict(data) if data is not None else None
     private = private_context(db, user, values if values is not None else {}) if user else {}
@@ -103,8 +115,13 @@ def public_page(request: Request, tipo: str = "salary", ejemplo: bool = False):
 @router.get("/app/liquidaciones")
 def professional_page(request: Request, tipo: str = "settlement", company_id: OptionalQueryId = None, employee_id: OptionalQueryId = None,
                       user: User = Depends(core.require_user), db: Session = Depends(core.get_db)):
+    allowed_company_ids = core.company_ids_for_user(db, user)
+    company_id, employee_id = core.default_labor_context(
+        request, db, user, allowed_company_ids, company_id, employee_id
+    )
     values = dict(context(tipo)["values"], company_id=company_id or 0, employee_id=employee_id or 0, prepared_by=user.full_name)
     scoped = private_context(db, user, values)
+    remember_context(request, scoped)
     if employee := scoped["employee"]:
         values.update(salary=str(employee.base_salary), start_date=employee.admission_date.isoformat(),
                       apply_ips="on" if employee.ips_contributor else "",
@@ -126,7 +143,8 @@ async def public_calculate(request: Request):
 async def professional_calculate(request: Request, user: User = Depends(core.require_user),
                                  db: Session = Depends(core.get_db)):
     data = await form_values(request)
-    private_context(db, user, data)
+    scoped = private_context(db, user, data)
+    remember_context(request, scoped)
     try:
         result = calculate(data)
     except CalculationError as exc:
@@ -162,7 +180,8 @@ async def public_export(request: Request, fmt: str):
 async def professional_export(request: Request, fmt: str, user: User = Depends(core.require_user),
                               db: Session = Depends(core.get_db)):
     data = await form_values(request)
-    private_context(db, user, data)
+    scoped = private_context(db, user, data)
+    remember_context(request, scoped)
     try:
         return await download(calculate(data), fmt)
     except CalculationError as exc:
@@ -175,6 +194,7 @@ async def save_calculation(request: Request,
                            db: Session = Depends(core.get_db)):
     data = await form_values(request)
     scoped = private_context(db, user, data)
+    remember_context(request, scoped)
     try:
         if not scoped["company"] or not scoped["employee"]:
             raise CalculationError("Seleccioná empresa y funcionario para guardar el cálculo.")
@@ -206,6 +226,11 @@ def saved_result(db, user, record_id):
 @router.get("/app/liquidaciones/{record_id}")
 def saved_page(request: Request, record_id: int, user: User = Depends(core.require_user), db: Session = Depends(core.get_db)):
     item, result = saved_result(db, user, record_id)
+    request.session["labor_context_company_id"] = str(item.company_id)
+    if item.employee_id:
+        request.session["labor_context_employee_id"] = str(item.employee_id)
+    else:
+        request.session.pop("labor_context_employee_id", None)
     response = core.render(request, "liquidation_saved.html", db, user, item=item, result=result)
     response.headers.update(HEADERS)
     return response
@@ -215,6 +240,11 @@ def saved_page(request: Request, record_id: int, user: User = Depends(core.requi
 def copy_saved_calculation(request: Request, record_id: int, user: User = Depends(core.require_user),
                            db: Session = Depends(core.get_db)):
     item, _ = saved_result(db, user, record_id)
+    request.session["labor_context_company_id"] = str(item.company_id)
+    if item.employee_id:
+        request.session["labor_context_employee_id"] = str(item.employee_id)
+    else:
+        request.session.pop("labor_context_employee_id", None)
     values = json.loads(item.input_json)
     values.update(company_id=item.company_id, employee_id=item.employee_id or 0, prepared_by=user.full_name,
                   issued_date=context(values["kind"])["values"]["issued_date"])

@@ -1,6 +1,13 @@
-# Digit Laboral 2.5.6
+# Digit Laboral 2.5.7
 
 Plataforma de gestión y cumplimiento laboral para estudios contables paraguayos.
+
+## Novedades de la versión 2.5.7
+
+- Añade un contexto común de empresa y funcionario, guardado por sesión y validado contra los permisos del usuario.
+- Precarga el salario vigente del legajo en calculadoras y conserva el contexto al entrar a cobertura, certificados, vacaciones, aguinaldo, nóminas, documentos y liquidaciones.
+- El aguinaldo sugiere solo remuneraciones brutas de nóminas cerradas y consistentes; si no hay evidencia suficiente, deja el campo vacío.
+- Filtra vistas operativas según el contexto seleccionado sin alterar los importes históricos ni ampliar el acceso entre empresas.
 
 ## Novedades de la versión 2.5.6
 
