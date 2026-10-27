@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block title %}Cobertura de períodos | DigIT Laboral{% endblock %}
+{% block page_name %}Cobertura de períodos{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <span class="eyebrow">AUTOMATIZACIÓN LABORAL · V1</span>
+    <h1>Cobertura de períodos</h1>
+    <p>Revisá qué meses tienen nóminas registradas antes de preparar un aguinaldo. Los datos históricos se reutilizan con trazabilidad, sin completar períodos desconocidos.</p>
+  </div>
+  <div class="header-actions">
+    <a class="btn ghost" href="/app/calculations">Volver a calculadoras</a>
+    <a class="btn outline" href="/app/payrolls">Liquidaciones mensuales</a>
+  </div>
+</div>
+
+<div class="legal-warning">
+  <b>Importante:</b> esta pantalla controla la cobertura documental y la consistencia de importes. No determina por sí sola qué conceptos son legalmente computables ni sustituye la revisión profesional.
+</div>
+
+<section class="panel calculation-context">
+  <div>
+    <span class="eyebrow-label">1 · CONTEXTO</span>
+    <h2>Empresa, funcionario y año</h2>
+    <p>Seleccioná el trabajador y el ejercicio que necesitás revisar.</p>
+  </div>
+  <form method="get" action="/app/calculations/periodos" class="calculation-context-form">
+    <label>Empresa
+      <select name="company_id" id="coverageCompany" required>
+        <option value="">Seleccionar empresa</option>
+        {% for company in companies %}
+        <option value="{{ company.id }}" {{ 'selected' if selected_company == company.id }}>{{ company.legal_name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Funcionario
+      <select name="employee_id" id="coverageEmployee" required>
+        <option value="">Seleccionar funcionario</option>
+        {% for employee in employees %}
+        <option value="{{ employee.id }}" data-company="{{ employee.company_id }}" {{ 'selected' if selected_employee == employee.id }}>{{ employee.full_name }} · {{ employee.company.legal_name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Año
+      <input type="number" name="year" min="1900" max="{{ today.year }}" value="{{ year }}" required>
+    </label>
+    <button class="btn primary" type="submit">Analizar período</button>
+  </form>
+</section>
+
+{% if coverage %}
+<section class="panel">
+  <div class="panel-heading">
+    <div>
+      <span class="eyebrow-label">2 · RESULTADO</span>
+      <h2>{{ selected_employee_name }}</h2>
+      <p>{{ selected_company_name }} · Ejercicio {{ coverage.year }}</p>
+    </div>
+    <span class="status-pill {{ 'success' if coverage.is_complete else 'warning' }}">{{ 'Cobertura documental completa' if coverage.is_complete else 'Requiere revisión' }}</span>
+  </div>
+  <p>{{ coverage.coverage_note }}</p>
+  <div class="stats-grid">
+    <div class="stat-card"><span>Meses esperados</span><strong>{{ coverage.expected_count }}</strong></div>
+    <div class="stat-card"><span>Nóminas cerradas</span><strong>{{ coverage.closed_count }}</strong></div>
+    <div class="stat-card"><span>Nóminas abiertas</span><strong>{{ coverage.open_count }}</strong></div>
+    <div class="stat-card"><span>Faltantes / cálculos aislados</span><strong>{{ coverage.missing_count }}</strong></div>
+    <div class="stat-card"><span>Importes inconsistentes</span><strong>{{ coverage.inconsistent_count }}</strong></div>
+  </div>
+  <div class="legal-warning">
+    <b>Suma bruta identificada en nóminas cerradas y consistentes:</b>
+    Gs. {{ format_gs(coverage.suggested_total) }}.
+    <br>{{ coverage.legal_note }}
+  </div>
+  {% if coverage.salary_changes_detected %}
+  <div class="alert">
+    <b>Se detectaron variaciones en el salario base registrado.</b>
+    Los valores encontrados son:
+    {% for value in coverage.salary_values %}Gs. {{ format_gs(value) }}{% if not loop.last %}, {% endif %}{% endfor %}.
+    Revisá la fecha efectiva de cada cambio antes de usar promedios o bases salariales.
+  </div>
+  {% endif %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Mes</th><th>Periodo</th><th>Estado del registro</th><th>Salario base registrado</th><th>Bruto registrado</th><th>Fuente / observación</th></tr>
+      </thead>
+      <tbody>
+        {% for item in coverage.periods %}
+        <tr>
+          <td>{{ item.month_label }}</td>
+          <td>{{ item.period }}</td>
+          <td><span class="status-pill {{ item.status_key }}">{{ item.status }}</span></td>
+          <td>{% if item.base_salary is not none %}Gs. {{ format_gs(item.base_salary) }}{% else %}—{% endif %}</td>
+          <td>{% if item.gross is not none %}Gs. {{ format_gs(item.gross) }}{% else %}—{% endif %}</td>
+          <td>{{ item.note }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="empty-state">No hay meses esperados en este ejercicio para las fechas laborales registradas.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="form-actions" style="margin-top:1rem">
+    <a class="btn primary" href="/app/calculations?tipo=aguinaldo&amp;company_id={{ selected_company }}&amp;employee_id={{ selected_employee }}&amp;reuse_history=1&amp;year={{ year }}">Preparar aguinaldo con historial →</a>
+    <a class="btn ghost" href="/app/calculations?tipo=salary&amp;company_id={{ selected_company }}&amp;employee_id={{ selected_employee }}">Abrir cálculo salarial</a>
+  </div>
+</section>
+{% else %}
+<section class="panel empty-state">
+  <h2>Elegí un funcionario para comenzar</h2>
+  <p>DigIT revisará las nóminas mensuales existentes, buscará cálculos de salario guardados como evidencia secundaria e identificará los períodos que necesitan atención.</p>
+</section>
+{% endif %}
+
+<script>
+(() => {
+  const company = document.getElementById("coverageCompany");
+  const employee = document.getElementById("coverageEmployee");
+  if (!company || !employee) return;
+  const syncEmployees = () => {
+    const selected = company.value;
+    for (const option of employee.options) {
+      if (!option.value) continue;
+      option.hidden = Boolean(selected && option.dataset.company !== selected);
+      if (option.hidden && option.selected) employee.value = "";
+    }
+  };
+  company.addEventListener("change", syncEmployees);
+  syncEmployees();
+})();
+</script>
+{% endblock %}
