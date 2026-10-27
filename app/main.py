@@ -4352,10 +4352,11 @@ def payrolls_page(
         payroll_query = payroll_query.join(PayrollLine).where(PayrollLine.employee_id == selected_employee_id)
     payrolls = list(db.scalars(payroll_query.order_by(Payroll.period.desc(), Payroll.created_at.desc()).distinct()))
     companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids), Company.status == "Activa").order_by(Company.legal_name))) if company_ids else []
+    filter_companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name))) if company_ids else []
     filter_employees = list(db.scalars(select(Employee).where(Employee.company_id.in_(company_ids)).order_by(Employee.full_name))) if company_ids else []
     return render(request, "payrolls.html", db, user, payrolls=payrolls, companies=companies,
-                  filter_employees=filter_employees, selected_company_id=selected_company_id,
-                  selected_employee_id=selected_employee_id)
+                  filter_companies=filter_companies, filter_employees=filter_employees,
+                  selected_company_id=selected_company_id, selected_employee_id=selected_employee_id)
 
 
 @app.post("/app/payrolls")
