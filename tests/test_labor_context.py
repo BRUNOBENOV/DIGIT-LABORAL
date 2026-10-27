@@ -52,11 +52,10 @@ def test_context_persists_company_and_employee_across_modules():
         response = client.get(f"/app/context/employees?company_id={company_id}")
         assert response.status_code == 200
         employee_rows = response.json()
-        if not employee_rows:
-            # Seed data without employees still tests persistence of the company.
-            employee_id = None
-        else:
-            employee_id = int(employee_rows[0]["id"])
+        # Salary calculators offer active employees; the shared context can still
+        # be used for former employees in certificates and final liquidation.
+        active_rows = [row for row in employee_rows if row.get("status") == "Activo"]
+        employee_id = int(active_rows[0]["id"]) if active_rows else None
 
         app_page = client.get("/app")
         csrf_match = re.search(r'name="csrf_token" value="([^"]+)"', app_page.text)
