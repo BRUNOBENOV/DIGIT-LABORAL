@@ -63,13 +63,19 @@ def test_context_persists_company_and_employee_across_modules():
         data = {
             "company_id": str(company_id),
             "employee_id": str(employee_id or ""),
-            "return_to": "/app",
+            "return_to": "/app/calculations?tipo=salary&company_id=999&employee_id=999",
             "csrf_token": csrf_match.group(1),
         }
         saved = client.post("/app/context", data=data, follow_redirects=False)
         assert saved.status_code == 303
+        assert saved.headers["location"].startswith("/app/calculations?tipo=salary")
+        assert f"company_id={company_id}" in saved.headers["location"]
+        if employee_id:
+            assert f"employee_id={employee_id}" in saved.headers["location"]
+        else:
+            assert "employee_id=" not in saved.headers["location"]
 
-        response = client.get("/app/calculations?tipo=salary")
+        response = client.get(saved.headers["location"])
         assert response.status_code == 200
         assert f'value="{company_id}" selected' in response.text
         if employee_id:
