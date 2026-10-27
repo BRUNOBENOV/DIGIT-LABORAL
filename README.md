@@ -1,4 +1,4 @@
-# Digit Laboral 2.5.7
+# Digit Laboral 2.5.8
 
 Plataforma de gestión y cumplimiento laboral para estudios contables paraguayos.
 
