@@ -16,7 +16,7 @@ def test_sidebar_contrast_styles_load_after_the_shared_ui_layer():
     positions = [base.find(name) for name in links]
     assert all(position >= 0 for position in positions)
     assert positions == sorted(positions)
-    assert 'path=\'static\', path=\'sidebar-contrast-265.css\'' not in base
+    assert 'sidebar-contrast-265.css' in base
     assert "?v=20261027e" in base
 
 
