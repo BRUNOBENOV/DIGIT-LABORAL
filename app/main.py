@@ -6531,6 +6531,8 @@ def update_employee_compliance_profile(
     profile.dependent_children = max(0, min(int(dependent_children or 0), 30))
     profile.indigenous = (indigenous or "").strip().lower() in {"on", "true", "1", "yes"}
     profile.disability = (disability or "").strip().lower() in {"on", "true", "1", "yes"}
+    employee.updated_at = datetime.now(UTC)
+    employee.updated_by = user.email
     write_audit(db, user, "actualizar", "perfil_cumplimiento_funcionario", str(employee.id))
     db.commit()
     return RedirectResponse(f"/app/compliance?company_id={company.id}&saved=employee", status_code=303)
