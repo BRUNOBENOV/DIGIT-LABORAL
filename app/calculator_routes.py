@@ -224,6 +224,11 @@ def saved_result(db, user, record_id):
 @router.get("/app/liquidaciones/{record_id}")
 def saved_page(request: Request, record_id: int, user: User = Depends(core.require_user), db: Session = Depends(core.get_db)):
     item, result = saved_result(db, user, record_id)
+    request.session["labor_context_company_id"] = str(item.company_id)
+    if item.employee_id:
+        request.session["labor_context_employee_id"] = str(item.employee_id)
+    else:
+        request.session.pop("labor_context_employee_id", None)
     response = core.render(request, "liquidation_saved.html", db, user, item=item, result=result)
     response.headers.update(HEADERS)
     return response
@@ -233,6 +238,11 @@ def saved_page(request: Request, record_id: int, user: User = Depends(core.requi
 def copy_saved_calculation(request: Request, record_id: int, user: User = Depends(core.require_user),
                            db: Session = Depends(core.get_db)):
     item, _ = saved_result(db, user, record_id)
+    request.session["labor_context_company_id"] = str(item.company_id)
+    if item.employee_id:
+        request.session["labor_context_employee_id"] = str(item.employee_id)
+    else:
+        request.session.pop("labor_context_employee_id", None)
     values = json.loads(item.input_json)
     values.update(company_id=item.company_id, employee_id=item.employee_id or 0, prepared_by=user.full_name,
                   issued_date=context(values["kind"])["values"]["issued_date"])
