@@ -6,6 +6,7 @@
   function enhanceForms(root) {
     const forms = root.querySelectorAll("form:not([data-no-inline-validation])");
     forms.forEach(form => {
+      if (form.matches("#companyForm, #employeeForm, #editEmployeeDetail form")) return;
       if (form.dataset.uiValidationReady === "true") return;
       form.dataset.uiValidationReady = "true";
       const fields = Array.from(form.querySelectorAll("input, select, textarea")).filter(field =>
@@ -75,7 +76,7 @@
       const sortButtons = [];
       Array.from(head.rows).forEach(headerRow => {
         Array.from(headerRow.cells).forEach((th, index) => {
-          if (th.hasAttribute("data-no-sort") || th.querySelector("button,input,select,a") || !safeText(th)) return;
+          if (th.colSpan > 1 || th.hasAttribute("data-no-sort") || th.querySelector("button,input,select,a") || !safeText(th)) return;
           const button = document.createElement("button");
           button.type = "button";
           button.className = "ui-table-sort";
