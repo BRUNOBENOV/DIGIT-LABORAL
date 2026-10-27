@@ -1,5 +1,17 @@
 # Registro de cambios
 
+## 2.5.5 — 27-10-2026
+
+### Autorización por rol
+- Se restringió la ruta interna de cálculos laborales a administrador, contador y auxiliar.
+- Se restringió el historial y la pantalla del asistente de IA a los perfiles operativos autorizados; no basta con ocultar el enlace en el menú.
+- Se limitó la pantalla de parámetros administrativos al rol administrador.
+- Se añadieron pruebas de regresión para confirmar que abogado y empleador reciben denegación al intentar acceder por URL, y que el contador mantiene acceso a sus herramientas.
+
+### Validación
+- La publicación depende de que CI pase con la suite completa y se confirme el nuevo despliegue de Render.
+- Se mantiene el requisito de separar los roles PostgreSQL antes de certificar el aislamiento RLS entre estudios.
+
 ## 2.5.4 — 26-10-2026
 
 ### Flujos de trabajo por perfil
