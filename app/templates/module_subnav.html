@@ -47,13 +47,24 @@
     {'label':'Archivo documental', 'href':'/app/documents', 'active':p.startswith('/app/documents')}
   ]) }}
 {% elif p.startswith('/app/requests') or p.startswith('/app/calendar') or p.startswith('/app/notifications') or p.startswith('/app/labor-code') or p.startswith('/app/security') or p.startswith('/app/ai') or p.startswith('/app/guia') %}
-  {{ tab_nav('Subsecciones de utilitarios', [
-    {'label':'Solicitudes y trámites', 'href':'/app/requests', 'active':p.startswith('/app/requests')},
-    {'label':'Agenda laboral', 'href':'/app/calendar', 'active':p.startswith('/app/calendar')},
-    {'label':'Notificaciones', 'href':'/app/notifications', 'active':p.startswith('/app/notifications')},
-    {'label':'Código Laboral', 'href':'/app/labor-code', 'active':p.startswith('/app/labor-code')},
-    {'label':'Asistente laboral', 'href':'/app/ai', 'active':p.startswith('/app/ai')},
-    {'label':'Seguridad', 'href':'/app/security', 'active':p.startswith('/app/security')},
-    {'label':'Guía de uso', 'href':'/app/guia', 'active':p.startswith('/app/guia')}
-  ]) }}
+  {% if user.role in ['administrador','contador','auxiliar'] %}
+    {{ tab_nav('Subsecciones de utilitarios', [
+      {'label':'Solicitudes y trámites', 'href':'/app/requests', 'active':p.startswith('/app/requests')},
+      {'label':'Agenda laboral', 'href':'/app/calendar', 'active':p.startswith('/app/calendar')},
+      {'label':'Notificaciones', 'href':'/app/notifications', 'active':p.startswith('/app/notifications')},
+      {'label':'Código Laboral', 'href':'/app/labor-code', 'active':p.startswith('/app/labor-code')},
+      {'label':'Asistente laboral', 'href':'/app/ai', 'active':p.startswith('/app/ai')},
+      {'label':'Seguridad', 'href':'/app/security', 'active':p.startswith('/app/security')},
+      {'label':'Guía de uso', 'href':'/app/guia', 'active':p.startswith('/app/guia')}
+    ]) }}
+  {% else %}
+    {{ tab_nav('Subsecciones de utilitarios', [
+      {'label':'Solicitudes y trámites', 'href':'/app/requests', 'active':p.startswith('/app/requests')},
+      {'label':'Agenda laboral', 'href':'/app/calendar', 'active':p.startswith('/app/calendar')},
+      {'label':'Notificaciones', 'href':'/app/notifications', 'active':p.startswith('/app/notifications')},
+      {'label':'Código Laboral', 'href':'/app/labor-code', 'active':p.startswith('/app/labor-code')},
+      {'label':'Seguridad', 'href':'/app/security', 'active':p.startswith('/app/security')},
+      {'label':'Guía de uso', 'href':'/app/guia', 'active':p.startswith('/app/guia')}
+    ]) }}
+  {% endif %}
 {% endif %}
