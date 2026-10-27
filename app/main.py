@@ -4623,8 +4623,6 @@ def create_aguinaldo(
     if not 0 <= total_remunerations <= 2147483647:
         raise HTTPException(400, "Las remuneraciones computables deben estar entre 0 y 2.147.483.647 Gs.")
     amount = round_gs(total_remunerations / 12)
-    request.session["labor_context_company_id"] = str(employee.company_id)
-    request.session["labor_context_employee_id"] = str(employee.id)
     item = Aguinaldo(employee_id=employee_id, year=year, total_remunerations=total_remunerations, calculated_amount=amount, notes=notes.strip())
     db.add(item)
     try:
