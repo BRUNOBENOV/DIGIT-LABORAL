@@ -9,7 +9,7 @@ from sqlalchemy import select
 
 from app.auth import hash_password
 from app.database import SessionLocal
-from app.models import Company, CompanyRequest, Employee, RequestWorkflow, Studio, User, UserSecurity
+from app.models import Company, CompanyRequest, Document, Employee, GeneratedCertificate, RequestWorkflow, Studio, User, UserSecurity
 from app.runtime import app
 
 
@@ -68,9 +68,39 @@ def test_lawyer_workspace_filters_assigned_cases_and_enforces_role_boundaries() 
         with SessionLocal() as db:
             company = db.get(Company, company_id)
             assert company is not None
+            employees = list(db.scalars(
+                select(Employee).where(Employee.company_id == company_id).order_by(Employee.id)
+            ))
+            if not employees:
+                employee = Employee(
+                    company_id=company_id,
+                    full_name="QA Funcionario asignado",
+                    document_number=f"QA-{uuid.uuid4().hex[:12]}",
+                    position="Funcionario de prueba",
+                    admission_date=date(2024, 1, 2),
+                    base_salary=3044000,
+                )
+                db.add(employee)
+                db.flush()
+                employees = [employee]
+            case_employee = employees[0]
+            if len(employees) < 2:
+                unrelated_employee = Employee(
+                    company_id=company_id,
+                    full_name="QA Funcionario no asignado",
+                    document_number=f"QA-{uuid.uuid4().hex[:12]}",
+                    position="Funcionario no vinculado",
+                    admission_date=date(2023, 3, 5),
+                    base_salary=2800000,
+                )
+                db.add(unrelated_employee)
+                db.flush()
+                employees.append(unrelated_employee)
+            unrelated_employee = employees[1]
             subject = f"QA-LEGAL-{uuid.uuid4().hex[:10]}"
             request_item = CompanyRequest(
                 company_id=company.id,
+                employee_id=case_employee.id,
                 request_type="Otra consulta",
                 subject=subject,
                 detail="Caso de prueba para validar la bandeja del abogado.",
@@ -81,6 +111,7 @@ def test_lawyer_workspace_filters_assigned_cases_and_enforces_role_boundaries() 
             other_subject = f"QA-LEGAL-OTHER-{uuid.uuid4().hex[:8]}"
             other_item = CompanyRequest(
                 company_id=company.id,
+                employee_id=unrelated_employee.id,
                 request_type="Otra consulta",
                 subject=other_subject,
                 detail="Caso asignado a otro profesional.",
@@ -91,6 +122,7 @@ def test_lawyer_workspace_filters_assigned_cases_and_enforces_role_boundaries() 
             unassigned_subject = f"QA-LEGAL-UNASSIGNED-{uuid.uuid4().hex[:8]}"
             unassigned_item = CompanyRequest(
                 company_id=company.id,
+                employee_id=unrelated_employee.id,
                 request_type="Otra consulta",
                 subject=unassigned_subject,
                 detail="Caso sin profesional asignado.",
@@ -121,6 +153,37 @@ def test_lawyer_workspace_filters_assigned_cases_and_enforces_role_boundaries() 
             request_id = request_item.id
             other_request_id = other_item.id
             unassigned_request_id = unassigned_item.id
+            case_employee_id = case_employee.id
+            unrelated_employee_id = unrelated_employee.id
+            hidden_document = Document(
+                company_id=company_id,
+                employee_id=unrelated_employee_id,
+                category="Contrato",
+                title="QA Documento confidencial no asignado",
+                stored_name="qa/not-authorized.pdf",
+                original_name="no-autorizado.pdf",
+                content_type="application/pdf",
+                content_bytes=b"not for this lawyer",
+                uploaded_by="qa",
+            )
+            hidden_certificate = GeneratedCertificate(
+                company_id=company_id,
+                employee_id=unrelated_employee_id,
+                document_type="constancia",
+                title="QA Certificado no asignado",
+                company_name_snapshot=company.legal_name,
+                employee_name_snapshot=unrelated_employee.full_name,
+                employee_document_snapshot=unrelated_employee.document_number,
+                position_snapshot=unrelated_employee.position,
+                salary_snapshot=unrelated_employee.base_salary,
+                body="Documento de prueba sin asignación.",
+                created_by="qa",
+            )
+            db.add_all([hidden_document, hidden_certificate])
+            db.flush()
+            hidden_document_id = hidden_document.id
+            hidden_certificate_id = hidden_certificate.id
+            db.commit()
 
         home = client.get("/app")
         assert home.status_code == 200
@@ -216,21 +279,29 @@ def test_lawyer_workspace_filters_assigned_cases_and_enforces_role_boundaries() 
         assert 'href="/app/payrolls?company_id=' not in company_page.text
         assert client.get("/app/companies").status_code == 200
         assert client.get("/app/employees").status_code == 200
-        with SessionLocal() as db:
-            employee_id = db.scalar(
-                select(Employee.id)
-                .where(Employee.company_id == company_id)
-                .order_by(Employee.id)
-            )
-            assert employee_id is not None
+        employee_id = case_employee_id
         employee_page = client.get("/app/employees/" + str(employee_id))
         assert employee_page.status_code == 200
         assert "Editar ficha" not in employee_page.text
         assert "Registrar evento" not in employee_page.text
         assert 'href="/app/calculations?company_id=' not in employee_page.text
-        assert client.get("/app/documents").status_code == 200
-        assert client.get("/app/certificates").status_code == 200
-        assert 'href="/app/ai' not in client.get("/app/certificates").text
+        assert client.get("/app/employees/" + str(unrelated_employee_id)).status_code == 404
+        employee_list = client.get("/app/employees")
+        assert employee_list.status_code == 200
+        assert "QA Funcionario no asignado" not in employee_list.text
+        assert client.get(f"/app/documents/{hidden_document_id}/download").status_code == 404
+        assert client.get(f"/app/certificates/{hidden_certificate_id}/download.pdf").status_code == 404
+        document_library = client.get("/app/documents")
+        assert document_library.status_code == 200
+        assert "QA Documento confidencial no asignado" not in document_library.text
+        assert "+ Subir documento" not in document_library.text
+        certificates_page = client.get("/app/certificates")
+        assert certificates_page.status_code == 200
+        assert "QA Certificado no asignado" not in certificates_page.text
+        assert client.get(f"/app/certificates?company_id={company_id}&employee_id={unrelated_employee_id}").status_code == 404
+        assert client.get("/app/calculations").status_code == 403
+        assert client.get("/app/liquidaciones").status_code == 403
+        assert 'href="/app/ai' not in certificates_page.text
         assert "Revisar con IA" not in client.get("/app/certificates").text
         assert client.get("/app/labor-code").status_code == 200
 
@@ -271,13 +342,7 @@ def test_lawyer_workspace_filters_assigned_cases_and_enforces_role_boundaries() 
         ).status_code == 403
         # Invalid document types fail validation (400), not authorization (403):
         # this confirms the lawyer role can reach the document-drafting handler.
-        with SessionLocal() as db:
-            employee_id = db.scalar(
-                select(Employee.id)
-                .where(Employee.company_id == company_id)
-                .order_by(Employee.id)
-            )
-            assert employee_id is not None
+        employee_id = case_employee_id
         draft_attempt = client.post(
             "/app/certificates",
             data={
