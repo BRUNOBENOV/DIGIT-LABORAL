@@ -104,6 +104,10 @@ def upgrade() -> None:
     inspector = sa.inspect(bind)
     employee_indexes = {item["name"] for item in inspector.get_indexes("employees")}
     employee_constraints = {item.get("name") for item in inspector.get_unique_constraints("employees")}
+    if "ix_employees_employee_code" not in employee_indexes:
+        op.create_index("ix_employees_employee_code", "employees", ["employee_code"])
+    if "ix_employees_section_id" not in employee_indexes:
+        op.create_index("ix_employees_section_id", "employees", ["section_id"])
     if "uq_employee_code_per_company" not in employee_indexes and "uq_employee_code_per_company" not in employee_constraints:
         op.create_index(
             "uq_employee_code_per_company",
@@ -117,8 +121,9 @@ def downgrade() -> None:
     bind = op.get_bind()
     inspector = sa.inspect(bind)
     indexes = {item["name"] for item in inspector.get_indexes("employees")}
-    if "uq_employee_code_per_company" in indexes:
-        op.drop_index("uq_employee_code_per_company", table_name="employees")
+    for name in ("uq_employee_code_per_company", "ix_employees_employee_code", "ix_employees_section_id"):
+        if name in indexes:
+            op.drop_index(name, table_name="employees")
 
     columns = {item["name"] for item in sa.inspect(bind).get_columns("employees")}
     for name in ("updated_by", "updated_at", "section_id", "employee_code"):
