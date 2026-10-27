@@ -198,7 +198,7 @@
 <label>Código Empresa<input name="company_code" type="number" min="1" max="2147483647" step="1" value="{{ company.company_code or '' }}" required></label>
 <label>Nombre Empresa<input name="legal_name" value="{{ company.legal_name }}" maxlength="200" required></label>
 <label>Nombre comercial<input name="trade_name" value="{{ company.trade_name or '' }}" maxlength="160"></label>
-<label>N.º RUC<input name="ruc" value="{{ company.ruc }}" inputmode="numeric" pattern="[0-9.\- ]{6,14}" maxlength="14" required></label>
+<label>N.º RUC<input name="ruc" value="{{ company.ruc }}" inputmode="numeric" pattern="[0-9.\- ]{4,14}" maxlength="14" required></label>
 <div class="span-2"><span class="company-form-section">RESPONSABLES Y CONTACTO</span></div>
 <label>Propietario<input name="owner_name" value="{{ company.owner_name or '' }}" maxlength="180"></label>
 <label>Representante Legal<input name="legal_representative" value="{{ company.legal_representative or '' }}" maxlength="180"></label>
