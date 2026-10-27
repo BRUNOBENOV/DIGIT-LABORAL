@@ -1,4 +1,20 @@
 # Registro de cambios
+## 2.6.4 — Sistema visual global y navegación modular
+
+- Extiende la paleta azul/blanco/gris, tarjetas, espaciado, tipografía, paneles y feedback de estado a las pantallas autenticadas de los distintos módulos.
+- Añade navegación secundaria reutilizable para Cálculo, Informes, Certificados, Utilitarios y mantenimientos administrativos.
+- Incorpora macros Jinja reutilizables para pestañas de módulo, paneles seccionados y ayuda inline.
+- Añade búsqueda inmediata y ordenación por encabezado a tablas de listados con tres o más filas, manteniendo la búsqueda dentro de los resultados ya cargados.
+- Unifica estilos de formularios, validación inline accesible, controles táctiles, tablas con encabezados fijos y filas alternadas, modales y mensajes de éxito/error/advertencia.
+- Refuerza responsividad, escalado tipográfico, foco por teclado y compatibilidad con movimiento reducido.
+- Se limita al espacio autenticado y excluye páginas públicas, impresión y algunas tablas especiales; no cambia cálculos, permisos, datos persistidos ni rutas de negocio.
+- Documenta el sistema en `docs/UI_SYSTEM_V264.md`. Se usa FastAPI + Jinja2 + HTML/CSS/JavaScript, sin añadir React ni Vue.
+
+### Validación
+- Se agregan pruebas de regresión para el CSS global, macros Jinja y navegación en los principales módulos.
+- La integración requiere la suite completa de CI y un despliegue exitoso en Render.
+
+# Registro de cambios
 ## 2.6.3 — Mejora de usabilidad en Empresas y Funcionarios
 
 - Agrega navegación secundaria para cambiar entre Empresas y Funcionarios y pestañas contextuales dentro de los expedientes.
