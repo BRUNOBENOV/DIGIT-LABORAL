@@ -207,8 +207,8 @@
 <label>Contacto<input name="contact_name" value="{{ company.contact_name or '' }}" maxlength="180"></label>
 <label>Correo electrónico<input type="email" name="email" value="{{ company.email or '' }}" maxlength="180"></label>
 <div class="span-2"><span class="company-form-section">UBICACIÓN Y ACTIVIDAD</span></div>
-<label>Departamento<select name="department"><option value="">Seleccionar departamento</option>{% for department_option in departments %}<option value="{{ department_option }}" {{ 'selected' if compliance_profile and compliance_profile.department == department_option }}>{{ department_option }}</option>{% endfor %}</select></label>
-<label>Ciudad<select name="city"><option value="">Seleccionar ciudad</option>{% set known_city_names = cities|map(attribute='name')|list %}{% if company.city and company.city not in known_city_names %}<option value="{{ company.city }}" selected>{{ company.city }} · Localidad existente</option>{% endif %}{% for city_option in cities %}<option value="{{ city_option.name }}" {{ 'selected' if company.city == city_option.name }}>{{ city_option.name }} · {{ city_option.department }}</option>{% endfor %}</select></label>
+<label>Departamento<select name="department" id="editCompanyDepartment"><option value="">Seleccionar departamento</option>{% for department_option in departments %}<option value="{{ department_option }}" {{ 'selected' if compliance_profile and compliance_profile.department == department_option }}>{{ department_option }}</option>{% endfor %}</select></label>
+<label>Ciudad<select name="city" id="editCompanyCity"><option value="">Seleccionar ciudad</option>{% set known_city_names = cities|map(attribute='name')|list %}{% if company.city and company.city not in known_city_names %}<option value="{{ company.city }}" selected>{{ company.city }} · Localidad existente</option>{% endif %}{% for city_option in cities %}<option value="{{ city_option.name }}" data-department="{{ city_option.department }}" {{ 'selected' if company.city == city_option.name }}>{{ city_option.name }} · {{ city_option.department }}</option>{% endfor %}</select></label>
 <label>Dirección<input name="address" value="{{ company.address or '' }}" maxlength="240"></label>
 <label>Sector Trabajo<input name="work_sector" value="{{ company.work_sector or '' }}" maxlength="160"></label>
 <label>Lugar de Trabajo<input name="work_location" value="{{ company.work_location or '' }}" maxlength="180"></label>
@@ -223,6 +223,31 @@
 <hr class="modal-separator">
 <form method="post" action="/app/companies/{{ company.id }}/status" class="form-grid"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label class="span-2">Estado<select name="status"><option {{ 'selected' if company.status == 'Activa' }}>Activa</option><option {{ 'selected' if company.status == 'Pendiente' }}>Pendiente</option><option {{ 'selected' if company.status == 'Suspendida' }}>Suspendida</option><option {{ 'selected' if company.status == 'Archivada' }}>Archivada</option></select></label><button class="btn outline span-2" type="submit">Actualizar estado</button></form>
 </section></div>
+<script>
+(function () {
+  const department = document.getElementById("editCompanyDepartment");
+  const city = document.getElementById("editCompanyCity");
+  if (!department || !city) return;
+  function syncCities() {
+    const selectedDepartment = department.value;
+    Array.from(city.options).forEach(function (option) {
+      if (!option.value || !option.dataset.department) return;
+      const matches = !selectedDepartment || option.dataset.department === selectedDepartment;
+      option.hidden = !matches;
+      option.disabled = !matches;
+    });
+    const selected = city.selectedOptions[0];
+    if (selected && selected.disabled) city.value = "";
+  }
+  department.addEventListener("change", syncCities);
+  city.addEventListener("change", function () {
+    const selected = city.selectedOptions[0];
+    if (selected && selected.dataset.department) department.value = selected.dataset.department;
+    syncCities();
+  });
+  syncCities();
+})();
+</script>
 {% endif %}
 
 {% if user.role in ['administrador','contador','auxiliar'] %}<div class="modal" id="branchModal" aria-hidden="true"><div class="modal-backdrop" data-modal-close></div><section class="modal-card"><button class="modal-x" type="button" data-modal-close>×</button><span class="eyebrow">NUEVA SUCURSAL</span><h2>Agregar ubicación</h2><form method="post" action="/app/companies/{{ company.id }}/branches" class="form-grid"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label class="span-2">Nombre<input name="name" required placeholder="Ej.: Casa central"></label><label>Ciudad<input name="city"></label><label>Dirección<input name="address"></label><div class="form-actions span-2"><button class="btn ghost" type="button" data-modal-close>Cancelar</button><button class="btn primary" type="submit">Agregar sucursal</button></div></form></section></div>{% endif %}
