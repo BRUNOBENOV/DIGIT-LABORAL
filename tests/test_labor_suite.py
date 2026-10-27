@@ -572,8 +572,10 @@ def test_assistant_results_are_scoped_to_authorized_companies(web_case):
     assert client.get(f"/app/ai?result={foreign.id}").status_code == 404
     box["user"].role = "empresa"
     box["user"].company_id = company.id
-    assert client.get(f"/app/ai?result={sibling.id}").status_code == 404
-    assert "Otra empresa del estudio" not in client.get("/app/ai").text
+    # The company role has no access to the internal AI workspace at all;
+    # this is now rejected at authorization, before checking result ownership.
+    assert client.get(f"/app/ai?result={sibling.id}").status_code == 403
+    assert client.get("/app/ai").status_code == 403
 
 
 def test_payroll_zero_base_persistence_and_closed_edit_guard(web_case):
