@@ -28,11 +28,18 @@
     {'label':'Registro de aguinaldos', 'href':'/app/aguinaldo', 'active':p.startswith('/app/aguinaldo')}
   ]) }}
 {% elif p.startswith('/app/reports') or p.startswith('/app/compliance') or p.startswith('/app/audit') %}
-  {{ tab_nav('Subsecciones de informes', [
-    {'label':'Informes laborales', 'href':'/app/reports', 'active':p.startswith('/app/reports')},
-    {'label':'Cumplimiento REI / REOP', 'href':'/app/compliance', 'active':p.startswith('/app/compliance')},
-    {'label':'Auditoría', 'href':'/app/audit', 'active':p.startswith('/app/audit')}
-  ]) }}
+  {% if user.role == 'administrador' %}
+    {{ tab_nav('Subsecciones de informes', [
+      {'label':'Informes laborales', 'href':'/app/reports', 'active':p.startswith('/app/reports')},
+      {'label':'Cumplimiento REI / REOP', 'href':'/app/compliance', 'active':p.startswith('/app/compliance')},
+      {'label':'Auditoría', 'href':'/app/audit', 'active':p.startswith('/app/audit')}
+    ]) }}
+  {% else %}
+    {{ tab_nav('Subsecciones de informes', [
+      {'label':'Informes laborales', 'href':'/app/reports', 'active':p.startswith('/app/reports')},
+      {'label':'Cumplimiento REI / REOP', 'href':'/app/compliance', 'active':p.startswith('/app/compliance')}
+    ]) }}
+  {% endif %}
 {% elif p.startswith('/app/certificates') or p.startswith('/app/documents') %}
   {{ tab_nav('Subsecciones de certificados y documentos', [
     {'label':'Certificados laborales', 'href':'/app/certificates', 'active':p == '/app/certificates'},
