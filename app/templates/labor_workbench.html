@@ -64,7 +64,6 @@
 
   function refreshSalarySuggestion() {
     if (!periodField.value) return;
-    const effectiveDate = {{ '" + periodField.value + "-01"' if false else 'null' }};
     const targetDate = {% if kind == 'salary' %}periodField.value + "-01"{% else %}periodField.value{% endif %};
     const applicable = history
       .filter(item => item.effective_from && item.effective_from <= targetDate)
