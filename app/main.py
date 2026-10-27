@@ -759,7 +759,12 @@ def labor_context_employees(
         db.scalars(select(Employee).where(Employee.company_id == company.id).order_by(Employee.full_name))
     )
     return JSONResponse([
-        {"id": employee.id, "name": employee.full_name, "company_id": employee.company_id}
+        {
+            "id": employee.id,
+            "name": employee.full_name,
+            "company_id": employee.company_id,
+            "status": employee.status,
+        }
         for employee in employees
     ])
 
