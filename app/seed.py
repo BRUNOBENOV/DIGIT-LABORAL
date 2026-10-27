@@ -9,7 +9,7 @@ from sqlalchemy import select
 from .auth import hash_password
 from .config import settings
 from .database import SessionLocal
-from .models import Branch, Company, CompanyRequest, Employee, LaborArticle, LaborParameter, Studio, User, UserSecurity
+from .models import Branch, Company, CompanyComplianceProfile, CompanyRequest, Employee, LaborArticle, LaborParameter, Studio, User, UserSecurity
 
 logger = logging.getLogger("digit.seed")
 
@@ -84,13 +84,54 @@ def seed_database() -> None:
             db.add(studio)
             db.flush()
 
+            # These synthetic records are created only in non-production environments.
+            # Their codes, RUC check digits and patronal numbers are valid for UI/QA testing;
+            # they do not represent real client registrations.
             companies = [
-                Company(studio_id=studio.id, legal_name="Comercial Paraná S.A.", trade_name="Comercial Paraná", ruc="80123456-7", city="Ciudad del Este", address="Av. Demo 123", phone="0981 555 100", email="administracion@parana.demo", legal_representative="María López", ips_employer_number="IPS-102", mtess_employer_number="MTESS-102", responsible_name="Bruno Benítez", status="Activa"),
-                Company(studio_id=studio.id, legal_name="Servicios del Este S.R.L.", trade_name="Servicios del Este", ruc="80076543-2", city="Hernandarias", phone="0973 444 220", email="rrhh@servicios.demo", legal_representative="Juan González", ips_employer_number="IPS-245", responsible_name="Equipo Laboral", status="Pendiente"),
-                Company(studio_id=studio.id, legal_name="Distribuidora Central E.A.S.", trade_name="Distri Central", ruc="80111111-3", city="Minga Guazú", phone="0984 555 240", responsible_name="Bruno Benítez", status="Activa"),
+                Company(
+                    studio_id=studio.id, company_code=1, legal_name="Comercial Paraná S.A.",
+                    trade_name="Comercial Paraná", owner_name="Propietario Demo 1",
+                    ruc="80123456-5", city="Ciudad del Este", address="Av. Demo 123",
+                    phone="0981555100", contact_name="Administración Paraná",
+                    email="administracion@parana.demo", legal_representative="María López",
+                    ips_employer_number="102", mtess_employer_number="102", work_sector="Comercio",
+                    work_location="Casa central", responsible_name="Bruno Benítez", status="Activa",
+                ),
+                Company(
+                    studio_id=studio.id, company_code=2, legal_name="Servicios del Este S.R.L.",
+                    trade_name="Servicios del Este", owner_name="Propietario Demo 2",
+                    ruc="80076543-5", city="Hernandarias", address="Av. Demo 245",
+                    phone="0973444220", contact_name="Recursos Humanos",
+                    email="rrhh@servicios.demo", legal_representative="Juan González",
+                    ips_employer_number="245", mtess_employer_number="245", work_sector="Servicios",
+                    work_location="Sucursal Hernandarias", responsible_name="Equipo Laboral", status="Pendiente",
+                ),
+                Company(
+                    studio_id=studio.id, company_code=3, legal_name="Distribuidora Central E.A.S.",
+                    trade_name="Distri Central", owner_name="Propietario Demo 3",
+                    ruc="80111111-0", city="Minga Guazú", address="Ruta PY02",
+                    phone="0984555240", contact_name="Administración Central",
+                    email="administracion@central.demo", legal_representative="Representante Demo",
+                    ips_employer_number="311", mtess_employer_number="311", work_sector="Distribución",
+                    work_location="Centro logístico", responsible_name="Bruno Benítez", status="Activa",
+                ),
             ]
             db.add_all(companies)
             db.flush()
+            db.add_all([
+                CompanyComplianceProfile(
+                    company_id=companies[0].id, department="Alto Paraná",
+                    economic_activity="Comercio minorista", legal_representative_document="1234567",
+                ),
+                CompanyComplianceProfile(
+                    company_id=companies[1].id, department="Alto Paraná",
+                    economic_activity="Servicios empresariales", legal_representative_document="2345678",
+                ),
+                CompanyComplianceProfile(
+                    company_id=companies[2].id, department="Alto Paraná",
+                    economic_activity="Distribución y logística", legal_representative_document="3456789",
+                ),
+            ])
             db.add_all([
                 Branch(company_id=companies[0].id, name="Casa central", city="Ciudad del Este", address="Av. Demo 123"),
                 Branch(company_id=companies[0].id, name="Sucursal km 7", city="Ciudad del Este", address="Ruta PY02"),
