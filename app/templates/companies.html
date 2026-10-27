@@ -3,7 +3,7 @@
 {% block page_name %}Empresas{% endblock %}
 {% block content %}
 <style>
-  .company-maintenance-filters{display:grid;grid-template-columns:minmax(220px,1.5fr) repeat(2,minmax(160px,1fr)) auto;gap:10px;align-items:end;margin:14px 0 18px}
+  .company-maintenance-filters{display:grid;grid-template-columns:minmax(220px,1.5fr) repeat(2,minmax(140px,1fr)) auto auto;gap:10px;align-items:end;margin:14px 0 18px}
   .company-maintenance-filters label{display:grid;gap:6px;color:var(--text-secondary,#aab8cc);font-size:.78rem;font-weight:750}
   .company-maintenance-filters input,.company-maintenance-filters select{width:100%;min-width:0;padding:10px 12px;border:1px solid var(--border-color,#334155);border-radius:9px;background:var(--input-bg,#101a2d);color:var(--text-primary,#f3f6fb);font:inherit}
   .company-maintenance-filters .filter-check{display:flex;align-items:center;gap:8px;white-space:nowrap;padding:9px 0}
@@ -146,7 +146,7 @@
     const code = codeInput.value.trim();
     const sequence = ++requestSequence;
     if (!code) {
-      setCreateMode(false);
+      setCreateMode(Boolean(loadedCompanyId));
       setFeedback("", "");
       return;
     }
