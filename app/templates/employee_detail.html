@@ -4,7 +4,16 @@
 {% block content %}
 {% if user.role in ['administrador','contador','auxiliar'] %}<div class="dl"><a class="dl-button dl-payroll-link" href="/app/liquidaciones?company_id={{ employee.company_id }}&amp;employee_id={{ employee.id }}">Calcular y emitir una liquidación →</a></div>{% endif %}
 <a class="back-link dark" href="/app/employees">← Volver a funcionarios</a>
-<section class="employee-profile-card">
+<nav class="maintenance-subnav maintenance-detail-nav" aria-label="Subsecciones del expediente del funcionario">
+  <a class="is-active" href="#employee-overview" aria-current="location">Resumen</a>
+  <a href="#timeline">Historial <span>{{ events|length }}</span></a>
+  <a href="/app/documents?company_id={{ employee.company_id }}&amp;employee_id={{ employee.id }}">Documentos <span>{{ documents|length + certificates|length }}</span></a>
+  {% if user.role in ['administrador','contador','auxiliar'] %}
+    <a href="/app/calculations?company_id={{ employee.company_id }}&amp;employee_id={{ employee.id }}">Cálculos</a>
+    <a href="/app/payrolls?company_id={{ employee.company_id }}&amp;employee_id={{ employee.id }}">Liquidaciones</a>
+  {% endif %}
+</nav>
+<section class="employee-profile-card" id="employee-overview">
   <div class="employee-profile-avatar">{{ employee.full_name[:2]|upper }}</div>
   <div class="employee-profile-main">
     <span class="eyebrow">EXPEDIENTE DIGITAL DEL FUNCIONARIO</span>

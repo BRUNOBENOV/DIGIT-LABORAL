@@ -32,6 +32,10 @@
     {% endif %}
   </div>
 </div>
+<nav class="maintenance-subnav" aria-label="Subsecciones de mantenimiento">
+  <a href="/app/companies">Empresas <span>Directorio patronal</span></a>
+  <a class="is-active" href="/app/employees" aria-current="page">Funcionarios <span>Legajos y secciones</span></a>
+</nav>
 {% if request.query_params.get('form_error') %}<div class="alert danger v24-form-error" role="alert">{{ request.query_params.get('form_error') }}</div>{% endif %}
 {% if request.query_params.get('duplicate') %}<div class="alert danger" role="alert">Ya existe un funcionario con esa cédula dentro de la empresa.</div>{% endif %}
 {% if request.query_params.get('archived') %}<div class="alert success" role="status">El legajo fue archivado. Se conservan sus cálculos, nóminas, certificados y documentos vinculados.</div>{% endif %}
@@ -51,13 +55,32 @@
 {% elif user.role in ['administrador','contador','auxiliar'] %}
   <div class="v24-professional-note"><span class="v24-note-icon">✓</span><div><b>Control del legajo.</b> El Código Legajo es único dentro de cada empresa. Los cambios de salario siguen requiriendo una solicitud aprobada y quedan registrados en el historial.</div></div>
 {% endif %}
-<div class="plan-counter"><b>{{ employees|length }}</b><span>funcionarios en el resultado</span></div>
-<section class="panel table-panel"><div class="table-wrap"><table>
+<div class="plan-counter"><b id="employeeResultCount">{{ employees|length }}</b><span>funcionarios en el resultado</span></div>
+<div class="maintenance-list-toolbar" aria-label="Herramientas del directorio de funcionarios">
+  <div class="maintenance-filter-chips" aria-label="Filtros rápidos de funcionarios">
+    <button class="maintenance-filter-chip is-active" type="button" data-employee-filter="all" aria-pressed="true">Todos</button>
+    <button class="maintenance-filter-chip" type="button" data-employee-filter="active" aria-pressed="false">Activos</button>
+    <button class="maintenance-filter-chip" type="button" data-employee-filter="ips" aria-pressed="false">Con IPS</button>
+    <button class="maintenance-filter-chip" type="button" data-employee-filter="no-section" aria-pressed="false">Sin sección</button>
+  </div>
+  <label class="maintenance-sort-label" for="employeeSort">Ordenar por
+    <select id="employeeSort" name="employee_sort">
+      <option value="name">Nombre A–Z</option>
+      <option value="code">Código Legajo</option>
+      <option value="company">Empresa</option>
+      <option value="section">Sección</option>
+      <option value="admission">Fecha de ingreso</option>
+      <option value="salary">Salario base</option>
+    </select>
+  </label>
+  <p class="maintenance-live-count" id="employeeVisibleCount" aria-live="polite">{{ employees|length }} funcionarios visibles</p>
+</div>
+<section class="panel table-panel maintenance-table-panel"><div class="table-wrap"><table id="employeeTable">
   <thead><tr><th>Legajo / funcionario</th><th>Empresa</th><th>Cédula</th><th>Sección</th><th>Cargo</th><th>Ingreso</th><th>Salario base</th><th>IPS</th><th>Estado</th><th></th></tr></thead>
   <tbody>
   {% for employee in employees %}
     {% set profile = employee_profiles.get(employee.id) %}
-    <tr>
+    <tr data-employee-row data-employee-name="{{ employee.full_name|lower }}" data-employee-code="{{ employee.employee_code if employee.employee_code is not none else 0 }}" data-employee-company="{{ employee.company.legal_name|lower }}" data-employee-document="{{ employee.document_number|lower }}" data-employee-section="{{ employee.section.name|lower if employee.section else 'sin sección' }}" data-employee-position="{{ employee.position|lower }}" data-employee-admission="{{ employee.admission_date.isoformat() if employee.admission_date else '' }}" data-employee-salary="{{ employee.base_salary }}" data-employee-status="{{ employee.status|lower }}" data-employee-ips="{{ 'yes' if employee.ips_contributor else 'no' }}">
       <td><span class="employee-code-pill">Legajo {{ employee.employee_code if employee.employee_code is not none else 'Sin asignar' }}</span><br><b>{{ employee.full_name }}</b><small class="table-sub">{{ employee.email or employee.phone or 'Sin contacto' }}</small></td>
       <td>{{ employee.company.legal_name }}</td>
       <td>{{ employee.document_number }}</td>
@@ -72,6 +95,7 @@
   {% else %}
     <tr><td colspan="10" class="empty-state">No hay funcionarios para los filtros seleccionados.</td></tr>
   {% endfor %}
+    <tr id="employeeClientEmpty" hidden><td colspan="10" class="empty-state">No hay funcionarios que coincidan con la búsqueda o el filtro rápido.</td></tr>
   </tbody>
 </table></div></section>
 

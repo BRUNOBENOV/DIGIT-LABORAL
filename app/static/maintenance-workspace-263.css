@@ -1,0 +1,136 @@
+/* DigIT-Laboral 2.6.3 — navegación y usabilidad de mantenimientos */
+.app-body .maintenance-subnav{
+  display:flex;align-items:stretch;gap:6px;overflow-x:auto;overscroll-behavior-inline:contain;
+  margin:0 0 20px;padding:6px;border:1px solid #E5E7EB;border-radius:12px;
+  background:#FFFFFF;box-shadow:0 2px 8px rgba(17,24,39,.045);
+  scrollbar-width:thin;scrollbar-color:#CBD5E1 transparent;
+}
+.app-body .maintenance-subnav a{
+  display:flex;align-items:center;justify-content:center;gap:8px;flex:0 0 auto;
+  min-height:42px;padding:10px 15px;border:1px solid transparent;border-radius:8px;
+  color:#4B5563;text-decoration:none;font-size:.9rem;font-weight:650;white-space:nowrap;
+  transition:background-color .15s ease,color .15s ease,border-color .15s ease;
+}
+.app-body .maintenance-subnav a:hover{background:#F3F4F6;color:#1E40AF}
+.app-body .maintenance-subnav a:focus-visible{outline:3px solid rgba(37,99,235,.45);outline-offset:2px}
+.app-body .maintenance-subnav a.is-active,
+.app-body .maintenance-subnav a[aria-current="page"]{
+  color:#1E40AF;background:#EFF6FF;border-color:#DBEAFE;
+  box-shadow:inset 0 -2px 0 #2563EB;
+}
+.app-body .maintenance-subnav a span{font-size:.73rem;font-weight:500;color:#6B7280}
+.app-body .maintenance-list-toolbar{
+  display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;
+  margin:12px 0 16px;padding:13px 15px;border:1px solid #E5E7EB;border-radius:12px;
+  background:#FFFFFF;box-shadow:0 2px 8px rgba(17,24,39,.045);
+}
+.app-body .maintenance-filter-chips{display:flex;align-items:center;gap:7px;flex-wrap:wrap;min-width:0}
+.app-body .maintenance-filter-chip{
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:34px;padding:7px 11px;
+  border:1px solid #D1D5DB;border-radius:999px;background:#FFFFFF;color:#4B5563;
+  font-family:inherit;font-size:.8rem;font-weight:600;line-height:1.2;white-space:nowrap;cursor:pointer;
+}
+.app-body .maintenance-filter-chip:hover{border-color:#93C5FD;background:#EFF6FF;color:#1E40AF}
+.app-body .maintenance-filter-chip.is-active,
+.app-body .maintenance-filter-chip[aria-pressed="true"]{
+  border-color:#2563EB;background:#2563EB;color:#FFFFFF;
+}
+.app-body .maintenance-sort-label{display:flex;align-items:center;gap:9px;color:#4B5563;font-size:.82rem;font-weight:650;white-space:nowrap}
+.app-body .maintenance-sort-label select{
+  width:auto;min-width:155px;min-height:36px;padding:7px 32px 7px 10px;
+  border:1px solid #D1D5DB;border-radius:8px;background:#FFFFFF;color:#111827;font:inherit;
+}
+.app-body .maintenance-live-count{margin:0;color:#6B7280;font-size:.8rem;white-space:nowrap}
+.app-body [data-company-card][hidden],
+.app-body [data-employee-row][hidden]{display:none!important}
+.app-body #companyQuickEmpty[hidden],
+.app-body #employeeClientEmpty[hidden]{display:none!important}
+.app-body .company-card-grid{gap:16px;align-items:stretch}
+.app-body .company-card{
+  min-width:0;border:1px solid #E5E7EB!important;border-radius:14px!important;
+  background:#FFFFFF!important;box-shadow:0 3px 12px rgba(17,24,39,.055)!important;
+  transition:box-shadow .16s ease,border-color .16s ease,transform .16s ease;
+}
+.app-body .company-card:hover{border-color:#BFDBFE!important;box-shadow:0 8px 20px rgba(30,64,175,.09)!important;transform:translateY(-1px)}
+.app-body .company-card-open{min-width:0}
+.app-body .company-card-open h3{margin-top:12px;margin-bottom:6px;line-height:1.35;overflow-wrap:anywhere}
+.app-body .company-card-open>p{color:#6B7280;line-height:1.5}
+.app-body .company-card dl{gap:8px}
+.app-body .company-card dl>div{min-width:0;padding:9px 10px;border:1px solid #F1F5F9;border-radius:8px;background:#F9FAFB}
+.app-body .company-card dl dt{font-size:.7rem;color:#6B7280}
+.app-body .company-card dl dd{margin-top:3px;color:#111827;font-size:.83rem;font-weight:650;overflow-wrap:anywhere}
+.app-body .company-code-pill{border-color:#DBEAFE;background:#EFF6FF;color:#1E40AF}
+.app-body .company-card-actions{border-top-color:#E5E7EB}
+.app-body .company-card-actions .btn{border-radius:8px}
+.app-body .employee-maintenance-filters,
+.app-body .company-maintenance-filters{
+  margin:14px 0 16px;padding:17px;border:1px solid #E5E7EB;border-radius:12px;
+  background:#FFFFFF;box-shadow:0 2px 8px rgba(17,24,39,.045);
+}
+.app-body .employee-maintenance-filters label,
+.app-body .company-maintenance-filters label{color:#374151;font-size:.82rem;line-height:1.35}
+.app-body .employee-maintenance-filters input,
+.app-body .employee-maintenance-filters select,
+.app-body .company-maintenance-filters input,
+.app-body .company-maintenance-filters select{min-height:40px;background:#FFFFFF;color:#111827;border-color:#D1D5DB;border-radius:8px}
+.app-body .employee-maintenance-filters input:focus,
+.app-body .employee-maintenance-filters select:focus,
+.app-body .company-maintenance-filters input:focus,
+.app-body .company-maintenance-filters select:focus{border-color:#2563EB;box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+.app-body .maintenance-table-panel{min-width:0;overflow:hidden;border:1px solid #E5E7EB;border-radius:12px;background:#FFFFFF;box-shadow:0 3px 12px rgba(17,24,39,.05)}
+.app-body .maintenance-table-panel .table-wrap{max-width:100%;overflow-x:auto}
+.app-body .maintenance-table-panel table{width:100%;border-collapse:separate;border-spacing:0}
+.app-body .maintenance-table-panel thead th{position:sticky;top:0;z-index:1;padding:13px 12px;background:#F3F6FA!important;color:#374151!important;font-size:.75rem;font-weight:750;letter-spacing:.015em;white-space:nowrap}
+.app-body .maintenance-table-panel tbody td{padding:12px;border-bottom:1px solid #F1F5F9;color:#374151;vertical-align:middle}
+.app-body .maintenance-table-panel tbody tr:last-child td{border-bottom:0}
+.app-body .maintenance-table-panel tbody td:first-child b{color:#111827}
+.app-body .maintenance-table-panel tbody td .table-sub{display:block;margin-top:4px;font-size:.77rem}
+.app-body .maintenance-table-panel tbody tr:hover td{background:#EFF6FF!important}
+.app-body .maintenance-table-panel .table-actions{gap:6px;flex-wrap:wrap}
+.app-body .maintenance-table-panel .table-save{border-radius:7px}
+.app-body .field-validation-message{display:block;margin:4px 0 0;color:#B91C1C;font-size:.76rem;font-weight:600;line-height:1.35}
+.app-body input.is-invalid,
+.app-body select.is-invalid,
+.app-body textarea.is-invalid{border-color:#DC2626!important;box-shadow:0 0 0 3px rgba(220,38,38,.10)!important}
+.app-body input.is-valid,
+.app-body select.is-valid,
+.app-body textarea.is-valid{border-color:#059669}
+.app-body .maintenance-detail-nav{margin:0 0 18px}
+.app-body .maintenance-detail-nav a{min-height:40px}
+.app-body #company-overview,
+.app-body #company-employees,
+.app-body #company-branches,
+.app-body #employee-overview,
+.app-body #timeline{scroll-margin-top:24px}
+.app-body .company-profile,
+.app-body .employee-profile-card{border:1px solid #E5E7EB;border-radius:14px;box-shadow:0 3px 12px rgba(17,24,39,.055)}
+.app-body .company-action-strip{gap:12px;margin-top:16px;margin-bottom:18px}
+.app-body .company-action-strip>a{min-width:0;border:1px solid #DBEAFE;border-left:3px solid #2563EB;border-radius:10px;background:#FFFFFF!important;padding:15px;box-shadow:0 2px 8px rgba(17,24,39,.04)}
+.app-body .company-action-strip>a:hover{background:#EFF6FF!important;border-color:#BFDBFE}
+.app-body .company-action-strip>a b{color:#1E40AF}
+.app-body .company-action-strip>a span{color:#6B7280}
+@media(max-width:760px){
+  .app-body .maintenance-subnav{margin-bottom:15px;padding:5px;gap:4px}
+  .app-body .maintenance-subnav a{min-height:39px;padding:9px 12px;font-size:.82rem}
+  .app-body .maintenance-subnav a span{display:none}
+  .app-body .maintenance-list-toolbar{align-items:stretch;flex-direction:column;padding:12px}
+  .app-body .maintenance-filter-chips{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+  .app-body .maintenance-filter-chip{width:100%;white-space:normal}
+  .app-body .maintenance-sort-label{align-items:stretch;flex-direction:column;white-space:normal}
+  .app-body .maintenance-sort-label select{width:100%;min-width:0}
+  .app-body .maintenance-live-count{white-space:normal}
+  .app-body .employee-maintenance-filters,
+  .app-body .company-maintenance-filters{padding:12px}
+  .app-body .company-card{padding:14px!important}
+  .app-body .company-action-strip{grid-template-columns:1fr 1fr}
+  .app-body .company-action-strip>a{padding:12px}
+}
+@media(max-width:440px){
+  .app-body .company-action-strip{grid-template-columns:1fr}
+  .app-body .company-card-actions{grid-template-columns:1fr!important}
+  .app-body .page-header .header-actions{width:100%;display:grid;grid-template-columns:1fr}
+  .app-body .page-header .header-actions .btn{width:100%}
+}
+@media(prefers-reduced-motion:reduce){
+  .app-body .company-card,.app-body .maintenance-subnav a,.app-body .maintenance-filter-chip{transition:none!important}
+}

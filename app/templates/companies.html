@@ -22,6 +22,10 @@
   @media(max-width:560px){.company-maintenance-filters{grid-template-columns:1fr}.company-maintenance-filters .search-field{grid-column:auto}.company-card-actions{display:grid;grid-template-columns:1fr 1fr}.company-card-actions .btn{width:100%}}
 </style>
 <div class="page-header"><div><span class="eyebrow">MANTENIMIENTOS</span><h1>Empresas</h1><p>Ficha patronal, datos de contacto, ubicación y registros de la empresa.</p></div>{% if user.role in ['administrador','contador'] %}<button class="btn primary" type="button" data-modal-open="companyModal">+ Nueva empresa</button>{% endif %}</div>
+<nav class="maintenance-subnav" aria-label="Subsecciones de mantenimiento">
+  <a class="is-active" href="/app/companies" aria-current="page">Empresas <span>Directorio patronal</span></a>
+  <a href="/app/employees">Funcionarios <span>Legajos y secciones</span></a>
+</nav>
 {% if request.query_params.get('form_error') %}<div class="alert danger v24-form-error" role="alert">{{ request.query_params.get('form_error') }}</div>{% endif %}
 {% if request.query_params.get('limit') %}<div class="alert warning" role="status">El plan alcanzó su límite de empresas.</div>{% endif %}
 {% if request.query_params.get('duplicate') %}<div class="alert danger" role="alert">Ya existe una empresa con ese RUC dentro del estudio.</div>{% endif %}
@@ -34,10 +38,25 @@
   <label class="filter-check"><input type="checkbox" name="show_archived" value="true" {{ 'checked' if show_archived }}> Mostrar archivadas</label>
   <button class="btn primary" type="submit">Filtrar</button>
 </form>
-<div class="plan-counter"><b>{{ companies|length }}</b><span>empresas en el resultado · límite del estudio: {{ studio.company_limit }}</span></div>
-<section class="company-card-grid" aria-label="Listado de empresas">
+<div class="plan-counter"><b id="companyVisibleCount">{{ companies|length }}</b><span>empresas visibles · límite del estudio: {{ studio.company_limit }}</span></div>
+<div class="maintenance-list-toolbar" aria-label="Herramientas del directorio de empresas">
+  <div class="maintenance-filter-chips" aria-label="Filtros rápidos de empresas">
+    <button class="maintenance-filter-chip is-active" type="button" data-company-filter="all" aria-pressed="true">Todas</button>
+    <button class="maintenance-filter-chip" type="button" data-company-filter="active" aria-pressed="false">Activas</button>
+    <button class="maintenance-filter-chip" type="button" data-company-filter="archived" aria-pressed="false">Archivadas</button>
+    <button class="maintenance-filter-chip" type="button" data-company-filter="no-logo" aria-pressed="false">Sin logo</button>
+  </div>
+  <label class="maintenance-sort-label" for="companySort">Ordenar por
+    <select id="companySort" name="company_sort">
+      <option value="name">Nombre A–Z</option>
+      <option value="code">Código de empresa</option>
+      <option value="employees">Cantidad de funcionarios</option>
+    </select>
+  </label>
+</div>
+<section class="company-card-grid" id="companyDirectoryGrid" data-company-directory aria-label="Listado de empresas">
 {% for company in companies %}
-  <article class="company-card">
+  <article class="company-card" data-company-card data-company-name="{{ company.legal_name|lower }}" data-company-code="{{ company.company_code if company.company_code is not none else 0 }}" data-company-status="{{ company.status|lower }}" data-company-logo="{{ 'yes' if company.branding and company.branding.logo_bytes else 'no' }}" data-company-employees="{{ company.employees|length }}">
     <a class="company-card-open" href="/app/companies/{{ company.id }}">
       <div class="company-card-top">{% if company.branding and company.branding.logo_bytes %}<span class="company-logo-card-frame"><img class="company-logo-card" src="/app/companies/{{ company.id }}/logo" alt="Logo de {{ company.legal_name }}"></span>{% else %}<span class="company-avatar large">{{ company.legal_name[:2]|upper }}</span>{% endif %}<span class="status-pill {{ company.status|lower }}">{{ company.status }}</span></div>
       <div class="company-code-pill">Código {{ company.company_code if company.company_code is not none else 'Sin asignar' }}</div>
@@ -59,6 +78,7 @@
 {% else %}
   <div class="empty-large"><h3>{{ 'Aún no tenés empresas asignadas' if user.role == 'abogado' else 'No hay empresas para mostrar' }}</h3><p>{% if user.role == 'abogado' %}Pedí al administrador del estudio que te asigne un trámite. Las empresas de tus expedientes aparecerán aquí.{% elif show_archived %}No hay empresas que coincidan con los filtros actuales.{% else %}Registrá la primera empresa para empezar a cargar funcionarios y operar.{% endif %}</p>{% if user.role in ['administrador','contador'] %}<button class="btn primary" type="button" data-modal-open="companyModal">+ Registrar empresa</button>{% endif %}</div>
 {% endfor %}
+  <p class="empty-state" id="companyQuickEmpty" hidden>No hay empresas que coincidan con la búsqueda o el filtro rápido.</p>
 </section>
 
 {% if user.role in ['administrador','contador'] %}

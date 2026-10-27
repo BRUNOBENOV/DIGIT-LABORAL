@@ -1,4 +1,18 @@
 # Registro de cambios
+## 2.6.3 — Mejora de usabilidad en Empresas y Funcionarios
+
+- Agrega navegación secundaria para cambiar entre Empresas y Funcionarios y pestañas contextuales dentro de los expedientes.
+- Mejora el directorio de empresas con tarjetas más legibles, filtros rápidos por estado y logo, búsqueda inmediata y ordenación por nombre, código o cantidad de funcionarios.
+- Mejora el directorio de funcionarios con filtros rápidos por estado, aportes IPS y sección, además de ordenación por nombre, legajo, empresa, sección, ingreso y salario.
+- Actualiza en vivo los contadores de resultados sin recargar la página; mantiene los filtros por empresa, sección, ciudad y departamento del servidor.
+- Añade mensajes de validación junto al campo después de interactuar con formularios, con estados accesibles para lectores de pantalla.
+- Refuerza espacios, tarjetas, bordes, sombras suaves, estados de foco y adaptación móvil usando la paleta azul/blanco vigente.
+- No cambia rutas de negocio, permisos, lógica de cálculo, datos persistidos ni estructura de la base de datos.
+
+### Validación
+- Nuevas pruebas de regresión para navegación secundaria, filtros, ordenación, assets y pestañas contextuales.
+- La publicación requiere suite completa de CI y confirmación del despliegue exitoso en Render.
+
 ## 2.6.2 — Renovación visual azul y accesible
 
 - Unifica la paleta del espacio autenticado en azul marino `#0D1B2A`, azul medio `#1E40AF`, azul de acción `#2563EB`, fondo `#F9FAFB`, superficies blancas y texto `#111827`.
