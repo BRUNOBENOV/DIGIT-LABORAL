@@ -1,0 +1,23 @@
+{% macro tab_nav(label, items, compact=false) -%}
+<nav class="ui-module-nav{% if compact %} ui-module-nav-compact{% endif %}" aria-label="{{ label }}">
+  {% for item in items %}
+    <a href="{{ item.href }}" class="ui-module-nav-link{% if item.active %} is-active{% endif %}"{% if item.active %} aria-current="page"{% endif %}>
+      <span>{{ item.label }}</span>{% if item.detail %}<small>{{ item.detail }}</small>{% endif %}
+    </a>
+  {% endfor %}
+</nav>
+{%- endmacro %}
+
+{% macro section_card(title, eyebrow='', description='', class_name='') -%}
+<section class="ui-section-card{% if class_name %} {{ class_name }}{% endif %}">
+  <header class="ui-section-card-head">
+    <div>{% if eyebrow %}<span class="eyebrow">{{ eyebrow }}</span>{% endif %}<h2>{{ title }}</h2>{% if description %}<p>{{ description }}</p>{% endif %}</div>
+    {% if caller is defined %}{{ caller() }}{% endif %}
+  </header>
+  {{ caller_content if caller_content is defined else '' }}
+</section>
+{%- endmacro %}
+
+{% macro inline_help(text, tone='muted') -%}
+<small class="ui-inline-help ui-inline-help-{{ tone }}">{{ text }}</small>
+{%- endmacro %}
