@@ -5,7 +5,7 @@
 ### Mantenimientos · formulario principal de Empresas
 - Se incorpora el Código Empresa numérico, único por estudio, con asignación retroactiva a empresas existentes.
 - Se amplía la ficha con propietario, C.I. del representante, sector/lugar de trabajo, actividad económica, contacto y datos patronales.
-- Ciudad y departamento se eligen mediante listas de localidades paraguayas.
+- Ciudad y departamento se eligen mediante listas paraguayas: 18 departamentos y 262 municipios, contrastados con el portal público de Municipios del Paraguay (https://municipios.gov.py/municipios/).
 - La búsqueda admite código, nombre o RUC y filtros por ciudad y departamento.
 - La carga por código recupera la empresa existente mediante API autenticada.
 - Se agregan endpoints JSON de consulta, creación, actualización y archivado con validaciones de datos, permisos, CSRF y aislamiento por estudio.
