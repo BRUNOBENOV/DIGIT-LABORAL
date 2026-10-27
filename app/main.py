@@ -3088,7 +3088,7 @@ def calculations_page(
     company_id: OptionalQueryId = None,
     employee_id: OptionalQueryId = None,
     tipo: str | None = None,
-    user: User = Depends(require_user),
+    user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
     db: Session = Depends(get_db),
 ):
     if tipo and tipo not in CALCULATION_MODULES:
@@ -4069,7 +4069,7 @@ def ai_page(
     request: Request,
     company_id: OptionalQueryId = None,
     employee_id: OptionalQueryId = None,
-    user: User = Depends(require_user),
+    user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
     db: Session = Depends(get_db),
 ):
     company_ids = company_ids_for_user(db, user)
@@ -5392,7 +5392,7 @@ def labor_code_sync_action(
 
 
 @app.get("/app/parameters", response_class=HTMLResponse)
-def parameters_page(request: Request, user: User = Depends(require_user), db: Session = Depends(get_db)):
+def parameters_page(request: Request, user: User = Depends(require_roles("administrador")), db: Session = Depends(get_db)):
     parameters = list(db.scalars(select(LaborParameter).where(LaborParameter.active.is_(True)).order_by(LaborParameter.label)))
     return render(request, "parameters.html", db, user, parameters=parameters)
 

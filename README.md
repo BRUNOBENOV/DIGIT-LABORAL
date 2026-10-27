@@ -1,16 +1,12 @@
-# Digit Laboral 2.5.4
+# Digit Laboral 2.5.5
 
 Plataforma de gestión y cumplimiento laboral para estudios contables paraguayos.
 
-## Novedades de la versión 2.5.4
+## Novedades de la versión 2.5.5
 
-- Incorpora un espacio diferenciado para abogados, con solicitudes asignadas, consulta de expedientes, documentos laborales y referencia al Código del Trabajo.
-- Convierte la bandeja de solicitudes en una cola operativa con filtros por empresa, estado, tipo, responsable y vencimiento.
-- Restringe los abogados a solicitudes asignadas: pueden registrar seguimiento y respuestas, pero no aprobar/rechazar ni reasignar trámites.
-- Hace que la agenda sea consultable por el empleador sin permitir cambios en el calendario del estudio.
-- Alinea botones, accesos de nómina, cálculos, eventos laborales, cumplimiento y certificados oficiales con las capacidades reales de cada perfil.
-- Añade pruebas de regresión para recorridos de abogado y empleador, filtros y límites de permisos.
-- El refuerzo de seguridad PostgreSQL de v2.5.3 se conserva; la separación de roles de producción sigue siendo un requisito externo antes de certificar el aislamiento RLS.
+- Añade controles de rol en el servidor para que las calculadoras internas, las interacciones previas de IA y los parámetros administrativos no se abran pegando sus URLs con un perfil no autorizado.
+- Mantiene disponibles las herramientas operativas para contadores, auxiliares autorizados y administradores, con pruebas directas de acceso denegado para abogado y empleador.
+- Conserva los límites de acceso por empresa y los flujos diferenciados introducidos en v2.5.4.
 
 ## Módulos incluidos
 
