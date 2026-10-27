@@ -602,6 +602,11 @@ def _validate_company_payload(db: Session, payload: dict, existing: Company | No
     department = str(payload.get("department", profile.department if profile else "") or "").strip()
     if department and department not in PARAGUAY_DEPARTMENTS and not (profile and department == profile.department):
         raise HTTPException(422, "Seleccioná un departamento válido de Paraguay.")
+    if city and department and not any(
+        item["name"] == city and item["department"] == department for item in PARAGUAY_CITIES
+    ):
+        if not (existing and profile and city == existing.city and department == profile.department):
+            raise HTTPException(422, "La ciudad seleccionada no corresponde al departamento indicado.")
 
     ips = re.sub(r"[\s.-]+", "", str(payload.get("ips_employer_number", existing.ips_employer_number if existing else "") or ""))
     mjt = re.sub(r"[\s.-]+", "", str(payload.get("mtess_employer_number", existing.mtess_employer_number if existing else "") or ""))
@@ -1507,6 +1512,10 @@ def add_company(
         return form_error("Seleccioná un departamento válido de Paraguay.")
     if city.strip() and city.strip() not in PARAGUAY_CITY_NAMES:
         return form_error("Seleccioná una ciudad de la lista de localidades paraguayas.")
+    if city.strip() and department.strip() and not any(
+        item["name"] == city.strip() and item["department"] == department.strip() for item in PARAGUAY_CITIES
+    ):
+        return form_error("La ciudad seleccionada no corresponde al departamento indicado.")
     ips_clean = re.sub(r"[\s.-]+", "", ips_employer_number)
     mjt_clean = re.sub(r"[\s.-]+", "", mtess_employer_number)
     ci_clean = re.sub(r"[\s.-]+", "", legal_representative_document)
@@ -1907,7 +1916,13 @@ async def api_create_company(
     count = db.scalar(select(func.count(Company.id)).where(Company.studio_id == user.studio_id)) or 0
     if studio and count >= studio.company_limit:
         raise HTTPException(409, "El estudio alcanzó el límite de empresas de su plan.")
-    company = Company(studio_id=user.studio_id)
+    company = Company(
+        studio_id=user.studio_id,
+        company_code=values["company_code"],
+        legal_name=values["legal_name"],
+        ruc=values["ruc"],
+        city=values["city"],
+    )
     db.add(company)
     db.flush()
     _apply_company_payload(db, company, values)
