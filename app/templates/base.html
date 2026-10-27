@@ -194,5 +194,47 @@
   window.setInterval(refresh, 60000);
 })();
 </script>
+<script>
+(() => {
+  const form = document.querySelector("[data-labor-context]");
+  if (!form) return;
+  const company = form.querySelector("[data-context-company]");
+  const employee = form.querySelector("[data-context-employee]");
+  const status = form.querySelector("[data-context-status]");
+  if (!company || !employee) return;
+  let previousCompany = company.value;
+  async function refreshEmployees(companyId) {
+    employee.replaceChildren(new Option("Todos / sin seleccionar", ""));
+    if (!companyId) {
+      employee.disabled = true;
+      return;
+    }
+    employee.disabled = true;
+    if (status) status.textContent = "Cargando funcionarios…";
+    try {
+      const response = await fetch("/app/context/employees?company_id=" + encodeURIComponent(companyId), {
+        credentials: "same-origin",
+        headers: { Accept: "application/json" }
+      });
+      if (!response.ok) throw new Error("No se pudo obtener el listado");
+      const items = await response.json();
+      for (const item of items) {
+        const option = new Option(item.name, String(item.id));
+        employee.add(option);
+      }
+      if (status) status.textContent = "";
+    } catch (_) {
+      if (status) status.textContent = "No se pudieron cargar los funcionarios. Revisá la conexión e intentá de nuevo.";
+    } finally {
+      employee.disabled = false;
+    }
+  }
+  company.addEventListener("change", () => {
+    if (company.value === previousCompany) return;
+    previousCompany = company.value;
+    refreshEmployees(company.value);
+  });
+})();
+</script>
 </body>
 </html>
