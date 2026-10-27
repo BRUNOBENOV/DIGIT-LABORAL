@@ -1,5 +1,9 @@
 # Preparación para producción
 
+## Autorización por rol — cambio propuesto v2.5.5
+
+Las rutas internas de cálculos, asistencia de IA y parámetros administrativos deben aplicar autorización en el servidor, independientemente de que los enlaces estén ocultos en la interfaz. La versión propuesta restringe estas pantallas a sus perfiles operativos previstos y agrega pruebas de acceso directo por URL para abogado y empleador.
+
 ## Flujos funcionales por perfil — cambio propuesto v2.5.4
 
 El cambio funcional incorpora un rol jurídico diferenciado y ajusta las acciones de las pantallas:
