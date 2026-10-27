@@ -82,6 +82,11 @@ def salary_for_period(
             f"{employee.full_name}: no hay historial salarial registrado; "
             "verificá manualmente la base precargada."
         )
+    elif not any(item.effective_from <= reference_date for item in history):
+        warnings.append(
+            f"{employee.full_name}: no hay un salario registrado con vigencia al "
+            f"{reference_date:%d/%m/%Y}; la base sugerida quedó en cero y debe verificarse."
+        )
 
     if period_start < employee.admission_date <= period_end:
         warnings.append(
