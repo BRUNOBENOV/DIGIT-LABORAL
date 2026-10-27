@@ -144,3 +144,20 @@ def test_period_salary_uses_admission_salary_and_flags_partial_month():
     finally:
         db.close()
         engine.dispose()
+
+
+def test_period_salary_flags_when_history_has_only_a_future_salary():
+    engine, db = _session()
+    try:
+        employee = _employee(db, salary=4_000_000)
+        _history(db, employee, date(2026, 10, 15), 4_000_000)
+
+        salary, warnings = salary_for_period(
+            db, employee, date(2026, 10, 1), date(2026, 10, 31)
+        )
+
+        assert salary == 0
+        assert any("la base sugerida quedó en cero" in warning for warning in warnings)
+    finally:
+        db.close()
+        engine.dispose()
