@@ -3,9 +3,12 @@ from __future__ import annotations
 import re
 
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from app.config import settings
+from app.database import SessionLocal
 from app.main import app
+from app.models import Employee
 
 
 def _login(client: TestClient) -> None:
@@ -41,3 +44,30 @@ def test_employee_maintenance_ui_contains_legajo_lookup_and_section_filters():
             "employeeCodeFeedback",
         ):
             assert expected in response.text
+
+
+def test_seeded_employee_can_be_loaded_by_company_and_legajo():
+    with SessionLocal() as db:
+        employee = db.scalar(
+            select(Employee)
+            .where(Employee.employee_code.is_not(None))
+            .order_by(Employee.id)
+        )
+        assert employee is not None
+        employee_id = employee.id
+        employee_code = employee.employee_code
+        company_id = employee.company_id
+
+    with TestClient(app) as client:
+        _login(client)
+        response = client.get(
+            f"/api/employees/by-code/{employee_code}?company_id={company_id}"
+        )
+        assert response.status_code == 200, response.text
+        record = response.json()
+        assert record["id"] == employee_id
+        assert record["employee_code"] == employee_code
+        assert record["company_id"] == company_id
+        assert record["full_name"]
+        assert "daily_hours" in record
+        assert "ips_number" in record
