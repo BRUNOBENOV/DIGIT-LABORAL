@@ -5,7 +5,7 @@ import json
 import re
 import unicodedata
 import zipfile
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
@@ -22,6 +22,7 @@ from .labor_calculator import CalculationError, SOURCE, TITLES, VERSION, amount 
 from .liquidation_export import build_liquidation_pdf, build_liquidation_csv
 from .labor_examples import example_values
 from .models import CalculationRecord, Company, Employee, Payroll, PayrollLine, PayrollComplianceDetail, User
+from .salary_history import employee_salary_history, salary_from_history
 
 router = APIRouter()
 HEADERS = {"Cache-Control": "no-store", "X-Digit-Laboral-Version": VERSION}
@@ -76,17 +77,24 @@ def private_context(db, user, data):
     history = list(db.scalars(query.order_by(CalculationRecord.id.desc()).limit(30)))
     if company:
         data.update(employer=company.legal_name, ruc=company.ruc)
+    salary_history = employee_salary_history(db, employee.id) if employee else []
     if employee:
         data.update(employee=employee.full_name, ci=employee.document_number, position=employee.position)
     return dict(private=True, companies=companies, employees=employees, company=company,
-                employee=employee, company_id=company_id, employee_id=employee_id, history=history)
+                employee=employee, company_id=company_id, employee_id=employee_id, history=history,
+                salary_history=salary_history)
 
 
 def page(request, kind, data=None, result=None, error=None, db=None, user=None, copied_from=None):
     values = dict(data) if data is not None else None
     private = private_context(db, user, values if values is not None else {}) if user else {}
     ctx = context(kind, values)
-    ctx.update(private, result=result, error=str(error or ""), error_field=getattr(error, "field", ""), copied_from=copied_from)
+    salary_history_data = [
+        {"id": item.id, "effective_from": item.effective_from.isoformat(), "new_salary": int(item.new_salary or 0)}
+        for item in private.get("salary_history", [])
+    ]
+    ctx.update(private, salary_history_data=salary_history_data, result=result, error=str(error or ""),
+               error_field=getattr(error, "field", ""), copied_from=copied_from)
     response = core.render(request, "labor_workbench.html", db, user, **ctx)
     response.headers.update(HEADERS)
     if error:
@@ -110,7 +118,22 @@ def professional_page(request: Request, tipo: str = "settlement", company_id: Op
     values = dict(context(tipo)["values"], company_id=company_id or 0, employee_id=employee_id or 0, prepared_by=user.full_name)
     scoped = private_context(db, user, values)
     if employee := scoped["employee"]:
-        values.update(salary=str(employee.base_salary), start_date=employee.admission_date.isoformat(),
+        today = datetime.now(ZoneInfo("America/Asuncion")).date()
+        effective_on = today
+        if tipo == "salary":
+            month = str(values.get("month") or "")
+            if re.fullmatch(r"\\d{4}-\\d{2}", month):
+                try:
+                    effective_on = date.fromisoformat(month + "-01")
+                except ValueError:
+                    pass
+        elif tipo == "settlement":
+            try:
+                effective_on = date.fromisoformat(str(values.get("end_date") or ""))
+            except ValueError:
+                pass
+        effective_salary = salary_from_history(employee, scoped["salary_history"], effective_on)
+        values.update(salary=str(effective_salary), start_date=employee.admission_date.isoformat(),
                       apply_ips="on" if employee.ips_contributor else "",
                       indefinite="on" if employee.contract_type == "Tiempo indefinido" else "")
     return page(request, tipo, values, db=db, user=user)
