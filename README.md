@@ -1,6 +1,14 @@
-# Digit Laboral 2.5.5
+# Digit Laboral 2.5.6
 
 Plataforma de gestión y cumplimiento laboral para estudios contables paraguayos.
+
+## Novedades de la versión 2.5.6
+
+- Añade el panel de cobertura mensual por trabajador en `/app/calculations/periodos`.
+- Reutiliza como propuesta revisable el bruto de nóminas cerradas y consistentes al preparar el aguinaldo.
+- Advierte sobre períodos faltantes, nóminas abiertas, inconsistencias de importes y cambios de salario base.
+- Mantiene los cálculos históricos, los controles de acceso y los conectores oficiales desactivados hasta su autorización.
+- No sustituye la revisión profesional de los conceptos legalmente computables.
 
 ## Novedades de la versión 2.5.5
 
