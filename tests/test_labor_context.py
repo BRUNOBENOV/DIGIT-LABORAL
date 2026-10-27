@@ -28,10 +28,10 @@ def _calculation_selectors(client: TestClient):
     response = client.get("/app/calculations?tipo=salary")
     assert response.status_code == 200
     company_html = re.search(
-        r'id="calculationCompanyFilter">(.*?)</select>', response.text, re.DOTALL
+        r'id="calculationCompanyFilter"[^>]*>(.*?)</select>', response.text, re.DOTALL
     )
     employee_html = re.search(
-        r'id="calculationEmployeeFilter">(.*?)</select>', response.text, re.DOTALL
+        r'id="calculationEmployeeFilter"[^>]*>(.*?)</select>', response.text, re.DOTALL
     )
     assert company_html and employee_html
     company_ids = re.findall(r'<option value="(\d+)"', company_html.group(1))
