@@ -40,6 +40,8 @@ def test_critical_authenticated_pages_render_html():
         "/app/calendar",
         "/app/compliance",
         "/app/labor-code",
+        "/app/ai",
+        "/app/parameters",
         "/app/users",
         "/app/audit",
         "/app/security",
