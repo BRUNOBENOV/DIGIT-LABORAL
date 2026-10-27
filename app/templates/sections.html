@@ -1,0 +1,351 @@
+{% extends "base.html" %}
+{% block title %}Secciones | Digit Laboral{% endblock %}
+{% block page_name %}Secciones{% endblock %}
+{% block content %}
+<style>
+  .section-module-filters{display:grid;grid-template-columns:minmax(190px,1.4fr) minmax(220px,1.5fr) auto auto;gap:10px;align-items:end;margin:14px 0 18px}
+  .section-module-filters label{display:grid;gap:6px;color:var(--text-secondary,#aab8cc);font-size:.78rem;font-weight:750}
+  .section-module-filters input,.section-module-filters select,.section-editor-form input,.section-editor-form select{width:100%;min-width:0;padding:10px 12px;border:1px solid var(--border-color,#334155);border-radius:9px;background:var(--input-bg,#101a2d);color:var(--text-primary,#f3f6fb);font:inherit}
+  .section-module-filters .filter-check{display:flex;align-items:center;gap:8px;white-space:nowrap;padding:9px 0}
+  .section-module-filters .filter-check input{width:auto}
+  .section-module-subnav{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 18px}
+  .section-module-subnav a{display:flex;flex-direction:column;gap:3px;padding:10px 13px;border:1px solid var(--border-color,#334155);border-radius:10px;color:var(--text-secondary,#aab8cc);background:var(--panel-bg,#fff);font-size:.82rem;font-weight:800}
+  .section-module-subnav a span{font-size:.68rem;font-weight:600;opacity:.8}
+  .section-module-subnav a.is-active{border-color:#2563eb;background:#eaf2ff;color:#173b86}
+  .section-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:0 0 18px}
+  .section-metric{padding:15px 17px;border:1px solid var(--border-color,#dce4ef);border-radius:12px;background:var(--panel-bg,#fff);min-width:0}
+  .section-metric span{display:block;color:var(--text-secondary,#65738a);font-size:.76rem;font-weight:700}
+  .section-metric b{display:block;margin-top:5px;color:var(--text-primary,#14233b);font-size:1.55rem;line-height:1.1;font-variant-numeric:tabular-nums}
+  .section-table-wrap{max-height:620px;overflow:auto}
+  .section-table{width:100%;min-width:850px;border-collapse:separate;border-spacing:0}
+  .section-table th{position:sticky;top:0;z-index:1;background:var(--table-head-bg,#f2f5fa);color:var(--text-secondary,#53627a);font-size:.7rem;font-weight:850;text-transform:uppercase;letter-spacing:.045em;text-align:left;white-space:nowrap}
+  .section-table th,.section-table td{padding:13px 14px;border-bottom:1px solid var(--border-color,#e1e7f0);vertical-align:middle}
+  .section-table td{color:var(--text-primary,#18263b);font-size:.82rem}
+  .section-code-pill{display:inline-flex;align-items:center;justify-content:center;min-width:38px;padding:5px 8px;border:1px solid #cbd8ed;border-radius:7px;background:#f4f7fc;color:#173b86;font-size:.78rem;font-weight:850;font-variant-numeric:tabular-nums}
+  .section-record-title{font-weight:850}
+  .section-record-meta{display:block;margin-top:4px;color:var(--text-secondary,#7a879b);font-size:.72rem}
+  .section-status{display:inline-flex;align-items:center;gap:6px;padding:5px 8px;border-radius:999px;font-size:.7rem;font-weight:850;white-space:nowrap}
+  .section-status::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+  .section-status.active{background:#e7f7ef;color:#14784a}
+  .section-status.inactive{background:#eef1f6;color:#58657a}
+  .section-actions{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}
+  .section-actions .btn{padding:7px 10px;min-height:33px;font-size:.74rem;white-space:nowrap}
+  .section-empty{padding:38px 22px;text-align:center;color:var(--text-secondary,#65738a)}
+  .section-empty b{display:block;color:var(--text-primary,#18263b);font-size:1rem;margin-bottom:7px}
+  .section-empty p{max-width:500px;margin:0 auto 14px;line-height:1.55;font-size:.84rem}
+  .section-examples-help{margin:8px 0 0;color:var(--text-secondary,#758198);font-size:.74rem;line-height:1.5}
+  .section-feedback{min-height:1.3em;margin:7px 0 0;font-size:.82rem;font-weight:650}
+  .section-feedback.error{color:#d94754}.section-feedback.success{color:#168254}.section-feedback.loading{color:#65738a}
+  .section-editor-form{display:grid;grid-template-columns:1fr 1.35fr;gap:12px}
+  .section-editor-form label{display:grid;align-content:start;gap:6px;color:var(--text-secondary,#53627a);font-size:.78rem;font-weight:750}
+  .section-editor-form .span-2{grid-column:1/-1}
+  .section-editor-form .field-help{font-size:.7rem;line-height:1.45;color:var(--text-secondary,#77849a);font-weight:500}
+  .section-editor-form .form-actions{display:flex;gap:8px;justify-content:flex-end;grid-column:1/-1;margin-top:5px}
+  .section-audit-detail{display:block;color:var(--text-secondary,#758198);font-size:.72rem;line-height:1.45}
+  .section-role-note{margin:0 0 15px;padding:12px 14px;border:1px solid var(--border-color,#dce4ef);border-radius:10px;color:var(--text-secondary,#53627a);background:var(--panel-bg,#fff);font-size:.8rem;line-height:1.55}
+  .section-role-note b{color:var(--text-primary,#17253b)}
+  #sectionEditorModal .modal-card{max-width:600px}
+  #sectionEditorModal .modal-intro{line-height:1.55}
+  @media(max-width:900px){.section-module-filters{grid-template-columns:1fr 1fr}.section-module-filters .search-field{grid-column:1/-1}.section-metrics{grid-template-columns:repeat(3,minmax(0,1fr))}}
+  @media(max-width:600px){.section-module-filters{grid-template-columns:1fr}.section-module-filters .search-field{grid-column:auto}.section-module-filters .filter-check{padding:0}.section-metrics{grid-template-columns:1fr}.section-metric{padding:12px 14px}.section-metric b{font-size:1.3rem}.section-editor-form{grid-template-columns:1fr}.section-editor-form .span-2{grid-column:auto}.section-editor-form .form-actions{grid-column:auto;display:grid;grid-template-columns:1fr 1fr}.section-editor-form .form-actions .btn{width:100%}.section-module-subnav a{flex:1;min-width:120px}}
+</style>
+
+<header class="page-header">
+  <div>
+    <span class="eyebrow">MANTENIMIENTOS · ESTRUCTURA ORGANIZATIVA</span>
+    <h1>Secciones</h1>
+    <p>Administrá las áreas y departamentos de cada empresa, y vinculalos con los legajos de funcionarios.</p>
+  </div>
+  {% if can_manage_sections and selected_company_id %}
+  <div class="header-actions">
+    {% if all_sections_count == 0 %}
+    <button class="btn outline" type="button" id="createSectionExamples">Cargar ejemplos</button>
+    {% endif %}
+    <button class="btn primary" type="button" id="newSectionButton" data-modal-open="sectionEditorModal">+ Nueva sección</button>
+  </div>
+  {% endif %}
+</header>
+
+<nav class="section-module-subnav" aria-label="Subsecciones de mantenimiento">
+  <a href="/app/companies">Empresas<span>Directorio patronal</span></a>
+  <a href="/app/employees">Funcionarios<span>Legajos laborales</span></a>
+  <a class="is-active" href="/app/sections" aria-current="page">Secciones<span>Áreas internas</span></a>
+</nav>
+
+{% if user.role in ['abogado','auxiliar','empresa'] %}
+<div class="section-role-note"><b>Vista de consulta.</b> Podés revisar las secciones disponibles para esta empresa. La creación, edición y desactivación está habilitada para administradores y contadores.</div>
+{% endif %}
+
+<form method="get" class="section-module-filters" role="search" aria-label="Filtros de secciones">
+  <label class="search-field">Código o nombre
+    <input name="q" value="{{ q }}" maxlength="140" placeholder="Ej.: 2, Contabilidad o Ventas" autocomplete="off">
+  </label>
+  <label>Empresa
+    <select name="company_id" required>
+      {% for company in companies %}
+      <option value="{{ company.id }}" {{ 'selected' if selected_company_id == company.id }}>{{ company.company_code if company.company_code is not none else '—' }} · {{ company.legal_name }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label class="filter-check"><input type="checkbox" name="include_inactive" value="true" {{ 'checked' if include_inactive }}> Incluir inactivas</label>
+  <button class="btn primary" type="submit">Filtrar</button>
+</form>
+
+{% if request.query_params.get('saved') %}
+<div class="alert success" role="status">La sección se guardó correctamente.</div>
+{% endif %}
+{% if request.query_params.get('status_changed') %}
+<div class="alert success" role="status">El estado de la sección fue actualizado.</div>
+{% endif %}
+{% if not companies %}
+<section class="panel section-empty">
+  <b>No hay empresas disponibles</b>
+  <p>Para administrar secciones, primero necesitás tener una empresa activa en tu espacio de trabajo o contar con acceso autorizado a ella.</p>
+  {% if user.role in ['administrador','contador'] %}<a class="btn primary" href="/app/companies">Ir a Empresas</a>{% endif %}
+</section>
+{% elif selected_company %}
+<div class="section-metrics" aria-label="Resumen de secciones">
+  <div class="section-metric"><span>Secciones registradas</span><b>{{ all_sections_count }}</b></div>
+  <div class="section-metric"><span>Activas</span><b>{{ active_sections_count }}</b></div>
+  <div class="section-metric"><span>Funcionarios vinculados</span><b>{{ employee_counts.values()|sum }}</b></div>
+</div>
+
+{% if can_manage_sections and all_sections_count == 0 %}
+<p class="section-examples-help">Los ejemplos de prueba crean Administración, Contabilidad, Ventas y Operaciones, únicamente dentro de {{ selected_company.legal_name }}. Podrás editarlos o desactivarlos después.</p>
+<p id="sectionExamplesFeedback" class="section-feedback" role="status" aria-live="polite"></p>
+{% endif %}
+
+<section class="panel table-panel maintenance-table-panel">
+  <div class="section-table-wrap">
+    <table class="section-table">
+      <thead>
+        <tr><th>Código</th><th>Sección</th><th>Funcionarios</th><th>Última actualización</th><th>Estado</th>{% if can_manage_sections %}<th>Acciones</th>{% endif %}</tr>
+      </thead>
+      <tbody>
+      {% for section in sections %}
+        <tr>
+          <td><span class="section-code-pill">{{ section.section_code if section.section_code is not none else '—' }}</span></td>
+          <td><span class="section-record-title">{{ section.name }}</span><span class="section-record-meta">ID interno: {{ section.id }}</span></td>
+          <td>{{ employee_counts.get(section.id, 0) }}</td>
+          <td><span class="section-audit-detail">{{ section.updated_at.strftime('%d/%m/%Y %H:%M') if section.updated_at else '—' }}</span><span class="section-audit-detail">{{ section.updated_by or 'Usuario no registrado' }}</span></td>
+          <td><span class="section-status {{ 'active' if section.active else 'inactive' }}">{{ 'Activa' if section.active else 'Inactiva' }}</span></td>
+          {% if can_manage_sections %}
+          <td>
+            <div class="section-actions">
+              {% if section.active %}
+              <button class="btn ghost" type="button" data-section-edit data-section-id="{{ section.id }}" data-company-id="{{ section.company_id }}" data-section-code="{{ section.section_code }}" data-section-name="{{ section.name }}">Editar</button>
+              <button class="btn outline" type="button" data-section-toggle data-section-id="{{ section.id }}" data-company-id="{{ section.company_id }}" data-section-code="{{ section.section_code }}" data-section-name="{{ section.name }}" data-active="true">Desactivar</button>
+              {% else %}
+              <button class="btn outline" type="button" data-section-toggle data-section-id="{{ section.id }}" data-company-id="{{ section.company_id }}" data-section-code="{{ section.section_code }}" data-section-name="{{ section.name }}" data-active="false">Reactivar</button>
+              {% endif %}
+            </div>
+          </td>
+          {% endif %}
+        </tr>
+      {% else %}
+        <tr><td colspan="{{ 6 if can_manage_sections else 5 }}">
+          <div class="section-empty">
+            <b>{% if q %}No hay resultados para “{{ q }}”{% elif include_inactive %}No hay secciones registradas{% else %}Esta empresa todavía no tiene secciones activas{% endif %}</b>
+            <p>{% if q %}Probá con otro código o parte del nombre, o limpiá el filtro de búsqueda.{% else %}Creá las áreas que utiliza la empresa y luego asigná cada funcionario desde su legajo.{% endif %}</p>
+            {% if can_manage_sections and not q and all_sections_count == 0 %}<button class="btn primary" type="button" data-modal-open="sectionEditorModal">Crear primera sección</button>{% endif %}
+          </div>
+        </td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+
+{% if can_manage_sections and companies %}
+<div class="modal" id="sectionEditorModal" aria-hidden="true">
+  <div class="modal-backdrop" data-modal-close></div>
+  <section class="modal-card" role="dialog" aria-modal="true" aria-labelledby="sectionEditorTitle">
+    <button class="modal-x" type="button" data-modal-close aria-label="Cerrar">×</button>
+    <span class="eyebrow">MANTENIMIENTOS · SECCIONES</span>
+    <h2 id="sectionEditorTitle">Nueva sección</h2>
+    <p class="modal-intro">El código debe ser un número entero positivo y único dentro de la empresa seleccionada.</p>
+    <form id="sectionEditorForm" class="section-editor-form" novalidate>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" id="sectionEditorId" value="">
+      <label class="span-2">Empresa
+        <select id="sectionEditorCompany" required>
+          {% for company in companies %}
+          <option value="{{ company.id }}" {{ 'selected' if selected_company_id == company.id }}>{{ company.legal_name }}</option>
+          {% endfor %}
+        </select>
+        <span class="field-help">Una sección siempre pertenece a una empresa; el código puede repetirse en otra empresa.</span>
+      </label>
+      <label>Código Sección
+        <input type="number" id="sectionEditorCode" min="1" step="1" required inputmode="numeric" placeholder="Ej.: 1">
+        <span class="field-help">Número positivo, obligatorio y único en esta empresa.</span>
+      </label>
+      <label>Nombre Sección
+        <input type="text" id="sectionEditorName" maxlength="140" required autocomplete="off" placeholder="Ej.: Administración">
+        <span class="field-help">Máximo 140 caracteres.</span>
+      </label>
+      <div class="span-2">
+        <p id="sectionEditorFeedback" class="section-feedback" role="status" aria-live="polite"></p>
+      </div>
+      <div class="form-actions">
+        <button class="btn ghost" type="button" data-modal-close>Cancelar</button>
+        <button class="btn primary" type="submit" id="sectionEditorSubmit">Guardar sección</button>
+      </div>
+    </form>
+  </section>
+</div>
+{% endif %}
+
+<script>
+(function () {
+  const form = document.getElementById("sectionEditorForm");
+  if (!form) return;
+
+  const companyField = document.getElementById("sectionEditorCompany");
+  const codeField = document.getElementById("sectionEditorCode");
+  const nameField = document.getElementById("sectionEditorName");
+  const idField = document.getElementById("sectionEditorId");
+  const submitButton = document.getElementById("sectionEditorSubmit");
+  const modal = document.getElementById("sectionEditorModal");
+  const feedback = document.getElementById("sectionEditorFeedback");
+  const csrf = form.elements.namedItem("csrf_token").value;
+  const selectedCompanyId = "{{ selected_company_id or '' }}";
+
+  function setFeedback(message, state) {
+    feedback.textContent = message || "";
+    feedback.className = "section-feedback" + (state ? " " + state : "");
+  }
+
+  function resetForm() {
+    idField.value = "";
+    codeField.value = "";
+    nameField.value = "";
+    companyField.disabled = false;
+    if (selectedCompanyId && Array.from(companyField.options).some(option => option.value === selectedCompanyId)) {
+      companyField.value = selectedCompanyId;
+    }
+    document.getElementById("sectionEditorTitle").textContent = "Nueva sección";
+    submitButton.textContent = "Guardar sección";
+    setFeedback("", "");
+  }
+
+  document.getElementById("newSectionButton")?.addEventListener("click", resetForm);
+  document.querySelectorAll("[data-section-edit]").forEach(button => {
+    button.addEventListener("click", function () {
+      idField.value = button.dataset.sectionId;
+      companyField.value = button.dataset.companyId;
+      companyField.disabled = true;
+      codeField.value = button.dataset.sectionCode || "";
+      nameField.value = button.dataset.sectionName || "";
+      document.getElementById("sectionEditorTitle").textContent = "Editar sección";
+      submitButton.textContent = "Guardar cambios";
+      setFeedback("", "");
+    });
+  });
+
+  form.addEventListener("submit", async function (event) {
+    event.preventDefault();
+    const code = Number(codeField.value);
+    const name = nameField.value.trim();
+    if (!companyField.value || !Number.isInteger(code) || code <= 0) {
+      setFeedback("Ingresá un código numérico entero mayor que cero.", "error");
+      codeField.focus();
+      return;
+    }
+    if (!name || name.length > 140) {
+      setFeedback("El nombre es obligatorio y no puede superar los 140 caracteres.", "error");
+      nameField.focus();
+      return;
+    }
+
+    const id = idField.value;
+    const payload = {company_id:Number(companyField.value), section_code:code, name:name};
+    submitButton.disabled = true;
+    submitButton.textContent = id ? "Guardando cambios…" : "Guardando…";
+    setFeedback("Validando y guardando los datos…", "loading");
+    try {
+      const response = await fetch(id ? "/api/sections/" + encodeURIComponent(id) : "/api/sections", {
+        method: id ? "PUT" : "POST",
+        credentials: "same-origin",
+        headers: {"Accept":"application/json", "Content-Type":"application/json", "X-CSRF-Token":csrf},
+        body: JSON.stringify(payload)
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.detail || "No se pudo guardar la sección.");
+      window.location.href = "/app/sections?company_id=" + encodeURIComponent(payload.company_id) + "&saved=1";
+    } catch (error) {
+      setFeedback(error.message || "No se pudo guardar la sección. Revisá los datos e intentá de nuevo.", "error");
+    } finally {
+      submitButton.disabled = false;
+      submitButton.textContent = idField.value ? "Guardar cambios" : "Guardar sección";
+    }
+  });
+
+  document.querySelectorAll("[data-section-toggle]").forEach(button => {
+    button.addEventListener("click", async function () {
+      const isActive = button.dataset.active === "true";
+      const verb = isActive ? "desactivar" : "reactivar";
+      const message = isActive
+        ? "¿Desactivar esta sección? Los funcionarios que ya la tienen asignada conservarán su historial."
+        : "¿Reactivar esta sección para que pueda asignarse nuevamente?";
+      if (!window.confirm(message)) return;
+      const id = button.dataset.sectionId;
+      const company = button.dataset.companyId;
+      button.disabled = true;
+      try {
+        const response = await fetch("/api/sections/" + encodeURIComponent(id), {
+          method: isActive ? "DELETE" : "PUT",
+          credentials: "same-origin",
+          headers: {"Accept":"application/json", "Content-Type":"application/json", "X-CSRF-Token":csrf},
+          body: isActive ? undefined : JSON.stringify({
+            section_code:Number(button.dataset.sectionCode),
+            name:button.dataset.sectionName,
+            active:true
+          })
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.detail || "No se pudo " + verb + " la sección.");
+        window.location.href = "/app/sections?company_id=" + encodeURIComponent(company) + "&status_changed=1&include_inactive=true";
+      } catch (error) {
+        window.alert(error.message || "No se pudo actualizar la sección.");
+        button.disabled = false;
+      }
+    });
+  });
+
+  const examplesButton = document.getElementById("createSectionExamples");
+  examplesButton?.addEventListener("click", async function () {
+    const companyId = selectedCompanyId;
+    if (!companyId || !window.confirm("Se cargarán cuatro ejemplos de prueba en esta empresa. No se borrará ningún dato existente.")) return;
+    const examplesFeedback = document.getElementById("sectionExamplesFeedback");
+    examplesButton.disabled = true;
+    examplesFeedback.textContent = "Creando ejemplos…";
+    examplesFeedback.className = "section-feedback loading";
+    try {
+      const response = await fetch("/api/sections/examples", {
+        method:"POST",
+        credentials:"same-origin",
+        headers:{"Accept":"application/json","Content-Type":"application/json","X-CSRF-Token":csrf},
+        body:JSON.stringify({company_id:Number(companyId)})
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.detail || "No se pudieron cargar los ejemplos.");
+      window.location.href = "/app/sections?company_id=" + encodeURIComponent(companyId) + "&saved=1";
+    } catch (error) {
+      examplesFeedback.textContent = error.message || "No se pudieron cargar los ejemplos.";
+      examplesFeedback.className = "section-feedback error";
+      examplesButton.disabled = false;
+    }
+  });
+
+  document.querySelectorAll("[data-modal-close]").forEach(button => {
+    button.addEventListener("click", function () {
+      if (button.closest("#sectionEditorModal")) resetForm();
+    });
+  });
+  modal?.addEventListener("transitionend", function () {
+    if (modal.getAttribute("aria-hidden") === "true") resetForm();
+  });
+})();
+</script>
+{% endblock %}
