@@ -2,15 +2,18 @@
 
 ## Cambios funcionales
 - Código numérico por empresa, único dentro del estudio, con backfill migratorio de registros existentes.
-- Formulario organizado por identificación, responsables/contacto, ubicación/actividad y datos patronales.
-- Selectores de departamentos y ciudades paraguayas.
-- Campos de propietario, C.I. del representante, sector, lugar de trabajo, actividad económica y contacto.
-- Búsqueda por código, nombre o RUC; filtros por ciudad y departamento.
+- Formulario responsivo organizado por identificación, responsables/contacto, ubicación/actividad y datos patronales.
+- Selectores de los 18 departamentos y de los 262 municipios listados en el portal público de Municipios del Paraguay: https://municipios.gov.py/municipios/.
+- Campos de propietario, C.I. del representante, sector, lugar de trabajo, actividad económica, contacto y fecha de actualización.
+- Búsqueda por código, nombre o RUC y filtros por ciudad y departamento.
 - Autocompletado autenticado por Código Empresa.
-- API JSON para listado, consulta por código, creación, actualización y archivado.
-- Archivado lógico para preservar historial laboral y auditoría.
-- Se mantiene la sucursal como una entidad independiente y se reutiliza el perfil de cumplimiento para departamento, actividad y C.I.
-- No se agregan empresas de ejemplo a producción.
+- API JSON para listado, consulta por código, consulta por ID, creación, actualización y archivado.
+- Validación del RUC mediante dígito verificador módulo 11, además de código, nombre, números patronales, CI y correspondencia ciudad/departamento.
+- Archivado lógico para preservar historial laboral y auditoría; las empresas archivadas pueden mostrarse y restaurarse.
+- La sucursal permanece como entidad independiente. Departamento, actividad y C.I. del representante se guardan en el perfil de cumplimiento existente.
+- No se agregan empresas ficticias a producción.
 
-## Publicación
-- Se requieren pruebas de CI completas y verificación del despliegue antes de considerar esta versión activa en producción.
+## Validación y publicación
+- Pruebas de formulario, catálogo de municipios, normalización RUC, búsqueda por código y CRUD de API.
+- Se requieren pruebas completas de CI y verificación del despliegue antes de considerar la versión activa en producción.
+- La validación módulo 11 no consulta DNIT ni confirma estado tributario, inscripción o actividad del contribuyente.
