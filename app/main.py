@@ -2526,7 +2526,29 @@ async def api_create_employee(
         raise HTTPException(409, "No se pueden agregar funcionarios a una empresa archivada.")
     values = _validate_employee_payload(db, payload)
     _check_employee_uniqueness(db, values)
-    employee = Employee(company_id=company.id, created_at=datetime.now(UTC), updated_at=datetime.now(UTC))
+    employee = Employee(
+        company_id=company.id,
+        employee_code=values["employee_code"],
+        branch_id=values["branch_id"],
+        section_id=values["section_id"],
+        full_name=values["full_name"],
+        document_number=values["document_number"],
+        birth_date=values["birth_date"],
+        position=values["position"],
+        admission_date=values["admission_date"],
+        termination_date=values["termination_date"],
+        contract_type=values["contract_type"],
+        payment_frequency=values["payment_frequency"],
+        base_salary=values["base_salary"],
+        ips_contributor=values["ips_contributor"],
+        email=values["email"],
+        phone=values["phone"],
+        address=values["address"],
+        status=values["status"],
+        notes=values["notes"],
+        updated_at=datetime.now(UTC),
+        updated_by=user.email,
+    )
     db.add(employee)
     try:
         db.flush()
