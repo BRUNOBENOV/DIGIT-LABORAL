@@ -28,6 +28,13 @@
     @media(max-width:1100px){.app-version-indicator .app-version-label{display:none}.app-version-indicator{padding:7px 8px;gap:5px}}
     @media(max-width:760px){.modern-topbar{gap:9px;padding:0 10px}.app-version-indicator{padding:7px;border-radius:8px;margin-left:auto}.app-version-indicator .app-version-divider,.app-version-indicator small{display:none}.app-version-indicator b{font-size:.68rem}.modern-brand{min-width:0;gap:7px}.modern-brand-mark.modern-brand-image{width:36px;height:36px;flex-basis:36px}.modern-brand-copy small{letter-spacing:.04em;font-size:.49rem}}
     @media(max-width:380px){.app-version-indicator{padding:6px}.modern-topbar{padding:0 7px}.modern-brand-copy b{font-size:.88rem}}
+    .labor-context-panel{display:grid;gap:8px;margin:12px 10px 16px;padding:12px;border:1px solid rgba(180,198,230,.2);border-radius:12px;background:rgba(7,20,43,.38)}
+    .labor-context-panel .labor-context-title{color:#e4edff;font-size:.73rem;font-weight:850;letter-spacing:.08em;text-transform:uppercase}
+    .labor-context-panel p{margin:0;color:#9eb2d3;font-size:.69rem;line-height:1.4}
+    .labor-context-panel label{display:grid;gap:5px;color:#b9c9e5;font-size:.7rem;font-weight:750}
+    .labor-context-panel select{width:100%;min-width:0;padding:8px 9px;border:1px solid #33496c;border-radius:8px;background:#101f39;color:#f4f7ff;font:inherit;font-size:.74rem}
+    .labor-context-panel button{width:100%;padding:9px 10px;border:1px solid #4e78c9;border-radius:8px;background:#214a96;color:#fff;font-size:.74rem;font-weight:800;cursor:pointer}
+    @media(max-width:760px){.labor-context-panel{margin:10px 8px 14px}}
   </style>
 
 </head>
@@ -59,6 +66,29 @@
     <button class="workspace-sidebar-backdrop" type="button" data-sidebar-backdrop aria-label="Cerrar menú"></button>
     <nav class="modern-mobile-nav workspace-sidebar" id="modernMobileNav" aria-label="Secciones de Digit Laboral">
       <div class="workspace-sidebar-label">MENÚ PRINCIPAL</div>
+      <form class="labor-context-panel" method="post" action="/app/context" data-labor-context>
+        <div class="labor-context-title">Contexto de trabajo</div>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="return_to" value="{{ request.url.path }}{% if request.url.query %}?{{ request.url.query }}{% endif %}">
+        <label>Empresa
+          <select name="company_id" data-context-company>
+            <option value="">Todas / sin seleccionar</option>
+            {% for company in context_companies %}
+            <option value="{{ company.id }}" {{ 'selected' if active_context_company_id == company.id }}>{{ company.legal_name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>Funcionario
+          <select name="employee_id" data-context-employee>
+            <option value="">Todos / sin seleccionar</option>
+            {% for employee in context_employees %}
+            <option value="{{ employee.id }}" {{ 'selected' if active_context_employee_id == employee.id }}>{{ employee.full_name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <button type="submit">Aplicar a los módulos</button>
+        <p>La selección se conserva al navegar. Los módulos completan los campos con datos guardados y respetan los permisos de acceso.</p>
+      </form>
       {% if user.role == 'superadmin' %}
         <a class="workspace-home-link {{ 'active' if active_path.startswith('/admin') else '' }}" href="/admin"><span class="workspace-home-symbol">⌂</span><span>Administración general</span></a>
       {% else %}
