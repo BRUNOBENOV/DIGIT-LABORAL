@@ -13,7 +13,7 @@
 <a class="back-link dark" href="/app/companies">← Empresas</a>
 {% if request.query_params.get("company_saved") %}<div class="alert success" role="status">Los datos de la empresa se guardaron correctamente.</div>{% endif %}
 
-<section class="company-profile">
+<section class="company-profile" id="company-overview">
   {% if branding and branding.logo_bytes %}
     <span class="company-profile-logo-frame logo-fit-{{ branding.logo_fit or 'contain' }} logo-align-{{ branding.logo_alignment or 'center' }} logo-bg-{{ branding.logo_background or 'white' }}" data-logo-display style="--logo-scale: {{ (branding.logo_scale or 100) / 100 }}; --logo-transform-origin: {{ 'left center' if branding.logo_alignment == 'left' else 'right center' if branding.logo_alignment == 'right' else 'center center' }}"><img class="company-profile-logo" src="/app/companies/{{ company.id }}/logo?v={{ logo_version }}" alt="Logo de {{ company.legal_name }}"></span>
   {% else %}
@@ -30,6 +30,14 @@
     {% if user.role in ['administrador','contador'] %}<button class="btn outline" type="button" data-modal-open="editCompanyModal">Editar datos</button>{% endif %}
   </div>
 </section>
+
+<nav class="maintenance-subnav maintenance-detail-nav" aria-label="Subsecciones del expediente de empresa">
+  <a class="is-active" href="#company-overview" aria-current="location">Resumen</a>
+  <a href="#company-employees">Funcionarios <span>{{ employees|length }}</span></a>
+  <a href="#company-branches">Sucursales <span>{{ branches|length }}</span></a>
+  {% if user.role != 'empresa' %}<a href="/app/compliance?company_id={{ company.id }}">Cumplimiento REI / REOP</a>{% endif %}
+  <a href="/app/documents?company_id={{ company.id }}">Documentos</a>
+</nav>
 
 {% if not branding.logo_bytes and user.role in ['administrador','contador','empresa'] %}
 <section class="company-setup-callout">
@@ -87,7 +95,7 @@
   </article>
 </section>
 
-<section class="panel table-panel">
+<section class="panel table-panel maintenance-table-panel" id="company-employees">
   <div class="panel-head"><div><span>FUNCIONARIOS</span><h2>Directorio de la empresa</h2></div><a href="/app/employees?company_id={{ company.id }}">{{ 'Consultar legajos' if user.role in ['abogado','empresa'] else 'Gestionar todos' }}</a></div>
   <div class="table-wrap"><table><thead><tr><th>Nombre</th><th>Cédula</th><th>Cargo</th><th>Salario base</th><th>IPS</th><th>Estado</th></tr></thead><tbody>{% for employee in employees %}<tr><td><b>{{ employee.full_name }}</b></td><td>{{ employee.document_number }}</td><td>{{ employee.position }}</td><td>Gs. {{ employee.base_salary|gs }}</td><td>{{ 'Sí' if employee.ips_contributor else 'No' }}</td><td><span class="status-pill {{ employee.status|lower }}">{{ employee.status }}</span></td></tr>{% else %}<tr><td colspan="6" class="empty-state">No hay funcionarios registrados.</td></tr>{% endfor %}</tbody></table></div>
 </section>
@@ -104,7 +112,7 @@
   </div>
 </details>
 
-<section class="panel">
+<section class="panel" id="company-branches">
   <div class="panel-head"><div><span>SUCURSALES</span><h2>Ubicaciones</h2></div>{% if user.role in ['administrador','contador','auxiliar'] %}<button class="text-button" type="button" data-modal-open="branchModal">+ Agregar sucursal</button>{% endif %}</div>
   <div class="compact-list">{% for branch in branches %}<div><span class="company-avatar">{{ branch.name[:2]|upper }}</span><div><b>{{ branch.name }}</b><small>{{ branch.city or 'Sin ciudad' }} · {{ branch.address or 'Sin dirección' }}</small></div></div>{% else %}<p class="empty-state">No hay sucursales registradas.</p>{% endfor %}</div>
 </section>
