@@ -906,7 +906,7 @@ def _validate_employee_payload(
     if not 1 <= daily_hours <= 24:
         raise HTTPException(422, "Las horas diarias deben estar entre 1 y 24.")
     ips_number = re.sub(
-        r"[\\s.-]+", "",
+        r"[\s.-]+", "",
         str(payload.get("ips_number", profile.ips_number if profile else "") or "")
     )
     if ips_number and not ips_number.isdigit():
@@ -3006,7 +3006,7 @@ def add_employee(
         raise HTTPException(400, "Las horas semanales deben estar entre 1 y 96.")
     if not 1 <= daily_hours <= 24:
         raise HTTPException(400, "Las horas diarias deben estar entre 1 y 24.")
-    ips_number_value = re.sub(r"[\\s.-]+", "", ips_number.strip())
+    ips_number_value = re.sub(r"[\s.-]+", "", ips_number.strip())
     if ips_number_value and not ips_number_value.isdigit():
         raise HTTPException(400, "El número IPS del funcionario debe contener solamente dígitos.")
     if any(
