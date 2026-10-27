@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import re
+import uuid
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.config import settings
 from app.database import SessionLocal
 from app.main import app, normalize_company_ruc
-from app.models import Company
+from app.models import Company, CompanyComplianceProfile, User
 
 
 def _login(client: TestClient) -> str:
@@ -53,23 +54,43 @@ def test_company_form_contains_required_maintenance_fields_and_paraguayan_select
 
 
 def test_api_lookup_by_existing_company_code_returns_record_for_authenticated_study():
+    code = int(uuid.uuid4().int % 1_000_000_000) + 1
+    ruc = str(int(uuid.uuid4().int % 900_000_000) + 100_000_000)
     with SessionLocal() as db:
-        company = db.scalar(
-            select(Company).where(Company.company_code.is_not(None), Company.status != "Archivada").order_by(Company.id)
+        studio_id = db.scalar(select(User.studio_id).where(User.email == "admin@digitlaboral.com.py"))
+        assert studio_id is not None
+        company = Company(
+            studio_id=studio_id, company_code=code, legal_name="Empresa temporal QA",
+            ruc=f"{ruc[:-1]}-{ruc[-1]}", city="Ciudad del Este", status="Activa",
         )
-        assert company is not None, "The migration should backfill a code for existing companies."
-        code = company.company_code
+        db.add(company)
+        db.flush()
+        db.add(CompanyComplianceProfile(
+            company_id=company.id, department="Alto Paraná",
+            economic_activity="Registro temporal de prueba",
+        ))
+        db.commit()
         company_id = company.id
-    with TestClient(app) as client:
-        _login(client)
-        response = client.get(f"/api/companies/by-code/{code}")
-        assert response.status_code == 200
-        payload = response.json()
-        assert payload["id"] == company_id
-        assert payload["company_code"] == code
-        assert payload["legal_name"]
-        assert "department" in payload
-        assert "economic_activity" in payload
+    try:
+        with TestClient(app) as client:
+            _login(client)
+            response = client.get(f"/api/companies/by-code/{code}")
+            assert response.status_code == 200
+            payload = response.json()
+            assert payload["id"] == company_id
+            assert payload["company_code"] == code
+            assert payload["legal_name"] == "Empresa temporal QA"
+            assert payload["department"] == "Alto Paraná"
+            assert payload["economic_activity"] == "Registro temporal de prueba"
+    finally:
+        with SessionLocal() as db:
+            profile = db.scalar(select(CompanyComplianceProfile).where(CompanyComplianceProfile.company_id == company_id))
+            if profile:
+                db.delete(profile)
+            company = db.get(Company, company_id)
+            if company:
+                db.delete(company)
+            db.commit()
 
 
 def test_api_company_list_requires_authentication():
