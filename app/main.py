@@ -2900,10 +2900,19 @@ def add_employee(
     position_name: Annotated[str, Form(alias="position")],
     admission_date: Annotated[date, Form()],
     base_salary: Annotated[int, Form()],
+    employee_code: Annotated[str, Form()] = "",
     branch_id: Annotated[str, Form()] = "",
+    section_id: Annotated[str, Form()] = "",
     birth_date: Annotated[str, Form()] = "",
     contract_type: Annotated[str, Form()] = "Tiempo indefinido",
     payment_frequency: Annotated[str, Form()] = "Mensual",
+    nationality: Annotated[str, Form()] = "Paraguaya",
+    marital_status: Annotated[str, Form()] = "",
+    position_category: Annotated[str, Form()] = "",
+    work_schedule: Annotated[str, Form()] = "",
+    shift: Annotated[str, Form()] = "Diurno",
+    weekly_hours: Annotated[int, Form()] = 48,
+    salary_type: Annotated[str, Form()] = "Mensual",
     email: Annotated[str, Form()] = "",
     phone: Annotated[str, Form()] = "",
     address: Annotated[str, Form()] = "",
@@ -2913,6 +2922,8 @@ def add_employee(
     db: Session = Depends(get_db),
 ):
     company = company_allowed(db, user, company_id)
+    if company.status == "Archivada":
+        raise HTTPException(409, "No se pueden agregar funcionarios a una empresa archivada.")
     full_name_value = full_name.strip()
     document_number_value = normalize_document_number(document_number)
     position_value = position_name.strip()
@@ -2930,42 +2941,81 @@ def add_employee(
         raise HTTPException(400, "El cargo no puede superar los 140 caracteres.")
     if base_salary < 0:
         raise HTTPException(400, "El salario base no puede ser negativo.")
+    try:
+        employee_code_value = int(str(employee_code).strip()) if str(employee_code).strip() else _next_employee_code(db, company.id)
+    except (TypeError, ValueError):
+        raise HTTPException(400, "El Código Legajo debe ser numérico.")
+    if employee_code_value <= 0:
+        raise HTTPException(400, "El Código Legajo debe ser positivo.")
+    code_exists = db.scalar(select(Employee.id).where(
+        Employee.company_id == company.id, Employee.employee_code == employee_code_value
+    ))
+    if code_exists:
+        raise HTTPException(409, "Ese Código Legajo ya existe dentro de la empresa.")
+
     branch_id_value = optional_int(branch_id, field="sucursal")
+    section_id_value = optional_int(section_id, field="sección")
     birth_date_value = optional_date(birth_date, field="fecha de nacimiento")
-    if birth_date_value and birth_date_value >= admission_date:
-        raise HTTPException(400, "La fecha de nacimiento debe ser anterior a la fecha de ingreso.")
+    if birth_date_value and (birth_date_value >= admission_date or birth_date_value > date.today()):
+        raise HTTPException(400, "La fecha de nacimiento debe ser anterior al ingreso y no puede ser futura.")
     if branch_id_value is not None:
         branch = db.scalar(select(Branch).where(
             Branch.id == branch_id_value, Branch.company_id == company.id
         ))
         if not branch or not branch.active:
             raise HTTPException(400, "La sucursal seleccionada no pertenece a la empresa o está inactiva.")
-    existing_documents = db.scalars(select(Employee.document_number).where(Employee.company_id == company.id))
-    if any(normalize_document_number(value) == document_number_value for value in existing_documents):
+    if section_id_value is not None:
+        section = db.scalar(select(CompanySection).where(
+            CompanySection.id == section_id_value, CompanySection.company_id == company.id,
+            CompanySection.active.is_(True),
+        ))
+        if not section:
+            raise HTTPException(400, "La sección seleccionada no pertenece a la empresa o está inactiva.")
+    if any(
+        normalize_document_number(value) == document_number_value
+        for value in db.scalars(select(Employee.document_number).where(Employee.company_id == company.id))
+    ):
         return RedirectResponse("/app/employees?duplicate=1", status_code=303)
+
     employee = Employee(
         company_id=company.id,
+        employee_code=employee_code_value,
         branch_id=branch_id_value,
+        section_id=section_id_value,
         full_name=full_name_value,
         document_number=document_number_value,
         birth_date=birth_date_value,
         position=position_value,
         admission_date=admission_date,
-        contract_type=contract_type.strip(),
-        payment_frequency=payment_frequency.strip(),
+        contract_type=contract_type.strip() or "Tiempo indefinido",
+        payment_frequency=payment_frequency.strip() or "Mensual",
         base_salary=base_salary,
-        ips_contributor=ips_contributor == "on",
+        ips_contributor=str(ips_contributor or "").strip().lower() in {"on", "true", "1", "yes"},
         email=email.strip(),
         phone=phone.strip(),
         address=address.strip(),
         notes=notes.strip(),
+        status="Activo",
+        updated_at=datetime.now(UTC),
+        updated_by=user.email,
     )
     db.add(employee)
     try:
         db.flush()
+        profile = EmployeeComplianceProfile(
+            employee_id=employee.id,
+            nationality=clean_text(nationality, max_length=80) or "Paraguaya",
+            marital_status=clean_text(marital_status, max_length=40),
+            position_category=clean_text(position_category, max_length=100),
+            work_schedule=clean_text(work_schedule, max_length=120),
+            shift=clean_text(shift, max_length=60) or "Diurno",
+            weekly_hours=max(1, min(int(weekly_hours or 48), 96)),
+            salary_type=clean_text(salary_type, max_length=40) or payment_frequency.strip() or "Mensual",
+        )
+        db.add(profile)
     except IntegrityError:
         db.rollback()
-        return RedirectResponse("/app/employees?duplicate=1", status_code=303)
+        return RedirectResponse("/app/employees?form_error=El+código+o+la+cédula+ya+existe+en+esa+empresa", status_code=303)
     add_employee_event(db, employee, user, "Alta", "Alta de funcionario", f"Cargo: {employee.position}", employee.admission_date, employee.base_salary)
     db.add(SalaryHistory(
         employee_id=employee.id, previous_salary=0, new_salary=employee.base_salary,
@@ -2982,7 +3032,7 @@ def add_employee(
             event_date=employee.admission_date, due_date=None, payload={"employee_id": employee.id},
             created_by=user.email, source_key=f"employee:{employee.id}:entry:rei",
         )
-    write_audit(db, user, "crear", "funcionario", str(employee.id), employee.full_name)
+    write_audit(db, user, "crear", "funcionario", str(employee.id), f"Legajo {employee.employee_code} · {employee.full_name}")
     db.commit()
     return RedirectResponse(f"/app/employees/{employee.id}", status_code=303)
 
@@ -2992,34 +3042,73 @@ def edit_employee(
     employee_id: int,
     full_name: Annotated[str, Form()],
     position_name: Annotated[str, Form(alias="position")],
-    base_salary_raw: Annotated[str, Form(alias="base_salary")] = "",
-    email: Annotated[str, Form()] = "",
-    phone: Annotated[str, Form()] = "",
-    address: Annotated[str, Form()] = "",
-    notes: Annotated[str, Form()] = "",
+    employee_code: Annotated[str | None, Form()] = None,
+    document_number: Annotated[str | None, Form()] = None,
+    birth_date: Annotated[str | None, Form()] = None,
+    branch_id: Annotated[str | None, Form()] = None,
+    section_id: Annotated[str | None, Form()] = None,
+    contract_type: Annotated[str | None, Form()] = None,
+    payment_frequency: Annotated[str | None, Form()] = None,
+    base_salary_raw: Annotated[str | None, Form(alias="base_salary")] = None,
+    nationality: Annotated[str | None, Form()] = None,
+    marital_status: Annotated[str | None, Form()] = None,
+    position_category: Annotated[str | None, Form()] = None,
+    work_schedule: Annotated[str | None, Form()] = None,
+    shift: Annotated[str | None, Form()] = None,
+    weekly_hours: Annotated[str | None, Form()] = None,
+    salary_type: Annotated[str | None, Form()] = None,
+    ips_contributor: Annotated[str | None, Form()] = None,
+    email: Annotated[str | None, Form()] = None,
+    phone: Annotated[str | None, Form()] = None,
+    address: Annotated[str | None, Form()] = None,
+    notes: Annotated[str | None, Form()] = None,
     user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
     db: Session = Depends(get_db),
 ):
     employee = db.get(Employee, employee_id)
-    if not employee or employee.company_id not in company_ids_for_user(db, user):
-        raise HTTPException(404)
-    requested_salary = optional_int(base_salary_raw, field="salario")
-    # La edición general del legajo no puede omitir el flujo de aprobación salarial.
-    # Se tolera el campo en clientes antiguos, pero cualquier cambio se rechaza.
-    if requested_salary is not None and max(0, requested_salary) != employee.base_salary:
-        raise HTTPException(
-            409,
-            "El salario vigente solo puede modificarse mediante una solicitud salarial aprobada.",
-        )
-    employee.full_name = full_name.strip()
-    employee.position = position_name.strip()
-    employee.email = email.strip()
-    employee.phone = phone.strip()
-    employee.address = address.strip()
-    employee.notes = notes.strip()
+    if not employee or employee.company_id not in company_ids_for_user(db, user) or employee.status == "Archivado":
+        raise HTTPException(404, "Funcionario no encontrado.")
+    merged = _employee_api_record(db, employee)
+    submitted = {
+        "full_name": full_name,
+        "position": position_name,
+        "employee_code": employee_code,
+        "document_number": document_number,
+        "birth_date": birth_date,
+        "branch_id": branch_id,
+        "section_id": section_id,
+        "contract_type": contract_type,
+        "payment_frequency": payment_frequency,
+        "base_salary": base_salary_raw,
+        "nationality": nationality,
+        "marital_status": marital_status,
+        "position_category": position_category,
+        "work_schedule": work_schedule,
+        "shift": shift,
+        "weekly_hours": weekly_hours,
+        "salary_type": salary_type,
+        "ips_contributor": ips_contributor,
+        "email": email,
+        "phone": phone,
+        "address": address,
+        "notes": notes,
+    }
+    merged.update({key: value for key, value in submitted.items() if value is not None})
+    merged["company_id"] = employee.company_id
+    values = _validate_employee_payload(db, merged, existing=employee)
+    _check_employee_uniqueness(db, values, exclude_id=employee.id)
+    old_code = employee.employee_code
+    _apply_employee_payload(db, employee, values, user)
     add_employee_event(db, employee, user, "Actualización", "Datos del funcionario actualizados")
-    write_audit(db, user, "editar", "funcionario", str(employee.id), employee.full_name)
-    db.commit()
+    write_audit(
+        db, user, "editar", "funcionario", str(employee.id),
+        f"Legajo {old_code} → {employee.employee_code}; {employee.full_name}",
+    )
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409, "El código o la cédula ya está registrado en esa empresa.")
     return RedirectResponse(f"/app/employees/{employee.id}", status_code=303)
 
 
@@ -3041,6 +3130,8 @@ def employee_status(
         raise HTTPException(400, "Indicá la fecha efectiva de salida para inactivar o desvincular al funcionario.")
     employee.status = status_value
     employee.termination_date = termination_date if status_value != "Activo" else None
+    employee.updated_at = datetime.now(UTC)
+    employee.updated_by = user.email
     effective = employee.termination_date or date.today()
     add_employee_event(db, employee, user, "Estado", f"Estado actualizado a {status_value}", "", effective)
     if status_value != "Activo":
@@ -3058,6 +3149,27 @@ def employee_status(
     write_audit(db, user, "actualizar_estado", "funcionario", str(employee.id), status_value)
     db.commit()
     return RedirectResponse(f"/app/employees/{employee.id}", status_code=303)
+
+
+@app.post("/app/employees/{employee_id}/delete")
+def archive_employee_form(
+    employee_id: int,
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    employee = db.get(Employee, employee_id)
+    if not employee or employee.company_id not in company_ids_for_user(db, user):
+        raise HTTPException(404, "Funcionario no encontrado.")
+    employee.status = "Archivado"
+    employee.updated_at = datetime.now(UTC)
+    employee.updated_by = user.email
+    add_employee_event(
+        db, employee, user, "Archivo", "Legajo archivado",
+        "Registro archivado de forma lógica; se conservaron cálculos, nóminas y documentos.",
+    )
+    write_audit(db, user, "archivar", "funcionario", str(employee.id), f"Legajo {employee.employee_code} · {employee.full_name}")
+    db.commit()
+    return RedirectResponse("/app/employees?show_archived=true&archived=1", status_code=303)
 
 
 @app.get("/app/calendar", response_class=HTMLResponse)
