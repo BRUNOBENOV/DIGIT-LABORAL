@@ -55,6 +55,8 @@
       if (sourceRows.length < 3) return;
 
       table.dataset.uiEnhanced = "true";
+      const wrapper = table.closest(".table-wrap") || table.parentElement;
+      if (!wrapper || !wrapper.parentElement) return;
       const toolbar = document.createElement("div");
       toolbar.className = "ui-table-toolbar";
       const label = document.createElement("label");
@@ -69,7 +71,7 @@
       count.className = "ui-table-count";
       count.setAttribute("aria-live", "polite");
       toolbar.append(label, count);
-      table.parentElement.insertBefore(toolbar, table);
+      wrapper.parentElement.insertBefore(toolbar, wrapper);
 
       const rowCells = row => Array.from(row.cells).map(cell => safeText(cell)).join(" ");
       let visibleRows = sourceRows.slice();
@@ -106,7 +108,7 @@
         empty.className = "ui-empty-filter";
         empty.hidden = true;
         empty.textContent = "No hay filas que coincidan con la búsqueda.";
-        table.insertAdjacentElement("afterend", empty);
+        wrapper.insertAdjacentElement("afterend", empty);
       }
       const applyFilter = () => {
         const term = normalize(search.value);
