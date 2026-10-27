@@ -37,6 +37,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from .ai_service import generate_assistance
 from .auth import hash_password, verify_password
 from .labor_calculator import amount as round_gs, anniversary as labor_anniversary
+from .salary_history import salary_for_period
 from .config import settings
 from .database import Base, SessionLocal, apply_session_tenant_context, engine, postgres_rls_role_issues
 from .document_export import (
@@ -4375,6 +4376,9 @@ def create_payroll(
         date.fromisoformat(period + "-01")
     except ValueError:
         raise HTTPException(400, "Periodo inválido")
+    period_year, period_month = (int(part) for part in period.split("-"))
+    period_start = date(period_year, period_month, 1)
+    period_end = date(period_year, period_month, calendar.monthrange(period_year, period_month)[1])
     payroll = Payroll(company_id=company_id, period=period, notes=notes.strip(), created_by=user.email)
     db.add(payroll)
     try:
@@ -4383,16 +4387,35 @@ def create_payroll(
         db.rollback()
         existing = db.scalar(select(Payroll).where(Payroll.company_id == company_id, Payroll.period == period))
         return RedirectResponse(f"/app/payrolls/{existing.id}" if existing else "/app/payrolls", status_code=303)
-    employees = list(db.scalars(select(Employee).where(Employee.company_id == company_id, Employee.status == "Activo").order_by(Employee.full_name)))
+    employees = list(db.scalars(
+        select(Employee).where(
+            Employee.company_id == company_id,
+            Employee.status == "Activo",
+            Employee.admission_date <= period_end,
+        ).order_by(Employee.full_name)
+    ))
     ips_rate = get_parameter(db, "ips_employee_rate_general", 9) / 100
+    salary_review_warnings = []
     for employee in employees:
-        gross = employee.base_salary
+        gross, employee_warnings = salary_for_period(db, employee, period_start, period_end)
+        salary_review_warnings.extend(employee_warnings)
         ips = round_gs(Decimal(gross) * Decimal(str(ips_rate))) if employee.ips_contributor else 0
-        db.add(PayrollLine(payroll_id=payroll.id, employee_id=employee.id, base_salary=employee.base_salary, gross=gross, ips_employee=ips, total_discounts=ips, net=gross - ips, ips_base=gross if employee.ips_contributor else 0, ips_rate=round(ips_rate * 100, 2) if employee.ips_contributor else 0))
+        db.add(PayrollLine(
+            payroll_id=payroll.id, employee_id=employee.id, base_salary=gross, gross=gross,
+            ips_employee=ips, total_discounts=ips, net=gross - ips,
+            ips_base=gross if employee.ips_contributor else 0,
+            ips_rate=round(ips_rate * 100, 2) if employee.ips_contributor else 0,
+        ))
+    if salary_review_warnings:
+        review_block = (
+            "REVISIÓN MANUAL DE SALARIOS: revisá los casos indicados antes de cerrar la nómina.\n- "
+            + "\n- ".join(salary_review_warnings)
+        )
+        payroll.notes = "\n\n".join(
+            value for value in (payroll.notes.strip(), review_block) if value
+        )
     db.flush()
     recalculate_payroll(db, payroll)
-    period_year, period_month = (int(part) for part in period.split("-"))
-    period_end = date(period_year, period_month, calendar.monthrange(period_year, period_month)[1])
     payroll_lines = list(db.scalars(select(PayrollLine).where(PayrollLine.payroll_id == payroll.id)))
     for line in payroll_lines:
         ensure_compliance_event(
