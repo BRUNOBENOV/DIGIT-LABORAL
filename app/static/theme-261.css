@@ -218,8 +218,7 @@ body.app-body{
 .app-body .calculator-panel>label{color:#374151}
 .app-body .muted,
 .app-body .table-sub,
-.app-body .modal-intro,
-.app-body small{color:inherit}
+.app-body .modal-intro{color:#6B7280}
 .app-body .page-header p,
 .app-body .panel .muted,
 .app-body .table-sub,
