@@ -2594,8 +2594,13 @@ async def api_update_employee(
     if not employee or employee.company_id not in company_ids_for_user(db, user) or employee.status == "Archivado":
         raise HTTPException(404, "Funcionario no encontrado.")
     payload = await _json_object(request)
-    if "company_id" in payload and int(payload["company_id"]) != employee.company_id:
-        raise HTTPException(409, "La empresa de un legajo existente no se cambia desde la edición rápida.")
+    if "company_id" in payload:
+        try:
+            requested_company_id = int(payload["company_id"])
+        except (TypeError, ValueError):
+            raise HTTPException(422, "El identificador de empresa no es válido.")
+        if requested_company_id != employee.company_id:
+            raise HTTPException(409, "La empresa de un legajo existente no se cambia desde la edición rápida.")
     merged = _employee_api_record(db, employee)
     merged.update(payload)
     merged["company_id"] = employee.company_id
@@ -2717,6 +2722,7 @@ def employee_detail_page(
         request, "employee_detail.html", db, user, employee=employee, events=events, salaries=salaries,
         documents=documents, certificates=certificates, calculations=calculations, vacations=vacations,
         payroll_lines=payroll_lines, deadlines=deadlines,
+        employee_profile=_employee_profile(db, employee.id),
     )
 
 
@@ -2859,15 +2865,19 @@ def employee_import_confirm(
             employee.phone = data["phone"]
             employee.address = data["address"]
             employee.notes = data["notes"]
+            employee.updated_at = datetime.now(UTC)
+            employee.updated_by = user.email
             add_employee_event(db, employee, user, "Importación", "Datos actualizados por importación", f"Archivo: {preview.filename}")
             updated += 1
         else:
             employee = Employee(
-                company_id=company.id, full_name=data["full_name"], document_number=data["document_number"],
+                company_id=company.id, employee_code=_next_employee_code(db, company.id),
+                full_name=data["full_name"], document_number=data["document_number"],
                 birth_date=birth, position=data["position"], admission_date=admission,
                 contract_type=data["contract_type"], payment_frequency=data["payment_frequency"],
                 base_salary=data["base_salary"], ips_contributor=data["ips_contributor"],
                 email=data["email"], phone=data["phone"], address=data["address"], notes=data["notes"],
+                updated_at=datetime.now(UTC), updated_by=user.email,
             )
             db.add(employee)
             db.flush()
@@ -3002,6 +3012,8 @@ def add_employee(
     db.add(employee)
     try:
         db.flush()
+        if not 1 <= int(weekly_hours or 48) <= 96:
+            raise HTTPException(400, "Las horas semanales deben estar entre 1 y 96.")
         profile = EmployeeComplianceProfile(
             employee_id=employee.id,
             nationality=clean_text(nationality, max_length=80) or "Paraguaya",
@@ -3009,7 +3021,7 @@ def add_employee(
             position_category=clean_text(position_category, max_length=100),
             work_schedule=clean_text(work_schedule, max_length=120),
             shift=clean_text(shift, max_length=60) or "Diurno",
-            weekly_hours=max(1, min(int(weekly_hours or 48), 96)),
+            weekly_hours=int(weekly_hours or 48),
             salary_type=clean_text(salary_type, max_length=40) or payment_frequency.strip() or "Mensual",
         )
         db.add(profile)
