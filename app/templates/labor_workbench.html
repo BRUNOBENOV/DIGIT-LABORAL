@@ -26,7 +26,7 @@
 {% if private and employee and kind == 'salary' %}
 <p id="salary-history-hint" class="dl-caption" aria-live="polite">La sugerencia usa la vigencia registrada al inicio del mes. Si falta un salario vigente para ese período, verificá el importe manualmente; revisá también cambios ocurridos dentro del mes.</p>
 {% elif private and employee and kind == 'settlement' %}
-<p id="salary-history-hint" class="dl-caption" aria-live="polite">El salario se propone según la vigencia registrada a la fecha de egreso. Verificá el período y los componentes del promedio antes de emitir.</p>
+<p id="salary-history-hint" class="dl-caption" aria-live="polite">La sugerencia usa la última vigencia salarial no posterior a la fecha de egreso. Si no existe historial aplicable, verificá el importe manualmente y revisá los componentes del promedio.</p>
 {% endif %}
 <div class="dl-form-submit"><button class="dl-button" type="submit" data-keep-enabled="true">{{ 'Recalcular' if result else 'Calcular liquidación' }} <span aria-hidden="true">→</span></button><span>Revisá los conceptos antes de firmar.</span></div>
 </form>
