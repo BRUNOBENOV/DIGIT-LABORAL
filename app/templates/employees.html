@@ -109,7 +109,9 @@
       <label>Tipo de salario<select name="salary_type" id="employeeSalaryType"><option>Mensual</option><option>Quincenal</option><option>Semanal</option><option>Jornal</option></select></label>
       <label>Jornada / horario<input name="work_schedule" id="employeeWorkSchedule" maxlength="120" placeholder="Ej.: Lunes a viernes, 08:00–17:00"></label>
       <label>Turno<select name="shift" id="employeeShift"><option>Diurno</option><option>Nocturno</option><option>Rotativo</option><option>Mixto</option><option>Otro</option></select></label>
+      <label>Horas diarias<input type="number" name="daily_hours" id="employeeDailyHours" min="1" max="24" step="1" value="8" required></label>
       <label>Horas semanales<input type="number" name="weekly_hours" id="employeeWeeklyHours" min="1" max="96" step="1" value="48" required></label>
+      <label>Número IPS del funcionario<input type="text" name="ips_number" id="employeeIpsNumber" maxlength="80" inputmode="numeric" placeholder="Solo números"></label>
       <label>Aporte IPS<select name="ips_contributor" id="employeeIpsContributor"><option value="true" selected>Sí, aporta</option><option value="false">No aporta</option></select></label>
       <label class="span-2">Bonificaciones / condiciones especiales / observaciones<textarea name="notes" id="employeeNotes" rows="3" maxlength="5000"></textarea></label>
       <p class="span-2 employee-field-help" id="employeeSalaryNotice">El salario vigente de un legajo existente no puede cambiarse desde esta ficha; debe tramitarse mediante una solicitud salarial aprobada.</p>
@@ -157,11 +159,11 @@
   const fieldNames = [
     "full_name","document_number","birth_date","nationality","marital_status","phone","email","address",
     "branch_id","section_id","position","position_category","contract_type","payment_frequency",
-    "base_salary","salary_type","work_schedule","shift","weekly_hours","ips_contributor","notes"
+    "base_salary","salary_type","work_schedule","shift","weekly_hours","daily_hours","ips_number","ips_contributor","notes"
   ];
   const defaults = {
     nationality:"Paraguaya", contract_type:"Tiempo indefinido", payment_frequency:"Mensual",
-    salary_type:"Mensual", shift:"Diurno", weekly_hours:"48", ips_contributor:"true"
+    salary_type:"Mensual", shift:"Diurno", weekly_hours:"48", daily_hours:"8", ips_number:"", ips_contributor:"true"
   };
   let loadedCode = "";
   let loadedEmployeeId = null;
