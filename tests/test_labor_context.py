@@ -45,7 +45,7 @@ def test_context_persists_company_and_employee_across_modules():
         _login(client)
         companies_page = client.get("/app/companies")
         assert companies_page.status_code == 200
-        company_match = re.search(r'<option value="(\\d+)"', companies_page.text)
+        company_match = re.search(r'<option value="(\d+)"', companies_page.text)
         assert company_match, "La base de prueba debe incluir al menos una empresa."
         company_id = int(company_match.group(1))
 
