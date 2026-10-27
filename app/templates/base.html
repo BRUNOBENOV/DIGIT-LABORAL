@@ -66,6 +66,7 @@
     <button class="workspace-sidebar-backdrop" type="button" data-sidebar-backdrop aria-label="Cerrar menú"></button>
     <nav class="modern-mobile-nav workspace-sidebar" id="modernMobileNav" aria-label="Secciones de Digit Laboral">
       <div class="workspace-sidebar-label">MENÚ PRINCIPAL</div>
+      {% if user.role != 'superadmin' %}
       <form class="labor-context-panel" method="post" action="/app/context" data-labor-context>
         <div class="labor-context-title">Contexto de trabajo</div>
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -89,6 +90,7 @@
         <button type="submit">Aplicar a los módulos</button>
         <p>La selección se conserva al navegar. Los módulos completan los campos con datos guardados y respetan los permisos de acceso.</p>
       </form>
+      {% endif %}
       {% if user.role == 'superadmin' %}
         <a class="workspace-home-link {{ 'active' if active_path.startswith('/admin') else '' }}" href="/admin"><span class="workspace-home-symbol">⌂</span><span>Administración general</span></a>
       {% else %}
