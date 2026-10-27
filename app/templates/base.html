@@ -20,6 +20,7 @@
   <link rel="stylesheet" href="{{ url_for('static', path='certificate-premium.css') }}?v=20261024a">
   <link rel="stylesheet" href="{{ url_for('static', path='theme-261.css') }}?v=20261027a">
   <link rel="stylesheet" href="{{ url_for('static', path='maintenance-workspace-263.css') }}?v=20261027c">
+  <link rel="stylesheet" href="{{ url_for('static', path='ui-system-264.css') }}?v=20261027d">
 
   <style>
     .app-version-indicator{display:inline-flex;align-items:center;gap:7px;flex:0 0 auto;margin-left:auto;padding:7px 10px;border:1px solid #dce4f0;border-radius:9px;background:#f8faff;color:#53627a;font:650 .64rem/1.1 "Aptos","Segoe UI",Arial,sans-serif;white-space:nowrap;font-variant-numeric:tabular-nums}
@@ -140,7 +141,7 @@
       <div class="workspace-sidebar-bottom"><img class="workspace-sidebar-bottom-mark workspace-brand-image" src="/static/branding/digit-laboral-mark.webp?v=20261023a" alt=""><div><b class="official-wordmark"><span>Digit</span> Laboral</b><small>Gestión laboral de Paraguay</small></div></div>
       {% endif %}
     </nav>
-    <main class="main-content">{% block content %}{% endblock %}</main>
+    <main class="main-content">{% include "module_subnav.html" %}{% block content %}{% endblock %}</main>
   </div>
 {% else %}
   {% block public_content %}{% endblock %}
@@ -197,5 +198,6 @@
 })();
 </script>
 <script src="{{ url_for('static', path='maintenance-workspace-263.js') }}?v=20261027c" defer></script>
+<script src="{{ url_for('static', path='ui-system-264.js') }}?v=20261027d" defer></script>
 </body>
 </html>
