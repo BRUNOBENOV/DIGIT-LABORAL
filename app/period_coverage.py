@@ -142,7 +142,11 @@ def build_annual_coverage(
     distinct_salaries = sorted({item["base_salary"] for item in salary_history})
     changes = len(distinct_salaries) > 1
     all_closed = bool(rows) and closed_count == len(rows)
-    if year == today.year:
+    if not rows:
+        coverage_note = (
+            f"No hay períodos esperados para el ejercicio {year} según las fechas de ingreso y egreso registradas."
+        )
+    elif year == today.year:
         cutoff = MONTHS_ES[today.month - 1]
         if all_closed:
             coverage_note = (
