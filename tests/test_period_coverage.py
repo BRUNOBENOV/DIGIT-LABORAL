@@ -18,6 +18,9 @@ def test_current_year_does_not_expect_future_periods():
     assert expected_months(
         2026, date(2025, 6, 1), today=date(2026, 3, 5)
     ) == ["2026-01", "2026-02", "2026-03"]
+    assert expected_months(
+        2025, date(2026, 1, 1), today=date(2026, 3, 5)
+    ) == []
 
 
 def test_coverage_sums_only_closed_consistent_payrolls():
