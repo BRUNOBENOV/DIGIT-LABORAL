@@ -39,7 +39,7 @@
   .section-editor-form{display:grid;grid-template-columns:1fr 1.35fr;gap:12px}
   .section-editor-form label{display:grid;align-content:start;gap:6px;color:var(--text-secondary,#53627a);font-size:.78rem;font-weight:750}
   .section-editor-form .span-2{grid-column:1/-1}
-  .section-editor-form .field-help{font-size:.7rem;line-height:1.45;color:var(--text-secondary,#77849a);font-weight:500}
+  .section-editor-form .field-help{font-size:.7rem;line-height:1.45;color:var(--text-secondary,#77849a);font-weight:500}.section-editor-form .field-validation{min-height:1em;color:#d94754;font-size:.72rem;line-height:1.35;font-weight:700}
   .section-editor-form .form-actions{display:flex;gap:8px;justify-content:flex-end;grid-column:1/-1;margin-top:5px}
   .section-audit-detail{display:block;color:var(--text-secondary,#758198);font-size:.72rem;line-height:1.45}
   .section-role-note{margin:0 0 15px;padding:12px 14px;border:1px solid var(--border-color,#dce4ef);border-radius:10px;color:var(--text-secondary,#53627a);background:var(--panel-bg,#fff);font-size:.8rem;line-height:1.55}
@@ -179,10 +179,12 @@
       <label>Código Sección
         <input type="number" id="sectionEditorCode" min="1" step="1" required inputmode="numeric" placeholder="Ej.: 1">
         <span class="field-help">Número positivo, obligatorio y único en esta empresa.</span>
+        <span class="field-validation" id="sectionEditorCodeValidation" aria-live="polite"></span>
       </label>
       <label>Nombre Sección
         <input type="text" id="sectionEditorName" maxlength="140" required autocomplete="off" placeholder="Ej.: Administración">
         <span class="field-help">Máximo 140 caracteres.</span>
+        <span class="field-validation" id="sectionEditorNameValidation" aria-live="polite"></span>
       </label>
       <div class="span-2">
         <p id="sectionEditorFeedback" class="section-feedback" role="status" aria-live="polite"></p>
@@ -208,7 +210,10 @@
   const submitButton = document.getElementById("sectionEditorSubmit");
   const modal = document.getElementById("sectionEditorModal");
   const feedback = document.getElementById("sectionEditorFeedback");
+  const codeValidation = document.getElementById("sectionEditorCodeValidation");
+  const nameValidation = document.getElementById("sectionEditorNameValidation");
   const csrf = form.elements.namedItem("csrf_token").value;
+  let attemptedSubmit = false;
   const selectedCompanyId = "{{ selected_company_id or '' }}";
 
   function setFeedback(message, state) {
@@ -216,10 +221,37 @@
     feedback.className = "section-feedback" + (state ? " " + state : "");
   }
 
+  function validateCode() {
+    const raw = codeField.value.trim();
+    let message = "";
+    if (!raw) {
+      if (attemptedSubmit) message = "El código es obligatorio.";
+    } else if (!Number.isInteger(Number(raw)) || Number(raw) <= 0) {
+      message = "Ingresá un número entero mayor que cero.";
+    }
+    codeValidation.textContent = message;
+    return !message && !!raw;
+  }
+
+  function validateName() {
+    const name = nameField.value.trim();
+    let message = "";
+    if (!name) {
+      if (attemptedSubmit || nameField.value.length) message = "El nombre de la sección es obligatorio.";
+    } else if (name.length > 140) {
+      message = "El nombre no puede superar los 140 caracteres.";
+    }
+    nameValidation.textContent = message;
+    return !message && !!name;
+  }
+
   function resetForm() {
     idField.value = "";
     codeField.value = "";
     nameField.value = "";
+    attemptedSubmit = false;
+    codeValidation.textContent = "";
+    nameValidation.textContent = "";
     companyField.disabled = false;
     if (selectedCompanyId && Array.from(companyField.options).some(option => option.value === selectedCompanyId)) {
       companyField.value = selectedCompanyId;
@@ -230,6 +262,14 @@
   }
 
   document.getElementById("newSectionButton")?.addEventListener("click", resetForm);
+  codeField.addEventListener("input", function () {
+    validateCode();
+    if (feedback.classList.contains("error")) setFeedback("", "");
+  });
+  nameField.addEventListener("input", function () {
+    validateName();
+    if (feedback.classList.contains("error")) setFeedback("", "");
+  });
   document.querySelectorAll("[data-section-edit]").forEach(button => {
     button.addEventListener("click", function () {
       idField.value = button.dataset.sectionId;
@@ -237,6 +277,9 @@
       companyField.disabled = true;
       codeField.value = button.dataset.sectionCode || "";
       nameField.value = button.dataset.sectionName || "";
+      attemptedSubmit = false;
+      codeValidation.textContent = "";
+      nameValidation.textContent = "";
       document.getElementById("sectionEditorTitle").textContent = "Editar sección";
       submitButton.textContent = "Guardar cambios";
       setFeedback("", "");
@@ -245,15 +288,21 @@
 
   form.addEventListener("submit", async function (event) {
     event.preventDefault();
+    attemptedSubmit = true;
+    const codeIsValid = validateCode();
+    const nameIsValid = validateName();
     const code = Number(codeField.value);
     const name = nameField.value.trim();
-    if (!companyField.value || !Number.isInteger(code) || code <= 0) {
-      setFeedback("Ingresá un código numérico entero mayor que cero.", "error");
+    if (!companyField.value) {
+      setFeedback("Seleccioná una empresa.", "error");
+      companyField.focus();
+      return;
+    }
+    if (!codeIsValid) {
       codeField.focus();
       return;
     }
-    if (!name || name.length > 140) {
-      setFeedback("El nombre es obligatorio y no puede superar los 140 caracteres.", "error");
+    if (!nameIsValid) {
       nameField.focus();
       return;
     }
