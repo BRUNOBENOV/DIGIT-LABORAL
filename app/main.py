@@ -64,6 +64,7 @@ from .models import (
     Company,
     CompanyBranding,
     CompanyComplianceProfile,
+    CompanySection,
     ComplianceEvent,
     CompanyRequest,
     CalculationRecord,
@@ -707,6 +708,282 @@ def _apply_company_payload(db: Session, company: Company, values: dict) -> None:
     profile.department = values["department"]
     profile.economic_activity = values["economic_activity"]
     profile.legal_representative_document = values["legal_representative_document"]
+
+
+def _employee_profile(db: Session, employee_id: int) -> EmployeeComplianceProfile | None:
+    return db.scalar(
+        select(EmployeeComplianceProfile).where(EmployeeComplianceProfile.employee_id == employee_id)
+    )
+
+
+def _next_employee_code(db: Session, company_id: int) -> int:
+    """Choose a readable legajo number scoped to one company; the DB constraint resolves races."""
+    return int(db.scalar(
+        select(func.max(Employee.employee_code)).where(Employee.company_id == company_id)
+    ) or 0) + 1
+
+
+def _employee_api_record(db: Session, employee: Employee) -> dict:
+    profile = _employee_profile(db, employee.id)
+    return {
+        "id": employee.id,
+        "employee_code": employee.employee_code,
+        "company_id": employee.company_id,
+        "company_name": employee.company.legal_name if employee.company else "",
+        "branch_id": employee.branch_id,
+        "branch_name": employee.branch.name if employee.branch else "",
+        "section_id": employee.section_id,
+        "section_name": employee.section.name if employee.section else "",
+        "full_name": employee.full_name or "",
+        "document_number": employee.document_number or "",
+        "birth_date": employee.birth_date.isoformat() if employee.birth_date else None,
+        "marital_status": profile.marital_status if profile else "",
+        "nationality": profile.nationality if profile else "Paraguaya",
+        "position": employee.position or "",
+        "position_category": profile.position_category if profile else "",
+        "admission_date": employee.admission_date.isoformat() if employee.admission_date else None,
+        "termination_date": employee.termination_date.isoformat() if employee.termination_date else None,
+        "contract_type": employee.contract_type or "Tiempo indefinido",
+        "payment_frequency": employee.payment_frequency or "Mensual",
+        "base_salary": int(employee.base_salary or 0),
+        "ips_contributor": bool(employee.ips_contributor),
+        "salary_type": profile.salary_type if profile else employee.payment_frequency or "Mensual",
+        "work_schedule": profile.work_schedule if profile else "",
+        "shift": profile.shift if profile else "Diurno",
+        "weekly_hours": int(profile.weekly_hours if profile else 48),
+        "email": employee.email or "",
+        "phone": employee.phone or "",
+        "address": employee.address or "",
+        "status": employee.status or "Activo",
+        "notes": employee.notes or "",
+        "created_at": employee.created_at.isoformat() if employee.created_at else None,
+        "updated_at": employee.updated_at.isoformat() if employee.updated_at else None,
+        "updated_by": employee.updated_by or "",
+    }
+
+
+def _validate_employee_payload(
+    db: Session, payload: dict, existing: Employee | None = None
+) -> dict:
+    company_id = optional_int(payload.get("company_id"), field="empresa")
+    if not company_id:
+        raise HTTPException(422, "Seleccioná la empresa del funcionario.")
+    company = db.get(Company, company_id)
+    if not company or company.status == "Archivada":
+        raise HTTPException(404, "La empresa seleccionada no está disponible.")
+
+    raw_code = payload.get("employee_code", existing.employee_code if existing else None)
+    if raw_code in (None, "") and existing:
+        raw_code = existing.employee_code
+    if raw_code in (None, ""):
+        raise HTTPException(422, "El Código Legajo es obligatorio.")
+    try:
+        employee_code = int(str(raw_code).strip())
+    except (TypeError, ValueError):
+        raise HTTPException(422, "El Código Legajo debe ser numérico.")
+    if employee_code <= 0 or employee_code > 2_147_483_647:
+        raise HTTPException(422, "El Código Legajo debe ser un entero positivo.")
+
+    full_name = clean_text(payload.get("full_name", existing.full_name if existing else ""), max_length=180)
+    if not full_name:
+        raise HTTPException(422, "El nombre completo del funcionario es obligatorio.")
+    if len(full_name) > 180:
+        raise HTTPException(422, "El nombre completo no puede superar los 180 caracteres.")
+
+    document_number = normalize_document_number(
+        str(payload.get("document_number", existing.document_number if existing else "") or "")
+    )
+    if not document_number:
+        raise HTTPException(422, "La cédula o documento del funcionario es obligatorio.")
+    if len(document_number) > 40:
+        raise HTTPException(422, "La cédula no puede superar los 40 caracteres.")
+
+    position = clean_text(payload.get("position", existing.position if existing else ""), max_length=140)
+    if not position:
+        raise HTTPException(422, "El cargo es obligatorio.")
+
+    admission_raw = payload.get("admission_date", existing.admission_date if existing else None)
+    admission_date = optional_date(admission_raw, field="fecha de ingreso")
+    if not admission_date:
+        raise HTTPException(422, "La fecha de ingreso es obligatoria y debe ser válida.")
+
+    birth_date = optional_date(
+        payload.get("birth_date", existing.birth_date if existing else None),
+        field="fecha de nacimiento",
+    )
+    if birth_date and (birth_date >= admission_date or birth_date > date.today()):
+        raise HTTPException(422, "La fecha de nacimiento debe ser anterior al ingreso y no puede ser futura.")
+
+    termination_date = optional_date(
+        payload.get("termination_date", existing.termination_date if existing else None),
+        field="fecha de egreso",
+    )
+    if termination_date and termination_date < admission_date:
+        raise HTTPException(422, "La fecha de egreso no puede ser anterior a la fecha de ingreso.")
+
+    status_value = clean_text(payload.get("status", existing.status if existing else "Activo"), max_length=30)
+    if status_value not in {"Activo", "Inactivo", "Desvinculado", "Archivado"}:
+        raise HTTPException(422, "El estado seleccionado no es válido.")
+    if status_value in {"Inactivo", "Desvinculado"} and not termination_date:
+        raise HTTPException(422, "Indicá la fecha de egreso para un funcionario inactivo o desvinculado.")
+    if status_value == "Activo":
+        termination_date = None
+
+    base_salary_raw = payload.get("base_salary", existing.base_salary if existing else None)
+    if base_salary_raw in (None, ""):
+        raise HTTPException(422, "El salario convenido es obligatorio.")
+    try:
+        base_salary = int(str(base_salary_raw).strip())
+    except (TypeError, ValueError):
+        raise HTTPException(422, "El salario convenido debe ser un número entero en guaraníes.")
+    if base_salary < 0:
+        raise HTTPException(422, "El salario convenido no puede ser negativo.")
+    if existing and base_salary != int(existing.base_salary or 0):
+        raise HTTPException(409, "El salario vigente solo puede modificarse mediante una solicitud salarial aprobada.")
+
+    contract_type = clean_text(
+        payload.get("contract_type", existing.contract_type if existing else "Tiempo indefinido"),
+        max_length=80,
+    ) or "Tiempo indefinido"
+    payment_frequency = clean_text(
+        payload.get("payment_frequency", existing.payment_frequency if existing else "Mensual"),
+        max_length=40,
+    ) or "Mensual"
+
+    def parse_fk(name: str, old_value: int | None = None) -> int | None:
+        raw = payload.get(name, old_value)
+        value = optional_int(raw, field=name) if raw not in (None, "") else None
+        if value is not None and value <= 0:
+            raise HTTPException(422, f"El campo {name} debe ser positivo.")
+        return value
+
+    branch_id = parse_fk("branch_id", existing.branch_id if existing else None)
+    if branch_id is not None:
+        branch = db.get(Branch, branch_id)
+        if (
+            not branch
+            or branch.company_id != company_id
+            or (not branch.active and not (existing and existing.branch_id == branch_id))
+        ):
+            raise HTTPException(422, "La sucursal debe pertenecer a la empresa seleccionada y estar activa.")
+
+    section_id = parse_fk("section_id", existing.section_id if existing else None)
+    if section_id is not None:
+        section = db.get(CompanySection, section_id)
+        if (
+            not section
+            or section.company_id != company_id
+            or (not section.active and not (existing and existing.section_id == section_id))
+        ):
+            raise HTTPException(422, "La sección debe pertenecer a la empresa seleccionada y estar activa.")
+
+    email = clean_text(payload.get("email", existing.email if existing else ""), max_length=180)
+    if email and not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email):
+        raise HTTPException(422, "El correo electrónico no tiene un formato válido.")
+
+    def boolean_value(value, default=False) -> bool:
+        if value is None:
+            return default
+        if isinstance(value, bool):
+            return value
+        return str(value).strip().lower() in {"1", "true", "on", "yes", "si", "sí"}
+
+    profile = _employee_profile(db, existing.id) if existing else None
+    weekly_hours_raw = payload.get("weekly_hours", profile.weekly_hours if profile else 48)
+    try:
+        weekly_hours = int(weekly_hours_raw or 48)
+    except (TypeError, ValueError):
+        raise HTTPException(422, "Las horas semanales deben ser un número entero.")
+    if not 1 <= weekly_hours <= 96:
+        raise HTTPException(422, "Las horas semanales deben estar entre 1 y 96.")
+
+    values = {
+        "employee_code": employee_code,
+        "company_id": company_id,
+        "branch_id": branch_id,
+        "section_id": section_id,
+        "full_name": full_name,
+        "document_number": document_number,
+        "birth_date": birth_date,
+        "position": position,
+        "admission_date": admission_date,
+        "termination_date": termination_date,
+        "contract_type": contract_type,
+        "payment_frequency": payment_frequency,
+        "base_salary": base_salary,
+        "ips_contributor": boolean_value(
+            payload.get("ips_contributor"), existing.ips_contributor if existing else True
+        ),
+        "email": email,
+        "phone": clean_text(payload.get("phone", existing.phone if existing else ""), max_length=60),
+        "address": clean_text(payload.get("address", existing.address if existing else ""), max_length=240),
+        "status": status_value,
+        "notes": clean_text(payload.get("notes", existing.notes if existing else ""), max_length=5000),
+        "nationality": clean_text(
+            payload.get("nationality", profile.nationality if profile else "Paraguaya"), max_length=80
+        ) or "Paraguaya",
+        "marital_status": clean_text(
+            payload.get("marital_status", profile.marital_status if profile else ""), max_length=40
+        ),
+        "position_category": clean_text(
+            payload.get("position_category", profile.position_category if profile else ""), max_length=100
+        ),
+        "work_schedule": clean_text(
+            payload.get("work_schedule", profile.work_schedule if profile else ""), max_length=120
+        ),
+        "shift": clean_text(payload.get("shift", profile.shift if profile else "Diurno"), max_length=60) or "Diurno",
+        "weekly_hours": weekly_hours,
+        "salary_type": clean_text(
+            payload.get("salary_type", profile.salary_type if profile else payment_frequency), max_length=40
+        ) or payment_frequency,
+    }
+    if len(values["phone"]) > 60 or len(values["address"]) > 240:
+        raise HTTPException(422, "Revisá el largo del teléfono o la dirección.")
+    return values
+
+
+def _check_employee_uniqueness(
+    db: Session, values: dict, exclude_id: int | None = None
+) -> None:
+    code_query = select(Employee.id).where(
+        Employee.company_id == values["company_id"],
+        Employee.employee_code == values["employee_code"],
+    )
+    document_query = select(Employee).where(Employee.company_id == values["company_id"])
+    if exclude_id is not None:
+        code_query = code_query.where(Employee.id != exclude_id)
+        document_query = document_query.where(Employee.id != exclude_id)
+    if db.scalar(code_query) is not None:
+        raise HTTPException(409, "Ese Código Legajo ya existe dentro de la empresa.")
+    normalized_document = values["document_number"]
+    for current in db.scalars(document_query):
+        if normalize_document_number(current.document_number) == normalized_document:
+            raise HTTPException(409, "Ya existe un funcionario con esa cédula dentro de la empresa.")
+
+
+def _apply_employee_payload(
+    db: Session, employee: Employee, values: dict, user: User
+) -> None:
+    for field in (
+        "employee_code", "branch_id", "section_id", "full_name", "document_number",
+        "birth_date", "position", "admission_date", "termination_date", "contract_type",
+        "payment_frequency", "base_salary", "ips_contributor", "email", "phone", "address",
+        "status", "notes",
+    ):
+        setattr(employee, field, values[field])
+    employee.updated_at = datetime.now(UTC)
+    employee.updated_by = user.email
+    profile = _employee_profile(db, employee.id)
+    if profile is None:
+        profile = EmployeeComplianceProfile(employee_id=employee.id)
+        db.add(profile)
+    profile.nationality = values["nationality"]
+    profile.marital_status = values["marital_status"]
+    profile.position_category = values["position_category"]
+    profile.work_schedule = values["work_schedule"]
+    profile.shift = values["shift"]
+    profile.weekly_hours = values["weekly_hours"]
+    profile.salary_type = values["salary_type"]
 
 
 async def _json_object(request: Request) -> dict:
@@ -2020,6 +2297,324 @@ def add_branch(
     write_audit(db, user, "crear", "sucursal", str(branch.id), branch.name)
     db.commit()
     return RedirectResponse(f"/app/companies/{company_id}", status_code=303)
+
+
+@app.get("/api/sections")
+def api_list_company_sections(
+    company_id: int,
+    include_inactive: bool = False,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    company = company_allowed(db, user, company_id)
+    query = select(CompanySection).where(CompanySection.company_id == company.id)
+    if not include_inactive:
+        query = query.where(CompanySection.active.is_(True))
+    sections = list(db.scalars(query.order_by(CompanySection.section_code, CompanySection.name)))
+    return {
+        "items": [
+            {
+                "id": item.id,
+                "company_id": item.company_id,
+                "section_code": item.section_code,
+                "name": item.name,
+                "active": item.active,
+                "updated_at": item.updated_at.isoformat() if item.updated_at else None,
+                "updated_by": item.updated_by or "",
+            }
+            for item in sections
+        ]
+    }
+
+
+@app.post("/api/sections", status_code=201)
+async def api_create_company_section(
+    request: Request,
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    payload = await _json_object(request)
+    company_id = optional_int(payload.get("company_id"), field="empresa")
+    if not company_id:
+        raise HTTPException(422, "Seleccioná una empresa para la sección.")
+    company = company_allowed(db, user, company_id)
+    if company.status == "Archivada":
+        raise HTTPException(409, "No se pueden agregar secciones a una empresa archivada.")
+    try:
+        section_code = int(str(payload.get("section_code", "")).strip())
+    except (TypeError, ValueError):
+        raise HTTPException(422, "El código de sección es obligatorio y debe ser numérico.")
+    if section_code <= 0:
+        raise HTTPException(422, "El código de sección debe ser positivo.")
+    name = clean_text(payload.get("name", ""), max_length=140)
+    if not name:
+        raise HTTPException(422, "El nombre de la sección es obligatorio.")
+    existing = list(db.scalars(select(CompanySection).where(CompanySection.company_id == company.id)))
+    if any(item.section_code == section_code for item in existing):
+        raise HTTPException(409, "Ese código de sección ya existe en la empresa.")
+    if any(item.name.casefold() == name.casefold() for item in existing):
+        raise HTTPException(409, "Ya existe una sección con ese nombre en la empresa.")
+    section = CompanySection(
+        company_id=company.id,
+        section_code=section_code,
+        name=name,
+        active=True,
+        updated_by=user.email,
+        updated_at=datetime.now(UTC),
+    )
+    db.add(section)
+    try:
+        db.flush()
+        write_audit(db, user, "crear", "seccion", str(section.id), f"{section.section_code} · {section.name}")
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(409, "El código o nombre de sección ya está registrado.") from exc
+    return {
+        "id": section.id, "company_id": section.company_id, "section_code": section.section_code,
+        "name": section.name, "active": section.active,
+        "updated_at": section.updated_at.isoformat() if section.updated_at else None,
+        "updated_by": section.updated_by,
+    }
+
+
+@app.put("/api/sections/{section_id}")
+async def api_update_company_section(
+    section_id: int,
+    request: Request,
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    section = db.get(CompanySection, section_id)
+    if not section:
+        raise HTTPException(404, "Sección no encontrada.")
+    company_allowed(db, user, section.company_id)
+    payload = await _json_object(request)
+    try:
+        section_code = int(str(payload.get("section_code", section.section_code or "")).strip())
+    except (TypeError, ValueError):
+        raise HTTPException(422, "El código de sección debe ser numérico.")
+    name = clean_text(payload.get("name", section.name), max_length=140)
+    if section_code <= 0 or not name:
+        raise HTTPException(422, "El código y nombre de la sección son obligatorios.")
+    existing = list(db.scalars(select(CompanySection).where(
+        CompanySection.company_id == section.company_id, CompanySection.id != section.id
+    )))
+    if any(item.section_code == section_code for item in existing):
+        raise HTTPException(409, "Ese código de sección ya existe en la empresa.")
+    if any(item.name.casefold() == name.casefold() for item in existing):
+        raise HTTPException(409, "Ya existe una sección con ese nombre en la empresa.")
+    section.section_code = section_code
+    section.name = name
+    if "active" in payload:
+        section.active = str(payload["active"]).strip().lower() in {"true", "1", "yes", "on"}
+    section.updated_by = user.email
+    section.updated_at = datetime.now(UTC)
+    write_audit(db, user, "editar", "seccion", str(section.id), f"{section.section_code} · {section.name}")
+    db.commit()
+    return {
+        "id": section.id, "company_id": section.company_id, "section_code": section.section_code,
+        "name": section.name, "active": section.active,
+        "updated_at": section.updated_at.isoformat() if section.updated_at else None,
+        "updated_by": section.updated_by,
+    }
+
+
+@app.delete("/api/sections/{section_id}")
+def api_archive_company_section(
+    section_id: int,
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    section = db.get(CompanySection, section_id)
+    if not section:
+        raise HTTPException(404, "Sección no encontrada.")
+    company_allowed(db, user, section.company_id)
+    section.active = False
+    section.updated_by = user.email
+    section.updated_at = datetime.now(UTC)
+    write_audit(db, user, "archivar", "seccion", str(section.id), f"{section.section_code} · {section.name}")
+    db.commit()
+    return {"ok": True, "id": section.id, "active": False}
+
+
+@app.get("/api/employees")
+def api_list_employees(
+    q: str = "",
+    company_id: int | None = None,
+    section_id: int | None = None,
+    status_value: str = "",
+    include_archived: bool = False,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    company_ids = company_ids_for_user(db, user)
+    query = select(Employee).where(Employee.company_id.in_(company_ids)) if company_ids else select(Employee).where(False)
+    query = query.join(Company, Company.id == Employee.company_id).where(Company.status != "Archivada")
+    if company_id is not None:
+        if company_id not in company_ids:
+            raise HTTPException(404, "Empresa no encontrada.")
+        query = query.where(Employee.company_id == company_id)
+    if section_id is not None:
+        query = query.where(Employee.section_id == section_id)
+    if status_value:
+        if status_value not in {"Activo", "Inactivo", "Desvinculado", "Archivado"}:
+            raise HTTPException(422, "El estado seleccionado no es válido.")
+        query = query.where(Employee.status == status_value)
+    elif not include_archived:
+        query = query.where(Employee.status != "Archivado")
+    if q.strip():
+        term = f"%{q.strip()}%"
+        query = query.where(or_(
+            Employee.full_name.ilike(term),
+            Employee.document_number.ilike(term),
+            Employee.position.ilike(term),
+            func.cast(Employee.employee_code, String).ilike(term),
+        ))
+    employees = list(db.scalars(query.order_by(Employee.full_name)))
+    return {"items": [_employee_api_record(db, item) for item in employees], "count": len(employees)}
+
+
+@app.get("/api/employees/by-code/{employee_code}")
+def api_employee_by_code(
+    employee_code: int,
+    company_id: int | None = None,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    if employee_code <= 0:
+        raise HTTPException(422, "El Código Legajo debe ser positivo.")
+    if company_id is None:
+        raise HTTPException(422, "Seleccioná la empresa para consultar el Código Legajo.")
+    company = company_allowed(db, user, company_id)
+    if company.status == "Archivada":
+        raise HTTPException(404, "La empresa seleccionada está archivada.")
+    employee = db.scalar(select(Employee).where(
+        Employee.company_id == company.id,
+        Employee.employee_code == employee_code,
+        Employee.status != "Archivado",
+    ))
+    if not employee:
+        raise HTTPException(404, "No se encontró un funcionario con ese código en la empresa seleccionada.")
+    return _employee_api_record(db, employee)
+
+
+@app.get("/api/employees/{employee_id}")
+def api_employee_by_id(
+    employee_id: int,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    employee = db.get(Employee, employee_id)
+    if not employee or employee.company_id not in company_ids_for_user(db, user) or employee.status == "Archivado":
+        raise HTTPException(404, "Funcionario no encontrado.")
+    return _employee_api_record(db, employee)
+
+
+@app.post("/api/employees", status_code=201)
+async def api_create_employee(
+    request: Request,
+    user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
+    db: Session = Depends(get_db),
+):
+    payload = await _json_object(request)
+    company_id = optional_int(payload.get("company_id"), field="empresa")
+    if not company_id:
+        raise HTTPException(422, "Seleccioná la empresa del funcionario.")
+    company = company_allowed(db, user, company_id)
+    if company.status == "Archivada":
+        raise HTTPException(409, "No se pueden agregar funcionarios a una empresa archivada.")
+    values = _validate_employee_payload(db, payload)
+    _check_employee_uniqueness(db, values)
+    employee = Employee(company_id=company.id, created_at=datetime.now(UTC), updated_at=datetime.now(UTC))
+    db.add(employee)
+    try:
+        db.flush()
+        _apply_employee_payload(db, employee, values, user)
+        add_employee_event(
+            db, employee, user, "Alta", "Alta de funcionario",
+            f"Cargo: {employee.position}", employee.admission_date, employee.base_salary,
+        )
+        db.add(SalaryHistory(
+            employee_id=employee.id, previous_salary=0, new_salary=employee.base_salary,
+            effective_from=employee.admission_date, reason="Salario inicial", created_by=user.email,
+        ))
+        ensure_compliance_event(
+            db, company_id=employee.company_id, employee_id=employee.id, branch_id=employee.branch_id,
+            authority="REOP", event_type="Entrada", event_date=employee.admission_date, due_date=None,
+            payload={"employee_id": employee.id}, created_by=user.email,
+            source_key=f"employee:{employee.id}:entry:reop",
+        )
+        if employee.ips_contributor:
+            ensure_compliance_event(
+                db, company_id=employee.company_id, employee_id=employee.id, branch_id=employee.branch_id,
+                authority="REI", event_type="Entrada", event_date=employee.admission_date, due_date=None,
+                payload={"employee_id": employee.id}, created_by=user.email,
+                source_key=f"employee:{employee.id}:entry:rei",
+            )
+        write_audit(db, user, "crear", "funcionario", str(employee.id), f"Legajo {employee.employee_code} · {employee.full_name}")
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(409, "El Código Legajo o la cédula ya está registrado en esa empresa.") from exc
+    db.refresh(employee)
+    return _employee_api_record(db, employee)
+
+
+@app.put("/api/employees/{employee_id}")
+async def api_update_employee(
+    employee_id: int,
+    request: Request,
+    user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
+    db: Session = Depends(get_db),
+):
+    employee = db.get(Employee, employee_id)
+    if not employee or employee.company_id not in company_ids_for_user(db, user) or employee.status == "Archivado":
+        raise HTTPException(404, "Funcionario no encontrado.")
+    payload = await _json_object(request)
+    if "company_id" in payload and int(payload["company_id"]) != employee.company_id:
+        raise HTTPException(409, "La empresa de un legajo existente no se cambia desde la edición rápida.")
+    merged = _employee_api_record(db, employee)
+    merged.update(payload)
+    merged["company_id"] = employee.company_id
+    values = _validate_employee_payload(db, merged, existing=employee)
+    _check_employee_uniqueness(db, values, exclude_id=employee.id)
+    old_code = employee.employee_code
+    _apply_employee_payload(db, employee, values, user)
+    add_employee_event(db, employee, user, "Actualización", "Datos del funcionario actualizados")
+    write_audit(
+        db, user, "editar", "funcionario", str(employee.id),
+        f"Legajo {old_code} → {employee.employee_code}; {employee.full_name}",
+    )
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(409, "El código o la cédula ya está registrado en esa empresa.") from exc
+    db.refresh(employee)
+    return _employee_api_record(db, employee)
+
+
+@app.delete("/api/employees/{employee_id}")
+def api_archive_employee(
+    employee_id: int,
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    employee = db.get(Employee, employee_id)
+    if not employee or employee.company_id not in company_ids_for_user(db, user):
+        raise HTTPException(404, "Funcionario no encontrado.")
+    if employee.status != "Archivado":
+        employee.status = "Archivado"
+        employee.updated_at = datetime.now(UTC)
+        employee.updated_by = user.email
+        add_employee_event(
+            db, employee, user, "Archivo", "Legajo archivado",
+            "Registro archivado de forma lógica; se conservaron cálculos, nóminas y documentos.",
+        )
+        write_audit(db, user, "archivar", "funcionario", str(employee.id), f"Legajo {employee.employee_code} · {employee.full_name}")
+        db.commit()
+    return {"ok": True, "id": employee.id, "employee_code": employee.employee_code, "status": employee.status}
 
 
 @app.get("/app/employees", response_class=HTMLResponse)
