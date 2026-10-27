@@ -1,0 +1,52 @@
+{% from "components/ui.html" import tab_nav %}
+{% set p = active_path or '' %}
+{% set query_type = request.query_params.get('tipo', '') %}
+
+{% if p.startswith('/app/companies') or p.startswith('/app/employees') %}
+  {# Estos módulos ya incorporan navegación propia para el directorio y el expediente. #}
+{% elif p.startswith('/app/users') or p.startswith('/app/parameters') %}
+  {% if user.role == 'administrador' %}
+    {{ tab_nav('Subsecciones de mantenimientos', [
+      {'label':'Empresas', 'href':'/app/companies', 'active':false},
+      {'label':'Funcionarios', 'href':'/app/employees', 'active':false},
+      {'label':'Usuarios y permisos', 'href':'/app/users', 'active':p.startswith('/app/users')},
+      {'label':'Parámetros', 'href':'/app/parameters', 'active':p.startswith('/app/parameters')}
+    ]) }}
+  {% endif %}
+{% elif p.startswith('/app/calculations') or p.startswith('/app/payrolls') or p.startswith('/app/liquidaciones') or p.startswith('/app/vacations') or p.startswith('/app/aguinaldo') %}
+  {{ tab_nav('Subsecciones de cálculo laboral', [
+    {'label':'Calculadoras', 'href':'/app/calculations', 'active':p == '/app/calculations' and not query_type},
+    {'label':'Salarios', 'href':'/app/calculations?tipo=salary', 'active':p == '/app/calculations' and query_type == 'salary'},
+    {'label':'Horas y recargos', 'href':'/app/calculations?tipo=hours', 'active':p == '/app/calculations' and query_type == 'hours'},
+    {'label':'Aguinaldo', 'href':'/app/calculations?tipo=aguinaldo', 'active':p == '/app/calculations' and query_type == 'aguinaldo'},
+    {'label':'Vacaciones', 'href':'/app/calculations?tipo=vacation', 'active':p == '/app/calculations' and query_type == 'vacation'},
+    {'label':'Preaviso', 'href':'/app/calculations?tipo=notice', 'active':p == '/app/calculations' and query_type == 'notice'},
+    {'label':'Cobertura de períodos', 'href':'/app/calculations/periodos', 'active':p.startswith('/app/calculations/periodos')},
+    {'label':'Liquidación final', 'href':'/app/liquidaciones?tipo=settlement', 'active':p.startswith('/app/liquidaciones')},
+    {'label':'Liquidaciones mensuales', 'href':'/app/payrolls', 'active':p.startswith('/app/payrolls')},
+    {'label':'Vacaciones registradas', 'href':'/app/vacations', 'active':p.startswith('/app/vacations')},
+    {'label':'Registro de aguinaldos', 'href':'/app/aguinaldo', 'active':p.startswith('/app/aguinaldo')}
+  ]) }}
+{% elif p.startswith('/app/reports') or p.startswith('/app/compliance') or p.startswith('/app/audit') %}
+  {{ tab_nav('Subsecciones de informes', [
+    {'label':'Informes laborales', 'href':'/app/reports', 'active':p.startswith('/app/reports')},
+    {'label':'Cumplimiento REI / REOP', 'href':'/app/compliance', 'active':p.startswith('/app/compliance')},
+    {'label':'Auditoría', 'href':'/app/audit', 'active':p.startswith('/app/audit')}
+  ]) }}
+{% elif p.startswith('/app/certificates') or p.startswith('/app/documents') %}
+  {{ tab_nav('Subsecciones de certificados y documentos', [
+    {'label':'Certificados laborales', 'href':'/app/certificates', 'active':p == '/app/certificates'},
+    {'label':'Certificados oficiales · MTESS / IPS', 'href':'/app/certificates/official', 'active':p.startswith('/app/certificates/official')},
+    {'label':'Archivo documental', 'href':'/app/documents', 'active':p.startswith('/app/documents')}
+  ]) }}
+{% elif p.startswith('/app/requests') or p.startswith('/app/calendar') or p.startswith('/app/notifications') or p.startswith('/app/labor-code') or p.startswith('/app/security') or p.startswith('/app/ai') or p.startswith('/app/guia') %}
+  {{ tab_nav('Subsecciones de utilitarios', [
+    {'label':'Solicitudes y trámites', 'href':'/app/requests', 'active':p.startswith('/app/requests')},
+    {'label':'Agenda laboral', 'href':'/app/calendar', 'active':p.startswith('/app/calendar')},
+    {'label':'Notificaciones', 'href':'/app/notifications', 'active':p.startswith('/app/notifications')},
+    {'label':'Código Laboral', 'href':'/app/labor-code', 'active':p.startswith('/app/labor-code')},
+    {'label':'Asistente laboral', 'href':'/app/ai', 'active':p.startswith('/app/ai')},
+    {'label':'Seguridad', 'href':'/app/security', 'active':p.startswith('/app/security')},
+    {'label':'Guía de uso', 'href':'/app/guia', 'active':p.startswith('/app/guia')}
+  ]) }}
+{% endif %}
