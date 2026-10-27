@@ -1,4 +1,13 @@
 # Registro de cambios
+## 2.6.2 — Renovación visual azul y accesible
+
+- Unifica la paleta del espacio autenticado en azul marino `#0D1B2A`, azul medio `#1E40AF`, azul de acción `#2563EB`, fondo `#F9FAFB`, superficies blancas y texto `#111827`.
+- Consolida la sidebar oscura y mantiene la navegación activa, los grupos y sus estados legibles en escritorio y móvil.
+- Unifica botones, paneles, tarjetas, tablas, formularios y modales con bordes neutros, radios consistentes y sombras discretas.
+- Refuerza el foco visible para teclado, contraste, placeholders y mensajes secundarios.
+- Mantiene Inter como tipografía principal con familias de respaldo del sistema.
+- Carga los estilos desde una hoja de diseño global para facilitar ajustes futuros sin reescribir cada módulo.
+
 
 ## 2.6.1 — Mantenimiento de funcionarios y legajos
 
@@ -9,7 +18,7 @@
 - Registro del usuario y fecha de última modificación.
 - Endpoints REST autenticados para consulta, alta, edición y archivo lógico de funcionarios y secciones; política RLS por estudio para la nueva tabla.
 - Importaciones nuevas asignan Código Legajo. Las modificaciones salariales continúan sujetas a aprobación.
-- Esta versión está en una rama de trabajo y requiere CI y verificación de despliegue antes de declararse publicada.
+- La versión 2.6.1 se integró en main y fue desplegada en Render el 27-10-2026 tras superar la suite de CI.
 
 
 ## 2.6.0 — 27-10-2026

@@ -1,0 +1,251 @@
+/* DigIT-Laboral 2.6.2 — Blue workspace design system
+   Scoped to the authenticated workspace so public/marketing pages keep their own layout. */
+:root{
+  --navy:#0D1B2A;
+  --blue:#1E40AF;
+  --bright:#2563EB;
+  --sky:#EFF6FF;
+  --ink:#111827;
+  --muted:#6B7280;
+  --line:#E5E7EB;
+  --soft:#F9FAFB;
+  --white:#FFFFFF;
+  --shadow:0 2px 8px rgba(17,24,39,.08);
+  --modern-navy:#0D1B2A;
+  --modern-blue:#1E40AF;
+  --modern-blue-2:#2563EB;
+  --modern-soft:#F9FAFB;
+  --modern-line:#E5E7EB;
+  --modern-text:#111827;
+  --modern-muted:#6B7280;
+  --modern-shadow:0 2px 8px rgba(17,24,39,.08);
+  --premium-navy:#0D1B2A;
+  --premium-blue:#1E40AF;
+  --premium-bright:#2563EB;
+  --premium-soft:#F9FAFB;
+  --premium-line:#E5E7EB;
+  --premium-shadow:0 2px 8px rgba(17,24,39,.08);
+  --exp-ink:#111827;
+  --exp-muted:#6B7280;
+  --exp-line:#E5E7EB;
+  --exp-canvas:#F9FAFB;
+  --exp-surface:#FFFFFF;
+  --exp-primary:#2563EB;
+  --exp-primary-dark:#1D4ED8;
+  --exp-primary-soft:#EFF6FF;
+  --exp-shadow:0 2px 8px rgba(17,24,39,.08);
+  --exp-shadow-hover:0 8px 20px rgba(17,24,39,.12);
+  --text-primary:#111827;
+  --text-secondary:#6B7280;
+  --input-bg:#FFFFFF;
+  color-scheme:light;
+}
+
+/* Type and work canvas */
+body.app-body{
+  background:#F9FAFB!important;
+  color:#111827;
+  font-family:Inter,Roboto,"Nunito Sans",ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  font-size:16px;
+  line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;
+}
+.app-body .app-shell,
+.app-body .main-content{background:#F9FAFB!important;color:#111827}
+.app-body .main-content{padding-top:26px}
+.app-body .page-header{
+  border:1px solid #E5E7EB!important;
+  border-left:4px solid #1E40AF!important;
+  border-radius:8px!important;
+  background:#FFFFFF!important;
+  box-shadow:0 2px 8px rgba(17,24,39,.06)!important;
+}
+.app-body .page-header h1{color:#111827!important;font-size:clamp(1.75rem,2.25vw,2rem);font-weight:700;letter-spacing:-.035em}
+.app-body .page-header p{color:#6B7280!important;font-size:1rem}
+.app-body .page-header .eyebrow,
+.app-body .page-header .eyebrow-label{background:#EFF6FF!important;color:#1E40AF!important}
+.app-body .eyebrow,.app-body .eyebrow-label{color:#1E40AF}
+.app-body h1,.app-body h2,.app-body h3,.app-body h4{color:#111827}
+
+/* Fixed-feeling dark navy navigation; bright blue marks the current location. */
+.app-body .modern-topbar{
+  background:#FFFFFF!important;
+  border-bottom:1px solid #E5E7EB!important;
+  box-shadow:0 1px 4px rgba(17,24,39,.045)!important;
+}
+.app-body .modern-brand-copy b{color:#111827!important}
+.app-body .modern-brand-copy small{color:#6B7280!important}
+.app-body .modern-mobile-nav.workspace-sidebar{
+  background:#0D1B2A!important;
+  border-right:1px solid #203347!important;
+  box-shadow:4px 0 18px rgba(13,27,42,.10)!important;
+  color:#FFFFFF!important;
+}
+.app-body .workspace-sidebar-label{color:#A9B8C9!important}
+.app-body .workspace-home-link{color:#E5EDF7!important;border-color:transparent!important}
+.app-body .workspace-home-link:hover,
+.app-body .workspace-home-link.active{
+  background:#172B40!important;border-color:#2C435D!important;color:#FFFFFF!important;
+}
+.app-body .workspace-home-symbol{background:#1A2D42!important;color:#C7D8EC!important}
+.app-body .workspace-home-link.active .workspace-home-symbol{background:#2563EB!important;color:#FFFFFF!important}
+.app-body .workspace-nav-group{background:#122537!important;border-color:#24394D!important}
+.app-body .workspace-nav-group[open]{background:#152C42!important;border-color:#34506D!important;box-shadow:0 4px 14px rgba(0,0,0,.12)!important}
+.app-body .workspace-nav-group>summary{color:#E5EDF7!important}
+.app-body .workspace-nav-group>summary:hover,
+.app-body .workspace-nav-group[open]>summary{background:#1B344E!important;color:#FFFFFF!important}
+.app-body .workspace-group-symbol{background:#1A2D42!important;border-color:#344B63!important;color:#D0DEEF!important}
+.app-body .workspace-nav-group[open] .workspace-group-symbol{background:#1E40AF!important;border-color:#3B82F6!important;color:#FFFFFF!important}
+.app-body .workspace-submenu{border-left-color:#38516C!important}
+.app-body .workspace-nav-link{color:#C3D0E0!important;border-color:transparent!important}
+.app-body .workspace-nav-link:hover{background:#1A3048!important;color:#FFFFFF!important}
+.app-body .workspace-nav-link.active{
+  background:#1E40AF!important;border-color:#3B82F6!important;
+  box-shadow:inset 3px 0 #93C5FD!important;color:#FFFFFF!important;font-weight:800!important;
+}
+.app-body .workspace-nav-link .notification-count{background:#93C5FD!important;color:#0D1B2A!important}
+.app-body .workspace-sidebar-bottom{border-top-color:#2B4157!important;color:#C3D0E0!important}
+.app-body .workspace-sidebar-bottom b{color:#FFFFFF!important}
+.app-body .workspace-sidebar-bottom small{color:#A9B8C9!important}
+.app-body .workspace-sidebar-bottom-mark.workspace-brand-image{border-color:#344B63!important;background:#FFFFFF!important}
+.app-body .workspace-sidebar a:focus-visible,
+.app-body .workspace-sidebar summary:focus-visible{outline:3px solid #93C5FD!important;outline-offset:2px}
+.app-body .workspace-sidebar-backdrop{background:rgba(13,27,42,.55)!important}
+
+/* Consistent white cards, restrained borders and low-elevation shadows. */
+.app-body .panel,
+.app-body .v23-card,
+.app-body .company-card,
+.app-body .request-card,
+.app-body .parameter-grid article,
+.app-body .home-stat,
+.app-body .home-module-card,
+.app-body .metrics-grid article,
+.app-body .table-card,
+.app-body .quick-panel,
+.app-body .system-panel,
+.app-body .calculator-panel,
+.app-body .certificate-type-menu,
+.app-body .certificate-form-card,
+.app-body .certificate-preview-shell,
+.app-body .calculation-context,
+.app-body .report-filter-panel{
+  background:#FFFFFF;
+  border-color:#E5E7EB;
+  border-radius:8px;
+  box-shadow:0 2px 8px rgba(17,24,39,.06);
+}
+.app-body .panel{padding:20px}
+.app-body .panel-head{border-bottom-color:#E5E7EB}
+.app-body .panel-head h2,
+.app-body .panel h2,
+.app-body .v23-card-head h2{color:#111827!important;font-size:1.25rem;font-weight:650}
+.app-body .home-module-heading h3{color:#111827!important;font-size:1.125rem;font-weight:650}
+.app-body .form-grid label,
+.app-body .form-grid .field-label,
+.app-body .search-form label,
+.app-body .calculator-panel>label{font-size:.875rem;font-weight:600}
+.app-body .panel-head>div>span,
+.app-body .panel-head span,
+.app-body .v23-card-head .eyebrow-label{color:#6B7280}
+.app-body .home-module-card{border-top-color:#1E40AF!important}
+.app-body .home-module-heading{background:#F9FAFB!important;border-bottom-color:#E5E7EB!important}
+.app-body .home-module-number,
+.app-body .home-onboarding-number,
+.app-body .home-module-number{background:#1E40AF!important;color:#FFFFFF!important;border-color:#1E40AF!important}
+.app-body .home-stat{border-top-color:#2563EB!important}
+.app-body .home-stat>span,
+.app-body .home-stat em,
+.app-body .home-stat small{color:#6B7280!important}
+.app-body .home-stat>b{color:#111827!important}
+.app-body .home-welcome{background:#FFFFFF!important;border-color:#E5E7EB!important}
+.app-body .home-welcome h1{color:#111827!important}
+.app-body .home-module-links>a{border-top-color:#E5E7EB!important}
+.app-body .home-module-links>a:hover{background:#EFF6FF!important}
+.app-body .company-action-strip a{background:#EFF6FF!important;border-left-color:#1E40AF!important}
+.app-body .metrics-grid article{background:#FFFFFF!important;border-top-color:#2563EB!important}
+.app-body .metrics-grid article>span{color:#6B7280!important}
+.app-body .modal-card{
+  background:#FFFFFF!important;border-color:#E5E7EB!important;border-radius:12px!important;
+  box-shadow:0 16px 48px rgba(13,27,42,.20)!important;
+}
+.app-body .modal-card h2{color:#111827!important}
+.app-body .table-panel>.panel-head{background:#F9FAFB!important;border-bottom-color:#E5E7EB!important}
+.app-body table thead th,
+.app-body thead th,
+.app-body table th{background:#F3F4F6!important;color:#374151!important;border-bottom-color:#E5E7EB!important}
+.app-body tbody tr:nth-child(even) td{background:#FCFCFD!important}
+.app-body tbody tr:hover td{background:#EFF6FF!important}
+
+/* Buttons, form controls and accessible keyboard focus. */
+.app-body .btn{min-height:40px;border-radius:8px;font-weight:650;transition:background-color .16s ease,border-color .16s ease,box-shadow .16s ease,transform .16s ease}
+.app-body .btn.primary,
+.app-body .btn:not(.outline):not(.ghost):not(.danger):not(.light-button){
+  background:#2563EB!important;border-color:#2563EB!important;color:#FFFFFF!important;box-shadow:0 2px 5px rgba(37,99,235,.18)!important;
+}
+.app-body .btn.primary:hover,
+.app-body .btn:not(.outline):not(.ghost):not(.danger):not(.light-button):hover{
+  background:#1D4ED8!important;border-color:#1D4ED8!important;box-shadow:0 4px 10px rgba(37,99,235,.22)!important;transform:translateY(-1px);
+}
+.app-body .btn.outline,
+.app-body .btn.ghost{background:#FFFFFF!important;border-color:#D1D5DB!important;color:#1E40AF!important}
+.app-body .btn.outline:hover,
+.app-body .btn.ghost:hover{background:#EFF6FF!important;border-color:#93C5FD!important;color:#1D4ED8!important}
+.app-body .btn.danger{background:#FEF2F2!important;border-color:#FECACA!important;color:#B91C1C!important}
+.app-body .btn.danger:hover{background:#FEE2E2!important;border-color:#FCA5A5!important}
+.app-body .btn.light-button{background:#FFFFFF!important;color:#1E40AF!important;border-color:#E5E7EB!important}
+.app-body input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+.app-body select,
+.app-body textarea{
+  border-color:#D1D5DB;
+  border-radius:8px;
+  background:#FFFFFF;
+  color:#111827;
+}
+.app-body input::placeholder,
+.app-body textarea::placeholder{color:#9CA3AF;opacity:1}
+.app-body input:focus-visible,
+.app-body select:focus-visible,
+.app-body textarea:focus-visible,
+.app-body button:focus-visible,
+.app-body a:focus-visible,
+.app-body summary:focus-visible{
+  outline:3px solid rgba(37,99,235,.45)!important;outline-offset:2px;
+}
+.app-body input:focus,
+.app-body select:focus,
+.app-body textarea:focus{border-color:#2563EB;box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+.app-body .form-grid label,
+.app-body .form-grid .field-label,
+.app-body .search-form label,
+.app-body .calculator-panel>label{color:#374151}
+.app-body .muted,
+.app-body .table-sub,
+.app-body .modal-intro{color:#6B7280}
+.app-body .page-header p,
+.app-body .panel .muted,
+.app-body .table-sub,
+.app-body .modal-intro{color:#6B7280}
+
+/* The lighter secondary blue is reserved for secondary actions and soft emphasis. */
+.app-body .workspace-notice:hover,
+.app-body .modern-logout:hover{border-color:#93C5FD!important;color:#1E40AF!important;background:#EFF6FF!important}
+.app-body .app-version-indicator{border-color:#E5E7EB;background:#F9FAFB;color:#6B7280}
+.app-body .app-version-indicator b{color:#1E40AF}
+.app-body .app-version-indicator .app-version-label,
+.app-body .app-version-indicator small{color:#6B7280}
+.app-body .status-pill,
+.app-body .badge{font-weight:650}
+.app-body .employee-code-pill{border-color:#D1D5DB;color:#4B5563}
+.app-body .employee-code-feedback[data-state="success"]{color:#047857}
+.app-body .employee-code-feedback[data-state="error"]{color:#B91C1C}
+.app-body .employee-code-feedback[data-state="loading"]{color:#6B7280}
+
+@media(max-width:860px){
+  .app-body .main-content{padding-top:20px}
+  .app-body .modern-mobile-nav.workspace-sidebar{background:#0D1B2A!important;border-right-color:#203347!important}
+}
+@media(prefers-reduced-motion:reduce){
+  .app-body *, .app-body *::before, .app-body *::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}
+}
