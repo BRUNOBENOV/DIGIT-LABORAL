@@ -3,12 +3,12 @@ from __future__ import annotations
 import re
 import uuid
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.config import settings
 from app.database import SessionLocal
 from app.main import app, normalize_company_ruc, ruc_check_digit
-from app.models import AuditLog, Branch, Company, CompanyBranding, CompanyComplianceProfile, User
+from app.models import AuditLog, Company, CompanyComplianceProfile, User
 from app.paraguay_locations import PARAGUAY_CITIES, PARAGUAY_CITY_NAMES, PARAGUAY_DEPARTMENTS
 
 
@@ -108,7 +108,7 @@ def test_api_company_crud_creates_updates_and_archives_with_csrf():
     with SessionLocal() as db:
         studio_id = db.scalar(select(User.studio_id).where(User.email == "admin@digitlaboral.com.py"))
         assert studio_id is not None
-        maximum = db.scalar(select(__import__("sqlalchemy").func.max(Company.company_code)).where(Company.studio_id == studio_id)) or 0
+        maximum = db.scalar(select(func.max(Company.company_code)).where(Company.studio_id == studio_id)) or 0
     code = int(maximum) + int(uuid.uuid4().int % 100_000) + 1
     ruc_base = str(80_000_000 + int(uuid.uuid4().int % 9_999_999))
     ruc = f"{ruc_base}-{ruc_check_digit(ruc_base)}"
@@ -167,11 +167,6 @@ def test_api_company_crud_creates_updates_and_archives_with_csrf():
                 profile = db.scalar(select(CompanyComplianceProfile).where(CompanyComplianceProfile.company_id == company_id))
                 if profile:
                     db.delete(profile)
-                brand = db.scalar(select(CompanyBranding).where(CompanyBranding.company_id == company_id))
-                if brand:
-                    db.delete(brand)
-                for branch in db.scalars(select(Branch).where(Branch.company_id == company_id)).all():
-                    db.delete(branch)
                 for entry in db.scalars(select(AuditLog).where(AuditLog.entity == "empresa", AuditLog.entity_id == str(company_id))).all():
                     db.delete(entry)
                 company = db.get(Company, company_id)
