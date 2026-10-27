@@ -23,6 +23,11 @@
 {% if group.advanced %}<details class="dl-form-section"><summary>{{ group.title }}</summary><div class="dl-fields">{% for field in group.fields %}{{ input_field(field) }}{% endfor %}</div></details>
 {% else %}<fieldset class="dl-form-section"><legend>{{ group.title }}</legend><div class="dl-fields">{% for field in group.fields %}{{ input_field(field) }}{% endfor %}</div></fieldset>{% endif %}
 {% endfor %}
+{% if private and employee and kind == 'salary' %}
+<p id="salary-history-hint" class="dl-caption" aria-live="polite">El salario se precarga según la vigencia registrada al inicio del mes. Si hubo un cambio salarial dentro del período, revisá el importe antes de cerrar.</p>
+{% elif private and employee and kind == 'settlement' %}
+<p id="salary-history-hint" class="dl-caption" aria-live="polite">El salario se propone según la vigencia registrada a la fecha de egreso. Verificá el período y los componentes del promedio antes de emitir.</p>
+{% endif %}
 <div class="dl-form-submit"><button class="dl-button" type="submit" data-keep-enabled="true">{{ 'Recalcular' if result else 'Calcular liquidación' }} <span aria-hidden="true">→</span></button><span>Revisá los conceptos antes de firmar.</span></div>
 </form>
 <aside class="dl-output">
@@ -35,6 +40,55 @@
 </aside></div>
 {% if private %}<section class="dl-history"><h2>Historial del centro laboral</h2><p>Últimos 30 cálculos de la selección. Cada registro conserva su resultado original.</p><div class="dl-table-wrap"><table><thead><tr><th>Referencia</th><th>Tipo de cálculo</th><th>Funcionario</th><th>Período</th><th>Importe · Gs.</th><th>Documento</th></tr></thead><tbody>{% for item in history %}<tr><td>#{{ item.id }}</td><td>{{ titles.get(item.calculation_type|replace('suite_',''), item.calculation_type) }}</td><td>{{ item.employee.full_name if item.employee else 'Sin funcionario' }}</td><td>{{ item.reference_period }}</td><td>{{ item.amount|gs }}</td><td><a href="/app/liquidaciones/{{ item.id }}">Ver y descargar</a></td></tr>{% else %}<tr><td colspan="6">Todavía no hay cálculos guardados para esta selección.</td></tr>{% endfor %}</tbody></table></div></section>{% endif %}
 </div>
+{% if private and employee and kind in ['salary', 'settlement'] %}
+<script type="application/json" id="salary-history-data">{{ salary_history_data|tojson }}</script>
+<script>
+(() => {
+  const historyNode = document.getElementById("salary-history-data");
+  const form = document.getElementById("labor-form");
+  const hint = document.getElementById("salary-history-hint");
+  if (!historyNode || !form || !hint) return;
+
+  let history = [];
+  try {
+    history = JSON.parse(historyNode.textContent || "[]");
+  } catch (_) {
+    hint.textContent = "No se pudo leer el historial salarial. Verificá el importe manualmente.";
+    return;
+  }
+
+  const salaryField = form.querySelector('[name="salary"]');
+  const periodField = form.querySelector('[name="{{ "month" if kind == "salary" else "end_date" }}"]');
+  if (!salaryField || !periodField) return;
+  const legacyFallback = salaryField.value;
+
+  function refreshSalarySuggestion() {
+    if (!periodField.value) return;
+    const effectiveDate = {{ '" + periodField.value + "-01"' if false else 'null' }};
+    const targetDate = {% if kind == 'salary' %}periodField.value + "-01"{% else %}periodField.value{% endif %};
+    const applicable = history
+      .filter(item => item.effective_from && item.effective_from <= targetDate)
+      .sort((a, b) => b.effective_from.localeCompare(a.effective_from) || Number(b.id) - Number(a.id));
+
+    if (applicable.length) {
+      salaryField.value = String(applicable[0].new_salary);
+      hint.textContent = "Salario sugerido según el historial vigente para la fecha seleccionada. Revisá cualquier cambio de salario ocurrido dentro del mes.";
+    } else if (history.length) {
+      salaryField.value = "0";
+      hint.textContent = "No hay una vigencia salarial registrada para esa fecha. Completá el salario correcto antes de calcular.";
+    } else {
+      salaryField.value = legacyFallback;
+      hint.textContent = "Este legajo no tiene historial salarial registrado. Verificá manualmente el salario del período.";
+    }
+
+    salaryField.dispatchEvent(new Event("input", { bubbles: true }));
+    salaryField.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  periodField.addEventListener("change", refreshSalarySuggestion);
+})();
+</script>
+{% endif %}
 {% endmacro %}
 {% block content %}{{ workbench() }}{% endblock %}
 {% block public_content %}{% include "labor_public_nav.html" %}{{ workbench() }}{% include "labor_public_footer.html" %}{% endblock %}
