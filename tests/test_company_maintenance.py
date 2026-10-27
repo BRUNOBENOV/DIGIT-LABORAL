@@ -7,8 +7,8 @@ from sqlalchemy import select
 
 from app.config import settings
 from app.database import SessionLocal
-from app.main import app, normalize_company_ruc
-from app.models import Company, CompanyComplianceProfile, User
+from app.main import app, normalize_company_ruc, ruc_check_digit
+from app.models import AuditLog, Branch, Company, CompanyBranding, CompanyComplianceProfile, User
 from app.paraguay_locations import PARAGUAY_CITIES, PARAGUAY_CITY_NAMES, PARAGUAY_DEPARTMENTS
 
 
@@ -101,6 +101,83 @@ def test_api_lookup_by_existing_company_code_returns_record_for_authenticated_st
             if company:
                 db.delete(company)
             db.commit()
+
+
+def test_api_company_crud_creates_updates_and_archives_with_csrf():
+    company_id = None
+    with SessionLocal() as db:
+        studio_id = db.scalar(select(User.studio_id).where(User.email == "admin@digitlaboral.com.py"))
+        assert studio_id is not None
+        maximum = db.scalar(select(__import__("sqlalchemy").func.max(Company.company_code)).where(Company.studio_id == studio_id)) or 0
+    code = int(maximum) + int(uuid.uuid4().int % 100_000) + 1
+    ruc_base = str(80_000_000 + int(uuid.uuid4().int % 9_999_999))
+    ruc = f"{ruc_base}-{ruc_check_digit(ruc_base)}"
+    payload = {
+        "company_code": code,
+        "legal_name": "Empresa CRUD QA",
+        "trade_name": "CRUD QA",
+        "ruc": ruc,
+        "owner_name": "Propietario QA",
+        "legal_representative": "Representante QA",
+        "address": "Dirección de prueba",
+        "city": "Ciudad del Este",
+        "department": "Alto Paraná",
+        "work_sector": "Administración",
+        "work_location": "Casa central",
+        "economic_activity": "Pruebas automatizadas",
+        "phone": "061500000",
+        "contact_name": "Contacto QA",
+        "email": "qa@example.invalid",
+        "ips_employer_number": "123456",
+        "mtess_employer_number": "654321",
+        "legal_representative_document": "1234567",
+    }
+    try:
+        with TestClient(app) as client:
+            csrf = _login(client)
+            headers = {"X-CSRF-Token": csrf, "Accept": "application/json"}
+            created = client.post("/api/companies", json=payload, headers=headers)
+            assert created.status_code == 201, created.text
+            stored = created.json()
+            company_id = stored["id"]
+            assert stored["company_code"] == code
+            assert stored["ruc"] == ruc
+            assert stored["owner_name"] == "Propietario QA"
+            assert stored["department"] == "Alto Paraná"
+
+            updated = client.put(
+                f"/api/companies/{company_id}",
+                json={"legal_name": "Empresa CRUD QA actualizada", "work_sector": "Ventas"},
+                headers=headers,
+            )
+            assert updated.status_code == 200, updated.text
+            assert updated.json()["legal_name"] == "Empresa CRUD QA actualizada"
+            assert updated.json()["work_sector"] == "Ventas"
+
+            archived = client.delete(f"/api/companies/{company_id}", headers=headers)
+            assert archived.status_code == 200, archived.text
+            assert archived.json()["status"] == "Archivada"
+            assert client.get(f"/api/companies/by-code/{code}").status_code == 404
+            all_companies = client.get("/api/companies?include_archived=true")
+            assert all_companies.status_code == 200
+            assert any(item["id"] == company_id and item["status"] == "Archivada" for item in all_companies.json()["items"])
+    finally:
+        if company_id is not None:
+            with SessionLocal() as db:
+                profile = db.scalar(select(CompanyComplianceProfile).where(CompanyComplianceProfile.company_id == company_id))
+                if profile:
+                    db.delete(profile)
+                brand = db.scalar(select(CompanyBranding).where(CompanyBranding.company_id == company_id))
+                if brand:
+                    db.delete(brand)
+                for branch in db.scalars(select(Branch).where(Branch.company_id == company_id)).all():
+                    db.delete(branch)
+                for entry in db.scalars(select(AuditLog).where(AuditLog.entity == "empresa", AuditLog.entity_id == str(company_id))).all():
+                    db.delete(entry)
+                company = db.get(Company, company_id)
+                if company:
+                    db.delete(company)
+                db.commit()
 
 
 def test_api_company_list_requires_authentication():
