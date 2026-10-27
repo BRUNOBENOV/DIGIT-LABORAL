@@ -4,6 +4,7 @@
 
 - Añade el panel autenticado `/app/calculations/periodos` para revisar la cobertura mensual de un trabajador por ejercicio.
 - Detecta meses esperados según las fechas de ingreso/egreso y el mes actual de Paraguay.
+- En el ejercicio actual, aclara que la cobertura es hasta el mes transcurrido y no equivale al cierre anual.
 - Distingue nóminas cerradas, nóminas abiertas, importes inconsistentes, cálculos salariales aislados y meses sin registro.
 - Señala variaciones de salario base registradas.
 - La opción de preparar aguinaldo puede reutilizar como propuesta la suma bruta de nóminas cerradas y consistentes, dejando trazabilidad en observaciones.
