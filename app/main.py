@@ -1128,7 +1128,13 @@ def dashboard(request: Request, user: User = Depends(require_user), db: Session 
         return RedirectResponse("/admin", status_code=303)
     company_ids = company_ids_for_user(db, user)
     companies_count = len(company_ids)
-    employee_count = db.scalar(select(func.count(Employee.id)).where(Employee.company_id.in_(company_ids), Employee.status == "Activo")) if company_ids else 0
+    if user.role == "abogado":
+        assigned_employee_ids = assigned_employee_ids_for_lawyer(db, user)
+        employee_count = db.scalar(
+            select(func.count(Employee.id)).where(Employee.id.in_(assigned_employee_ids), Employee.status == "Activo")
+        ) or 0
+    else:
+        employee_count = db.scalar(select(func.count(Employee.id)).where(Employee.company_id.in_(company_ids), Employee.status == "Activo")) if company_ids else 0
     pending_count = db.scalar(select(func.count(CompanyRequest.id)).where(CompanyRequest.company_id.in_(company_ids), CompanyRequest.status.in_(["Pendiente", "En revisión", "Falta información", "Procesando", "Aprobada"]))) if company_ids else 0
     if user.role == "abogado" and company_ids:
         pending_count = db.scalar(
@@ -1177,11 +1183,26 @@ def dashboard(request: Request, user: User = Depends(require_user), db: Session 
                 .limit(5)
             )
         ) if company_ids else []
-    documents_count = db.scalar(select(func.count(Document.id)).where(Document.company_id.in_(company_ids))) if company_ids else 0
-    certificates_count = db.scalar(select(func.count(GeneratedCertificate.id)).where(GeneratedCertificate.company_id.in_(company_ids))) if company_ids else 0
+    if user.role == "abogado":
+        assigned_employee_ids = assigned_employee_ids_for_lawyer(db, user)
+        documents_count = db.scalar(
+            select(func.count(Document.id)).where(
+                Document.company_id.in_(company_ids),
+                (Document.employee_id.is_(None)) | Document.employee_id.in_(assigned_employee_ids),
+            )
+        ) if company_ids else 0
+        certificates_count = db.scalar(
+            select(func.count(GeneratedCertificate.id)).where(
+                GeneratedCertificate.company_id.in_(company_ids),
+                GeneratedCertificate.employee_id.in_(assigned_employee_ids),
+            )
+        ) if company_ids and assigned_employee_ids else 0
+    else:
+        documents_count = db.scalar(select(func.count(Document.id)).where(Document.company_id.in_(company_ids))) if company_ids else 0
+        certificates_count = db.scalar(select(func.count(GeneratedCertificate.id)).where(GeneratedCertificate.company_id.in_(company_ids))) if company_ids else 0
     minimum_salary = db.scalar(select(LaborParameter).where(LaborParameter.key == "minimum_monthly_salary_general", LaborParameter.active.is_(True)))
     low_salary_count = 0
-    if company_ids and minimum_salary:
+    if company_ids and minimum_salary and user.role != "abogado":
         low_salary_count = db.scalar(select(func.count(Employee.id)).where(Employee.company_id.in_(company_ids), Employee.status == "Activo", Employee.base_salary < int(minimum_salary.value))) or 0
     branding_items = list(db.scalars(select(CompanyBranding).where(CompanyBranding.company_id.in_(company_ids)))) if company_ids else []
     branded_ids = {item.company_id for item in branding_items if item.logo_bytes}
@@ -4839,7 +4860,11 @@ def compliance_page(
     rei_errors: list[str] = []
     reop_errors: list[str] = []
     if selected_company:
-        employees = list(db.scalars(select(Employee).where(Employee.company_id == selected_company.id).order_by(Employee.full_name)))
+        lawyer_employee_ids = set(assigned_employee_ids_for_lawyer(db, user)) if user.role == "abogado" else set()
+        employee_query = select(Employee).where(Employee.company_id == selected_company.id)
+        if user.role == "abogado":
+            employee_query = employee_query.where(Employee.id.in_(lawyer_employee_ids)) if lawyer_employee_ids else employee_query.where(False)
+        employees = list(db.scalars(employee_query.order_by(Employee.full_name)))
         branches = list(db.scalars(select(Branch).where(Branch.company_id == selected_company.id).order_by(Branch.name)))
         company_profile = db.scalar(select(CompanyComplianceProfile).where(CompanyComplianceProfile.company_id == selected_company.id))
         branch_profile_rows = list(
@@ -4859,10 +4884,14 @@ def compliance_page(
         )
         employee_profiles = {item.employee_id: item for item in profiles}
         event_query = select(ComplianceEvent).where(ComplianceEvent.company_id == selected_company.id)
+        if user.role == "abogado":
+            event_query = event_query.where(
+                (ComplianceEvent.employee_id.is_(None)) | ComplianceEvent.employee_id.in_(lawyer_employee_ids)
+            ) if lawyer_employee_ids else event_query.where(ComplianceEvent.employee_id.is_(None))
         if authority.upper() in {"REI", "REOP"}:
             event_query = event_query.where(ComplianceEvent.authority == authority.upper())
         events = list(db.scalars(event_query.order_by(ComplianceEvent.created_at.desc()).limit(100)))
-        batches = list(
+        batches = [] if user.role == "abogado" else list(
             db.scalars(
                 select(IntegrationBatch)
                 .where(IntegrationBatch.company_id == selected_company.id)
@@ -5245,7 +5274,7 @@ def download_integration_batch(
     db: Session = Depends(get_db),
 ):
     batch = db.get(IntegrationBatch, batch_id)
-    if not batch or batch.company_id not in company_ids_for_user(db, user):
+    if user.role == "abogado" or not batch or batch.company_id not in company_ids_for_user(db, user):
         raise HTTPException(404)
     if batch.file_bytes is not None:
         content = bytes(batch.file_bytes)
@@ -5354,7 +5383,7 @@ def download_integration_batch_receipt(
     db: Session = Depends(get_db),
 ):
     batch = db.get(IntegrationBatch, batch_id)
-    if not batch or batch.company_id not in company_ids_for_user(db, user):
+    if user.role == "abogado" or not batch or batch.company_id not in company_ids_for_user(db, user):
         raise HTTPException(404)
 
     receipt_key = batch.receipt_storage_key or ""
