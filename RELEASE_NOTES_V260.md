@@ -11,7 +11,7 @@
 - Validación del RUC mediante dígito verificador módulo 11, además de código, nombre, números patronales, CI y correspondencia ciudad/departamento.
 - Archivado lógico para preservar historial laboral y auditoría; las empresas archivadas pueden mostrarse y restaurarse.
 - La sucursal permanece como entidad independiente. Departamento, actividad y C.I. del representante se guardan en el perfil de cumplimiento existente.
-- No se agregan empresas ficticias a producción.
+- Se completan las tres empresas sintéticas del entorno de desarrollo con códigos, RUC de prueba con verificador, datos patronales numéricos y perfil de cumplimiento. El seed solo se ejecuta cuando no es producción y no existe un estudio; no se agregan empresas ficticias a producción.
 
 ## Validación y publicación
 - Pruebas de formulario, catálogo de municipios, normalización RUC, búsqueda por código y CRUD de API.
