@@ -74,5 +74,5 @@ def test_api_lookup_by_existing_company_code_returns_record_for_authenticated_st
 
 def test_api_company_list_requires_authentication():
     with TestClient(app) as client:
-        response = client.get("/api/companies")
+        response = client.get("/api/companies", follow_redirects=False)
         assert response.status_code in {302, 303}
