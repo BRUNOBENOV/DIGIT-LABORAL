@@ -477,7 +477,14 @@ def test_normal_account_login_csrf_private_pages_and_logout(web_case):
     assert client.get(f"/app/companies/{other.company_id}").status_code == 404
     assert client.get(f"/app/employees/{other.id}").status_code == 404
     csrf = token(client, "/app/liquidaciones")
-    created = client.post("/app/companies", data=dict(csrf_token=csrf, legal_name="Nueva empresa de QA", ruc="80099999-1"), follow_redirects=False)
+    from sqlalchemy import func, select
+    from app.models import Company
+    next_company_code = (db.scalar(select(func.max(Company.company_code)).where(Company.studio_id == company.studio_id)) or 0) + 1
+    created = client.post(
+        "/app/companies",
+        data=dict(csrf_token=csrf, company_code=str(next_company_code), legal_name="Nueva empresa de QA", ruc="80099999-1"),
+        follow_redirects=False,
+    )
     assert created.status_code == 303
     company_id = int(created.headers["location"].rsplit("/", 1)[1])
     created = client.post("/app/employees", data=dict(csrf_token=csrf, company_id=company_id,
