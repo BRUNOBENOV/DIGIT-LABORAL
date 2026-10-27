@@ -57,6 +57,7 @@ def test_sidebar_has_no_global_company_or_employee_selector():
 def test_each_operational_module_has_its_own_selectors():
     paths = [
         "/app/calculations?tipo=salary",
+        "/app/calculations/periodos?year=2026",
         "/app/payrolls",
         "/app/vacations",
         "/app/aguinaldo",
