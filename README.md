@@ -1,27 +1,20 @@
-# Digit Laboral 2.5.8
+# Digit Laboral 2.5.9
 
 Plataforma de gestión y cumplimiento laboral para estudios contables paraguayos.
 
-## Novedades de la versión 2.5.7
+## Novedades de la versión 2.5.9
 
-- Añade un contexto común de empresa y funcionario, guardado por sesión y validado contra los permisos del usuario.
-- Precarga el salario vigente del legajo en calculadoras y conserva el contexto al entrar a cobertura, certificados, vacaciones, aguinaldo, nóminas, documentos y liquidaciones.
-- El aguinaldo sugiere solo remuneraciones brutas de nóminas cerradas y consistentes; si no hay evidencia suficiente, deja el campo vacío.
-- Filtra vistas operativas según el contexto seleccionado sin alterar los importes históricos ni ampliar el acceso entre empresas.
+- Las calculadoras profesionales proponen el salario registrado con vigencia en la fecha del período seleccionado.
+- Al cambiar el mes de una liquidación salarial o la fecha de egreso, la sugerencia se actualiza a partir del historial salarial del legajo.
+- Las nóminas mensuales se inicializan con el salario vigente al inicio del período, o a la fecha de ingreso si el funcionario fue contratado durante ese mes.
+- Los cambios salariales dentro del período y los ingresos a mitad de mes generan advertencias de revisión manual en las observaciones de la nómina. El sistema no inventa un prorrateo legal ni reemplaza la validación profesional.
+- Los cálculos guardados y las nóminas existentes conservan sus importes históricos; esta mejora solo afecta nuevas propuestas de importe.
 
-## Novedades de la versión 2.5.6
+## Novedades de la versión 2.5.8
 
-- Añade el panel de cobertura mensual por trabajador en `/app/calculations/periodos`.
-- Reutiliza como propuesta revisable el bruto de nóminas cerradas y consistentes al preparar el aguinaldo.
-- Advierte sobre períodos faltantes, nóminas abiertas, inconsistencias de importes y cambios de salario base.
-- Mantiene los cálculos históricos, los controles de acceso y los conectores oficiales desactivados hasta su autorización.
-- No sustituye la revisión profesional de los conceptos legalmente computables.
-
-## Novedades de la versión 2.5.5
-
-- Añade controles de rol en el servidor para que las calculadoras internas, las interacciones previas de IA y los parámetros administrativos no se abran pegando sus URLs con un perfil no autorizado.
-- Mantiene disponibles las herramientas operativas para contadores, auxiliares autorizados y administradores, con pruebas directas de acceso denegado para abogado y empleador.
-- Conserva los límites de acceso por empresa y los flujos diferenciados introducidos en v2.5.4.
+- Elimina el selector global de empresa y funcionario; cada módulo conserva su propia selección y no contamina otros módulos.
+- Valida en servidor que el funcionario elegido pertenezca a la empresa seleccionada.
+- Mantiene los filtros de los módulos independientes y agrega pruebas para evitar cruces de contexto entre empresas.
 
 ## Módulos incluidos
 
@@ -158,3 +151,4 @@ Documentación: `REI_REOP_INTEGRATION.md`.
 - `SECURITY_AND_BACKUP_V20.md`
 - `MIGRATION_V19_TO_V20.md`
 - `SOLICITUD_INTEROPERABILIDAD_REI_REOP.md`
+- `RELEASE_NOTES_V259.md`
