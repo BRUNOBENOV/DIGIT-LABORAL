@@ -89,7 +89,7 @@
 <label>N.º Patronal IPS<input name="ips_employer_number" inputmode="numeric" pattern="[0-9.\- ]*" maxlength="80"></label>
 <label>N.º Patronal MJT<input name="mtess_employer_number" inputmode="numeric" pattern="[0-9.\- ]*" maxlength="80"></label>
 <label class="span-2">Responsable interno del estudio<input name="responsible_name" maxlength="160" placeholder="Contador o auxiliar"></label>
-<div class="form-actions span-2"><button class="btn ghost" type="button" data-modal-close>Cancelar</button><button class="btn primary" id="companyFormSubmit" type="submit">Guardar empresa</button></div>
+<div class="form-actions span-2"><button class="btn ghost" type="button" data-modal-close>Cancelar</button><button class="btn danger" id="companyFormDelete" type="button" hidden>Eliminar</button><button class="btn primary" id="companyFormSubmit" type="submit">Guardar empresa</button></div>
 </form></section></div>
 <script>
 (function () {
@@ -97,6 +97,7 @@
   const codeInput = document.getElementById("companyCode");
   const feedback = document.getElementById("companyCodeFeedback");
   const submit = document.getElementById("companyFormSubmit");
+  const deleteButton = document.getElementById("companyFormDelete");
   const title = document.getElementById("companyFormTitle");
   const eyebrow = document.getElementById("companyFormEyebrow");
   const departmentSelect = document.getElementById("companyDepartment");
@@ -121,6 +122,7 @@
     title.textContent = "Registrar empresa";
     eyebrow.textContent = "MANTENIMIENTOS · EMPRESAS";
     submit.textContent = "Guardar empresa";
+    if (deleteButton) deleteButton.hidden = true;
     if (clearFields) {
       dataFields.forEach(function (name) {
         const field = form.elements.namedItem(name);
@@ -176,6 +178,7 @@
       form.action = "/app/companies/" + company.id + "/edit";
       loadedCode = String(company.company_code);
       loadedCompanyId = company.id;
+      if (deleteButton) deleteButton.hidden = false;
       title.textContent = "Editar empresa";
       eyebrow.textContent = "EMPRESA EXISTENTE · CÓDIGO " + loadedCode;
       submit.textContent = "Guardar cambios";
@@ -193,7 +196,11 @@
     lookupTimer = setTimeout(lookupCode, 350);
   });
   departmentSelect.addEventListener("change", syncCities);
-  citySelect.addEventListener("change", syncCities);
+  citySelect.addEventListener("change", function () {
+    const selected = citySelect.selectedOptions[0];
+    if (selected && selected.dataset.department) departmentSelect.value = selected.dataset.department;
+    syncCities();
+  });
   form.addEventListener("submit", async function (event) {
     if (!form.checkValidity()) {
       event.preventDefault();
@@ -265,7 +272,33 @@
       }
     });
   });
+  if (citySelect && citySelect.value && departmentSelect && !departmentSelect.value) {
+    const initialCity = citySelect.selectedOptions[0];
+    if (initialCity && initialCity.dataset.department) departmentSelect.value = initialCity.dataset.department;
+  }
   syncCities();
+  if (deleteButton) deleteButton.addEventListener("click", async function () {
+    if (!loadedCompanyId) return;
+    if (!window.confirm("¿Archivar esta empresa? Se conservarán sus nóminas, cálculos, certificados y auditoría.")) return;
+    const token = form.elements.namedItem("csrf_token").value;
+    deleteButton.disabled = true;
+    try {
+      const response = await fetch("/api/companies/" + encodeURIComponent(loadedCompanyId), {
+        method: "DELETE", credentials: "same-origin",
+        headers: {"Accept":"application/json","X-CSRF-Token":token}
+      });
+      const result = await response.json().catch(function () { return {}; });
+      if (!response.ok) {
+        setFeedback(typeof result.detail === "string" ? result.detail : "No se pudo archivar la empresa.", "error");
+        deleteButton.disabled = false;
+        return;
+      }
+      window.location.href = "/app/companies?archived=1";
+    } catch (error) {
+      setFeedback("No se pudo conectar con el servidor. La empresa no fue archivada.", "error");
+      deleteButton.disabled = false;
+    }
+  });
 })();
 </script>
 {% endif %}
