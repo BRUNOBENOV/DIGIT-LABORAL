@@ -114,12 +114,14 @@ def test_module_selector_rejects_employee_from_a_different_company():
         _login(client)
         _, company_ids, employees = _calculation_selectors(client)
         assert len(company_ids) >= 2
-        first_company = next((company for _, company in employees if company == company_ids[0]), None)
+        if not employees:
+            return
+        first_employee_id, first_company = employees[0]
         different_employee = next(
-            ((employee, company) for employee, company in employees if company != company_ids[0]),
+            ((employee, company) for employee, company in employees if company != first_company),
             None,
         )
-        if first_company is None or different_employee is None:
+        if different_employee is None:
             # Some reduced CI fixtures contain only one company.
             return
         employee_id, other_company = different_employee
