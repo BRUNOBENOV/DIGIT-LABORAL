@@ -253,6 +253,11 @@ def test_lawyer_workspace_filters_assigned_cases_and_enforces_role_boundaries() 
 
         assert client.get("/app/users").status_code == 403
         assert client.get("/app/payrolls").status_code == 403
+        # Internal finance calculators and previous AI consultations must not be
+        # available to a lawyer merely by typing their URL.
+        assert client.get("/app/calculations").status_code == 403
+        assert client.get("/app/ai").status_code == 403
+        assert client.get("/app/parameters").status_code == 403
         assert client.post(
             "/app/payrolls",
             data={"csrf_token": csrf, "company_id": str(company_id), "period": "2026-10"},
@@ -321,6 +326,11 @@ def test_employer_sees_request_centric_dashboard_without_staff_calculation_tools
         certificates = client.get("/app/certificates")
         assert certificates.status_code == 200
         assert "Para solicitar uno nuevo, utilizá Trámites." in certificates.text
+        # The employer has its own public simulators; internal saved calculations,
+        # staff AI conversations, and administrative parameters are not exposed.
+        assert client.get("/app/calculations").status_code == 403
+        assert client.get("/app/ai").status_code == 403
+        assert client.get("/app/parameters").status_code == 403
         payroll_list = client.get("/app/payrolls")
         assert payroll_list.status_code == 200
         assert "+ Nueva liquidación" not in payroll_list.text
