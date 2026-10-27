@@ -477,9 +477,19 @@ def test_normal_account_login_csrf_private_pages_and_logout(web_case):
     assert client.get(f"/app/companies/{other.company_id}").status_code == 404
     assert client.get(f"/app/employees/{other.id}").status_code == 404
     csrf = token(client, "/app/liquidaciones")
-    created = client.post("/app/companies", data=dict(csrf_token=csrf, legal_name="Nueva empresa de QA", ruc="80099999-1"), follow_redirects=False)
-    assert created.status_code == 303
-    company_id = int(created.headers["location"].rsplit("/", 1)[1])
+    from sqlalchemy import func, select
+    from app.main import ruc_check_digit
+    from app.models import Company
+    next_company_code = (db.scalar(select(func.max(Company.company_code)).where(Company.studio_id == company.studio_id)) or 0) + 1
+    ruc_base = "80099999"
+    created = client.post(
+        "/api/companies",
+        json={"company_code": next_company_code, "legal_name": "Nueva empresa de QA",
+              "ruc": f"{ruc_base}-{ruc_check_digit(ruc_base)}", "city": "Ciudad del Este"},
+        headers={"X-CSRF-Token": csrf, "Accept": "application/json"},
+    )
+    assert created.status_code == 201, created.text
+    company_id = created.json()["id"]
     created = client.post("/app/employees", data=dict(csrf_token=csrf, company_id=company_id,
         full_name="Funcionario de QA", document_number="1999999", position="Auxiliar", admission_date="2024-01-01",
         birth_date="", branch_id="", base_salary="3500000", contract_type="Tiempo indefinido", payment_frequency="Mensual", ips_contributor="on"), follow_redirects=False)

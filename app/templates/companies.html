@@ -2,9 +2,313 @@
 {% block title %}Empresas | Digit Laboral{% endblock %}
 {% block page_name %}Empresas{% endblock %}
 {% block content %}
-<div class="page-header"><div><span class="eyebrow">EMPRESAS</span><h1>Empresas del estudio</h1><p>Entrá a una empresa para ver sus funcionarios, datos, logo, documentos y cumplimiento.</p></div>{% if user.role in ['administrador','contador'] %}<button class="btn primary" type="button" data-modal-open="companyModal">+ Nueva empresa</button>{% endif %}</div>
-{% if request.query_params.get('form_error') %}<div class="alert danger v24-form-error">{{ request.query_params.get('form_error') }}</div>{% endif %}{% if request.query_params.get('limit') %}<div class="alert warning">El plan alcanzó su límite de empresas.</div>{% endif %}{% if request.query_params.get('duplicate') %}<div class="alert danger">Ya existe una empresa con ese RUC dentro del estudio.</div>{% endif %}
-<div class="toolbar"><form method="get" class="search-form"><input name="q" value="{{ q }}" placeholder="Buscar por nombre, RUC o nombre comercial"><button type="submit">Buscar</button></form><div class="plan-counter"><b>{{ companies|length }}</b><span>de {{ studio.company_limit }} empresas</span></div></div>
-<section class="company-card-grid">{% for company in companies %}<a class="company-card" href="/app/companies/{{ company.id }}"><div class="company-card-top">{% if company.branding and company.branding.logo_bytes %}<span class="company-logo-card-frame"><img class="company-logo-card" src="/app/companies/{{ company.id }}/logo" alt="Logo de {{ company.legal_name }}"></span>{% else %}<span class="company-avatar large">{{ company.legal_name[:2]|upper }}</span>{% endif %}<span class="status-pill {{ company.status|lower }}">{{ company.status }}</span></div><h3>{{ company.legal_name }}</h3><p>{{ company.trade_name or 'Sin nombre comercial' }}</p><dl><div><dt>RUC</dt><dd>{{ company.ruc }}</dd></div><div><dt>Ciudad</dt><dd>{{ company.city }}</dd></div><div><dt>Responsable</dt><dd>{{ company.responsible_name or 'Sin asignar' }}</dd></div><div><dt>Funcionarios</dt><dd>{{ company.employees|length }}</dd></div></dl><div class="company-card-foot"><span class="brand-state {{ 'ready' if company.branding and company.branding.logo_bytes else 'pending' }}">{{ 'Logo cargado' if company.branding and company.branding.logo_bytes else ('Falta logo · solicitar actualización' if user.role == 'abogado' else 'Falta logo · abrí para subirlo') }}</span><span class="card-link">Abrir empresa →</span></div></a>{% else %}<div class="empty-large"><h3>{{ 'Aún no tenés empresas asignadas' if user.role == 'abogado' else 'No hay empresas registradas' }}</h3><p>{% if user.role == 'abogado' %}Pedí al administrador del estudio que te asigne un trámite. Las empresas de tus expedientes aparecerán aquí.{% else %}Registrá la primera empresa para empezar a cargar funcionarios y operar.{% endif %}</p>{% if user.role in ['administrador','contador'] %}<button class="btn primary" type="button" data-modal-open="companyModal">+ Registrar empresa</button>{% endif %}</div>{% endfor %}</section>
-{% if user.role in ['administrador','contador'] %}<div class="modal" id="companyModal" aria-hidden="true"><div class="modal-backdrop" data-modal-close></div><section class="modal-card"><button class="modal-x" type="button" data-modal-close>×</button><span class="eyebrow">NUEVA EMPRESA</span><h2>Registrar empresa</h2><p class="modal-intro">Cargá primero los datos básicos. Después, dentro de la empresa, vas a poder agregar el logo, funcionarios y datos patronales que falten.</p><form method="post" action="/app/companies" class="form-grid"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label class="span-2">Razón social<input name="legal_name" required maxlength="200"></label><label>Nombre comercial<input name="trade_name" maxlength="160"></label><label>RUC<input name="ruc" required maxlength="40" placeholder="Ej.: 80012345-6"><small class="v24-inline-help">Se controla que exista una identificación antes de guardar.</small></label><label>Ciudad<input name="city" value="Ciudad del Este"></label><label>Teléfono<input name="phone"></label><label class="span-2">Dirección<input name="address"></label><label>Correo<input type="email" name="email"></label><label>Representante legal<input name="legal_representative"></label><label>Número patronal IPS<input name="ips_employer_number"></label><label>Registro MTESS<input name="mtess_employer_number"></label><label class="span-2">Responsable interno<input name="responsible_name" placeholder="Contador o auxiliar"></label><div class="form-actions span-2"><button class="btn ghost" type="button" data-modal-close>Cancelar</button><button class="btn primary" type="submit">Registrar empresa</button></div></form></section></div>{% endif %}
+<style>
+  .company-maintenance-filters{display:grid;grid-template-columns:minmax(220px,1.5fr) repeat(2,minmax(140px,1fr)) auto auto;gap:10px;align-items:end;margin:14px 0 18px}
+  .company-maintenance-filters label{display:grid;gap:6px;color:var(--text-secondary,#aab8cc);font-size:.78rem;font-weight:750}
+  .company-maintenance-filters input,.company-maintenance-filters select{width:100%;min-width:0;padding:10px 12px;border:1px solid var(--border-color,#334155);border-radius:9px;background:var(--input-bg,#101a2d);color:var(--text-primary,#f3f6fb);font:inherit}
+  .company-maintenance-filters .filter-check{display:flex;align-items:center;gap:8px;white-space:nowrap;padding:9px 0}
+  .company-maintenance-filters .filter-check input{width:auto}
+  .company-card-open{display:block;color:inherit;text-decoration:none}
+  .company-card-open:focus-visible,.company-card-actions a:focus-visible,.company-card-actions button:focus-visible{outline:3px solid #6aa7ff;outline-offset:3px}
+  .company-code-pill{display:inline-flex;align-items:center;border:1px solid var(--border-color,#334155);border-radius:7px;padding:4px 8px;font-size:.73rem;font-weight:850;color:var(--text-secondary,#aab8cc);font-variant-numeric:tabular-nums;margin-top:8px}
+  .company-card-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:13px;padding-top:12px;border-top:1px solid var(--border-color,#334155)}
+  .company-card-actions form{margin:0}
+  .company-card-actions .btn{min-height:34px;padding:7px 10px;font-size:.76rem}
+  .company-form-section{grid-column:1/-1;margin:8px 0 0;padding-top:12px;border-top:1px solid var(--border-color,#334155);color:var(--text-secondary,#aab8cc);font-size:.69rem;font-weight:850;letter-spacing:.09em}
+  .company-code-feedback{grid-column:1/-1;margin:-2px 0 4px;font-size:.82rem;min-height:1.2em}
+  .company-code-feedback[data-state="success"]{color:#26a269}.company-code-feedback[data-state="error"]{color:#d65b64}.company-code-feedback[data-state="loading"]{color:#9caec7}
+  .company-field-help{display:block;font-size:.7rem;line-height:1.4;color:var(--text-secondary,#aab8cc);font-weight:500;margin-top:4px}
+  @media(max-width:900px){.company-maintenance-filters{grid-template-columns:1fr 1fr}.company-maintenance-filters .search-field{grid-column:1/-1}}
+  @media(max-width:560px){.company-maintenance-filters{grid-template-columns:1fr}.company-maintenance-filters .search-field{grid-column:auto}.company-card-actions{display:grid;grid-template-columns:1fr 1fr}.company-card-actions .btn{width:100%}}
+</style>
+<div class="page-header"><div><span class="eyebrow">MANTENIMIENTOS</span><h1>Empresas</h1><p>Ficha patronal, datos de contacto, ubicación y registros de la empresa.</p></div>{% if user.role in ['administrador','contador'] %}<button class="btn primary" type="button" data-modal-open="companyModal">+ Nueva empresa</button>{% endif %}</div>
+{% if request.query_params.get('form_error') %}<div class="alert danger v24-form-error" role="alert">{{ request.query_params.get('form_error') }}</div>{% endif %}
+{% if request.query_params.get('limit') %}<div class="alert warning" role="status">El plan alcanzó su límite de empresas.</div>{% endif %}
+{% if request.query_params.get('duplicate') %}<div class="alert danger" role="alert">Ya existe una empresa con ese RUC dentro del estudio.</div>{% endif %}
+{% if request.query_params.get('code_duplicate') %}<div class="alert danger" role="alert">Ese Código Empresa ya existe en el estudio. Ingresá otro código.</div>{% endif %}
+{% if request.query_params.get('archived') %}<div class="alert success" role="status">La empresa fue archivada. Se conserva su historial laboral y puede volver a mostrarse mediante el filtro de archivadas.</div>{% endif %}
+<form method="get" class="company-maintenance-filters" role="search" aria-label="Filtros de empresas">
+  <label class="search-field">Código, nombre o RUC<input name="q" value="{{ q }}" placeholder="Ej.: 1024, Comercial Norte o RUC" autocomplete="off"></label>
+  <label>Ciudad<select name="city"><option value="">Todas las ciudades</option>{% for city_option in cities %}<option value="{{ city_option.name }}" {{ 'selected' if selected_city == city_option.name }}>{{ city_option.name }} · {{ city_option.department }}</option>{% endfor %}</select></label>
+  <label>Departamento<select name="department"><option value="">Todos los departamentos</option>{% for department_option in departments %}<option value="{{ department_option }}" {{ 'selected' if selected_department == department_option }}>{{ department_option }}</option>{% endfor %}</select></label>
+  <label class="filter-check"><input type="checkbox" name="show_archived" value="true" {{ 'checked' if show_archived }}> Mostrar archivadas</label>
+  <button class="btn primary" type="submit">Filtrar</button>
+</form>
+<div class="plan-counter"><b>{{ companies|length }}</b><span>empresas en el resultado · límite del estudio: {{ studio.company_limit }}</span></div>
+<section class="company-card-grid" aria-label="Listado de empresas">
+{% for company in companies %}
+  <article class="company-card">
+    <a class="company-card-open" href="/app/companies/{{ company.id }}">
+      <div class="company-card-top">{% if company.branding and company.branding.logo_bytes %}<span class="company-logo-card-frame"><img class="company-logo-card" src="/app/companies/{{ company.id }}/logo" alt="Logo de {{ company.legal_name }}"></span>{% else %}<span class="company-avatar large">{{ company.legal_name[:2]|upper }}</span>{% endif %}<span class="status-pill {{ company.status|lower }}">{{ company.status }}</span></div>
+      <div class="company-code-pill">Código {{ company.company_code if company.company_code is not none else 'Sin asignar' }}</div>
+      <h3>{{ company.legal_name }}</h3><p>{{ company.trade_name or company.owner_name or 'Sin nombre comercial ni propietario informado' }}</p>
+      <dl><div><dt>RUC</dt><dd>{{ company.ruc }}</dd></div><div><dt>Ciudad</dt><dd>{{ company.city }}</dd></div><div><dt>Contacto</dt><dd>{{ company.contact_name or company.responsible_name or 'Sin contacto' }}</dd></div><div><dt>Funcionarios</dt><dd>{{ company.employees|length }}</dd></div></dl>
+      <div class="company-card-foot"><span class="brand-state {{ 'ready' if company.branding and company.branding.logo_bytes else 'pending' }}">{{ 'Logo cargado' if company.branding and company.branding.logo_bytes else ('Falta logo · solicitar actualización' if user.role == 'abogado' else 'Falta logo · abrí para subirlo') }}</span><span class="card-link">Abrir expediente →</span></div>
+    </a>
+    {% if user.role in ['administrador','contador'] %}
+    <div class="company-card-actions">
+      <a class="btn ghost" href="/app/companies/{{ company.id }}?open=editCompanyModal">Editar datos</a>
+      {% if company.status == 'Archivada' %}
+        <form method="post" action="/app/companies/{{ company.id }}/status"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="status" value="Activa"><button class="btn primary" type="submit">Restaurar</button></form>
+      {% else %}
+        <form method="post" action="/app/companies/{{ company.id }}/delete" data-company-delete data-company-id="{{ company.id }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn danger" type="submit">Eliminar</button></form>
+      {% endif %}
+    </div>
+    {% endif %}
+  </article>
+{% else %}
+  <div class="empty-large"><h3>{{ 'Aún no tenés empresas asignadas' if user.role == 'abogado' else 'No hay empresas para mostrar' }}</h3><p>{% if user.role == 'abogado' %}Pedí al administrador del estudio que te asigne un trámite. Las empresas de tus expedientes aparecerán aquí.{% elif show_archived %}No hay empresas que coincidan con los filtros actuales.{% else %}Registrá la primera empresa para empezar a cargar funcionarios y operar.{% endif %}</p>{% if user.role in ['administrador','contador'] %}<button class="btn primary" type="button" data-modal-open="companyModal">+ Registrar empresa</button>{% endif %}</div>
+{% endfor %}
+</section>
+
+{% if user.role in ['administrador','contador'] %}
+<div class="modal" id="companyModal" aria-hidden="true"><div class="modal-backdrop" data-modal-close></div><section class="modal-card"><button class="modal-x" type="button" data-modal-close aria-label="Cerrar formulario">×</button><span class="eyebrow" id="companyFormEyebrow">MANTENIMIENTOS · EMPRESAS</span><h2 id="companyFormTitle">Registrar empresa</h2><p class="modal-intro">Completá los datos principales de la ficha. El código permite recuperar la empresa sin volver a cargar la información.</p>
+<form method="post" action="/app/companies" id="companyForm" class="form-grid" novalidate>
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+<div class="company-form-section">IDENTIFICACIÓN</div>
+<label>Código Empresa<input name="company_code" id="companyCode" type="number" min="1" max="2147483647" step="1" inputmode="numeric" required aria-describedby="companyCodeFeedback"><small class="company-field-help">Código numérico único dentro del estudio.</small></label>
+<label>Nombre Empresa<input name="legal_name" required maxlength="200" autocomplete="organization"></label>
+<label>Nombre comercial<input name="trade_name" maxlength="160"></label>
+<label>N.º RUC<input name="ruc" id="companyRuc" required inputmode="numeric" pattern="[0-9.\- ]{4,14}" maxlength="14" placeholder="Ej.: 80000519-8"><small class="company-field-help">RUC con 3 a 8 dígitos base y verificador módulo 11.</small></label>
+<div class="company-code-feedback" id="companyCodeFeedback" role="status" aria-live="polite"></div>
+<div class="company-form-section">RESPONSABLES Y CONTACTO</div>
+<label>Propietario<input name="owner_name" maxlength="180"></label>
+<label>Representante Legal<input name="legal_representative" maxlength="180"></label>
+<label>N.º C.I. del representante<input name="legal_representative_document" inputmode="numeric" pattern="[0-9.\- ]*" maxlength="40"></label>
+<label>Teléfonos<input name="phone" maxlength="60" placeholder="Ej.: (061) 500 000 / 0981 000 000"></label>
+<label>Contacto<input name="contact_name" maxlength="180" placeholder="Persona de contacto"></label>
+<label>Correo electrónico<input name="email" type="email" maxlength="180"></label>
+<div class="company-form-section">UBICACIÓN Y ACTIVIDAD</div>
+<label>Departamento<select name="department" id="companyDepartment"><option value="">Seleccionar departamento</option>{% for department_option in departments %}<option value="{{ department_option }}">{{ department_option }}</option>{% endfor %}</select></label>
+<label>Ciudad<select name="city" id="companyCity"><option value="">Seleccionar ciudad</option>{% for city_option in cities %}<option value="{{ city_option.name }}" data-department="{{ city_option.department }}" {{ 'selected' if city_option.name == 'Ciudad del Este' }}>{{ city_option.name }} · {{ city_option.department }}</option>{% endfor %}</select></label>
+<label>Dirección<input name="address" maxlength="240"></label>
+<label>Sector Trabajo<input name="work_sector" maxlength="160"></label>
+<label>Lugar de Trabajo<input name="work_location" maxlength="180"></label>
+<label class="span-2">Explotación / actividad económica<input name="economic_activity" maxlength="220" placeholder="Ej.: Comercio minorista, servicios, industria"></label>
+<div class="company-form-section">REGISTROS PATRONALES</div>
+<label>N.º Patronal IPS<input name="ips_employer_number" inputmode="numeric" pattern="[0-9.\- ]*" maxlength="80"></label>
+<label>N.º Patronal MJT<input name="mtess_employer_number" inputmode="numeric" pattern="[0-9.\- ]*" maxlength="80"></label>
+<label class="span-2">Responsable interno del estudio<input name="responsible_name" maxlength="160" placeholder="Contador o auxiliar"></label>
+<div class="form-actions span-2"><button class="btn ghost" type="button" data-modal-close>Cancelar</button><button class="btn danger" id="companyFormDelete" type="button" hidden>Eliminar</button><button class="btn primary" id="companyFormSubmit" type="submit">Guardar empresa</button></div>
+</form></section></div>
+<script>
+(function () {
+  const form = document.getElementById("companyForm");
+  const codeInput = document.getElementById("companyCode");
+  const feedback = document.getElementById("companyCodeFeedback");
+  const submit = document.getElementById("companyFormSubmit");
+  const deleteButton = document.getElementById("companyFormDelete");
+  const title = document.getElementById("companyFormTitle");
+  const eyebrow = document.getElementById("companyFormEyebrow");
+  const departmentSelect = document.getElementById("companyDepartment");
+  const citySelect = document.getElementById("companyCity");
+  if (!form || !codeInput || !feedback) return;
+  const defaultAction = "/app/companies";
+  let loadedCode = "";
+  let loadedCompanyId = null;
+  let requestSequence = 0;
+  let lookupTimer = null;
+  const dataFields = ["legal_name","trade_name","ruc","owner_name","legal_representative",
+    "legal_representative_document","phone","contact_name","email","department","city","address",
+    "work_sector","work_location","economic_activity","ips_employer_number","mtess_employer_number","responsible_name"];
+  function setFeedback(message, state) {
+    feedback.textContent = message;
+    feedback.dataset.state = state || "";
+  }
+  function setCreateMode(clearFields) {
+    form.action = defaultAction;
+    loadedCode = "";
+    loadedCompanyId = null;
+    title.textContent = "Registrar empresa";
+    eyebrow.textContent = "MANTENIMIENTOS · EMPRESAS";
+    submit.textContent = "Guardar empresa";
+    if (deleteButton) deleteButton.hidden = true;
+    if (clearFields) {
+      dataFields.forEach(function (name) {
+        const field = form.elements.namedItem(name);
+        if (field && field.tagName === "SELECT") field.value = "";
+        else if (field) field.value = "";
+      });
+      if (citySelect) syncCities();
+    }
+  }
+  function syncCities() {
+    if (!citySelect || !departmentSelect) return;
+    const selectedDepartment = departmentSelect.value;
+    Array.from(citySelect.options).forEach(function (option) {
+      if (!option.value) return;
+      const matches = !selectedDepartment || !option.dataset.department || option.dataset.department === selectedDepartment;
+      option.hidden = !matches;
+      option.disabled = !matches;
+    });
+    const selected = citySelect.selectedOptions[0];
+    if (selected && selected.disabled) citySelect.value = "";
+  }
+  async function lookupCode() {
+    const code = codeInput.value.trim();
+    const sequence = ++requestSequence;
+    if (!code) {
+      setCreateMode(Boolean(loadedCompanyId));
+      setFeedback("", "");
+      return;
+    }
+    if (!/^[0-9]+$/.test(code) || Number(code) <= 0) {
+      setFeedback("Ingresá un código numérico positivo.", "error");
+      return;
+    }
+    if (loadedCode && code !== loadedCode) setCreateMode(true);
+    setFeedback("Buscando empresa…", "loading");
+    try {
+      const response = await fetch("/api/companies/by-code/" + encodeURIComponent(code), {
+        headers: {"Accept":"application/json"},
+        credentials: "same-origin"
+      });
+      if (sequence !== requestSequence) return;
+      if (response.status === 404) {
+        setFeedback("Código disponible para una nueva empresa.", "success");
+        syncCities();
+        return;
+      }
+      if (!response.ok) throw new Error("No se pudo consultar el código.");
+      const company = await response.json();
+      dataFields.forEach(function (name) {
+        const field = form.elements.namedItem(name);
+        if (field) field.value = company[name] || "";
+      });
+      form.action = "/app/companies/" + company.id + "/edit";
+      loadedCode = String(company.company_code);
+      loadedCompanyId = company.id;
+      if (deleteButton) deleteButton.hidden = false;
+      title.textContent = "Editar empresa";
+      eyebrow.textContent = "EMPRESA EXISTENTE · CÓDIGO " + loadedCode;
+      submit.textContent = "Guardar cambios";
+      setFeedback("Empresa encontrada. Se cargaron sus datos para edición.", "success");
+      syncCities();
+    } catch (error) {
+      if (sequence === requestSequence) setFeedback("No se pudo consultar la empresa. Verificá la conexión e intentá otra vez.", "error");
+    }
+  }
+  codeInput.addEventListener("change", lookupCode);
+  codeInput.addEventListener("blur", lookupCode);
+  codeInput.addEventListener("input", function () {
+    if (loadedCode && codeInput.value.trim() !== loadedCode) setCreateMode(true);
+    if (lookupTimer) clearTimeout(lookupTimer);
+    lookupTimer = setTimeout(lookupCode, 350);
+  });
+  departmentSelect.addEventListener("change", syncCities);
+  citySelect.addEventListener("change", function () {
+    const selected = citySelect.selectedOptions[0];
+    if (selected && selected.dataset.department) departmentSelect.value = selected.dataset.department;
+    syncCities();
+  });
+  form.addEventListener("submit", async function (event) {
+    if (!form.checkValidity()) {
+      event.preventDefault();
+      form.reportValidity();
+      return;
+    }
+    const rucDigits = form.elements.namedItem("ruc").value.replace(/\D/g, "");
+    const rucBase = rucDigits.slice(0, -1);
+    let rucSum = 0;
+    let rucFactor = 2;
+    for (let index = rucBase.length - 1; index >= 0; index -= 1) {
+      rucSum += Number(rucBase[index]) * rucFactor;
+      rucFactor = rucFactor === 11 ? 2 : rucFactor + 1;
+    }
+    const rucRemainder = rucSum % 11;
+    const expectedRucDv = rucRemainder <= 1 ? 0 : 11 - rucRemainder;
+    if (rucBase.length < 3 || rucBase.length > 8 || Number(rucDigits.slice(-1)) !== expectedRucDv) {
+      event.preventDefault();
+      setFeedback("El RUC no es válido: revisá la cantidad de dígitos y el verificador módulo 11.", "error");
+      form.elements.namedItem("ruc").focus();
+      return;
+    }
+    event.preventDefault();
+    const token = form.elements.namedItem("csrf_token").value;
+    const payload = Object.fromEntries(new FormData(form).entries());
+    delete payload.csrf_token;
+    payload.company_code = Number(payload.company_code);
+    const editing = Boolean(loadedCompanyId);
+    const method = editing ? "PUT" : "POST";
+    const endpoint = editing ? "/api/companies/" + loadedCompanyId : "/api/companies";
+    const oldLabel = submit.textContent;
+    submit.disabled = true;
+    submit.textContent = editing ? "Guardando cambios…" : "Guardando empresa…";
+    setFeedback("Guardando en la base de datos…", "loading");
+    try {
+      const response = await fetch(endpoint, {
+        method,
+        credentials: "same-origin",
+        headers: {"Content-Type":"application/json","Accept":"application/json","X-CSRF-Token":token},
+        body: JSON.stringify(payload)
+      });
+      const result = await response.json().catch(function () { return {}; });
+      if (!response.ok) {
+        const message = typeof result.detail === "string" ? result.detail : "No se pudieron guardar los datos. Revisá los campos e intentá otra vez.";
+        setFeedback(message, "error");
+        submit.disabled = false;
+        submit.textContent = oldLabel;
+        return;
+      }
+      window.location.href = "/app/companies/" + result.id + "?company_saved=1";
+    } catch (error) {
+      setFeedback("No se pudo conectar con el servidor. No se confirmó ningún cambio; volvé a intentar.", "error");
+      submit.disabled = false;
+      submit.textContent = oldLabel;
+    }
+  });
+  document.querySelectorAll("form[data-company-delete]").forEach(function (deleteForm) {
+    deleteForm.addEventListener("submit", async function (event) {
+      event.preventDefault();
+      if (!window.confirm("¿Archivar esta empresa? Se conservarán sus nóminas, cálculos, certificados y auditoría.")) return;
+      const tokenField = deleteForm.elements.namedItem("csrf_token");
+      const token = tokenField ? tokenField.value : "";
+      const companyId = deleteForm.dataset.companyId;
+      try {
+        const response = await fetch("/api/companies/" + encodeURIComponent(companyId), {
+          method: "DELETE",
+          credentials: "same-origin",
+          headers: {"Accept":"application/json","X-CSRF-Token":token}
+        });
+        if (!response.ok) {
+          const result = await response.json().catch(function () { return {}; });
+          window.alert(typeof result.detail === "string" ? result.detail : "No se pudo archivar la empresa.");
+          return;
+        }
+        window.location.href = "/app/companies?archived=1";
+      } catch (error) {
+        window.alert("No se pudo conectar con el servidor. La empresa no fue archivada.");
+      }
+    });
+  });
+  if (citySelect && citySelect.value && departmentSelect && !departmentSelect.value) {
+    const initialCity = citySelect.selectedOptions[0];
+    if (initialCity && initialCity.dataset.department) departmentSelect.value = initialCity.dataset.department;
+  }
+  syncCities();
+  if (deleteButton) deleteButton.addEventListener("click", async function () {
+    if (!loadedCompanyId) return;
+    if (!window.confirm("¿Archivar esta empresa? Se conservarán sus nóminas, cálculos, certificados y auditoría.")) return;
+    const token = form.elements.namedItem("csrf_token").value;
+    deleteButton.disabled = true;
+    try {
+      const response = await fetch("/api/companies/" + encodeURIComponent(loadedCompanyId), {
+        method: "DELETE", credentials: "same-origin",
+        headers: {"Accept":"application/json","X-CSRF-Token":token}
+      });
+      const result = await response.json().catch(function () { return {}; });
+      if (!response.ok) {
+        setFeedback(typeof result.detail === "string" ? result.detail : "No se pudo archivar la empresa.", "error");
+        deleteButton.disabled = false;
+        return;
+      }
+      window.location.href = "/app/companies?archived=1";
+    } catch (error) {
+      setFeedback("No se pudo conectar con el servidor. La empresa no fue archivada.", "error");
+      deleteButton.disabled = false;
+    }
+  });
+})();
+</script>
+{% endif %}
 {% endblock %}

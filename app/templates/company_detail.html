@@ -3,6 +3,7 @@
 {% block page_name %}Empresa{% endblock %}
 {% block content %}
 {% set logo_version = branding.updated_at.isoformat() if branding and branding.updated_at else '0' %}
+<style>.company-form-section{display:block;padding-top:10px;border-top:1px solid var(--border-color,#334155);color:var(--text-secondary,#aab8cc);font-size:.69rem;font-weight:850;letter-spacing:.09em}</style>
 
 {% if request.query_params.get('logo_saved') %}<div class="alert success branding-status-alert">Logo guardado correctamente. Ya está disponible para el expediente y los documentos.</div>{% endif %}
 {% if request.query_params.get('branding_saved') %}<div class="alert success branding-status-alert">Personalización guardada. Los ajustes del logo y del membrete se aplicaron a esta empresa.</div>{% endif %}
@@ -10,6 +11,7 @@
 {% if request.query_params.get('logo_error') %}<div class="alert danger branding-status-alert">{{ request.query_params.get('logo_error') }}</div>{% endif %}
 
 <a class="back-link dark" href="/app/companies">← Empresas</a>
+{% if request.query_params.get("company_saved") %}<div class="alert success" role="status">Los datos de la empresa se guardaron correctamente.</div>{% endif %}
 
 <section class="company-profile">
   {% if branding and branding.logo_bytes %}
@@ -20,7 +22,7 @@
   <div class="company-profile-main">
     <span class="eyebrow">EMPRESA</span>
     <h1>{{ company.legal_name }}</h1>
-    <p>{{ company.trade_name or 'Sin nombre comercial' }} · RUC {{ company.ruc }}</p>
+    <p>Código {{ company.company_code if company.company_code is not none else "Sin asignar" }} · {{ company.trade_name or "Sin nombre comercial" }} · RUC {{ company.ruc }}</p>
     <div class="tag-row"><span>{{ company.city or 'Sin ciudad' }}</span><span class="status-pill {{ company.status|lower }}">{{ company.status }}</span></div>
   </div>
   <div class="company-main-actions">
@@ -54,14 +56,22 @@
   <article class="panel info-panel">
     <div class="panel-head"><div><span>DATOS PRINCIPALES</span><h2>Información de la empresa</h2></div>{% if user.role in ['administrador','contador'] %}<button class="text-button" type="button" data-modal-open="editCompanyModal">Editar</button>{% endif %}</div>
     <dl class="info-list">
-      <div><dt>RUC</dt><dd>{{ company.ruc }}</dd></div>
-      <div><dt>Responsable interno</dt><dd>{{ company.responsible_name or 'No informado' }}</dd></div>
-      <div><dt>Representante legal</dt><dd>{{ company.legal_representative or 'No informado' }}</dd></div>
-      <div><dt>Teléfono</dt><dd>{{ company.phone or 'No informado' }}</dd></div>
-      <div><dt>Correo</dt><dd>{{ company.email or 'No informado' }}</dd></div>
-      <div><dt>Dirección</dt><dd>{{ company.address or 'No informada' }}</dd></div>
-      <div><dt>Número patronal IPS</dt><dd>{{ company.ips_employer_number or 'No informado' }}</dd></div>
-      <div><dt>Registro MTESS</dt><dd>{{ company.mtess_employer_number or 'No informado' }}</dd></div>
+      <div><dt>Código Empresa</dt><dd>{{ company.company_code if company.company_code is not none else "No asignado" }}</dd></div>
+      <div><dt>Nombre comercial</dt><dd>{{ company.trade_name or "No informado" }}</dd></div>
+      <div><dt>Propietario</dt><dd>{{ company.owner_name or "No informado" }}</dd></div>
+      <div><dt>Representante legal</dt><dd>{{ company.legal_representative or "No informado" }}</dd></div>
+      <div><dt>N.º C.I. del representante</dt><dd>{{ compliance_profile.legal_representative_document if compliance_profile else "No informado" }}</dd></div>
+      <div><dt>Departamento</dt><dd>{{ compliance_profile.department if compliance_profile and compliance_profile.department else "No informado" }}</dd></div>
+      <div><dt>Sector de trabajo</dt><dd>{{ company.work_sector or "No informado" }}</dd></div>
+      <div><dt>Lugar de trabajo</dt><dd>{{ company.work_location or "No informado" }}</dd></div>
+      <div><dt>Actividad económica</dt><dd>{{ compliance_profile.economic_activity if compliance_profile and compliance_profile.economic_activity else "No informado" }}</dd></div>
+      <div><dt>Teléfonos</dt><dd>{{ company.phone or "No informado" }}</dd></div>
+      <div><dt>Contacto</dt><dd>{{ company.contact_name or "No informado" }}</dd></div>
+      <div><dt>Correo</dt><dd>{{ company.email or "No informado" }}</dd></div>
+      <div><dt>Dirección</dt><dd>{{ company.address or "No informada" }}</dd></div>
+      <div><dt>Número patronal IPS</dt><dd>{{ company.ips_employer_number or "No informado" }}</dd></div>
+      <div><dt>Número patronal MJT</dt><dd>{{ company.mtess_employer_number or "No informado" }}</dd></div>
+      <div><dt>Última actualización</dt><dd>{{ (company.updated_at or company.created_at)|fecha }}</dd></div>
     </dl>
     {% if missing_fields %}<div class="missing-chip-list">{% for field in missing_fields %}<span>Falta {{ field }}</span>{% endfor %}</div>{% endif %}
   </article>
@@ -182,7 +192,62 @@
 {% endif %}
 
 {% if user.role in ['administrador','contador'] %}
-<div class="modal" id="editCompanyModal" aria-hidden="true"><div class="modal-backdrop" data-modal-close></div><section class="modal-card"><button class="modal-x" type="button" data-modal-close>×</button><span class="eyebrow">EDITAR EMPRESA</span><h2>Datos del expediente</h2><form method="post" action="/app/companies/{{ company.id }}/edit" class="form-grid"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label class="span-2">Razón social<input name="legal_name" value="{{ company.legal_name }}" required></label><label>Nombre comercial<input name="trade_name" value="{{ company.trade_name }}"></label><label>Ciudad<input name="city" value="{{ company.city }}"></label><label class="span-2">Dirección<input name="address" value="{{ company.address }}"></label><label>Teléfono<input name="phone" value="{{ company.phone }}"></label><label>Correo<input type="email" name="email" value="{{ company.email }}"></label><label>Representante legal<input name="legal_representative" value="{{ company.legal_representative }}"></label><label>Responsable interno<input name="responsible_name" value="{{ company.responsible_name }}"></label><label>Número patronal IPS<input name="ips_employer_number" value="{{ company.ips_employer_number }}"></label><label>Registro MTESS<input name="mtess_employer_number" value="{{ company.mtess_employer_number }}"></label><label class="span-2">Observaciones<textarea name="notes" rows="4">{{ company.notes }}</textarea></label><div class="form-actions span-2"><button class="btn ghost" type="button" data-modal-close>Cancelar</button><button class="btn primary" type="submit">Guardar cambios</button></div></form><hr class="modal-separator"><form method="post" action="/app/companies/{{ company.id }}/status" class="form-grid"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label class="span-2">Estado<select name="status"><option {{ 'selected' if company.status == 'Activa' }}>Activa</option><option {{ 'selected' if company.status == 'Pendiente' }}>Pendiente</option><option {{ 'selected' if company.status == 'Suspendida' }}>Suspendida</option></select></label><button class="btn outline span-2" type="submit">Actualizar estado</button></form></section></div>
+<div class="modal" id="editCompanyModal" aria-hidden="true"><div class="modal-backdrop" data-modal-close></div><section class="modal-card"><button class="modal-x" type="button" data-modal-close aria-label="Cerrar formulario">×</button><span class="eyebrow">EDITAR EMPRESA</span><h2>Ficha principal</h2>
+<form method="post" action="/app/companies/{{ company.id }}/edit" class="form-grid">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+<label>Código Empresa<input name="company_code" type="number" min="1" max="2147483647" step="1" value="{{ company.company_code or '' }}" required></label>
+<label>Nombre Empresa<input name="legal_name" value="{{ company.legal_name }}" maxlength="200" required></label>
+<label>Nombre comercial<input name="trade_name" value="{{ company.trade_name or '' }}" maxlength="160"></label>
+<label>N.º RUC<input name="ruc" value="{{ company.ruc }}" inputmode="numeric" pattern="[0-9.\- ]{4,14}" maxlength="14" required></label>
+<div class="span-2"><span class="company-form-section">RESPONSABLES Y CONTACTO</span></div>
+<label>Propietario<input name="owner_name" value="{{ company.owner_name or '' }}" maxlength="180"></label>
+<label>Representante Legal<input name="legal_representative" value="{{ company.legal_representative or '' }}" maxlength="180"></label>
+<label>N.º C.I. del representante<input name="legal_representative_document" value="{{ compliance_profile.legal_representative_document if compliance_profile else '' }}" inputmode="numeric" maxlength="40"></label>
+<label>Teléfonos<input name="phone" value="{{ company.phone or '' }}" maxlength="60"></label>
+<label>Contacto<input name="contact_name" value="{{ company.contact_name or '' }}" maxlength="180"></label>
+<label>Correo electrónico<input type="email" name="email" value="{{ company.email or '' }}" maxlength="180"></label>
+<div class="span-2"><span class="company-form-section">UBICACIÓN Y ACTIVIDAD</span></div>
+<label>Departamento<select name="department" id="editCompanyDepartment"><option value="">Seleccionar departamento</option>{% for department_option in departments %}<option value="{{ department_option }}" {{ 'selected' if compliance_profile and compliance_profile.department == department_option }}>{{ department_option }}</option>{% endfor %}</select></label>
+<label>Ciudad<select name="city" id="editCompanyCity"><option value="">Seleccionar ciudad</option>{% set known_city_names = cities|map(attribute='name')|list %}{% if company.city and company.city not in known_city_names %}<option value="{{ company.city }}" selected>{{ company.city }} · Localidad existente</option>{% endif %}{% for city_option in cities %}<option value="{{ city_option.name }}" data-department="{{ city_option.department }}" {{ 'selected' if company.city == city_option.name }}>{{ city_option.name }} · {{ city_option.department }}</option>{% endfor %}</select></label>
+<label>Dirección<input name="address" value="{{ company.address or '' }}" maxlength="240"></label>
+<label>Sector Trabajo<input name="work_sector" value="{{ company.work_sector or '' }}" maxlength="160"></label>
+<label>Lugar de Trabajo<input name="work_location" value="{{ company.work_location or '' }}" maxlength="180"></label>
+<label class="span-2">Explotación / actividad económica<input name="economic_activity" value="{{ compliance_profile.economic_activity if compliance_profile else '' }}" maxlength="220"></label>
+<div class="span-2"><span class="company-form-section">REGISTROS PATRONALES</span></div>
+<label>N.º Patronal IPS<input name="ips_employer_number" value="{{ company.ips_employer_number or '' }}" inputmode="numeric" maxlength="80"></label>
+<label>N.º Patronal MJT<input name="mtess_employer_number" value="{{ company.mtess_employer_number or '' }}" inputmode="numeric" maxlength="80"></label>
+<label class="span-2">Responsable interno del estudio<input name="responsible_name" value="{{ company.responsible_name or '' }}" maxlength="160"></label>
+<label class="span-2">Observaciones<textarea name="notes" rows="3">{{ company.notes or '' }}</textarea></label>
+<div class="form-actions span-2"><button class="btn ghost" type="button" data-modal-close>Cancelar</button><button class="btn primary" type="submit">Guardar cambios</button></div>
+</form>
+<hr class="modal-separator">
+<form method="post" action="/app/companies/{{ company.id }}/status" class="form-grid"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label class="span-2">Estado<select name="status"><option {{ 'selected' if company.status == 'Activa' }}>Activa</option><option {{ 'selected' if company.status == 'Pendiente' }}>Pendiente</option><option {{ 'selected' if company.status == 'Suspendida' }}>Suspendida</option><option {{ 'selected' if company.status == 'Archivada' }}>Archivada</option></select></label><button class="btn outline span-2" type="submit">Actualizar estado</button></form>
+</section></div>
+<script>
+(function () {
+  const department = document.getElementById("editCompanyDepartment");
+  const city = document.getElementById("editCompanyCity");
+  if (!department || !city) return;
+  function syncCities() {
+    const selectedDepartment = department.value;
+    Array.from(city.options).forEach(function (option) {
+      if (!option.value || !option.dataset.department) return;
+      const matches = !selectedDepartment || option.dataset.department === selectedDepartment;
+      option.hidden = !matches;
+      option.disabled = !matches;
+    });
+    const selected = city.selectedOptions[0];
+    if (selected && selected.disabled) city.value = "";
+  }
+  department.addEventListener("change", syncCities);
+  city.addEventListener("change", function () {
+    const selected = city.selectedOptions[0];
+    if (selected && selected.dataset.department) department.value = selected.dataset.department;
+    syncCities();
+  });
+  syncCities();
+})();
+</script>
 {% endif %}
 
 {% if user.role in ['administrador','contador','auxiliar'] %}<div class="modal" id="branchModal" aria-hidden="true"><div class="modal-backdrop" data-modal-close></div><section class="modal-card"><button class="modal-x" type="button" data-modal-close>×</button><span class="eyebrow">NUEVA SUCURSAL</span><h2>Agregar ubicación</h2><form method="post" action="/app/companies/{{ company.id }}/branches" class="form-grid"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label class="span-2">Nombre<input name="name" required placeholder="Ej.: Casa central"></label><label>Ciudad<input name="city"></label><label>Dirección<input name="address"></label><div class="form-actions span-2"><button class="btn ghost" type="button" data-modal-close>Cancelar</button><button class="btn primary" type="submit">Agregar sucursal</button></div></form></section></div>{% endif %}

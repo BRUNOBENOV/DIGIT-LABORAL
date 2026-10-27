@@ -64,11 +64,19 @@ class ActivationRequest(Base):
 
 class Company(Base):
     __tablename__ = "companies"
-    __table_args__ = (UniqueConstraint("studio_id", "ruc", name="uq_company_ruc_per_studio"),)
+    __table_args__ = (
+        UniqueConstraint("studio_id", "ruc", name="uq_company_ruc_per_studio"),
+        UniqueConstraint("studio_id", "company_code", name="uq_company_code_per_studio"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    company_code: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
     studio_id: Mapped[int] = mapped_column(ForeignKey("studios.id"), index=True)
     legal_name: Mapped[str] = mapped_column(String(200), index=True)
+    owner_name: Mapped[str] = mapped_column(String(180), default="")
+    work_sector: Mapped[str] = mapped_column(String(160), default="")
+    work_location: Mapped[str] = mapped_column(String(180), default="")
+    contact_name: Mapped[str] = mapped_column(String(180), default="")
     trade_name: Mapped[str] = mapped_column(String(160), default="")
     ruc: Mapped[str] = mapped_column(String(40), index=True)
     city: Mapped[str] = mapped_column(String(100), default="Ciudad del Este")
@@ -82,6 +90,9 @@ class Company(Base):
     status: Mapped[str] = mapped_column(String(30), default="Activa")
     notes: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC)
+    )
 
     studio: Mapped[Studio] = relationship(back_populates="companies")
     branches: Mapped[list["Branch"]] = relationship(back_populates="company", cascade="all, delete-orphan")

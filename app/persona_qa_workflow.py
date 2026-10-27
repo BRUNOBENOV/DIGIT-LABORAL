@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import io
 import json
+import uuid
 
 from PIL import Image
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from .database import SessionLocal
-from .models import CalculationRecord, Company, Employee, Payroll, PayrollLine, Vacation
+from .main import ruc_check_digit
+from .models import CalculationRecord, Company, Employee, Payroll, PayrollLine, User, Vacation
 from .persona_qa_http import expect_status, login, logout
 
 
@@ -29,18 +31,38 @@ def run_admin_workflow(check, client, password: str) -> dict:  # noqa: ANN001
     expect_status(check, bad_company, {303}, 'validación empresa vacía')
     check('form_error=' in bad_company.headers.get('location', ''), 'empresa inválida sin mensaje claro')
 
-    company_payload = {
-        'legal_name': 'QA Empresa Profesional S.A.', 'trade_name': 'QA Profesional', 'ruc': '80999001-7',
-        'city': 'Ciudad del Este', 'address': 'Ruta QA 100', 'phone': '0981000000', 'email': 'qa@empresa.test',
-        'legal_representative': 'Representante QA', 'ips_employer_number': 'IPS-QA-1', 'mtess_employer_number': 'MTESS-QA-1',
-        'responsible_name': 'Contador QA',
-    }
-    response = client.post('/app/companies', data=company_payload, follow_redirects=False)
-    expect_status(check, response, {303}, 'crear empresa')
     with SessionLocal() as db:
-        company = db.scalar(select(Company).where(Company.ruc == '80999001-7'))
-        check(company is not None, 'empresa QA no persistió')
-        company_id = company.id if company else 0
+        admin = db.scalar(select(User).where(User.email == 'admin@digitlaboral.com.py'))
+        check(admin is not None and admin.studio_id is not None, 'admin QA sin estudio asociado')
+        studio_id = admin.studio_id if admin and admin.studio_id is not None else 0
+        next_company_code = (db.scalar(
+            select(func.max(Company.company_code)).where(Company.studio_id == studio_id)
+        ) or 0) + 1
+    # QA uses a unique syntactically valid RUC so repeated CI runs cannot collide with seeded fixtures.
+    ruc_base = str(81_000_000 + uuid.uuid4().int % 999_999)
+    company_ruc = f'{ruc_base}-{ruc_check_digit(ruc_base)}'
+    company_payload = {
+        'company_code': str(next_company_code),
+        'legal_name': 'QA Empresa Profesional S.A.', 'trade_name': 'QA Profesional', 'ruc': company_ruc,
+        'owner_name': 'Propietario QA',
+        'city': 'Ciudad del Este', 'department': 'Alto Paraná',
+        'address': 'Ruta QA 100', 'phone': '0981000000', 'email': 'qa@empresa.test',
+        'legal_representative': 'Representante QA', 'legal_representative_document': '1234567',
+        'ips_employer_number': '123456', 'mtess_employer_number': '654321',
+        'work_sector': 'Administración', 'work_location': 'Casa central',
+        'economic_activity': 'Servicios profesionales',
+        'contact_name': 'Contacto QA', 'responsible_name': 'Contador QA',
+    }
+    response = client.post('/api/companies', json=company_payload, headers={'Accept': 'application/json'})
+    if response.status_code != 201:
+        raise RuntimeError(
+            f"QA no pudo crear la empresa por API: HTTP {response.status_code}; respuesta={response.text[:1000]}"
+        )
+    company_id = int(response.json()['id'])
+    with SessionLocal() as db:
+        company = db.get(Company, company_id)
+        if company is None:
+            raise RuntimeError("QA API devolvió un ID de empresa que no existe en la base")
 
     for fmt, mime, ext in (('PNG', 'image/png', 'png'), ('JPEG', 'image/jpeg', 'jpg'), ('WEBP', 'image/webp', 'webp')):
         response = client.post(f'/app/companies/{company_id}/logo', files={'logo': (f'logo.{ext}', _image_bytes(fmt), mime)}, follow_redirects=False)
