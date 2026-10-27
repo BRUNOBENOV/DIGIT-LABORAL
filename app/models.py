@@ -96,6 +96,7 @@ class Company(Base):
 
     studio: Mapped[Studio] = relationship(back_populates="companies")
     branches: Mapped[list["Branch"]] = relationship(back_populates="company", cascade="all, delete-orphan")
+    sections: Mapped[list["CompanySection"]] = relationship(back_populates="company", cascade="all, delete-orphan")
     employees: Mapped[list["Employee"]] = relationship(back_populates="company", cascade="all, delete-orphan")
     requests: Mapped[list["CompanyRequest"]] = relationship(back_populates="company", cascade="all, delete-orphan")
     users: Mapped[list[User]] = relationship(back_populates="company")
@@ -121,13 +122,40 @@ class Branch(Base):
     company: Mapped[Company] = relationship(back_populates="branches")
 
 
-class Employee(Base):
-    __tablename__ = "employees"
-    __table_args__ = (UniqueConstraint("company_id", "document_number", name="uq_employee_document_per_company"),)
+class CompanySection(Base):
+    __tablename__ = "company_sections"
+    __table_args__ = (
+        UniqueConstraint("company_id", "section_code", name="uq_company_section_code"),
+        UniqueConstraint("company_id", "name", name="uq_company_section_name"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    section_code: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    name: Mapped[str] = mapped_column(String(140))
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    updated_by: Mapped[str] = mapped_column(String(180), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC)
+    )
+
+    company: Mapped[Company] = relationship(back_populates="sections")
+    employees: Mapped[list["Employee"]] = relationship(back_populates="section")
+
+
+class Employee(Base):
+    __tablename__ = "employees"
+    __table_args__ = (
+        UniqueConstraint("company_id", "document_number", name="uq_employee_document_per_company"),
+        UniqueConstraint("company_id", "employee_code", name="uq_employee_code_per_company"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    employee_code: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
     branch_id: Mapped[Optional[int]] = mapped_column(ForeignKey("branches.id"), nullable=True, index=True)
+    section_id: Mapped[Optional[int]] = mapped_column(ForeignKey("company_sections.id"), nullable=True, index=True)
     full_name: Mapped[str] = mapped_column(String(180), index=True)
     document_number: Mapped[str] = mapped_column(String(40), index=True)
     birth_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
@@ -144,9 +172,14 @@ class Employee(Base):
     termination_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     notes: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC)
+    )
+    updated_by: Mapped[str] = mapped_column(String(180), default="")
 
     company: Mapped[Company] = relationship(back_populates="employees")
     branch: Mapped[Optional[Branch]] = relationship()
+    section: Mapped[Optional[CompanySection]] = relationship(back_populates="employees")
     payroll_lines: Mapped[list["PayrollLine"]] = relationship(back_populates="employee")
     generated_certificates: Mapped[list["GeneratedCertificate"]] = relationship(back_populates="employee")
     official_certificates: Mapped[list["OfficialCertificateRecord"]] = relationship(back_populates="employee")
@@ -723,6 +756,8 @@ class EmployeeComplianceProfile(Base):
     shift: Mapped[str] = mapped_column(String(60), default="Diurno")
     weekly_hours: Mapped[int] = mapped_column(Integer, default=48)
     salary_type: Mapped[str] = mapped_column(String(40), default="Mensual")
+    daily_hours: Mapped[int] = mapped_column(Integer, default=8)
+    ips_number: Mapped[str] = mapped_column(String(80), default="")
     dependent_children: Mapped[int] = mapped_column(Integer, default=0)
     indigenous: Mapped[bool] = mapped_column(Boolean, default=False)
     disability: Mapped[bool] = mapped_column(Boolean, default=False)

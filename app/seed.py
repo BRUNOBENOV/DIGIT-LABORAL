@@ -139,10 +139,10 @@ def seed_database() -> None:
                 Branch(company_id=companies[2].id, name="Casa central", city="Minga Guazú"),
             ])
             db.add_all([
-                Employee(company_id=companies[0].id, full_name="Juan Pérez González", document_number="3.450.123", position="Vendedor", admission_date=date(2024, 2, 1), base_salary=3_044_000, ips_contributor=True),
-                Employee(company_id=companies[0].id, full_name="María López Benítez", document_number="4.120.987", position="Encargada", admission_date=date(2023, 8, 15), base_salary=4_500_000, ips_contributor=True),
-                Employee(company_id=companies[1].id, full_name="Pedro Fernández", document_number="5.231.880", position="Auxiliar", admission_date=date(2025, 1, 10), base_salary=3_150_000, ips_contributor=True),
-                Employee(company_id=companies[1].id, full_name="Ana Duarte", document_number="4.990.021", position="Administrativa", admission_date=date(2024, 6, 3), base_salary=3_800_000, ips_contributor=True),
+                Employee(company_id=companies[0].id, employee_code=1, full_name="Juan Pérez González", document_number="3.450.123", position="Vendedor", admission_date=date(2024, 2, 1), base_salary=3_044_000, ips_contributor=True),
+                Employee(company_id=companies[0].id, employee_code=2, full_name="María López Benítez", document_number="4.120.987", position="Encargada", admission_date=date(2023, 8, 15), base_salary=4_500_000, ips_contributor=True),
+                Employee(company_id=companies[1].id, employee_code=1, full_name="Pedro Fernández", document_number="5.231.880", position="Auxiliar", admission_date=date(2025, 1, 10), base_salary=3_150_000, ips_contributor=True),
+                Employee(company_id=companies[1].id, employee_code=2, full_name="Ana Duarte", document_number="4.990.021", position="Administrativa", admission_date=date(2024, 6, 3), base_salary=3_800_000, ips_contributor=True),
             ])
             db.add_all([
                 CompanyRequest(company_id=companies[0].id, request_type="Alta de funcionario", subject="Ingreso de nuevo vendedor", detail="Solicitamos registrar a un nuevo vendedor desde el 1 de agosto.", priority="Alta", status="Pendiente"),
