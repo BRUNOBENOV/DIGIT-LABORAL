@@ -2689,7 +2689,7 @@ def employees_page(
         query = query.where(Employee.company_id == company_id)
     if active_employee_id:
         query = query.where(Employee.id == active_employee_id)
-    if not show_archived:
+    if not show_archived and status_filter != "Archivado":
         query = query.where(Employee.status != "Archivado")
     if status_filter:
         if status_filter not in {"Activo", "Inactivo", "Desvinculado", "Archivado"}:
