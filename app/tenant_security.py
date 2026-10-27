@@ -34,6 +34,7 @@ DIRECT_POLICIES = {
 
 COMPANY_POLICIES = {
     "branches": "company_id IN (SELECT id FROM companies WHERE studio_id = digit_current_studio_id())",
+    "company_sections": "company_id IN (SELECT id FROM companies WHERE studio_id = digit_current_studio_id())",
     "employees": "company_id IN (SELECT id FROM companies WHERE studio_id = digit_current_studio_id())",
     "company_requests": "company_id IN (SELECT id FROM companies WHERE studio_id = digit_current_studio_id())",
     "payrolls": "company_id IN (SELECT id FROM companies WHERE studio_id = digit_current_studio_id())",
