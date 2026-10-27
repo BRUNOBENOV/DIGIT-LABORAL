@@ -34,11 +34,11 @@ def _calculation_selectors(client: TestClient):
         r'id="calculationEmployeeFilter">(.*?)</select>', response.text, re.DOTALL
     )
     assert company_html and employee_html
-    company_ids = re.findall(r'<option value="(\\d+)"', company_html.group(1))
+    company_ids = re.findall(r'<option value="(\d+)"', company_html.group(1))
     employees = [
         (int(employee_id), int(company_id))
         for employee_id, company_id in re.findall(
-            r'<option value="(\\d+)" data-company="(\\d+)"', employee_html.group(1)
+            r'<option value="(\d+)" data-company="(\d+)"', employee_html.group(1)
         )
     ]
     return response, [int(value) for value in company_ids], employees
