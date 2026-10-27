@@ -5,7 +5,7 @@ It does not determine which earning concepts are legally computable for aguinald
 """
 from __future__ import annotations
 
-from calendar import month_name, monthrange
+from calendar import monthrange
 from datetime import date
 from typing import Any, Mapping
 from zoneinfo import ZoneInfo
@@ -142,6 +142,22 @@ def build_annual_coverage(
     distinct_salaries = sorted({item["base_salary"] for item in salary_history})
     changes = len(distinct_salaries) > 1
     all_closed = bool(rows) and closed_count == len(rows)
+    if year == today.year:
+        cutoff = MONTHS_ES[today.month - 1]
+        if all_closed:
+            coverage_note = (
+                f"Los meses transcurridos hasta {cutoff} tienen nómina cerrada y consistente. "
+                "Este resultado no representa el cierre anual; los meses futuros se incorporarán cuando corresponda."
+            )
+        else:
+            coverage_note = (
+                f"La cobertura hasta {cutoff} está incompleta o requiere revisión. "
+                "Los meses futuros no se consideran faltantes todavía."
+            )
+    elif all_closed:
+        coverage_note = "Cobertura documental anual completa: todos los meses esperados tienen nómina cerrada y consistente."
+    else:
+        coverage_note = "El ejercicio cerrado tiene períodos faltantes o pendientes de revisión."
     return {
         "year": year,
         "periods": rows,
@@ -155,11 +171,7 @@ def build_annual_coverage(
         "salary_changes_detected": changes,
         "salary_history": salary_history,
         "salary_values": distinct_salaries,
-        "coverage_note": (
-            "Cobertura documental completa: todos los meses esperados tienen nómina cerrada y consistente."
-            if all_closed
-            else "Cobertura incompleta o pendiente de revisión. La suma sugerida solo contempla nóminas cerradas y consistentes."
-        ),
+        "coverage_note": coverage_note,
         "legal_note": (
             "La suma propuesta es el bruto registrado en nóminas cerradas. No constituye automáticamente la base legal "
             "del aguinaldo: revisá conceptos computables, ajustes, anticipos y reglas aplicables antes de aprobar."
