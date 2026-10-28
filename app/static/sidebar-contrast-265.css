@@ -11,10 +11,16 @@
   font-weight:850!important;
   letter-spacing:.12em!important;
 }
+/* Tipografía base de los enlaces de Inicio y Administración general. */
 .app-body .workspace-sidebar .workspace-home-link{
-  color:#F1F5F9!important;
   font-size:.91rem!important;
   font-weight:700!important;
+}
+
+/* El gris claro solo corresponde al enlace inactivo y fuera de hover.
+   No impone #F1F5F9 sobre Inicio cuando está activo ni cambia hover. */
+.app-body .workspace-sidebar .workspace-home-link:not(.active):not(:hover){
+  color:#F1F5F9!important;
 }
 .app-body .workspace-sidebar .workspace-home-symbol{
   color:#E2E8F0!important;

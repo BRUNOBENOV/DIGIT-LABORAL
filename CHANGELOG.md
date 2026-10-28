@@ -1,4 +1,12 @@
 # Registro de cambios
+## 2.6.14 — Corregir la regla fuente del color de Inicio
+
+- Modifica el bloque original de `sidebar-contrast-265.css` que aplicaba `color:#F1F5F9!important` a todos los enlaces de inicio.
+- Conserva tamaño y peso tipográfico en el selector general, pero limita el gris claro a `.workspace-home-link:not(.active):not(:hover)`.
+- El enlace activo y sin hover ya no recibe el color pálido de esa regla; la etiqueta específica de Inicio aplica `#2563EB` con visibilidad completa.
+- No altera hover, estilos de los demás enlaces ni el logo.
+- Actualiza la referencia cache-busting y añade pruebas de regresión.
+
 ## 2.6.13 — Refuerzo final del texto activo de Inicio
 
 - Añade una hoja CSS de carga final con alta especificidad para el texto de `Inicio` únicamente cuando el enlace `href="/app"` está activo y no hay hover.
