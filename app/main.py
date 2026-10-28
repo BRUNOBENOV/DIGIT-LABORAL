@@ -6903,7 +6903,10 @@ def employee_history_page(
             "operations": list(db.scalars(select(LaborOperation).where(LaborOperation.employee_id == selected.id).order_by(LaborOperation.effective_date.desc()).limit(100))),
             "vacations": list(db.scalars(select(Vacation).where(Vacation.employee_id == selected.id).order_by(Vacation.period_year.desc()).limit(100))),
             "aguinaldos": list(db.scalars(select(Aguinaldo).where(Aguinaldo.employee_id == selected.id).order_by(Aguinaldo.year.desc()).limit(100))),
-            "medical_exams": list(db.scalars(select(MedicalExam).where(MedicalExam.employee_id == selected.id).order_by(MedicalExam.exam_date.desc()).limit(100))),
+            "medical_exams": (
+                list(db.scalars(select(MedicalExam).where(MedicalExam.employee_id == selected.id).order_by(MedicalExam.exam_date.desc()).limit(100)))
+                if user.role in {"administrador", "contador"} else []
+            ),
             "payroll_lines": list(db.scalars(select(PayrollLine).where(PayrollLine.employee_id == selected.id).order_by(PayrollLine.id.desc()).limit(100))),
         }
     return render(request, "employee_history.html", db, user, companies=companies, employees=employees,
