@@ -126,7 +126,7 @@
             <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/calculation-operations') and request.query_params.get('tipo') == 'discipline' else '' }}" href="/app/calculation-operations?tipo=discipline">Amonestaciones / permisos</a>
             <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/calculation-operations') and request.query_params.get('tipo') == 'telegram' else '' }}" href="/app/calculation-operations?tipo=telegram">Telegrama colacionado</a>
             <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/employee-history') else '' }}" href="/app/employee-history">Histórico funcionario</a>
-            {% if user.role in ['administrador', 'contador'] %}<a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/medical-exams') else '' }}" href="/app/medical-exams">Exámenes médicos</a>{% endif %}
+
           </div>
         </details>
         {% endif %}
