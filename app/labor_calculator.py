@@ -6,12 +6,12 @@ from datetime import date
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from .labor_wage_rules import minimum_wage_for_period
 
-VERSION = "2026.10.1"
+VERSION = "2026.10.2"
 SOURCE = "Centro laboral"
 TITLES = {"salary": "Liquidación de salario", "settlement": "Liquidación de haberes",
           "aguinaldo": "Aguinaldo", "vacation": "Vacaciones", "hours": "Horas y recargos"}
 SOURCES = [
-    ("Código del Trabajo · MTESS", "https://www.mtess.gov.py/wp-content/uploads/2026/01/Ley_213.pdf"),
+    ("Código del Trabajo · Ley N.º 213/93 · arts. 78, 84–94", "https://www.mtess.gov.py/wp-content/uploads/2026/01/Ley_213.pdf"),
     ("Aportes · IPS", "https://portal.ips.gov.py/sistemas/ipsportal/contenido.php?c=69"),
     ("Base de aporte · IPS", "https://portal.ips.gov.py/sistemas/ipsportal/contenido.php?c=59"),
     ("Vacaciones · MTESS", "https://www.mtess.gov.py/?p=34520"),
@@ -329,46 +329,136 @@ def calculate(data):
         if end < start:
             raise CalculationError("El egreso no puede ser anterior al ingreso.", "end_date")
         years = completed_years(start, end)
+        months = 0
+        while months < 11 and anniversary(start, years, months + 1) <= end:
+            months += 1
+        tenure_anchor = anniversary(start, years, months)
+        tenure_days = (end - tenure_anchor).days
         reason = data.get("reason", "")
-        if reason not in {"dismissal", "resignation", "justified", "other"}:
+        reason_labels = {
+            "dismissal": "Despido sin causa",
+            "resignation": "Renuncia voluntaria",
+            "justified": "Despido con causa invocada por el empleador",
+            "worker_justified": "Retiro justificado por causa imputable al empleador",
+            "fixed_term_expiration": "Vencimiento de contrato a plazo / fin de obra",
+            "mutual_consent": "Mutuo consentimiento",
+            "death": "Fallecimiento del trabajador",
+            "other": "Otra causa o caso especial",
+        }
+        if reason not in reason_labels:
             raise CalculationError("Elegí el motivo de egreso.", "reason")
         result["period"] = end.isoformat()
         fact("Ingreso", start.strftime("%d/%m/%Y"))
         fact("Egreso", end.strftime("%d/%m/%Y"))
         fact("Años completos", years)
-        fact("Motivo declarado", {"dismissal": "Despido sin causa", "resignation": "Renuncia",
-                                 "justified": "Despido con causa invocada", "other": "Otra causa"}[reason])
-        result["partial"] = (years >= 10 or checked(data, "protected") or
-                             not checked(data, "indefinite") or reason == "other")
-        if result["partial"]:
-            result["warnings"].append("Subtotal parcial: estabilidad, protección especial, contrato a plazo u otra causa requieren analizar el régimen aplicable. No se calculan automáticamente indemnización ni preaviso.")
-        elif reason == "dismissal" and checked(data, "trial_completed"):
+        fact("Antigüedad exacta", f"{years} {('año' if years == 1 else 'años')}, {months} {('mes' if months == 1 else 'meses')} y {tenure_days} {('día' if tenure_days == 1 else 'días')}")
+        fact("Días calendario del vínculo", (end - start).days + 1)
+        fact("Motivo declarado", reason_labels[reason])
+
+        # Las causales especiales no deben quedar presentadas como una liquidación definitiva.
+        special_severance_regime = (
+            years >= 10 or checked(data, "protected") or not checked(data, "indefinite")
+        )
+        within_probation = (
+            reason in {"dismissal", "worker_justified"} and not checked(data, "trial_completed")
+        )
+        result["partial"] = (
+            special_severance_regime
+            or within_probation
+            or reason in {"justified", "worker_justified", "fixed_term_expiration", "mutual_consent", "death", "other"}
+        )
+
+        if special_severance_regime:
+            result["warnings"].append(
+                "Subtotal parcial: el caso activa estabilidad de diez años, protección especial o contrato no indefinido. "
+                "No se agrega automáticamente indemnización ordinaria ni preaviso; verificá el régimen aplicable y la documentación."
+            )
+            if years >= 10:
+                result["warnings"].append(
+                    "Con diez años de antigüedad o más debe revisarse la estabilidad laboral (artículo 94) y sus excepciones antes de emitir."
+                )
+            if checked(data, "protected"):
+                result["warnings"].append(
+                    "Se declaró protección laboral especial. Revisá la tutela aplicable; este motor no determina si el despido es válido."
+                )
+            if not checked(data, "indefinite"):
+                result["warnings"].append(
+                    "El vínculo no está marcado como indefinido. Verificá la modalidad y el vencimiento contractual; se omitió la fórmula ordinaria."
+                )
+        elif reason in {"dismissal", "worker_justified"} and checked(data, "trial_completed"):
             average = positive(data, "average_salary", "promedio salarial de los últimos seis meses o menor tiempo de servicio")
             last_anniversary = anniversary(start, years)
             units = years + int(end > anniversary(last_anniversary, months=6))
             severance = amount(average / 30 * 15 * units)
-            add("Indemnización ordinaria", severance, f"Gs. {gs(average)} / 30 × 15 × {units}", "Arts. 91 y 92")
+            severance_legal = "Arts. 85, 91 y 92" if reason == "worker_justified" else "Arts. 91 y 92"
+            add(
+                "Indemnización ordinaria por antigüedad", severance,
+                f"Gs. {gs(average)} / 30 × 15 × {units}", severance_legal
+            )
             due = notice_days(start, end)
             served = number(data, "notice_served", "días de preaviso cumplidos", maximum=str(due))
             notice = amount(average / 30 * (due - served))
-            add("Preaviso omitido por el empleador", notice, f"Gs. {gs(average)} / 30 × {Decimal(due) - served}", "Arts. 87, 90 y 92")
+            notice_legal = "Arts. 85, 87, 90 y 92" if reason == "worker_justified" else "Arts. 87, 90 y 92"
+            add(
+                "Indemnización por preaviso no cumplido", notice,
+                f"Gs. {gs(average)} / 30 × {Decimal(due) - served}", notice_legal
+            )
             protected += severance + notice
-            fact("Preaviso legal", f"{due} días")
-            result["notes"].append("Indemnización: la fracción restante cuenta solamente si supera seis meses. Revisar conceptos del promedio y beneficios más favorables.")
+            fact("Preaviso legal de referencia", f"{due} días")
+            result["notes"].append(
+                "La indemnización ordinaria utiliza el promedio salarial de los últimos seis meses o el menor tiempo trabajado. "
+                "La fracción adicional se considera si supera seis meses; revisá los conceptos computables y cualquier régimen especial."
+            )
+            if reason == "worker_justified":
+                result["warnings"].append(
+                    "Escenario condicionado: el retiro justificado exige acreditar una causa imputable al empleador prevista en el artículo 84. "
+                    "La procedencia de las indemnizaciones de los artículos 85 y 187 requiere revisión profesional y, si hay controversia, puede depender de decisión competente."
+                )
+        elif reason in {"dismissal", "worker_justified"}:
+            result["warnings"].append(
+                "No se calcularon indemnización ni preaviso ordinarios porque no se confirmó la conclusión del período de prueba. "
+                "Verificá las fechas, la categoría laboral y el régimen aplicable antes de aprobar."
+            )
         elif reason == "resignation":
-            result["notes"].append("La eventual compensación por falta de preaviso del trabajador requiere análisis separado; no se descuenta automáticamente.")
+            result["notes"].append(
+                "La renuncia voluntaria no activa por sí sola la indemnización ordinaria por despido. "
+                "No se descuenta automáticamente una eventual compensación por falta de preaviso del trabajador."
+            )
         elif reason == "justified":
-            result["warnings"].append("La causa invocada debe estar acreditada. Este cálculo no determina si el despido fue justificado.")
-        elif not checked(data, "trial_completed"):
-            result["warnings"].append("No se incluyeron preaviso ni indemnización ordinaria: verificá la vigencia del período de prueba.")
+            result["warnings"].append(
+                "El empleador invoca una causa de despido. El motor no declara probada esa causa ni resuelve controversias; "
+                "el resultado es un subtotal sujeto a revisión del artículo 82 y del expediente."
+            )
+        elif reason == "fixed_term_expiration":
+            result["warnings"].append(
+                "Verificá la validez del contrato a plazo/obra, el vencimiento pactado y si hubo terminación anticipada. "
+                "Una terminación injustificada anterior al vencimiento puede requerir determinación judicial (artículo 83)."
+            )
+        elif reason == "mutual_consent":
+            result["warnings"].append(
+                "El mutuo consentimiento debe cumplir la forma prevista en el artículo 78(b). El cálculo no acredita el acuerdo, su formalización ni el pago."
+            )
+        elif reason == "death":
+            result["warnings"].append(
+                "El fallecimiento requiere verificar herederos, beneficiarios y la indemnización especial prevista por el artículo 91. "
+                "No se estima automáticamente esa prestación."
+            )
+        elif reason == "other":
+            result["warnings"].append(
+                "La causal no está parametrizada como supuesto ordinario. El resultado queda como subtotal hasta documentar y revisar el régimen aplicable."
+            )
+
         simple = number(data, "pending_days", "vacaciones pendientes simples", maximum="365", decimals=2)
         double = number(data, "double_days", "vacaciones pendientes dobles", maximum="365", decimals=2)
         proportional = number(data, "proportional_days", "vacaciones proporcionales", maximum="30", decimals=2)
-        add("Vacaciones pendientes", salary / 30 * simple, f"Gs. {gs(salary)} / 30 × {simple}", "Art. 221")
-        add("Vacaciones pendientes con pago doble", salary / 30 * double * 2, f"Gs. {gs(salary)} / 30 × {double} × 2", "Arts. 221 y 223; procedencia revisada")
-        add("Vacaciones proporcionales", salary / 30 * proportional, f"Gs. {gs(salary)} / 30 × {proportional}", "Art. 221; procedencia revisada")
+        add("Vacaciones pendientes", salary / 30 * simple, f"Gs. {gs(salary)} / 30 × {simple}", "Arts. 218 y 221")
+        add("Vacaciones pendientes con pago doble", salary / 30 * double * 2, f"Gs. {gs(salary)} / 30 × {double} × 2", "Art. 223; procedencia revisada")
+        add("Vacaciones proporcionales", salary / 30 * proportional, f"Gs. {gs(salary)} / 30 × {proportional}", "Art. 221; causal y días reconocidos por el liquidador")
         fact("Escala anual orientativa", f"{vacation_days(start, end)} días hábiles")
-        result["notes"].append("Los días de vacaciones se ingresan una sola vez: simples, dobles o proporcionales. La proporcionalidad y duplicación dependen de la causa, los períodos adquiridos y los plazos de goce.")
+        result["notes"].append(
+            "Los días de vacaciones simples, dobles y proporcionales se ingresan por separado y solo una vez. "
+            "La proporcionalidad y duplicación dependen de la causal, los períodos adquiridos y los plazos de goce; verificá el derecho antes de aprobar."
+        )
     if kind in {"settlement", "aguinaldo"}:
         annual = number(data, "annual_remuneration", "remuneraciones computables del año", required=True)
         if kind == "settlement" and annual < proposed_ips_base:

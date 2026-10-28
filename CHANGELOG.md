@@ -1,5 +1,13 @@
 # Registro de cambios
 
+## 2.6.25 — Revisión de causales y antigüedad en liquidación final
+
+- Diferencia ocho causales/supuestos de egreso: despido sin causa, renuncia, despido con causa invocada, retiro justificado, fin de contrato a plazo/obra, mutuo consentimiento, fallecimiento y otros.
+- Distingue el retiro justificado imputable al empleador de la causa alegada por el empleador; el primero calcula un escenario condicionado y advierte que exige acreditar los hechos.
+- Agrega la antigüedad exacta en años, meses y días, junto con los días calendario del vínculo.
+- Mejora advertencias para estabilidad de diez años, protecciones especiales, contratos no indefinidos y período de prueba sin confirmar.
+- Conserva registros existentes, estados, auditoría, API REST, historial y exportación PDF/CSV; no se agregan migraciones.
+
 ## 2.6.24 — Color de marca y logo original en la barra lateral
 
 - Establece #05256d como fondo de la barra lateral, también en modo móvil, y adapta los colores de texto, grupos, indicadores, estados hover y foco.
