@@ -138,8 +138,9 @@ def test_sidebar_uses_requested_brand_navy_and_original_white_logo():
     assert "background:#05256d!important" in sidebar_css
     assert "background:#05256d!important" in sidebar_css.split("@media(max-width:860px)")[1]
     assert 'src="/static/branding/digit-laboral-logo-blanco.svg?v=20261028b"' in base
-    # The white variant is generated from the same official wordmark used in the header.
-    assert 'href="digit-laboral-logo-267.webp?v=20261028a"' in white_logo
+    # The white variant embeds and recolors the exact original wordmark, rather than redrawing it.
+    assert "digit-laboral-logo-267.webp" in white_logo
+    assert 'href="data:image/webp;base64,' in white_logo
     assert 'filter="url(#original-wordmark-white)"' in white_logo
     assert "<feColorMatrix" in white_logo
     assert 'M10 10 H112' not in white_logo  # no separately redrawn replacement mark
