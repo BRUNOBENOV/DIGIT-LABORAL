@@ -1,5 +1,11 @@
 # Registro de cambios
 
+## 2.6.24 — Color de marca y logo original en la barra lateral
+
+- Establece #05256d como fondo de la barra lateral, también en modo móvil, y adapta los colores de texto, grupos, indicadores, estados hover y foco.
+- Sustituye el logo blanco reconstruido por una versión blanca derivada del mismo archivo horizontal original usado en el encabezado; mantiene geometría, proporciones y contornos sin redibujar el símbolo ni las letras.
+- Añade prueba de regresión para el color exacto, la carga de la hoja final y el uso del wordmark original.
+
 ## 2.6.23 — Integración de horas extras dentro de Salario
 
 - Integra en Salario el adicional por trabajo nocturno ordinario del 30 %, las horas extraordinarias diurnas (mínimo 50 %), las extraordinarias nocturnas (100 %) y el adicional de feriado (100 %).

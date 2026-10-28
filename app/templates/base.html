@@ -28,6 +28,7 @@
   <link rel="stylesheet" href="{{ url_for('static', path='medical-exams-2618.css') }}?v=20261028a">
   <link rel="stylesheet" href="{{ url_for('static', path='calculation-operations-2619.css') }}?v=20261028a">
   <link rel="stylesheet" href="{{ url_for('static', path='sidebar-brand-transparent-2617.css') }}?v=20261028a">
+  <link rel="stylesheet" href="{{ url_for('static', path='sidebar-brand-theme-2624.css') }}?v=20261028a">
 
   <style>
     .app-version-indicator{display:inline-flex;align-items:center;gap:7px;flex:0 0 auto;margin-left:auto;padding:7px 10px;border:1px solid #dce4f0;border-radius:9px;background:#f8faff;color:#53627a;font:650 .64rem/1.1 "Aptos","Segoe UI",Arial,sans-serif;white-space:nowrap;font-variant-numeric:tabular-nums}
@@ -161,7 +162,7 @@
       {% endif %}
 
       {% if user.role != 'superadmin' %}
-      <div class="workspace-sidebar-bottom"><img class="workspace-sidebar-bottom-full-logo" src="/static/branding/digit-laboral-logo-blanco.svg?v=20261028a" alt="Digit Laboral" width="500" height="207"></div>
+      <div class="workspace-sidebar-bottom"><img class="workspace-sidebar-bottom-full-logo" src="/static/branding/digit-laboral-logo-blanco.svg?v=20261028b" alt="Digit Laboral" width="500" height="207"></div>
       {% endif %}
     </nav>
     <main class="main-content">{% include "module_subnav.html" %}{% block content %}{% endblock %}</main>

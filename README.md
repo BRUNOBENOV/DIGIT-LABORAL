@@ -1,6 +1,11 @@
-# Digit Laboral 2.6.23
+# Digit Laboral 2.6.24
 
 Plataforma de gestión y cumplimiento laboral para estudios contables paraguayos.
+
+## Novedades de la versión 2.6.24
+
+- La barra lateral del espacio de trabajo usa el azul de marca solicitado #05256d, también en el menú móvil, con contraste reforzado para etiquetas, categorías y enlaces.
+- La versión blanca del logotipo reutiliza el archivo horizontal original y aplica una máscara de color/transparencia, en lugar de volver a dibujar el emblema y la tipografía.
 
 ## Novedades de la versión 2.6.23
 
