@@ -145,7 +145,7 @@ def test_excel_export_forces_user_supplied_strings_to_text():
     spec = get_report("listado-empresa")
     assert spec is not None
     row = {column: "" for column in report_columns(spec)}
-    row["Empresa"] = "=HYPERLINK(\\"https://example.invalid\\",\\"click\\")"
+    row["Empresa"] = '=HYPERLINK("https://example.invalid","click")'
     payload = make_xlsx(spec, [row])
     workbook = load_workbook(BytesIO(payload), data_only=False)
     cell = workbook["Informe"].cell(row=3, column=2)
@@ -153,4 +153,4 @@ def test_excel_export_forces_user_supplied_strings_to_text():
     assert cell.data_type != "f"
     assert isinstance(cell.value, str) and cell.value.startswith("'=")
     assert tab_prefixed.data_type != "f"
-    assert isinstance(tab_prefixed.value, str) and tab_prefixed.value.startswith("'\\t=")
+    assert isinstance(tab_prefixed.value, str) and tab_prefixed.value.startswith("'\t=")
