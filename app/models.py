@@ -639,6 +639,38 @@ class LaborTelegram(Base):
     employee: Mapped[Employee] = relationship()
 
 
+class WorkHoursEntry(Base):
+    """Daily worked-hours capture with ordinary and premium time buckets."""
+
+    __tablename__ = "work_hours_entries"
+    __table_args__ = (
+        CheckConstraint("ordinary_hours >= 0 AND ordinary_hours <= 24", name="ck_work_hours_ordinary"),
+        CheckConstraint("overtime_hours >= 0 AND overtime_hours <= 24", name="ck_work_hours_overtime"),
+        CheckConstraint("night_hours >= 0 AND night_hours <= 24", name="ck_work_hours_night"),
+        CheckConstraint("holiday_hours >= 0 AND holiday_hours <= 24", name="ck_work_hours_holiday"),
+        CheckConstraint("status IN ('Registrada', 'Incorporada a nómina', 'Anulada')", name="ck_work_hours_status"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), index=True)
+    work_date: Mapped[date] = mapped_column(Date, index=True)
+    work_period: Mapped[str] = mapped_column(String(7), index=True)
+    ordinary_hours: Mapped[Decimal] = mapped_column(Numeric(6, 2), default=0)
+    overtime_hours: Mapped[Decimal] = mapped_column(Numeric(6, 2), default=0)
+    night_hours: Mapped[Decimal] = mapped_column(Numeric(6, 2), default=0)
+    holiday_hours: Mapped[Decimal] = mapped_column(Numeric(6, 2), default=0)
+    status: Mapped[str] = mapped_column(String(30), default="Registrada", index=True)
+    notes: Mapped[str] = mapped_column(Text, default="")
+    created_by: Mapped[str] = mapped_column(String(180), default="")
+    updated_by: Mapped[str] = mapped_column(String(180), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
+
+    company: Mapped[Company] = relationship()
+    employee: Mapped[Employee] = relationship()
+
+
 class LaborDeadline(Base):
     __tablename__ = "labor_deadlines"
 
