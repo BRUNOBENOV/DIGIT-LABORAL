@@ -1,4 +1,11 @@
 # Registro de cambios
+## 2.6.16 — Corregir el estado de Inicio al entrar en subapartados
+
+- Corrige la causa de la regla que no surtía efecto: el enlace Inicio solo tenía la clase `active` en la ruta exacta `/app`, no cuando se visitaba Empresas, Secciones o Funcionarios.
+- Añade el estado de contexto `home-in-section-context` cuando la ruta empieza por `/app/`.
+- El texto Inicio se fuerza a azul `#2563EB` y visibilidad completa cuando está activo o el usuario está dentro de un subapartado, pero el cursor no está encima.
+- No se modifica el fondo, el icono, los estilos hover ni ningún otro enlace. El logo se conserva.
+
 ## 2.6.15 — Corrección final de la etiqueta Inicio en plantilla
 
 - Asigna una clase propia `workspace-home-label` al texto `Inicio`, sin cambiar el ícono ni la ruta del enlace.
