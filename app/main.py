@@ -5184,6 +5184,123 @@ def api_delete_work_hours(entry_id: int, user: User = Depends(require_roles("adm
     return {"ok": True}
 
 
+
+# --- Anticipos de salario: registro, estado de descuento e informe CSV ---
+
+@app.get("/app/advances", response_class=HTMLResponse)
+def advances_page(request: Request, employee_id: OptionalQueryId = None, salary_period: str = "", status_filter: str = "", edit_id: OptionalQueryId = None, user: User = Depends(require_roles("administrador", "contador")), db: Session = Depends(get_db)):
+    company_ids = company_ids_for_user(db, user)
+    employees = list(db.scalars(select(Employee).options(selectinload(Employee.company)).where(Employee.company_id.in_(company_ids)).order_by(Employee.full_name))) if company_ids else []
+    if salary_period and not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", salary_period): raise HTTPException(422, "El período debe usar formato AAAA-MM.")
+    query = select(SalaryAdvance).where(SalaryAdvance.company_id.in_(company_ids)).options(selectinload(SalaryAdvance.employee), selectinload(SalaryAdvance.company)) if company_ids else select(SalaryAdvance).where(False)
+    if employee_id is not None: _operation_employee(db, user, employee_id); query = query.where(SalaryAdvance.employee_id == employee_id)
+    if salary_period: query = query.where(SalaryAdvance.salary_period == salary_period)
+    if status_filter:
+        if status_filter not in ADVANCE_STATUSES: raise HTTPException(422, "Estado inválido.")
+        query = query.where(SalaryAdvance.status == status_filter)
+    rows = list(db.scalars(query.order_by(SalaryAdvance.advance_date.desc(), SalaryAdvance.id.desc()).limit(500)))
+    record = None
+    if edit_id is not None:
+        record = db.get(SalaryAdvance, edit_id)
+        if not record or record.company_id not in company_ids: raise HTTPException(404, "Anticipo no encontrado.")
+    return render(request, "advances.html", db, user, entries=rows, employees=employees, employee_filter=employee_id,
+                  salary_period=salary_period, status_filter=status_filter, statuses=ADVANCE_STATUSES, edit_record=record,
+                  form_error=request.query_params.get("form_error", ""), saved=request.query_params.get("saved") == "1",
+                  today=date.today(), total_amount=sum(r.amount for r in rows))
+
+
+@app.post("/app/advances")
+def create_advance(employee_id: Annotated[int, Form()], amount: Annotated[str, Form()], advance_date: Annotated[str, Form()], salary_period: Annotated[str, Form()], notes: Annotated[str, Form()] = "", user: User = Depends(require_roles("administrador", "contador")), db: Session = Depends(get_db)):
+    employee, company = _operation_employee(db, user, employee_id)
+    try: values = validate_advance(amount=amount, advance_date=advance_date, salary_period=salary_period, notes=notes)
+    except ValueError as exc: return _operation_redirect("/app/advances", message=str(exc))
+    item = SalaryAdvance(company_id=company.id, employee_id=employee.id, **values, created_by=user.email, updated_by=user.email)
+    db.add(item); db.flush()
+    write_audit(db, user, "crear", "anticipo_salarial", str(item.id), f"{employee.full_name} · Gs. {format_gs(item.amount)}")
+    db.commit()
+    return _operation_redirect("/app/advances", flag="saved")
+
+
+@app.post("/app/advances/{advance_id}/edit")
+def edit_advance(advance_id: int, employee_id: Annotated[int, Form()], amount: Annotated[str, Form()], advance_date: Annotated[str, Form()], salary_period: Annotated[str, Form()], status_value: Annotated[str, Form(alias="status")] = "Registrado", notes: Annotated[str, Form()] = "", user: User = Depends(require_roles("administrador", "contador")), db: Session = Depends(get_db)):
+    item = db.get(SalaryAdvance, advance_id)
+    if not item or item.company_id not in company_ids_for_user(db, user): raise HTTPException(404, "Anticipo no encontrado.")
+    employee, company = _operation_employee(db, user, employee_id)
+    try: values = validate_advance(amount=amount, advance_date=advance_date, salary_period=salary_period, status=status_value, notes=notes)
+    except ValueError as exc: return _operation_redirect("/app/advances", message=str(exc), edit_id=advance_id)
+    for key, value in values.items(): setattr(item, key, value)
+    item.employee_id, item.company_id, item.updated_by = employee.id, company.id, user.email
+    write_audit(db, user, "editar", "anticipo_salarial", str(item.id), f"{employee.full_name} · Gs. {format_gs(item.amount)}")
+    db.commit()
+    return _operation_redirect("/app/advances", flag="saved")
+
+
+@app.post("/app/advances/{advance_id}/delete")
+def delete_advance(advance_id: int, user: User = Depends(require_roles("administrador", "contador")), db: Session = Depends(get_db)):
+    item = db.get(SalaryAdvance, advance_id)
+    if not item or item.company_id not in company_ids_for_user(db, user): raise HTTPException(404, "Anticipo no encontrado.")
+    write_audit(db, user, "eliminar", "anticipo_salarial", str(item.id), f"Gs. {format_gs(item.amount)}")
+    db.delete(item); db.commit()
+    return _operation_redirect("/app/advances", flag="saved")
+
+
+@app.get("/app/advances/export.csv")
+def export_advances(employee_id: OptionalQueryId = None, salary_period: str = "", status_filter: str = "", user: User = Depends(require_roles("administrador", "contador")), db: Session = Depends(get_db)):
+    company_ids = company_ids_for_user(db, user)
+    query = select(SalaryAdvance).where(SalaryAdvance.company_id.in_(company_ids)).options(selectinload(SalaryAdvance.employee), selectinload(SalaryAdvance.company)) if company_ids else select(SalaryAdvance).where(False)
+    if employee_id is not None: _operation_employee(db, user, employee_id); query = query.where(SalaryAdvance.employee_id == employee_id)
+    if salary_period: query = query.where(SalaryAdvance.salary_period == salary_period)
+    if status_filter in ADVANCE_STATUSES: query = query.where(SalaryAdvance.status == status_filter)
+    rows = list(db.scalars(query.order_by(SalaryAdvance.advance_date.desc())))
+    output = io.StringIO(newline=""); writer = csv.writer(output)
+    writer.writerow(["Empresa", "Funcionario", "Fecha", "Periodo salarial", "Importe Gs.", "Estado", "Observaciones"])
+    for r in rows: writer.writerow([r.company.legal_name, r.employee.full_name, r.advance_date.isoformat(), r.salary_period, r.amount, r.status, r.notes])
+    payload = ("\ufeff" + output.getvalue()).encode("utf-8")
+    write_audit(db, user, "exportar", "anticipos", "", f"{len(rows)} registros"); db.commit()
+    return StreamingResponse(io.BytesIO(payload), media_type="text/csv; charset=utf-8", headers={"Content-Disposition": "attachment; filename=anticipos_digit_laboral.csv"})
+
+
+@app.get("/api/advances")
+def api_list_advances(employee_id: OptionalQueryId = None, salary_period: str = "", user: User = Depends(require_roles("administrador", "contador")), db: Session = Depends(get_db)):
+    company_ids = company_ids_for_user(db, user)
+    query = select(SalaryAdvance).where(SalaryAdvance.company_id.in_(company_ids)) if company_ids else select(SalaryAdvance).where(False)
+    if employee_id is not None: _operation_employee(db, user, employee_id); query = query.where(SalaryAdvance.employee_id == employee_id)
+    if salary_period: query = query.where(SalaryAdvance.salary_period == salary_period)
+    return {"items": [{"id": r.id, "company_id": r.company_id, "employee_id": r.employee_id, "amount": r.amount, "advance_date": r.advance_date.isoformat(), "salary_period": r.salary_period, "status": r.status, "notes": r.notes} for r in db.scalars(query.order_by(SalaryAdvance.advance_date.desc()).limit(500))]}
+
+
+@app.post("/api/advances", status_code=201)
+async def api_create_advance(request: Request, user: User = Depends(require_roles("administrador", "contador")), db: Session = Depends(get_db)):
+    p = await _json_object(request); employee, company = _operation_employee(db, user, int(p.get("employee_id") or 0))
+    try: v = validate_advance(amount=p.get("amount"), advance_date=p.get("advance_date"), salary_period=p.get("salary_period"), status=p.get("status", "Registrado"), notes=p.get("notes", ""))
+    except ValueError as exc: raise HTTPException(422, str(exc)) from exc
+    item = SalaryAdvance(company_id=company.id, employee_id=employee.id, **v, created_by=user.email, updated_by=user.email)
+    db.add(item); db.flush(); write_audit(db, user, "crear_api", "anticipo_salarial", str(item.id), f"Gs. {format_gs(item.amount)}"); db.commit()
+    return {"id": item.id, "amount": item.amount, "status": item.status}
+
+
+@app.put("/api/advances/{advance_id}")
+async def api_update_advance(advance_id: int, request: Request, user: User = Depends(require_roles("administrador", "contador")), db: Session = Depends(get_db)):
+    item = db.get(SalaryAdvance, advance_id)
+    if not item or item.company_id not in company_ids_for_user(db, user): raise HTTPException(404, "Anticipo no encontrado.")
+    p = await _json_object(request); employee, company = _operation_employee(db, user, int(p.get("employee_id") or 0))
+    try: v = validate_advance(amount=p.get("amount"), advance_date=p.get("advance_date"), salary_period=p.get("salary_period"), status=p.get("status", item.status), notes=p.get("notes", ""))
+    except ValueError as exc: raise HTTPException(422, str(exc)) from exc
+    for k, value in v.items(): setattr(item, k, value)
+    item.employee_id, item.company_id, item.updated_by = employee.id, company.id, user.email
+    write_audit(db, user, "editar_api", "anticipo_salarial", str(item.id), f"Gs. {format_gs(item.amount)}"); db.commit()
+    return {"id": item.id, "status": item.status}
+
+
+@app.delete("/api/advances/{advance_id}")
+def api_delete_advance(advance_id: int, user: User = Depends(require_roles("administrador", "contador")), db: Session = Depends(get_db)):
+    item = db.get(SalaryAdvance, advance_id)
+    if not item or item.company_id not in company_ids_for_user(db, user): raise HTTPException(404, "Anticipo no encontrado.")
+    write_audit(db, user, "eliminar_api", "anticipo_salarial", str(item.id), f"Gs. {format_gs(item.amount)}")
+    db.delete(item); db.commit()
+    return {"ok": True}
+
+
 CALCULATION_MODULES = {
     "salary": {"title": "Salarios", "eyebrow": "CÁLCULO DE SALARIOS", "description": "Ingresá haberes, descuentos y base de IPS para revisar el bruto, el aporte y el neto estimado."},
     "hours": {"title": "Horas y recargos", "eyebrow": "CÁLCULO DE HORAS", "description": "Calculá el valor hora con una jornada y un multiplicador previamente revisados."},
