@@ -8224,3 +8224,8 @@ def health_ready(db: Session = Depends(get_db)):
         )
     warnings = [*settings.production_issues(), *postgres_rls_role_issues()]
     return {"status": "ready" if not warnings else "degraded", "checks": checks, "warnings": warnings, "version": APP_VERSION}
+
+
+# Register the existing professional calculation engine only after core helpers are defined.
+from .calculator_routes import router as calculator_router
+app.include_router(calculator_router)
