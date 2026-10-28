@@ -5993,8 +5993,21 @@ def reports_page(
         certificates=certificates,
         payrolls=payrolls,
         calculation_labels={key: calculation_label(key) for key in ("salary", "hours", "aguinaldo", "vacation", "notice")},
-        report_groups=REPORT_GROUPS,
-        report_count=len(REPORTS),
+        report_groups=[
+            {
+                "title": group["title"],
+                "reports": [
+                    spec for spec in group["reports"]
+                    if spec.key not in _REPORT_SENSITIVE_KEYS or user.role in {"administrador", "contador", "auxiliar"}
+                ],
+            }
+            for group in REPORT_GROUPS
+            if any(spec.key not in _REPORT_SENSITIVE_KEYS or user.role in {"administrador", "contador", "auxiliar"} for spec in group["reports"])
+        ],
+        report_count=sum(
+            1 for spec in REPORTS.values()
+            if spec.key not in _REPORT_SENSITIVE_KEYS or user.role in {"administrador", "contador", "auxiliar"}
+        ),
     )
 
 
