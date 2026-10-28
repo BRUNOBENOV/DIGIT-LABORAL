@@ -6618,9 +6618,12 @@ def calculation_operations_page(
     if editing and editing.operation_type != tipo:
         raise HTTPException(400, "El registro no pertenece al submódulo seleccionado.")
     editing_payload = _operation_payload_from_model(editing) if editing else {}
+    selected_employee_obj = next((employee for employee in employees if employee.id == selected_employee), None)
+    selected_company_obj = next((company for company in companies if company.id == selected_company), None)
     return render(
         request, "calculation_operations.html", db, user,
         companies=companies, employees=employees, items=items,
+        selected_employee_obj=selected_employee_obj, selected_company_obj=selected_company_obj,
         selected_company=selected_company, selected_employee=selected_employee,
         selected_type=tipo, type_label=OPERATION_LABELS[tipo], status_options=OPERATION_STATUSES[tipo],
         editing=editing, editing_payload=editing_payload, search_term=term,
