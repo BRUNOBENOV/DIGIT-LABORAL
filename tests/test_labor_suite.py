@@ -237,6 +237,49 @@ def test_family_and_reimbursements_do_not_increase_default_ips_base():
     assert r["discounts"] == 315000
     assert r["net"] == 3485000
 
+def test_salary_overtime_recargo_tiers_calculate_automatically_and_enter_ips_base():
+    result = calculate(salary(
+        salary="2400000", overtime_30_hours="2", overtime_50_hours="3",
+        overtime_100_hours="1"
+    ))
+    earnings = {item["label"]: item["amount"] for item in result["earnings"]}
+    assert earnings["Horas con recargo del 30 %"] == 26_000
+    assert earnings["Horas con recargo del 50 %"] == 45_000
+    assert earnings["Horas con recargo del 100 %"] == 20_000
+    assert result["gross"] == 2_491_000
+    assert result["discounts"] == 224_190
+    assert result["net"] == 2_266_810
+    assert { "label": "Base IPS", "value": "Gs. 2.491.000" } in result["facts"]
+
+
+def test_salary_overtime_recargo_uses_manual_hourly_base_when_explicitly_provided():
+    result = calculate(salary(
+        salary="2400000", overtime_30_hours="1", overtime_50_hours="0",
+        overtime_100_hours="2", overtime_hourly_base="12000", apply_ips=""
+    ))
+    earnings = {item["label"]: item["amount"] for item in result["earnings"]}
+    assert earnings["Horas con recargo del 30 %"] == 15_600
+    assert earnings["Horas con recargo del 100 %"] == 48_000
+    assert result["gross"] == 2_463_600
+    assert { "label": "Base horaria aplicada a horas extras", "value": "Gs. 12.000,0000" } in result["facts"]
+
+
+def test_salary_overtime_manual_compatibility_fallback_cannot_be_combined_with_hour_quantities():
+    manual = calculate(salary(overtime="25000", apply_ips=""))
+    assert next(item["amount"] for item in manual["earnings"] if item["label"] == "Horas extras (importe manual)") == 25_000
+    assert any("importe manual de horas extras" in warning for warning in manual["warnings"])
+
+    with pytest.raises(CalculationError) as error:
+        calculate(salary(overtime="25000", overtime_50_hours="1"))
+    assert error.value.field == "overtime"
+
+
+@pytest.mark.parametrize("invalid", ["-1", "1.001", "abc", "745"])
+def test_salary_overtime_hours_reject_invalid_quantities(invalid):
+    with pytest.raises(CalculationError):
+        calculate(salary(overtime_30_hours=invalid))
+
+
 def test_salary_minimum_wage_control_uses_the_scale_effective_in_the_selected_month():
     current = calculate(salary(salary="3000000", month="2026-09", minimum_wage_category="general_day"))
     assert {"label": "Mínimo legal mensual de referencia", "value": "Gs. 3.044.000"} in current["facts"]
