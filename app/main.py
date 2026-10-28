@@ -40,8 +40,8 @@ from .labor_calculator import amount as round_gs, anniversary as labor_anniversa
 from .salary_history import salary_for_period
 from .calculation_operations import (
     ADVANCE_STATUSES, LABOR_ACTION_TYPES, LABOR_ACTION_STATUSES,
-    TELEGRAM_TYPES, TELEGRAM_STATUSES, WORK_HOURS_STATUSES,
-    validate_advance, validate_labor_action, validate_telegram, validate_work_hours,
+    TELEGRAM_TYPES, TELEGRAM_STATUSES, WORK_HOURS_STATUSES, SETTLEMENT_REASONS,
+    validate_advance, validate_labor_action, validate_telegram, validate_work_hours, validate_settlement,
 )
 from .config import settings
 from .database import Base, SessionLocal, apply_session_tenant_context, engine, postgres_rls_role_issues
