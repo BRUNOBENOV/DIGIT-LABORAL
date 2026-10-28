@@ -73,6 +73,19 @@ def test_salary_and_employer_cost_are_separate():
     assert (r["gross"],r["discounts"],r["net"]) == (3500000,315000,3185000)
     assert (r["employer_contribution"],r["employer_cost"]) == (577500,4077500)
 
+def test_salary_adds_overtime_commissions_bonuses_to_gross_and_ips_base():
+    result = calculate(salary(
+        overtime="100000",
+        commissions="200000",
+        bonuses="150000",
+        other_income="50000",
+    ))
+    assert result["gross"] == 4_000_000
+    assert result["discounts"] == 360_000
+    assert result["net"] == 3_640_000
+    assert result["employer_contribution"] == 660_000
+    assert {"label": "Base IPS", "value": "Gs. 4.000.000"} in result["facts"]
+
 
 @pytest.mark.parametrize("reported,difference", [("3185000",0),("3000000",185000),("3500000",-315000),("0",3185000)])
 def test_receipt_review_preserves_salary_and_reports_signed_difference(reported, difference):
