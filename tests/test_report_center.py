@@ -149,5 +149,8 @@ def test_excel_export_forces_user_supplied_strings_to_text():
     payload = make_xlsx(spec, [row])
     workbook = load_workbook(BytesIO(payload), data_only=False)
     cell = workbook["Informe"].cell(row=3, column=2)
+    tab_prefixed = workbook["Informe"].cell(row=3, column=3)
     assert cell.data_type != "f"
     assert isinstance(cell.value, str) and cell.value.startswith("'=")
+    assert tab_prefixed.data_type != "f"
+    assert isinstance(tab_prefixed.value, str) and tab_prefixed.value.startswith("'\\t=")
