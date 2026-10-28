@@ -1,0 +1,22 @@
+/* Digit Laboral v2.6.9 — active sidebar item contrast.
+   Only the selected, non-hovered state changes. Existing hover and idle colors
+   are intentionally left to the previous navigation styles. */
+
+/* Home / Inicio: white active tile with readable blue label. */
+.app-body .workspace-sidebar .workspace-home-link.active:not(:hover){
+  color:#2563EB!important;
+  background:#FFFFFF!important;
+  border-color:#DCE6FA!important;
+}
+
+/* Selected maintenance/module subitems use the same white + blue treatment. */
+.app-body .workspace-sidebar .workspace-submenu .workspace-nav-link.active:not(:hover),
+.app-body .workspace-sidebar .workspace-submenu .workspace-nav-link[aria-current="page"]:not(:hover){
+  color:#2563EB!important;
+  background:#FFFFFF!important;
+  border-color:#DBEAFE!important;
+  box-shadow:inset 4px 0 #2563EB!important;
+  font-weight:800!important;
+}
+
+/* Do not add :hover rules here: inactive and hovered states stay unchanged. */
