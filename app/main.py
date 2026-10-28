@@ -5421,6 +5421,143 @@ def api_delete_labor_action(action_id: int, user: User = Depends(require_roles("
     return {"ok": True}
 
 
+
+# --- Telegrama colacionado: creación, revisión e impresión administrativa ---
+
+@app.get("/app/telegrams", response_class=HTMLResponse)
+def telegrams_page(request: Request, employee_id: OptionalQueryId = None, telegram_type: str = "", status_filter: str = "", edit_id: OptionalQueryId = None, user: User = Depends(require_roles("administrador", "contador")), db: Session = Depends(get_db)):
+    company_ids = company_ids_for_user(db, user)
+    employees = list(db.scalars(select(Employee).options(selectinload(Employee.company)).where(Employee.company_id.in_(company_ids)).order_by(Employee.full_name))) if company_ids else []
+    query = select(LaborTelegram).where(LaborTelegram.company_id.in_(company_ids)).options(selectinload(LaborTelegram.employee), selectinload(LaborTelegram.company)) if company_ids else select(LaborTelegram).where(False)
+    if employee_id is not None: _operation_employee(db, user, employee_id); query = query.where(LaborTelegram.employee_id == employee_id)
+    if telegram_type:
+        if telegram_type not in TELEGRAM_TYPES: raise HTTPException(422, "Tipo de telegrama inválido.")
+        query = query.where(LaborTelegram.telegram_type == telegram_type)
+    if status_filter:
+        if status_filter not in TELEGRAM_STATUSES: raise HTTPException(422, "Estado de telegrama inválido.")
+        query = query.where(LaborTelegram.status == status_filter)
+    rows = list(db.scalars(query.order_by(LaborTelegram.issue_date.desc(), LaborTelegram.id.desc()).limit(500)))
+    record = None
+    if edit_id is not None:
+        record = db.get(LaborTelegram, edit_id)
+        if not record or record.company_id not in company_ids: raise HTTPException(404, "Telegrama no encontrado.")
+    return render(request, "telegrams.html", db, user, entries=rows, employees=employees, employee_filter=employee_id,
+                  telegram_type=telegram_type, status_filter=status_filter, telegram_types=TELEGRAM_TYPES, statuses=TELEGRAM_STATUSES,
+                  edit_record=record, form_error=request.query_params.get("form_error", ""), saved=request.query_params.get("saved") == "1", today=date.today())
+
+
+@app.post("/app/telegrams")
+def create_telegram(employee_id: Annotated[int, Form()], telegram_type: Annotated[str, Form()], issue_date: Annotated[str, Form()], destination_address: Annotated[str, Form()], subject: Annotated[str, Form()], body: Annotated[str, Form()], telegram_code: Annotated[str, Form()] = "", status_value: Annotated[str, Form(alias="status")] = "Borrador", notes: Annotated[str, Form()] = "", user: User = Depends(require_roles("administrador", "contador")), db: Session = Depends(get_db)):
+    employee, company = _operation_employee(db, user, employee_id)
+    try: values = validate_telegram(company_id=company.id, telegram_code=telegram_code, telegram_type=telegram_type, issue_date=issue_date, destination_address=destination_address, subject=subject, body=body, status=status_value, notes=notes)
+    except ValueError as exc: return _operation_redirect("/app/telegrams", message=str(exc))
+    exists = db.scalar(select(LaborTelegram.id).where(LaborTelegram.company_id == company.id, LaborTelegram.telegram_code == values["telegram_code"]))
+    if exists: return _operation_redirect("/app/telegrams", message="Ese código de telegrama ya existe en la empresa.")
+    item = LaborTelegram(company_id=company.id, employee_id=employee.id, **values, created_by=user.email, updated_by=user.email)
+    db.add(item); db.flush(); write_audit(db, user, "crear", "telegrama_colacionado", str(item.id), f"{item.telegram_code} · funcionario {employee.employee_code or employee.id}")
+    db.commit()
+    return _operation_redirect("/app/telegrams", flag="saved")
+
+
+@app.post("/app/telegrams/{telegram_id}/edit")
+def edit_telegram(telegram_id: int, employee_id: Annotated[int, Form()], telegram_type: Annotated[str, Form()], issue_date: Annotated[str, Form()], destination_address: Annotated[str, Form()], subject: Annotated[str, Form()], body: Annotated[str, Form()], telegram_code: Annotated[str, Form()] = "", status_value: Annotated[str, Form(alias="status")] = "Borrador", notes: Annotated[str, Form()] = "", user: User = Depends(require_roles("administrador", "contador")), db: Session = Depends(get_db)):
+    item = db.get(LaborTelegram, telegram_id)
+    if not item or item.company_id not in company_ids_for_user(db, user): raise HTTPException(404, "Telegrama no encontrado.")
+    employee, company = _operation_employee(db, user, employee_id)
+    try: values = validate_telegram(company_id=company.id, telegram_code=telegram_code, telegram_type=telegram_type, issue_date=issue_date, destination_address=destination_address, subject=subject, body=body, status=status_value, notes=notes)
+    except ValueError as exc: return _operation_redirect("/app/telegrams", message=str(exc), edit_id=telegram_id)
+    exists = db.scalar(select(LaborTelegram.id).where(LaborTelegram.company_id == company.id, LaborTelegram.telegram_code == values["telegram_code"], LaborTelegram.id != item.id))
+    if exists: return _operation_redirect("/app/telegrams", message="Ese código ya existe en la empresa.", edit_id=telegram_id)
+    for key, value in values.items(): setattr(item, key, value)
+    item.employee_id, item.company_id, item.updated_by = employee.id, company.id, user.email
+    write_audit(db, user, "editar", "telegrama_colacionado", str(item.id), f"{item.telegram_code} · {item.status}"); db.commit()
+    return _operation_redirect("/app/telegrams", flag="saved")
+
+
+@app.post("/app/telegrams/{telegram_id}/delete")
+def delete_telegram(telegram_id: int, user: User = Depends(require_roles("administrador", "contador")), db: Session = Depends(get_db)):
+    item = db.get(LaborTelegram, telegram_id)
+    if not item or item.company_id not in company_ids_for_user(db, user): raise HTTPException(404, "Telegrama no encontrado.")
+    if item.status in {"Emitido", "Enviado"}: raise HTTPException(409, "No se elimina un telegrama emitido o enviado; primero anulalo.")
+    write_audit(db, user, "eliminar", "telegrama_colacionado", str(item.id), item.telegram_code); db.delete(item); db.commit()
+    return _operation_redirect("/app/telegrams", flag="saved")
+
+
+@app.get("/app/telegrams/{telegram_id}/print", response_class=HTMLResponse)
+def print_telegram(telegram_id: int, request: Request, user: User = Depends(require_roles("administrador", "contador")), db: Session = Depends(get_db)):
+    item = db.get(LaborTelegram, telegram_id)
+    if not item or item.company_id not in company_ids_for_user(db, user): raise HTTPException(404, "Telegrama no encontrado.")
+    employee, company = _operation_employee(db, user, item.employee_id)
+    return render(request, "telegram_print.html", db, user, telegram=item, employee=employee, company=company, today=date.today())
+
+
+@app.get("/app/telegrams/export.csv")
+def export_telegrams(employee_id: OptionalQueryId = None, telegram_type: str = "", status_filter: str = "", user: User = Depends(require_roles("administrador", "contador")), db: Session = Depends(get_db)):
+    company_ids = company_ids_for_user(db, user)
+    query = select(LaborTelegram).where(LaborTelegram.company_id.in_(company_ids)).options(selectinload(LaborTelegram.employee), selectinload(LaborTelegram.company)) if company_ids else select(LaborTelegram).where(False)
+    if employee_id is not None: _operation_employee(db, user, employee_id); query = query.where(LaborTelegram.employee_id == employee_id)
+    if telegram_type in TELEGRAM_TYPES: query = query.where(LaborTelegram.telegram_type == telegram_type)
+    if status_filter in TELEGRAM_STATUSES: query = query.where(LaborTelegram.status == status_filter)
+    rows = list(db.scalars(query.order_by(LaborTelegram.issue_date.desc())))
+    output = io.StringIO(newline=""); writer = csv.writer(output)
+    writer.writerow(["Código", "Empresa", "Funcionario", "Tipo", "Fecha", "Destino", "Asunto", "Contenido", "Estado"])
+    for r in rows: writer.writerow([r.telegram_code, r.company.legal_name, r.employee.full_name, r.telegram_type, r.issue_date.isoformat(), r.destination_address, r.subject, r.body, r.status])
+    payload = ("\ufeff" + output.getvalue()).encode("utf-8")
+    write_audit(db, user, "exportar", "telegramas", "", f"{len(rows)} registros"); db.commit()
+    return StreamingResponse(io.BytesIO(payload), media_type="text/csv; charset=utf-8", headers={"Content-Disposition": "attachment; filename=telegramas_colacionados_digit_laboral.csv"})
+
+
+@app.get("/api/telegrams")
+def api_list_telegrams(employee_id: OptionalQueryId = None, status_filter: str = "", user: User = Depends(require_roles("administrador", "contador")), db: Session = Depends(get_db)):
+    company_ids = company_ids_for_user(db, user)
+    query = select(LaborTelegram).where(LaborTelegram.company_id.in_(company_ids)) if company_ids else select(LaborTelegram).where(False)
+    if employee_id is not None: _operation_employee(db, user, employee_id); query = query.where(LaborTelegram.employee_id == employee_id)
+    if status_filter:
+        if status_filter not in TELEGRAM_STATUSES: raise HTTPException(422, "Estado inválido.")
+        query = query.where(LaborTelegram.status == status_filter)
+    return {"items": [{"id": r.id, "company_id": r.company_id, "employee_id": r.employee_id, "telegram_code": r.telegram_code, "telegram_type": r.telegram_type, "issue_date": r.issue_date.isoformat(), "destination_address": r.destination_address, "subject": r.subject, "body": r.body, "status": r.status, "notes": r.notes} for r in db.scalars(query.order_by(LaborTelegram.issue_date.desc()).limit(500))]}
+
+
+@app.post("/api/telegrams", status_code=201)
+async def api_create_telegram(request: Request, user: User = Depends(require_roles("administrador", "contador")), db: Session = Depends(get_db)):
+    p = await _json_object(request)
+    try: employee, company = _operation_employee(db, user, int(p.get("employee_id") or 0))
+    except (ValueError, TypeError) as exc: raise HTTPException(422, "employee_id es obligatorio.") from exc
+    try: values = validate_telegram(company_id=company.id, telegram_code=p.get("telegram_code", ""), telegram_type=p.get("telegram_type"), issue_date=p.get("issue_date"), destination_address=p.get("destination_address"), subject=p.get("subject"), body=p.get("body"), status=p.get("status", "Borrador"), notes=p.get("notes", ""))
+    except ValueError as exc: raise HTTPException(422, str(exc)) from exc
+    exists = db.scalar(select(LaborTelegram.id).where(LaborTelegram.company_id == company.id, LaborTelegram.telegram_code == values["telegram_code"]))
+    if exists: raise HTTPException(409, "El código de telegrama ya existe.")
+    item = LaborTelegram(company_id=company.id, employee_id=employee.id, **values, created_by=user.email, updated_by=user.email)
+    db.add(item); db.flush(); write_audit(db, user, "crear_api", "telegrama_colacionado", str(item.id), item.telegram_code); db.commit()
+    return {"id": item.id, "telegram_code": item.telegram_code, "status": item.status}
+
+
+@app.put("/api/telegrams/{telegram_id}")
+async def api_update_telegram(telegram_id: int, request: Request, user: User = Depends(require_roles("administrador", "contador")), db: Session = Depends(get_db)):
+    item = db.get(LaborTelegram, telegram_id)
+    if not item or item.company_id not in company_ids_for_user(db, user): raise HTTPException(404, "Telegrama no encontrado.")
+    p = await _json_object(request)
+    try: employee, company = _operation_employee(db, user, int(p.get("employee_id") or 0))
+    except (ValueError, TypeError) as exc: raise HTTPException(422, "employee_id es obligatorio.") from exc
+    try: values = validate_telegram(company_id=company.id, telegram_code=p.get("telegram_code", item.telegram_code), telegram_type=p.get("telegram_type"), issue_date=p.get("issue_date"), destination_address=p.get("destination_address"), subject=p.get("subject"), body=p.get("body"), status=p.get("status", item.status), notes=p.get("notes", ""))
+    except ValueError as exc: raise HTTPException(422, str(exc)) from exc
+    exists = db.scalar(select(LaborTelegram.id).where(LaborTelegram.company_id == company.id, LaborTelegram.telegram_code == values["telegram_code"], LaborTelegram.id != item.id))
+    if exists: raise HTTPException(409, "El código de telegrama ya existe.")
+    for key, value in values.items(): setattr(item, key, value)
+    item.employee_id, item.company_id, item.updated_by = employee.id, company.id, user.email
+    write_audit(db, user, "editar_api", "telegrama_colacionado", str(item.id), item.telegram_code); db.commit()
+    return {"id": item.id, "status": item.status}
+
+
+@app.delete("/api/telegrams/{telegram_id}")
+def api_delete_telegram(telegram_id: int, user: User = Depends(require_roles("administrador", "contador")), db: Session = Depends(get_db)):
+    item = db.get(LaborTelegram, telegram_id)
+    if not item or item.company_id not in company_ids_for_user(db, user): raise HTTPException(404, "Telegrama no encontrado.")
+    if item.status in {"Emitido", "Enviado"}: raise HTTPException(409, "No se elimina un telegrama emitido o enviado; anulalo.")
+    write_audit(db, user, "eliminar_api", "telegrama_colacionado", str(item.id), item.telegram_code); db.delete(item); db.commit()
+    return {"ok": True}
+
+
 CALCULATION_MODULES = {
     "salary": {"title": "Salarios", "eyebrow": "CÁLCULO DE SALARIOS", "description": "Ingresá haberes, descuentos y base de IPS para revisar el bruto, el aporte y el neto estimado."},
     "hours": {"title": "Horas y recargos", "eyebrow": "CÁLCULO DE HORAS", "description": "Calculá el valor hora con una jornada y un multiplicador previamente revisados."},
