@@ -18,6 +18,7 @@ SOURCES = [
     ("Salario mínimo vigente · Resolución MTESS N.º 670/2026", "https://www.mtess.gov.py/?p=36371"),
     ("Salario mínimo anterior · Resolución MTESS N.º 677/2025", "https://www.mtess.gov.py/?p=30682"),
     ("Asignación familiar · Código del Trabajo, arts. 261–268", "https://www.mtess.gov.py/wp-content/uploads/2026/01/Ley_213.pdf"),
+    ("Guía MTESS · Liquidación de salarios", "https://www.mtess.gov.py/wp-content/uploads/2025/10/Guia-liquidacion-de-salarios-v1.pdf"),
 ]
 ZERO = Decimal(0)
 
@@ -152,38 +153,86 @@ def calculate(data):
             else:
                 result["warnings"].append("Completá las jornadas trabajadas antes de firmar el recibo (art. 235).")
         if kind == "salary":
-            overtime_tiers = (
-                ("overtime_30_hours", "Horas con recargo del 30 %", Decimal("1.30")),
-                ("overtime_50_hours", "Horas con recargo del 50 %", Decimal("1.50")),
-                ("overtime_100_hours", "Horas con recargo del 100 %", Decimal("2.00")),
+            period_categories = str(data.get("minimum_wage_category") or "general_day")
+            overtime_components = (
+                ("night_premium_hours", "Recargo nocturno ordinario (30 % adicional)", Decimal("0.30"), "day", "premium"),
+                ("day_extra_hours", "Horas extraordinarias diurnas (mínimo 50 %)", Decimal("1.50"), "day", "full"),
+                ("night_extra_hours", "Horas extraordinarias nocturnas (100 %)", Decimal("2.00"), "night", "full"),
+                ("holiday_hours", "Recargo por trabajo en feriado (100 % adicional)", Decimal("1.00"), "day", "premium"),
             )
             quantities = {
                 key: number(data, key, label, maximum="744", decimals=2)
-                for key, label, _factor in overtime_tiers
+                for key, label, _factor, _base_type, _payment_type in overtime_components
             }
-            total_overtime_hours = sum(quantities.values(), ZERO)
+            total_component_hours = sum(quantities.values(), ZERO)
             manual_overtime = number(data, "overtime", "ajuste manual de horas extras")
-            if total_overtime_hours and manual_overtime:
+            if total_component_hours and manual_overtime:
                 raise CalculationError(
-                    "Elegí las horas por tramo de recargo o el importe manual excepcional; no se pueden combinar porque duplicarían haberes.",
+                    "Elegí cargar las horas por tipo o registrar un importe manual excepcional; no se pueden combinar porque duplicarían haberes.",
                     "overtime"
                 )
-            if total_overtime_hours:
-                raw_hourly_base = str(data.get("overtime_hourly_base", "")).strip()
-                hourly_base = number(
-                    data, "overtime_hourly_base", "valor de hora ordinaria", decimals=4
-                ) if raw_hourly_base else salary / Decimal("240")
-                if hourly_base <= ZERO:
-                    raise CalculationError("El valor de la hora ordinaria debe ser mayor que cero.", "overtime_hourly_base")
-                fact("Base horaria aplicada a horas extras", f"Gs. {hourly_base:.4f}")
-                for key, label, factor in overtime_tiers:
+            has_day_components = any(quantities[key] for key, _label, _factor, base_type, _payment_type in overtime_components if base_type == "day")
+            has_night_components = any(quantities[key] for key, _label, _factor, base_type, _payment_type in overtime_components if base_type == "night")
+            raw_day_base = str(data.get("overtime_day_hourly_base", "")).strip()
+            raw_night_base = str(data.get("overtime_night_hourly_base", "")).strip()
+            day_base = None
+            night_base = None
+            if has_day_components:
+                if raw_day_base:
+                    day_base = number(data, "overtime_day_hourly_base", "valor de hora diurna", decimals=4)
+                elif period_categories == "general_day":
+                    day_base = salary / Decimal("240")
+                elif period_categories == "general_night":
+                    day_base = salary / (Decimal("1.30") * Decimal("240"))
+                else:
+                    raise CalculationError(
+                        "Para esta escala salarial debés ingresar la base horaria diurna revisada en «Bases horarias y ajustes excepcionales».",
+                        "overtime_day_hourly_base"
+                    )
+                if day_base <= ZERO:
+                    raise CalculationError("La base horaria diurna debe ser mayor que cero.", "overtime_day_hourly_base")
+                fact("Base horaria diurna aplicada", f"Gs. {day_base:.4f}")
+            if has_night_components:
+                if raw_night_base:
+                    night_base = number(data, "overtime_night_hourly_base", "valor de hora nocturna", decimals=4)
+                elif period_categories == "general_day":
+                    night_base = salary * Decimal("1.30") / Decimal("210")
+                elif period_categories == "general_night":
+                    night_base = salary / Decimal("210")
+                else:
+                    raise CalculationError(
+                        "Para esta escala salarial debés ingresar la base horaria nocturna revisada en «Bases horarias y ajustes excepcionales».",
+                        "overtime_night_hourly_base"
+                    )
+                if night_base <= ZERO:
+                    raise CalculationError("La base horaria nocturna debe ser mayor que cero.", "overtime_night_hourly_base")
+                fact("Base horaria nocturna aplicada", f"Gs. {night_base:.4f}")
+            if quantities["night_premium_hours"] and period_categories == "general_night":
+                raise CalculationError(
+                    "El salario de la escala nocturna ya incorpora el recargo nocturno ordinario. No lo sumes de nuevo; revisá la base salarial antes de cambiar la escala.",
+                    "night_premium_hours"
+                )
+            if total_component_hours:
+                for key, label, factor, base_type, payment_type in overtime_components:
                     quantity = quantities[key]
-                    if quantity:
-                        add(
-                            label, hourly_base * quantity * factor,
-                            f"Gs. {hourly_base} × {quantity} × {factor}",
-                            "Multiplicador seleccionado por el usuario; verificar la clasificación de jornada aplicable."
-                        )
+                    if not quantity:
+                        continue
+                    hourly_base = day_base if base_type == "day" else night_base
+                    description = (
+                        "Solo adicional sobre el salario mensual" if payment_type == "premium"
+                        else "Pago de la hora extraordinaria, incluida su remuneración ordinaria"
+                    )
+                    add(
+                        label, hourly_base * quantity * factor,
+                        f"Gs. {hourly_base} × {quantity} × {factor}",
+                        description + "; verificar jornada, base, solapamientos y régimen aplicable."
+                    )
+                if quantities["holiday_hours"] and (
+                    quantities["night_premium_hours"] or quantities["day_extra_hours"] or quantities["night_extra_hours"]
+                ):
+                    result["warnings"].append(
+                        "Se cargaron horas feriadas junto con otras categorías horarias. Verificá que no representen las mismas horas y revisá la acumulación legal de recargos antes de aprobar."
+                    )
             elif manual_overtime:
                 add("Horas extras (importe manual)", manual_overtime, "Importe manual informado")
                 result["warnings"].append(
