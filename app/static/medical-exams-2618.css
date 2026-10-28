@@ -1,0 +1,92 @@
+/* Digit Laboral v2.6.18 · Mantenimientos / Exámenes médicos */
+.medical-exams-header{gap:18px}
+.medical-exams-header-actions{display:flex;flex-wrap:wrap;gap:8px}
+.medical-exams-subnav{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 18px}
+.medical-exams-subnav a{display:flex;flex-direction:column;gap:3px;min-width:130px;padding:10px 13px;border:1px solid var(--border-color,#dce4ef);border-radius:10px;color:var(--text-secondary,#65738a);background:var(--panel-bg,#fff);font-size:.82rem;font-weight:800;text-decoration:none;transition:border-color .15s ease,background .15s ease}
+.medical-exams-subnav a span{font-size:.68rem;font-weight:600;opacity:.82}
+.medical-exams-subnav a:hover{border-color:#8ca9de}
+.medical-exams-subnav a.is-active{border-color:#2563eb;background:#eaf2ff;color:#173b86}
+.medical-exams-notice{display:flex;gap:11px;align-items:flex-start;margin:0 0 16px;padding:12px 14px;border:1px solid #c8d8f1;border-radius:11px;background:#f4f8ff;color:#314562}
+.medical-exams-notice-icon{display:grid;place-items:center;flex:0 0 22px;width:22px;height:22px;border-radius:50%;background:#dbeafe;color:#1d4ed8;font-weight:900;font-size:.8rem}
+.medical-exams-notice p{margin:1px 0 0;font-size:.78rem;line-height:1.55}
+.medical-exams-alert{margin:0 0 16px;padding:12px 15px;border:1px solid;border-radius:10px;font-size:.84rem;line-height:1.5}
+.medical-exams-alert.error{border-color:#fecaca;background:#fff1f2;color:#9f1239}
+.medical-exams-alert.success{border-color:#a7f3d0;background:#ecfdf5;color:#065f46}
+.medical-exams-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:17px}
+.medical-exams-metric{display:grid;gap:3px;min-width:0;padding:15px 17px;border:1px solid var(--border-color,#dce4ef);border-radius:12px;background:var(--panel-bg,#fff)}
+.medical-exams-metric span{color:var(--text-secondary,#65738a);font-size:.75rem;font-weight:750}
+.medical-exams-metric strong{color:var(--text-primary,#17253b);font-size:1.65rem;line-height:1.15;font-variant-numeric:tabular-nums}
+.medical-exams-metric small{color:var(--text-secondary,#8390a4);font-size:.7rem}
+.medical-exams-metric.metric-danger strong{color:#b42336}
+.medical-exams-metric.metric-warning strong{color:#a15c00}
+.medical-exams-panel{min-width:0;margin:0 0 17px;padding:18px;border:1px solid var(--border-color,#dce4ef);border-radius:13px;background:var(--panel-bg,#fff);box-shadow:0 4px 15px rgba(18,39,74,.035)}
+.medical-exams-panel-heading{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:13px}
+.medical-exams-panel-heading h2{margin:4px 0 0;color:var(--text-primary,#17253b);font-size:1.08rem;letter-spacing:-.02em}
+.medical-exams-result-count{flex:0 0 auto;color:var(--text-secondary,#65738a);font-size:.76rem;font-weight:750}
+.medical-exams-panel-intro{margin:0 0 15px;color:var(--text-secondary,#65738a);font-size:.79rem;line-height:1.5}
+.medical-exams-filter-form{display:grid;grid-template-columns:minmax(220px,1.4fr) repeat(3,minmax(150px,1fr));gap:11px;align-items:end}
+.medical-exams-filter-form label,.medical-exams-editor-form label{display:grid;align-content:start;gap:6px;min-width:0;color:var(--text-secondary,#53627a);font-size:.77rem;font-weight:750}
+.medical-exams-filter-form input,.medical-exams-filter-form select,.medical-exams-editor-form input,.medical-exams-editor-form select,.medical-exams-editor-form textarea{box-sizing:border-box;width:100%;min-width:0;padding:10px 11px;border:1px solid var(--border-color,#d1dae8);border-radius:9px;background:var(--input-bg,#fff);color:var(--text-primary,#17253b);font:inherit;font-size:.82rem}
+.medical-exams-filter-form input:focus,.medical-exams-filter-form select:focus,.medical-exams-editor-form input:focus,.medical-exams-editor-form select:focus,.medical-exams-editor-form textarea:focus{outline:3px solid rgba(37,99,235,.16);outline-offset:1px;border-color:#5b8be5}
+.medical-exams-filter-form .medical-exams-search-field{grid-column:span 2}
+.medical-exams-filter-form .medical-exams-filter-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;grid-column:1/-1;margin-top:2px}
+.medical-exams-editor-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px 15px}
+.medical-exams-editor-form label small{color:var(--text-secondary,#8390a4);font-size:.69rem;font-weight:500;line-height:1.4}
+.medical-exams-editor-form textarea{min-height:86px;resize:vertical;line-height:1.5}
+.medical-exams-editor-form .medical-exams-observations-field{grid-column:1/-1}
+.medical-exams-editor-form .medical-exams-form-actions{display:flex;flex-wrap:wrap;gap:8px;grid-column:1/-1;justify-content:flex-end;margin-top:3px}
+.medical-exams-table-wrap{max-width:100%;overflow:auto;border:1px solid var(--border-color,#e1e7f0);border-radius:10px}
+.medical-exams-table{width:100%;min-width:980px;border-collapse:separate;border-spacing:0}
+.medical-exams-table th{position:sticky;top:0;z-index:1;padding:12px 13px;background:var(--table-head-bg,#f2f5fa);color:var(--text-secondary,#53627a);font-size:.67rem;font-weight:850;letter-spacing:.045em;text-align:left;text-transform:uppercase;white-space:nowrap}
+.medical-exams-table td{padding:13px;border-top:1px solid var(--border-color,#e1e7f0);color:var(--text-primary,#18263b);font-size:.79rem;vertical-align:top}
+.medical-exams-table th,.medical-exams-table td{border-bottom:1px solid var(--border-color,#e1e7f0)}
+.medical-exams-table tbody tr:last-child td{border-bottom:0}
+.medical-exams-table tbody tr.is-expired td{background:rgba(254,226,226,.28)}
+.medical-exams-table tbody tr.is-expiring td{background:rgba(254,243,199,.24)}
+.medical-exam-code,.medical-exam-employee,.medical-exam-company{display:block}
+.medical-exam-code{color:#173b86;font-size:.77rem;font-weight:850;font-variant-numeric:tabular-nums}
+.medical-exam-employee{margin-top:5px;font-weight:800;color:var(--text-primary,#17253b)}
+.medical-exam-company{margin-top:4px;color:var(--text-secondary,#738198);font-size:.68rem;line-height:1.4}
+.medical-exam-result,.medical-exam-expiry{display:table;width:max-content;max-width:150px;margin-top:4px;padding:4px 8px;border-radius:999px;font-size:.68rem;font-weight:850;line-height:1.2;white-space:normal}
+.medical-exam-result.apto{background:#dcfce7;color:#166534}
+.medical-exam-result.no-apto{background:#fee2e2;color:#991b1b}
+.medical-exam-result.observaciones{background:#fef3c7;color:#92400e}
+.medical-exam-expiry.vigente{background:#dcfce7;color:#166534}
+.medical-exam-expiry.por-vencer{background:#fef3c7;color:#92400e}
+.medical-exam-expiry.vencido{background:#fee2e2;color:#991b1b}
+.medical-exam-row-actions{display:flex;flex-wrap:wrap;gap:5px}
+.medical-exam-row-actions .btn{min-height:29px;padding:5px 8px;font-size:.7rem;white-space:nowrap}
+.medical-exam-row-actions form{display:inline-flex;margin:0}
+.medical-exam-row-actions .danger-outline{border:1px solid #fecaca;background:#fff;color:#b42336}
+.medical-exam-row-actions .danger-outline:hover{background:#fff1f2}
+.medical-exam-observations{max-width:230px;margin-top:8px;color:var(--text-secondary,#64748b);font-size:.7rem}
+.medical-exam-observations summary{cursor:pointer;font-weight:800}
+.medical-exam-observations p{margin:5px 0 0;line-height:1.45;overflow-wrap:anywhere;white-space:pre-wrap}
+.medical-exams-empty{padding:38px 20px!important;text-align:center!important}
+.medical-exams-empty strong,.medical-exams-empty span{display:block}
+.medical-exams-empty strong{margin-bottom:5px;color:var(--text-primary,#17253b)}
+.medical-exams-empty span{color:var(--text-secondary,#65738a);font-size:.78rem}
+.sr-only{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
+@media(max-width:1000px){
+  .medical-exams-filter-form{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .medical-exams-filter-form .medical-exams-search-field{grid-column:1/-1}
+}
+@media(max-width:650px){
+  .medical-exams-header{align-items:flex-start;flex-direction:column}
+  .medical-exams-header-actions{width:100%}
+  .medical-exams-header-actions .btn{flex:1;justify-content:center}
+  .medical-exams-subnav a{flex:1;min-width:calc(50% - 8px)}
+  .medical-exams-metrics{grid-template-columns:1fr}
+  .medical-exams-metric{padding:12px 14px}
+  .medical-exams-metric strong{font-size:1.4rem}
+  .medical-exams-panel{padding:13px}
+  .medical-exams-panel-heading{align-items:flex-start;flex-direction:column}
+  .medical-exams-filter-form{grid-template-columns:1fr}
+  .medical-exams-filter-form .medical-exams-search-field,.medical-exams-editor-form .medical-exams-observations-field{grid-column:auto}
+  .medical-exams-filter-form .medical-exams-filter-actions{display:grid;grid-template-columns:1fr 1fr}
+  .medical-exams-filter-form .medical-exams-filter-actions .btn{width:100%;justify-content:center}
+  .medical-exams-editor-form{grid-template-columns:1fr}
+  .medical-exams-editor-form .medical-exams-form-actions{display:grid;grid-template-columns:1fr 1fr}
+  .medical-exams-editor-form .medical-exams-form-actions .btn{width:100%;justify-content:center}
+}
+@media(prefers-reduced-motion:reduce){.medical-exams-subnav a{transition:none}}
