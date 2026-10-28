@@ -4924,6 +4924,145 @@ def apply_request(
     return RedirectResponse(f"/app/requests/{item.id}", status_code=303)
 
 
+
+# ---------------------------------------------------------------------------
+# Cálculo: utilidades y API REST del motor de cálculos existente.
+# ---------------------------------------------------------------------------
+
+def _operation_employee(db: Session, user: User, employee_id: int) -> tuple[Employee, Company]:
+    employee = db.get(Employee, employee_id)
+    if not employee or employee.company_id not in company_ids_for_user(db, user):
+        raise HTTPException(404, "Funcionario no encontrado en tu espacio de trabajo.")
+    company = company_allowed(db, user, employee.company_id)
+    if company.status == "Archivada":
+        raise HTTPException(409, "No se pueden registrar movimientos en una empresa archivada.")
+    return employee, company
+
+
+def _operation_redirect(path: str, *, message: str = "", flag: str = "", edit_id: int | None = None) -> RedirectResponse:
+    params = []
+    if message:
+        params.append("form_error=" + quote(message))
+    if flag:
+        params.append(quote(flag) + "=1")
+    if edit_id is not None:
+        params.append("edit_id=" + str(edit_id))
+    suffix = ("?" + "&".join(params)) if params else ""
+    return RedirectResponse(path + suffix + "#operationEditor", status_code=303)
+
+
+@app.get("/api/calculations")
+def api_list_calculations(
+    company_id: OptionalQueryId = None, employee_id: OptionalQueryId = None,
+    calculation_type: str = "", limit: int = 100,
+    user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
+    db: Session = Depends(get_db),
+):
+    allowed_company_ids = company_ids_for_user(db, user)
+    query = select(CalculationRecord).where(CalculationRecord.company_id.in_(allowed_company_ids)) if allowed_company_ids else select(CalculationRecord).where(False)
+    if company_id is not None:
+        if company_id not in allowed_company_ids:
+            raise HTTPException(404, "Empresa no encontrada.")
+        query = query.where(CalculationRecord.company_id == company_id)
+    if employee_id is not None:
+        _operation_employee(db, user, employee_id)
+        query = query.where(CalculationRecord.employee_id == employee_id)
+    if calculation_type:
+        if calculation_type not in {"salary", "hours", "aguinaldo", "vacation", "notice"}:
+            raise HTTPException(422, "Tipo de cálculo no permitido.")
+        query = query.where(CalculationRecord.calculation_type == calculation_type)
+    items = list(db.scalars(query.order_by(CalculationRecord.created_at.desc()).limit(max(1, min(int(limit or 100), 250)))))
+    return {"items": [{
+        "id": item.id, "company_id": item.company_id, "employee_id": item.employee_id,
+        "calculation_type": item.calculation_type, "reference_period": item.reference_period,
+        "inputs": json_dict(item.input_json), "results": json_dict(item.result_json),
+        "amount": item.amount, "status": item.status, "notes": item.notes,
+        "created_at": item.created_at.isoformat() if item.created_at else None,
+    } for item in items]}
+
+
+@app.post("/api/calculations", status_code=201)
+async def api_create_calculation(
+    request: Request, user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
+    db: Session = Depends(get_db),
+):
+    payload = await _json_object(request)
+    calculation_type = str(payload.get("calculation_type") or "").strip()
+    if calculation_type not in {"salary", "hours", "aguinaldo", "vacation", "notice"}:
+        raise HTTPException(422, "Tipo de cálculo no permitido.")
+    try:
+        company = company_allowed(db, user, int(payload.get("company_id")))
+        employee_id_raw = payload.get("employee_id")
+        employee = db.get(Employee, int(employee_id_raw)) if employee_id_raw not in (None, "") else None
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(422, "Empresa o funcionario inválido.") from exc
+    if employee_id_raw not in (None, "") and (not employee or employee.company_id != company.id):
+        raise HTTPException(422, "El funcionario no pertenece a la empresa seleccionada.")
+    def nonnegative(name: str, default: int | float = 0):
+        value = float(payload.get(name, default) or 0)
+        if not math.isfinite(value) or value < 0:
+            raise ValueError(f"{name} debe ser un número no negativo.")
+        return int(value) if name not in {"monthly_hours", "hours_quantity", "multiplier", "days"} else value
+    try:
+        gross = nonnegative("gross", employee.base_salary if employee else 0)
+        other_income = nonnegative("other_income")
+        other_discount = nonnegative("other_discount")
+        salary = nonnegative("salary", employee.base_salary if employee else 0)
+        monthly_hours = nonnegative("monthly_hours", 240)
+        hours_quantity = nonnegative("hours_quantity")
+        multiplier = nonnegative("multiplier", 1)
+        total_remunerations = nonnegative("total_remunerations")
+        days = nonnegative("days")
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    inputs, results, amount = calculate_values(
+        calculation_type=calculation_type, ips_rate=get_parameter(db, "ips_employee_rate_general", 9),
+        gross=gross, other_income=other_income, other_discount=other_discount,
+        apply_ips=payload.get("apply_ips") is True or str(payload.get("apply_ips", "")).lower() in {"on", "true", "1"},
+        salary=salary, monthly_hours=monthly_hours, hours_quantity=hours_quantity,
+        multiplier=multiplier, total_remunerations=total_remunerations, days=days,
+    )
+    item = CalculationRecord(
+        company_id=company.id, employee_id=employee.id if employee else None,
+        calculation_type=calculation_type, reference_period=str(payload.get("reference_period") or "")[:20],
+        input_json=json.dumps(inputs, ensure_ascii=False, separators=(",", ":")),
+        result_json=json.dumps(results, ensure_ascii=False, separators=(",", ":")),
+        amount=amount, status="Revisar", source="API Cálculo",
+        notes=str(payload.get("notes") or "").strip()[:3000], created_by=user.email,
+    )
+    db.add(item); db.flush()
+    write_audit(db, user, "crear_api", "calculo", str(item.id), calculation_label(calculation_type))
+    db.commit()
+    return {"id": item.id, "calculation_type": item.calculation_type, "amount": item.amount,
+            "inputs": inputs, "results": results, "status": item.status}
+
+
+@app.get("/api/calculations/{calculation_id}")
+def api_get_calculation(calculation_id: int, user: User = Depends(require_roles("administrador", "contador", "auxiliar")), db: Session = Depends(get_db)):
+    item = db.get(CalculationRecord, calculation_id)
+    if not item or item.company_id not in company_ids_for_user(db, user):
+        raise HTTPException(404, "Cálculo no encontrado.")
+    return {"id": item.id, "company_id": item.company_id, "employee_id": item.employee_id,
+            "calculation_type": item.calculation_type, "reference_period": item.reference_period,
+            "inputs": json_dict(item.input_json), "results": json_dict(item.result_json),
+            "amount": item.amount, "status": item.status, "notes": item.notes}
+
+
+@app.patch("/api/calculations/{calculation_id}")
+async def api_update_calculation_status(calculation_id: int, request: Request, user: User = Depends(require_roles("administrador", "contador")), db: Session = Depends(get_db)):
+    item = db.get(CalculationRecord, calculation_id)
+    if not item or item.company_id not in company_ids_for_user(db, user):
+        raise HTTPException(404, "Cálculo no encontrado.")
+    payload = await _json_object(request)
+    state = str(payload.get("status") or "").strip()
+    if state not in {"Revisar", "Aprobado", "Anulado"}:
+        raise HTTPException(422, "Estado inválido.")
+    item.status = state
+    write_audit(db, user, "actualizar_estado_api", "calculo", str(item.id), state)
+    db.commit()
+    return {"id": item.id, "status": item.status}
+
+
 CALCULATION_MODULES = {
     "salary": {"title": "Salarios", "eyebrow": "CÁLCULO DE SALARIOS", "description": "Ingresá haberes, descuentos y base de IPS para revisar el bruto, el aporte y el neto estimado."},
     "hours": {"title": "Horas y recargos", "eyebrow": "CÁLCULO DE HORAS", "description": "Calculá el valor hora con una jornada y un multiplicador previamente revisados."},
