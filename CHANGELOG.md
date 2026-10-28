@@ -1,4 +1,11 @@
 # Registro de cambios
+## 2.6.9 — Contraste de enlaces activos en la barra lateral
+
+- Los enlaces activos de la sidebar, incluido Inicio, usan texto azul visible `#2563EB` sobre una tarjeta blanca cuando no están bajo el cursor.
+- Los enlaces inactivos y los estados hover conservan los colores existentes; la hoja nueva no define reglas `:hover`.
+- Mantiene el logo horizontal incorporado en 2.6.7 y la corrección de Inicio revertida/restaurada visualmente según esta solicitud.
+- Añade pruebas de regresión para el orden de carga y la diferencia entre estado activo y hover.
+
 ## 2.6.8 — Restaurar el color original de Inicio
 
 - Revierte exclusivamente la regla introducida en 2.6.7 que forzaba el texto de Inicio a azul cuando estaba seleccionado y el cursor no estaba encima.
