@@ -16,7 +16,7 @@ def test_sidebar_active_blue_styles_load_after_existing_theme_and_brand():
     ]
     assert all(position >= 0 for position in order)
     assert order == sorted(order)
-    assert "?v=20261028b" in base
+    assert "?v=20261028c" in base
 
 
 def test_only_active_non_hovered_sidebar_links_change_to_white_and_blue():
@@ -44,3 +44,19 @@ def test_home_fix_targets_only_the_active_label_and_not_hover_or_inactive_states
     assert ".workspace-home-link:hover" not in css
     assert ".workspace-home-link:not(.active)" not in css
 
+
+
+def test_home_active_label_forces_visible_blue_text_only_without_hover():
+    css = (ROOT / "app" / "static" / "sidebar-active-269.css").read_text(encoding="utf-8")
+    selector = (
+        ".workspace-home-link.active:not(:hover) "
+        "> span:not(.workspace-home-symbol)"
+    )
+    start = css.index(selector)
+    block = css[start:css.index("}", start) + 1]
+    assert "color:#2563EB!important" in block
+    assert "-webkit-text-fill-color:#2563EB!important" in block
+    assert "opacity:1!important" in block
+    assert "visibility:visible!important" in block
+    assert "filter:none!important" in block
+    assert ".workspace-home-link:hover" not in css
