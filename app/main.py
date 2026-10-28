@@ -6180,7 +6180,7 @@ def reports_catalog_api(user: User = Depends(require_user), db: Session = Depend
         ]
         if visible:
             groups.append({"title": group["title"], "reports": visible})
-    return {"version": "2.6.30", "total": sum(len(group["reports"]) for group in groups), "groups": groups}
+    return {"version": "2.6.26", "total": sum(len(group["reports"]) for group in groups), "groups": groups}
 
 
 @app.get("/api/reports/{report_key}")
