@@ -6259,7 +6259,7 @@ def report_detail_page(
     company_id: OptionalQueryId = None,
     employee_id: OptionalQueryId = None,
     q: str = "",
-    status_filter: str = Form(default=""),
+    status: str = "",
     year: int | None = None,
     period: str = "",
     page: int = 1,
@@ -6272,7 +6272,7 @@ def report_detail_page(
     if year is not None and (year < 1900 or year > 2100):
         raise HTTPException(400, "El año debe estar entre 1900 y 2100.")
     result = fetch_report(
-        db, spec, allowed_company_ids, company_id, employee_id, q, status_filter, year, period, page, page_size, sort
+        db, spec, allowed_company_ids, company_id, employee_id, q, status, year, period, page, page_size, sort
     )
     companies = list(db.scalars(select(Company).where(Company.id.in_(allowed_company_ids)).order_by(Company.legal_name))) if allowed_company_ids else []
     employee_query = select(Employee).where(Employee.company_id.in_(allowed_company_ids)).order_by(Employee.full_name) if allowed_company_ids else select(Employee).where(False)
