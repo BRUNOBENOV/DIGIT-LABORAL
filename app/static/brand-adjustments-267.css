@@ -1,0 +1,81 @@
+/* Digit Laboral v2.6.7 — ajuste del estado seleccionado y nueva marca oficial */
+
+/* En el estado activo sin hover, el rótulo Inicio contrasta con su fondo claro.
+   El estado hover queda deliberadamente intacto. */
+.app-body .workspace-sidebar .workspace-home-link.active:not(:hover){
+  color:#0B2D78!important;
+}
+
+/* Logo horizontal nuevo en la barra superior. */
+.modern-brand{
+  min-width:166px!important;
+  flex:0 1 176px!important;
+  gap:0!important;
+}
+.modern-brand-full-logo{
+  display:block;
+  width:166px;
+  max-width:100%;
+  height:auto;
+  max-height:68px;
+  object-fit:contain;
+  background:#fff;
+  border:1px solid #E3E7EF;
+  border-radius:8px;
+  padding:2px;
+}
+
+/* La sidebar usa el lockup completo dentro de una placa blanca para mantener
+   la legibilidad del texto azul/negro sobre el fondo navy. */
+.app-body .workspace-sidebar .workspace-sidebar-bottom{
+  justify-content:center!important;
+}
+.workspace-sidebar-bottom-full-logo{
+  display:block;
+  width:166px;
+  max-width:100%;
+  max-height:70px;
+  height:auto;
+  flex:0 1 auto;
+  object-fit:contain;
+  background:#fff;
+  border:1px solid #E3E7EF;
+  border-radius:9px;
+  padding:4px;
+}
+
+/* Reutiliza el mismo logo en ingreso, recuperación y verificación de acceso. */
+.auth-brand-full{
+  display:flex!important;
+  justify-content:center!important;
+  align-items:center!important;
+  width:100%;
+  margin-bottom:24px!important;
+}
+.auth-brand-full-image{
+  display:block;
+  width:190px;
+  max-width:100%;
+  max-height:100px;
+  height:auto;
+  object-fit:contain;
+  background:#fff;
+  border:1px solid #E3E7EF;
+  border-radius:10px;
+  padding:5px;
+}
+
+@media(max-width:760px){
+  .modern-brand{
+    min-width:0!important;
+    flex:0 1 140px!important;
+  }
+  .modern-brand-full-logo{
+    width:136px;
+    max-height:56px;
+  }
+  .workspace-sidebar-bottom-full-logo{
+    width:154px;
+    max-height:65px;
+  }
+}
