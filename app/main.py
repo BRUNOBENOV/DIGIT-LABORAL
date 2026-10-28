@@ -6286,7 +6286,7 @@ def report_detail_page(
         request, "report_detail.html", db, user,
         report=spec, companies=companies, employees=employees,
         selected_company=company_id, selected_employee=employee_id,
-        filters={"q": q, "status": status, "year": year, "period": period},
+        filters={"q": q, "status": status, "year": year, "period": period, "sort": sort},
         pagination=result, columns=result["columns"], rows=result["records"],
         export_base=export_base, pagination_base=pagination_base,
     )
