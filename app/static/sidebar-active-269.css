@@ -1,6 +1,5 @@
-/* Digit Laboral v2.6.9 — active sidebar item contrast.
-   Only the selected, non-hovered state changes. Existing hover and idle colors
-   are intentionally left to the previous navigation styles. */
+/* Digit Laboral v2.6.11 — robust visibility for the active Inicio label.
+   The rule targets only the label span, only while active and not hovered. */
 
 /* Home / Inicio: preserve the white active tile; color only the label text.
    The icon, hover state, inactive state and all other menu links are untouched. */
@@ -10,6 +9,10 @@
 }
 .app-body .workspace-sidebar .workspace-home-link.active:not(:hover) > span:not(.workspace-home-symbol){
   color:#2563EB!important;
+  -webkit-text-fill-color:#2563EB!important;
+  opacity:1!important;
+  visibility:visible!important;
+  filter:none!important;
 }
 
 /* Selected maintenance/module subitems use the same white + blue treatment. */
