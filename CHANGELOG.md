@@ -1,4 +1,11 @@
 # Registro de cambios
+## 2.6.11 — Visibilidad forzada del texto Inicio
+
+- Refuerza únicamente la etiqueta de texto dentro del botón Inicio cuando está activo y no está bajo el cursor.
+- Usa `color` y `-webkit-text-fill-color` en `#2563EB`, `opacity: 1`, `visibility: visible` y `filter: none` con `!important`.
+- No cambia el ícono, el fondo activo, otros enlaces, estados inactivos ni el hover.
+- Actualiza la versión, el cache-busting de CSS y las pruebas de regresión.
+
 ## 2.6.10 — Corrección limitada al texto de Inicio
 
 - Mantiene el fondo blanco del botón Inicio cuando está activo, pero fuerza únicamente el texto de su etiqueta a azul `#2563EB`.
