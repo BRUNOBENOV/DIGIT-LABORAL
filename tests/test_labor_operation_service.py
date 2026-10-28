@@ -17,7 +17,7 @@ def base_payload(operation_type: str, **overrides):
         "title": "Registro de prueba",
         "effective_date": "2026-10-20",
         "end_date": "",
-        "status": OPERATION_STATUSES[operation_type][0],
+        "status": OPERATION_STATUSES.get(operation_type, ("Registrado",))[0],
         "notes": "",
         "reference_code": "",
     }
