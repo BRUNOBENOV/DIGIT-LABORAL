@@ -124,7 +124,7 @@ def report_columns(spec: ReportSpec) -> list[str]:
         "family_allowance": ["Periodo", "Empresa", "Funcionario", "Bonificación familiar (Gs.)", "Días trabajados", "Pago", "Estado de nómina"],
     }
     if spec.dataset == "employee" and spec.variant == "profile":
-        return columns["employee"] + ["Dirección", "Fecha de nacimiento", "Tipo de contrato"]
+        return columns["employee"] + ["Dirección", "Fecha de nacimiento"]
     return columns.get(spec.dataset, [])
 
 
@@ -515,25 +515,44 @@ def fetch_report(
             return {"records": [], "total": 0, "page": page, "page_size": page_size, "pages": 0, "columns": report_columns(spec)}
     if spec.dataset == "company":
         query, count_query = _company_query(db, company_ids, company_id, q)
-        sort_map = {"name": Company.legal_name, "code": Company.company_code, "city": Company.city}
+        if status_filter:
+            query = query.where(Company.status == status_filter)
+        sort_map = {"name": Company.legal_name, "code": Company.company_code, "city": Company.city, "status": Company.status}
         order_column = sort_map.get(sort or "name", Company.legal_name)
         query = query.order_by(order_column.asc(), Company.id.asc())
         if spec.variant == "extended":
             pass
     elif spec.dataset == "employee":
         query, count_query = _employee_query(company_ids, company_id, employee_id, q, spec, year)
-        sort_map = {"name": Employee.full_name, "admission_date": Employee.admission_date, "salary": Employee.base_salary, "code": Employee.employee_code}
+        if status_filter:
+            query = query.where(Employee.status == status_filter)
+        sort_map = {"name": Employee.full_name, "admission_date": Employee.admission_date, "date": Employee.admission_date, "salary": Employee.base_salary, "amount": Employee.base_salary, "code": Employee.employee_code, "status": Employee.status}
         order_column = sort_map.get(sort or ("admission_date" if spec.variant == "admission_date" else "name"), Employee.full_name)
         query = query.order_by(order_column.asc(), Employee.id.asc())
     elif spec.dataset == "payroll":
         query, count_query = _payroll_query(company_ids, company_id, q, status_filter, year, period)
-        query = query.order_by(Payroll.period.desc(), Payroll.id.desc())
+        payroll_sort = {"period": Payroll.period, "status": Payroll.status, "amount": Payroll.total_net, "net": Payroll.total_net, "gross": Payroll.total_gross}
+        if sort in payroll_sort:
+            order_column = payroll_sort[sort]
+            query = query.order_by(order_column.asc() if sort in {"period", "status"} else order_column.desc(), Payroll.id.desc())
+        else:
+            query = query.order_by(Payroll.period.desc(), Payroll.id.desc())
     elif spec.dataset in {"payroll_line", "family_allowance"}:
         query, count_query = _payroll_line_query(company_ids, company_id, employee_id, q, status_filter, year, period, spec)
-        query = query.order_by(Payroll.period.desc(), Employee.full_name.asc(), PayrollLine.id.desc())
+        line_sort = {"period": Payroll.period, "employee": Employee.full_name, "name": Employee.full_name, "amount": PayrollLine.net, "net": PayrollLine.net, "gross": PayrollLine.gross, "status": Payroll.status}
+        if sort in line_sort:
+            order_column = line_sort[sort]
+            query = query.order_by(order_column.asc() if sort in {"period", "employee", "name", "status"} else order_column.desc(), PayrollLine.id.desc())
+        else:
+            query = query.order_by(Payroll.period.desc(), Employee.full_name.asc(), PayrollLine.id.desc())
     elif spec.dataset == "calculation":
         query, count_query = _calculation_query(company_ids, company_id, employee_id, q, status_filter, year, spec)
-        query = query.order_by(CalculationRecord.created_at.desc(), CalculationRecord.id.desc())
+        calc_sort = {"date": CalculationRecord.created_at, "amount": CalculationRecord.amount, "type": CalculationRecord.calculation_type, "status": CalculationRecord.status, "period": CalculationRecord.reference_period}
+        if sort in calc_sort:
+            order_column = calc_sort[sort]
+            query = query.order_by(order_column.asc() if sort in {"type", "status", "period"} else order_column.desc(), CalculationRecord.id.desc())
+        else:
+            query = query.order_by(CalculationRecord.created_at.desc(), CalculationRecord.id.desc())
     else:
         query, count_query = _related_query(spec.dataset, company_ids, company_id, employee_id, q, status_filter, year, period)
         if spec.dataset == "aguinaldo":
