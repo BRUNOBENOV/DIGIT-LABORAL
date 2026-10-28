@@ -2,11 +2,14 @@
    Only the selected, non-hovered state changes. Existing hover and idle colors
    are intentionally left to the previous navigation styles. */
 
-/* Home / Inicio: white active tile with readable blue label. */
+/* Home / Inicio: preserve the white active tile; color only the label text.
+   The icon, hover state, inactive state and all other menu links are untouched. */
 .app-body .workspace-sidebar .workspace-home-link.active:not(:hover){
-  color:#2563EB!important;
   background:#FFFFFF!important;
   border-color:#DCE6FA!important;
+}
+.app-body .workspace-sidebar .workspace-home-link.active:not(:hover) > span:not(.workspace-home-symbol){
+  color:#2563EB!important;
 }
 
 /* Selected maintenance/module subitems use the same white + blue treatment. */
