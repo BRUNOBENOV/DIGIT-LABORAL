@@ -1,4 +1,12 @@
 # Registro de cambios
+## 2.6.10 — Corrección limitada al texto de Inicio
+
+- Mantiene el fondo blanco del botón Inicio cuando está activo, pero fuerza únicamente el texto de su etiqueta a azul `#2563EB`.
+- El selector excluye el estado hover y no cambia el color de estados inactivos ni del ícono de Inicio.
+- No modifica las reglas de los subapartados ni sus colores de hover.
+- Conserva el logo actual y actualiza el cache-busting de la hoja de estilos.
+- Añade pruebas específicas para asegurar que la regla solo afecta la etiqueta de Inicio.
+
 ## 2.6.9 — Contraste de enlaces activos en la barra lateral
 
 - Los enlaces activos de la sidebar, incluido Inicio, usan texto azul visible `#2563EB` sobre una tarjeta blanca cuando no están bajo el cursor.
