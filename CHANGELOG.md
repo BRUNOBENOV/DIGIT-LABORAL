@@ -1,4 +1,11 @@
 # Registro de cambios
+## 2.6.13 — Refuerzo final del texto activo de Inicio
+
+- Añade una hoja CSS de carga final con alta especificidad para el texto de `Inicio` únicamente cuando el enlace `href="/app"` está activo y no hay hover.
+- Fuerza el texto a azul `#2563EB`, el relleno del texto para WebKit, opacidad completa y visibilidad, neutralizando filtros y mezclas translúcidas en la propia etiqueta.
+- No toca el icono, el fondo, el enlace de Administración general, los estados normales, los estados hover ni el logo.
+- Incluye una prueba para asegurar que el archivo se carga después de las reglas existentes.
+
 ## 2.6.12 — Selector limitado al botón Inicio
 
 - Limita las reglas de color y visibilidad del texto a `a.workspace-home-link[href="/app"]`, el botón Inicio del espacio laboral.

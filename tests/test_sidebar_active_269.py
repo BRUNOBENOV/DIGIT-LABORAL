@@ -66,3 +66,23 @@ def test_home_text_visibility_rule_does_not_target_admin_home_link():
     css = (ROOT / "app" / "static" / "sidebar-active-269.css").read_text(encoding="utf-8")
     assert 'a.workspace-home-link[href="/app"].active:not(:hover)' in css
     assert 'a.workspace-home-link[href="/admin"].active:not(:hover)' not in css
+
+
+def test_final_home_label_fix_loads_last_and_overrides_pale_text_only():
+    base = (ROOT / "app" / "templates" / "base.html").read_text(encoding="utf-8")
+    css = (ROOT / "app" / "static" / "home-label-fix-2613.css").read_text(encoding="utf-8")
+    assert base.find("sidebar-active-269.css") < base.find("home-label-fix-2613.css")
+    selector = (
+        'body.app-body .modern-mobile-nav.workspace-sidebar '
+        'a.workspace-home-link[href="/app"].active:not(:hover) '
+        '> span:not(.workspace-home-symbol)'
+    )
+    assert " ".join(selector.split()) in " ".join(css.split())
+    assert "color: #2563EB !important;" in css
+    assert "-webkit-text-fill-color: #2563EB !important;" in css
+    assert "opacity: 1 !important;" in css
+    assert "visibility: visible !important;" in css
+    assert "filter: none !important;" in css
+    assert "mix-blend-mode: normal !important;" in css
+    assert ":hover {" not in css
+    assert 'href="/admin"' not in css
