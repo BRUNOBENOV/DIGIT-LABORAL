@@ -20,7 +20,7 @@ from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
-from sqlalchemy import func, or_, select
+from sqlalchemy import String, cast, func, or_, select
 from sqlalchemy.orm import Session
 
 from .models import (
@@ -169,7 +169,7 @@ def _employee_query(company_ids: list[int], company_id: int | None, employee_id:
         query, count_query = query.where(clause), count_query.where(clause)
     if q:
         term = f"%{q}%"
-        clause = or_(Employee.full_name.ilike(term), Employee.document_number.ilike(term), Employee.position.ilike(term), Employee.status.ilike(term), Employee.employee_code.cast(str).ilike(term))
+        clause = or_(Employee.full_name.ilike(term), Employee.document_number.ilike(term), Employee.position.ilike(term), Employee.status.ilike(term), cast(Employee.employee_code, String).ilike(term))
         query, count_query = query.where(clause), count_query.where(clause)
     return query, count_query
 
@@ -230,7 +230,7 @@ def _payroll_line_query(company_ids: list[int], company_id: int | None, employee
     if period:
         clause = Payroll.period == period
         query, count_query = query.where(clause), count_query.where(clause)
-    if spec.variant == "family":
+    if spec.dataset == "family_allowance":
         query = query.where(PayrollComplianceDetail.family_allowance > 0)
         count_query = count_query.where(PayrollComplianceDetail.family_allowance > 0)
     if spec.variant == "hours":
@@ -350,8 +350,14 @@ def _related_query(dataset: str, company_ids: list[int], company_id: int | None,
             clause = func.extract("year", LaborOperation.effective_date) == year
             query, count_query = query.where(clause), count_query.where(clause)
         if period:
-            clause = func.strftime("%Y-%m", LaborOperation.effective_date) == period
-            query, count_query = query.where(clause), count_query.where(clause)
+            try:
+                period_year, period_month = (int(part) for part in period.split("-", 1))
+                start_date = date(period_year, period_month, 1)
+                end_date = date(period_year + (period_month == 12), 1 if period_month == 12 else period_month + 1, 1)
+                clause = (LaborOperation.effective_date >= start_date) & (LaborOperation.effective_date < end_date)
+                query, count_query = query.where(clause), count_query.where(clause)
+            except (ValueError, TypeError):
+                pass
         if q:
             term = f"%{q}%"
             clause = or_(LaborOperation.title.ilike(term), LaborOperation.operation_type.ilike(term), LaborOperation.reference_code.ilike(term), Employee.full_name.ilike(term), Company.legal_name.ilike(term))
@@ -550,12 +556,14 @@ def fetch_report(
             query = query.order_by(EmployeeEvent.effective_date.desc(), EmployeeEvent.id.desc())
         elif spec.dataset == "deadline":
             query = query.order_by(LaborDeadline.due_date.asc(), LaborDeadline.id.desc())
-    total = int(db.scalar(count_query) or 0)
+    # Count the fully filtered query itself so every joined filter is included in the total.
+    total_query = select(func.count()).select_from(query.order_by(None).subquery())
+    total = int(db.scalar(total_query) or 0)
     values = list(db.execute(query.offset((page - 1) * page_size).limit(page_size)).all())
     records = []
     for value in values:
         if spec.dataset in {"company", "employee", "payroll"}:
-            record = _row(spec, value)
+            record = _row(spec, value[0])
         else:
             record = _row(spec, value)
         records.append(record)
