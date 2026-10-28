@@ -1,3 +1,12 @@
+## 2.6.27 — Integridad de informes y exportaciones
+
+- Incluye en los informes los cálculos persistidos por el motor profesional (`suite_salary`, `suite_settlement`, `suite_aguinaldo` y `suite_vacation`) y los presenta con etiquetas legibles.
+- Corrige los orígenes de datos: planilla de horas usa horas registradas en las nóminas; la segunda vista conserva las operaciones horarias.
+- Adapta las opciones de ordenamiento a los campos soportados por cada informe.
+- Blinda la exportación XLSX contra la interpretación de texto ingresado por usuarios como fórmulas de hoja de cálculo.
+- Escapa el nombre patronal en la cabecera PDF y amplía la búsqueda de empresas al código y rubro.
+- Añade pruebas para cálculos del motor profesional y cadenas potencialmente ejecutables en XLSX.
+
 ## 2.6.26 — Centro de Informes
 
 - Incorpora el catálogo navegable de los 35 submódulos de Informes, agrupados por liquidaciones/remuneraciones, legajos/empresas, IPS/cumplimiento, vacaciones/aguinaldo, trámites/seguimiento, salud ocupacional y registros anuales.

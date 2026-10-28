@@ -129,7 +129,7 @@ from .notification_worker import (
 )
 
 from .report_export import build_employee_report_pdf
-from .report_center import REPORTS, REPORT_GROUPS, fetch_report, get_report, make_pdf, make_xlsx
+from .report_center import REPORTS, REPORT_GROUPS, fetch_report, get_report, make_pdf, make_xlsx, report_sort_options
 from .backup_service import build_studio_export
 from .seed import seed_database
 from .labor_code_sync import (
@@ -6193,7 +6193,7 @@ def reports_catalog_api(user: User = Depends(require_user), db: Session = Depend
         ]
         if visible:
             groups.append({"title": group["title"], "reports": visible})
-    return {"version": "2.6.26", "total": sum(len(group["reports"]) for group in groups), "groups": groups}
+    return {"version": "2.6.27", "total": sum(len(group["reports"]) for group in groups), "groups": groups}
 
 
 @app.get("/api/reports/{report_key}")
@@ -6300,6 +6300,7 @@ def report_detail_page(
         report=spec, companies=companies, employees=employees,
         selected_company=company_id, selected_employee=employee_id,
         filters={"q": q, "status": status, "year": year, "period": period, "sort": sort},
+        sort_options=report_sort_options(spec),
         pagination=result, columns=result["columns"], rows=result["records"],
         export_base=export_base, pagination_base=pagination_base,
     )

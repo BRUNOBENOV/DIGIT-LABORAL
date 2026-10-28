@@ -20,6 +20,7 @@ from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from xml.sax.saxutils import escape as xml_escape
 from sqlalchemy import String, cast, func, or_, select
 from sqlalchemy.orm import Session
 
@@ -52,18 +53,41 @@ class ReportSpec:
     note: str = ""
 
 
+
+
+def report_sort_options(spec: ReportSpec) -> list[tuple[str, str]]:
+    """Return only sort keys supported by the selected report dataset."""
+    options = {
+        "company": [("name", "Empresa"), ("code", "Código"), ("city", "Ciudad"), ("status", "Estado")],
+        "employee": [("name", "Funcionario"), ("date", "Fecha de ingreso"), ("salary", "Salario base"), ("code", "Código"), ("status", "Estado")],
+        "calculation": [("date", "Fecha"), ("type", "Tipo de cálculo"), ("period", "Periodo"), ("amount", "Importe"), ("status", "Estado")],
+        "payroll": [("period", "Periodo"), ("amount", "Neto"), ("gross", "Bruto"), ("status", "Estado")],
+        "payroll_line": [("period", "Periodo"), ("employee", "Funcionario"), ("amount", "Neto"), ("gross", "Bruto"), ("status", "Estado")],
+        "family_allowance": [("period", "Periodo"), ("employee", "Funcionario"), ("amount", "Importe"), ("status", "Estado")],
+        "aguinaldo": [("period", "Año"), ("employee", "Funcionario"), ("amount", "Importe"), ("status", "Estado"), ("date", "Fecha de registro")],
+        "vacation": [("period", "Año"), ("employee", "Funcionario"), ("status", "Estado"), ("date", "Fecha de inicio")],
+        "operation": [("date", "Fecha"), ("name", "Funcionario"), ("amount", "Importe"), ("status", "Estado")],
+        "medical_exam": [("date", "Fecha de examen"), ("employee", "Funcionario"), ("status", "Resultado"), ("amount", "Vencimiento")],
+        "certificate": [("date", "Fecha"), ("name", "Funcionario"), ("status", "Estado")],
+        "employee_event": [("date", "Fecha"), ("name", "Funcionario"), ("status", "Tipo de evento")],
+        "deadline": [("date", "Vencimiento"), ("name", "Empresa"), ("status", "Estado")],
+    }
+    return options.get(spec.dataset, [("name", "Nombre"), ("date", "Fecha"), ("status", "Estado")])
+
+
+
 _REPORT_LIST = [
     ("liquidacion-salario", "Liquidación Salario", "Liquidaciones y remuneraciones", "Resultados guardados del cálculo de salario neto.", "calculation", "salary", ""),
     ("liq-bonificacion-flia", "Liq. Bonificación Familiar", "Liquidaciones y remuneraciones", "Detalle de bonificación familiar cuando se encuentre registrado en la nómina.", "family_allowance", "", "Solo refleja importes registrados; no determina por sí solo el derecho legal a la bonificación."),
-    ("liquidacion-haberes", "Liquidación Haberes", "Liquidaciones y remuneraciones", "Historial de cálculos y liquidaciones asociadas a empresas y funcionarios.", "calculation", "", "El reporte histórico no sustituye la revisión profesional de una liquidación final."),
+    ("liquidacion-haberes", "Liquidación Haberes", "Liquidaciones y remuneraciones", "Liquidaciones de haberes generadas y guardadas para revisión.", "calculation", "settlement", "El reporte histórico no sustituye la revisión profesional de una liquidación final."),
     ("listado-pre-aviso", "Listado Pre-Aviso", "Liquidaciones y remuneraciones", "Cálculos de preaviso registrados.", "calculation", "notice", "La procedencia y el plazo deben verificarse según el caso concreto."),
     ("listado-empl-fecha", "Listado Empl. Fecha", "Legajos y empresas", "Funcionarios ordenados por fecha de ingreso.", "employee", "admission_date", ""),
     ("personales-despedidos", "Personales Despedidos", "Legajos y empresas", "Funcionarios con fecha de egreso o estado que indique baja/despido.", "employee", "terminated", "Solo identifica datos registrados en el legajo; no determina la causal jurídica."),
     ("informes-salario", "Informes Salario", "Liquidaciones y remuneraciones", "Historial de resultados de cálculos de salario.", "calculation", "salary", ""),
     ("seguro-social", "Seguro Social", "IPS y cumplimiento", "Nóminas y datos de aportes al seguro social registrados.", "payroll_line", "ips", "Los valores son los registrados en DIGIT-LABORAL; confirmar con los documentos oficiales de IPS."),
     ("planilla-de-pago", "Planilla de Pago", "Liquidaciones y remuneraciones", "Detalle de conceptos, descuentos y neto de nómina.", "payroll_line", "", ""),
-    ("liquidacion-aguinaldo", "Liquidación Aguinaldo", "Vacaciones y aguinaldo", "Aguinaldos calculados y sus estados.", "aguinaldo", "", "No reemplaza la validación de remuneraciones computables del periodo."),
-    ("planilla-de-horas", "Planilla de Horas", "Liquidaciones y remuneraciones", "Operaciones de horas y recargos registrados.", "operation", "hours", ""),
+    ("liquidacion-aguinaldo", "Liquidación Aguinaldo", "Vacaciones y aguinaldo", "Cálculos de aguinaldo guardados para revisión.", "calculation", "aguinaldo", "No reemplaza la validación de remuneraciones computables del periodo."),
+    ("planilla-de-horas", "Planilla de Horas", "Liquidaciones y remuneraciones", "Horas trabajadas y conceptos horarios asociados a nóminas registradas.", "payroll_line", "hours", ""),
     ("listado-vacacion", "Listado Vacación", "Vacaciones y aguinaldo", "Saldos y periodos de vacaciones registrados.", "vacation", "", "El saldo mostrado se obtiene de los días registrados; debe revisarse antes de liquidar."),
     ("listado-empresa", "Listado Empresa", "Legajos y empresas", "Directorio patronal del estudio.", "company", "", ""),
     ("listado-empleado", "Listado Empleado", "Legajos y empresas", "Listado de funcionarios y datos laborales principales.", "employee", "", ""),
@@ -82,7 +106,7 @@ _REPORT_LIST = [
     ("p-reg-gral-personas-ocupadas", "P.R. Gral. Personas Ocupadas", "Registros laborales anuales", "Listado de personas ocupadas según los legajos existentes.", "employee", "", "No realiza una clasificación ocupacional oficial si el perfil no está completado."),
     ("p-sueldos-jornales-mensual", "P. Sueldos y Jornales Mensual", "Registros laborales anuales", "Detalle mensual de conceptos de nómina.", "payroll_line", "", ""),
     ("p-vacaciones-anuales", "P. Vacaciones Anuales", "Vacaciones y aguinaldo", "Control anual de días de vacaciones y periodos registrados.", "vacation", "", ""),
-    ("liquidacion-vacacion", "Liquidación Vacación", "Vacaciones y aguinaldo", "Datos registrados para revisión y liquidación de vacaciones.", "vacation", "", "No genera automáticamente importes debidos a partir de datos incompletos."),
+    ("liquidacion-vacacion", "Liquidación Vacación", "Vacaciones y aguinaldo", "Cálculos de vacaciones guardados para revisión.", "calculation", "vacation", "No genera automáticamente importes debidos a partir de datos incompletos."),
     ("planilla-de-horas-1", "Planilla de Horas-1", "Liquidaciones y remuneraciones", "Segunda vista de operaciones de horas, turnos y recargos.", "operation", "hours", ""),
     ("listado-historico", "Listado Histórico", "Trámites y seguimiento", "Eventos laborales históricos vinculados al legajo.", "employee_event", "", ""),
     ("datos-de-la-empresa", "Datos de la Empresa", "Legajos y empresas", "Datos patronales y de contacto registrados en el sistema.", "company", "extended", ""),
@@ -128,6 +152,20 @@ def report_columns(spec: ReportSpec) -> list[str]:
     return columns.get(spec.dataset, [])
 
 
+
+
+def _calculation_label(value: str) -> str:
+    key = (value or "").removeprefix("suite_")
+    legacy = {"salary": "Salario neto", "hours": "Horas", "aguinaldo": "Aguinaldo", "vacation": "Vacaciones", "notice": "Preaviso", "settlement": "Liquidación de haberes"}
+    if key in legacy:
+        return legacy[key]
+    try:
+        from .labor_calculator import TITLES
+        return TITLES.get(key, key.replace("_", " ").capitalize())
+    except Exception:
+        return key.replace("_", " ").capitalize()
+
+
 def _clean_search(value: str | None) -> str:
     return (value or "").strip().replace("%", "").replace("_", "")[:120]
 
@@ -148,7 +186,7 @@ def _company_query(db: Session, company_ids: list[int], company_id: int | None, 
         count_query = count_query.where(Company.id == company_id)
     if q:
         term = f"%{q}%"
-        clause = or_(Company.legal_name.ilike(term), Company.trade_name.ilike(term), Company.ruc.ilike(term), Company.city.ilike(term))
+        clause = or_(Company.legal_name.ilike(term), Company.trade_name.ilike(term), Company.ruc.ilike(term), Company.city.ilike(term), cast(Company.company_code, String).ilike(term), Company.work_sector.ilike(term))
         query = query.where(clause)
         count_query = count_query.where(clause)
     return query, count_query
@@ -262,7 +300,12 @@ def _calculation_query(company_ids: list[int], company_id: int | None, employee_
         clause = CalculationRecord.employee_id == employee_id
         query, count_query = query.where(clause), count_query.where(clause)
     if spec.variant:
-        clause = CalculationRecord.calculation_type == spec.variant
+        # Both legacy calculators and the professional suite persist the same
+        # reportable concepts under different, documented type prefixes.
+        clause = or_(
+            CalculationRecord.calculation_type == spec.variant,
+            CalculationRecord.calculation_type == f"suite_{spec.variant}",
+        )
         query, count_query = query.where(clause), count_query.where(clause)
     if q:
         term = f"%{q}%"
@@ -317,7 +360,7 @@ def _related_query(dataset: str, company_ids: list[int], company_id: int | None,
             clause = or_(Employee.full_name.ilike(term), Employee.document_number.ilike(term), Company.legal_name.ilike(term), Vacation.status.ilike(term))
             query, count_query = query.where(clause), count_query.where(clause)
         if status_filter:
-            query, count_query = query.where(Vacation.status == status_filter), count_query.where(status_filter == Vacation.status)
+            query, count_query = query.where(Vacation.status == status_filter), count_query.where(Vacation.status == status_filter)
         if company_id is not None:
             query, count_query = query.where(Company.id == company_id), count_query.where(Company.id == company_id)
         if employee_id is not None:
@@ -363,7 +406,7 @@ def _related_query(dataset: str, company_ids: list[int], company_id: int | None,
             clause = or_(LaborOperation.title.ilike(term), LaborOperation.operation_type.ilike(term), LaborOperation.reference_code.ilike(term), Employee.full_name.ilike(term), Company.legal_name.ilike(term))
             query, count_query = query.where(clause), count_query.where(clause)
         if status_filter:
-            query, count_query = query.where(LaborOperation.status == status_filter), count_query.where(status_filter == LaborOperation.status)
+            query, count_query = query.where(LaborOperation.status == status_filter), count_query.where(LaborOperation.status == status_filter)
         if company_id is not None:
             query, count_query = query.where(Company.id == company_id), count_query.where(Company.id == company_id)
         if employee_id is not None:
@@ -377,7 +420,7 @@ def _related_query(dataset: str, company_ids: list[int], company_id: int | None,
             clause = or_(GeneratedCertificate.title.ilike(term), GeneratedCertificate.document_type.ilike(term), GeneratedCertificate.employee_name_snapshot.ilike(term), Company.legal_name.ilike(term))
             query, count_query = query.where(clause), count_query.where(clause)
         if status_filter:
-            query, count_query = query.where(GeneratedCertificate.status == status_filter), count_query.where(status_filter == GeneratedCertificate.status)
+            query, count_query = query.where(GeneratedCertificate.status == status_filter), count_query.where(GeneratedCertificate.status == status_filter)
         if company_id is not None:
             query, count_query = query.where(Company.id == company_id), count_query.where(Company.id == company_id)
         if employee_id is not None:
@@ -449,7 +492,7 @@ def _row(spec: ReportSpec, value: Any) -> dict[str, Any]:
     if dataset == "calculation":
         item, company, employee = value
         name = employee.full_name if employee else ""
-        return dict(zip(report_columns(spec), [_date(item.created_at), company.legal_name, name, item.calculation_type, item.reference_period, item.amount, item.status, item.source, item.created_by]))
+        return dict(zip(report_columns(spec), [_date(item.created_at), company.legal_name, name, _calculation_label(item.calculation_type), item.reference_period, item.amount, item.status, item.source, item.created_by]))
     if dataset == "payroll_line":
         line, payroll, employee, company, detail = value
         values = [payroll.period, company.legal_name, employee.full_name, employee.section.name if employee.section else "", line.base_salary, line.overtime, line.commissions, line.bonuses, line.other_income, line.advances, line.ips_employee, line.total_discounts, line.gross, line.net, detail.days_worked if detail else "", str(detail.hours_worked) if detail else "", detail.family_allowance if detail else 0, detail.employer_ips if detail else 0]
@@ -540,6 +583,8 @@ def fetch_report(
     elif spec.dataset in {"payroll_line", "family_allowance"}:
         query, count_query = _payroll_line_query(company_ids, company_id, employee_id, q, status_filter, year, period, spec)
         line_sort = {"period": Payroll.period, "employee": Employee.full_name, "name": Employee.full_name, "amount": PayrollLine.net, "net": PayrollLine.net, "gross": PayrollLine.gross, "status": Payroll.status}
+        if spec.dataset == "family_allowance":
+            line_sort["amount"] = PayrollComplianceDetail.family_allowance
         if sort in line_sort:
             order_column = line_sort[sort]
             query = query.order_by(order_column.asc() if sort in {"period", "employee", "name", "status"} else order_column.desc(), PayrollLine.id.desc())
@@ -632,6 +677,15 @@ def fetch_report(
     }
 
 
+def _xlsx_safe_cell(value: Any) -> Any:
+    """Store user-controlled strings as text, never as executable spreadsheet formulas."""
+    if not isinstance(value, str):
+        return value
+    trimmed = value.lstrip(" \t\r\n")
+    if value.startswith(("\t", "\r", "\n")) or (trimmed and trimmed[0] in {"=", "+", "-", "@"}):
+        return "'" + value
+    return value
+
 def make_xlsx(spec: ReportSpec, rows: list[dict[str, Any]]) -> bytes:
     workbook = Workbook()
     sheet = workbook.active
@@ -649,7 +703,7 @@ def make_xlsx(spec: ReportSpec, rows: list[dict[str, Any]]) -> bytes:
         cell.alignment = Alignment(wrap_text=True, vertical="center")
     sheet.row_dimensions[2].height = 28
     for row in rows:
-        sheet.append([row.get(column, "") for column in report_columns(spec)])
+        sheet.append([_xlsx_safe_cell(row.get(column, "")) for column in report_columns(spec)])
     for row in sheet.iter_rows(min_row=3):
         for cell in row:
             cell.alignment = Alignment(vertical="top", wrap_text=True)
@@ -673,7 +727,7 @@ def make_pdf(spec: ReportSpec, rows: list[dict[str, Any]], company_name: str = "
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle("ReportTitle", parent=styles["Title"], alignment=TA_LEFT, textColor=colors.HexColor("#05256D"), fontName="Helvetica-Bold", fontSize=15, leading=18, spaceAfter=4)
     small_style = ParagraphStyle("ReportSmall", parent=styles["Normal"], fontSize=7, leading=8, wordWrap="CJK")
-    elements = [Paragraph(spec.label, title_style), Paragraph(f"Digit Laboral · Emitido {date.today().strftime('%d/%m/%Y')}" + (f" · {company_name}" if company_name else ""), small_style), Spacer(1, 4 * mm)]
+    elements = [Paragraph(spec.label, title_style), Paragraph(xml_escape(f"Digit Laboral · Emitido {date.today().strftime('%d/%m/%Y')}" + (f" · {company_name}" if company_name else "")), small_style), Spacer(1, 4 * mm)]
     if spec.note:
         elements.extend([Paragraph(spec.note, small_style), Spacer(1, 3 * mm)])
     headers = [Paragraph(str(column), small_style) for column in report_columns(spec)]
