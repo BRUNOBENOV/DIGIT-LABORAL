@@ -69,9 +69,10 @@ def test_salary_entry_uses_the_professional_engine_and_surfaces_additional_earni
     assert 'SALARY_EXTRAS = group("Haberes adicionales", REMUNERATIVE_EXTRA_FIELDS, False)' in fields
     salary_fields = fields.split('"salary": [', 1)[1].split('"settlement": [', 1)[0]
     assert "SALARY_EXTRAS" in salary_fields
-    assert "Horas con recargo del 30 %" in fields
-    assert "Horas con recargo del 50 %" in fields
-    assert "Horas con recargo del 100 %" in fields
+    assert "Horas ordinarias nocturnas · adicional del 30 %" in fields
+    assert "Horas extraordinarias diurnas · mínimo 50 % (total 150 %)" in fields
+    assert "Horas extraordinarias nocturnas · recargo 100 % (total 200 %)" in fields
+    assert "Horas trabajadas en feriado · adicional 100 %" in fields
     assert "Ajuste manual de horas extras" in fields
     assert "overtime-total-preview" in workbench
     assert "Base IPS revisada" in fields
