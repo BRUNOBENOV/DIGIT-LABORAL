@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Detalle de liquidación | Digit Laboral{% endblock %}
+{% block page_name %}Detalle de liquidación{% endblock %}
+{% block content %}
+<header class="page-header"><div><span class="eyebrow">PROPUESTA DE CIERRE · #{{ record.id }}</span><h1>Liquidación final</h1><p>{{ employee.full_name if employee else 'Funcionario no identificado' }} · {{ company.legal_name }}</p></div><div class="header-actions"><a class="btn ghost" href="/app/liquidaciones">Volver al módulo</a><a class="btn primary" href="/app/liquidaciones/{{ record.id }}/pdf">Descargar PDF</a></div></header>
+<div class="v24-professional-note"><span class="v24-note-icon">!</span><div><b>Estado: {{ record.status }} · Requiere revisión.</b> El resultado es una suma aritmética de los conceptos ingresados. No confirma por sí solo el derecho a preaviso, indemnización ni la procedencia de cada descuento.</div></div>
+<section class="panel calc-ops-panel"><header class="panel-head"><div><span class="eyebrow">DATOS DEL CASO</span><h2>Datos de terminación</h2></div><span class="calc-ops-count">{{ inputs.termination_date }}</span></header>
+<div class="calc-ops-summary"><div><small>Funcionario</small><b>{{ employee.full_name if employee else '—' }}</b></div><div><small>Cédula</small><b>{{ employee.document_number if employee else '—' }}</b></div><div><small>Fecha de terminación</small><b>{{ inputs.termination_date }}</b></div><div><small>Causa consignada</small><b>{{ inputs.termination_reason }}</b></div></div></section>
+<section class="panel calc-ops-panel"><header class="panel-head"><div><span class="eyebrow">DETALLE ARITMÉTICO</span><h2>Rubros consignados</h2></div></header>
+<div class="table-wrap calc-ops-table-wrap"><table><thead><tr><th>Concepto</th><th>Importe (Gs.)</th></tr></thead><tbody>
+<tr><td>Haberes pendientes</td><td>Gs. {{ inputs.pending_salary|gs }}</td></tr>
+<tr><td>Vacaciones a pagar</td><td>Gs. {{ inputs.vacation_pay|gs }}</td></tr>
+<tr><td>Aguinaldo proporcional</td><td>Gs. {{ inputs.aguinaldo_prorated|gs }}</td></tr>
+<tr><td>Pago sustitutivo de preaviso (ingresado para revisión)</td><td>Gs. {{ inputs.notice_pay|gs }}</td></tr>
+<tr><td>Indemnización (ingresada para revisión)</td><td>Gs. {{ inputs.severance_pay|gs }}</td></tr>
+<tr><td>Otros haberes</td><td>Gs. {{ inputs.other_income|gs }}</td></tr>
+<tr><td>** Descuentos informados</td><td>− Gs. {{ inputs.discounts|gs }}</td></tr>
+<tr><td><b>Total de haberes consignados</b></td><td><b>Gs. {{ results.total_entitlements|gs }}</b></td></tr>
+<tr><td><b>Resultado aritmético preliminar</b></td><td><b>Gs. {{ results.net_amount|gs }}</b></td></tr>
+</tbody></table></div>
+{% if inputs.notes %}<h3>Observaciones de revisión</h3><p class="calc-ops-note">{{ inputs.notes }}</p>{% endif %}
+<div class="calc-ops-form-actions"><a class="btn primary" href="/app/liquidaciones/{{ record.id }}/pdf">Descargar PDF</a><a class="btn outline" href="/app/calculations/{{ record.id }}/certificate">Preparar documento</a></div>
+<p class="form-help">Registrado por {{ record.created_by }} el {{ record.created_at.strftime('%d/%m/%Y %H:%M') if record.created_at else '—' }}. La revisión profesional debe comprobar antigüedad, promedio de remuneraciones, causa de terminación y documentos de respaldo.</p>
+</section>
+{% endblock %}
