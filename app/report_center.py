@@ -20,6 +20,7 @@ from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from xml.sax.saxutils import escape as xml_escape
 from sqlalchemy import String, cast, func, or_, select
 from sqlalchemy.orm import Session
 
@@ -405,7 +406,7 @@ def _related_query(dataset: str, company_ids: list[int], company_id: int | None,
             clause = or_(LaborOperation.title.ilike(term), LaborOperation.operation_type.ilike(term), LaborOperation.reference_code.ilike(term), Employee.full_name.ilike(term), Company.legal_name.ilike(term))
             query, count_query = query.where(clause), count_query.where(clause)
         if status_filter:
-            query, count_query = query.where(LaborOperation.status == status_filter), count_query.where(status_filter == LaborOperation.status)
+            query, count_query = query.where(LaborOperation.status == status_filter), count_query.where(LaborOperation.status == status_filter)
         if company_id is not None:
             query, count_query = query.where(Company.id == company_id), count_query.where(Company.id == company_id)
         if employee_id is not None:
@@ -419,7 +420,7 @@ def _related_query(dataset: str, company_ids: list[int], company_id: int | None,
             clause = or_(GeneratedCertificate.title.ilike(term), GeneratedCertificate.document_type.ilike(term), GeneratedCertificate.employee_name_snapshot.ilike(term), Company.legal_name.ilike(term))
             query, count_query = query.where(clause), count_query.where(clause)
         if status_filter:
-            query, count_query = query.where(GeneratedCertificate.status == status_filter), count_query.where(status_filter == GeneratedCertificate.status)
+            query, count_query = query.where(GeneratedCertificate.status == status_filter), count_query.where(GeneratedCertificate.status == status_filter)
         if company_id is not None:
             query, count_query = query.where(Company.id == company_id), count_query.where(Company.id == company_id)
         if employee_id is not None:
@@ -582,6 +583,8 @@ def fetch_report(
     elif spec.dataset in {"payroll_line", "family_allowance"}:
         query, count_query = _payroll_line_query(company_ids, company_id, employee_id, q, status_filter, year, period, spec)
         line_sort = {"period": Payroll.period, "employee": Employee.full_name, "name": Employee.full_name, "amount": PayrollLine.net, "net": PayrollLine.net, "gross": PayrollLine.gross, "status": Payroll.status}
+        if spec.dataset == "family_allowance":
+            line_sort["amount"] = PayrollComplianceDetail.family_allowance
         if sort in line_sort:
             order_column = line_sort[sort]
             query = query.order_by(order_column.asc() if sort in {"period", "employee", "name", "status"} else order_column.desc(), PayrollLine.id.desc())
@@ -725,7 +728,7 @@ def make_pdf(spec: ReportSpec, rows: list[dict[str, Any]], company_name: str = "
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle("ReportTitle", parent=styles["Title"], alignment=TA_LEFT, textColor=colors.HexColor("#05256D"), fontName="Helvetica-Bold", fontSize=15, leading=18, spaceAfter=4)
     small_style = ParagraphStyle("ReportSmall", parent=styles["Normal"], fontSize=7, leading=8, wordWrap="CJK")
-    elements = [Paragraph(spec.label, title_style), Paragraph(f"Digit Laboral · Emitido {date.today().strftime('%d/%m/%Y')}" + (f" · {company_name}" if company_name else ""), small_style), Spacer(1, 4 * mm)]
+    elements = [Paragraph(spec.label, title_style), Paragraph(xml_escape(f"Digit Laboral · Emitido {date.today().strftime('%d/%m/%Y')}" + (f" · {company_name}" if company_name else "")), small_style), Spacer(1, 4 * mm)]
     if spec.note:
         elements.extend([Paragraph(spec.note, small_style), Spacer(1, 3 * mm)])
     headers = [Paragraph(str(column), small_style) for column in report_columns(spec)]
