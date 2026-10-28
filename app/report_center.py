@@ -681,11 +681,10 @@ def _xlsx_safe_cell(value: Any) -> Any:
     """Store user-controlled strings as text, never as executable spreadsheet formulas."""
     if not isinstance(value, str):
         return value
-    trimmed = value.lstrip(" \\t\\r\\n")
-    if value.startswith(("\\t", "\\r", "\\n")) or (trimmed and trimmed[0] in {"=", "+", "-", "@"}):
+    trimmed = value.lstrip(" \t\r\n")
+    if value.startswith(("\t", "\r", "\n")) or (trimmed and trimmed[0] in {"=", "+", "-", "@"}):
         return "'" + value
     return value
-
 
 def make_xlsx(spec: ReportSpec, rows: list[dict[str, Any]]) -> bytes:
     workbook = Workbook()
