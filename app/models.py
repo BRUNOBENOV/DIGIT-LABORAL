@@ -554,6 +554,91 @@ class SalaryHistory(Base):
     employee: Mapped[Employee] = relationship()
 
 
+class SalaryAdvance(Base):
+    """Salary advance and its payroll deduction status."""
+
+    __tablename__ = "salary_advances"
+    __table_args__ = (
+        CheckConstraint("amount > 0", name="ck_salary_advance_positive_amount"),
+        CheckConstraint("status IN ('Registrado', 'Descontado', 'Anulado')", name="ck_salary_advance_status"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), index=True)
+    amount: Mapped[int] = mapped_column(Integer)
+    advance_date: Mapped[date] = mapped_column(Date, index=True)
+    salary_period: Mapped[str] = mapped_column(String(7), default="")
+    status: Mapped[str] = mapped_column(String(30), default="Registrado", index=True)
+    notes: Mapped[str] = mapped_column(Text, default="")
+    created_by: Mapped[str] = mapped_column(String(180), default="")
+    updated_by: Mapped[str] = mapped_column(String(180), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
+
+    company: Mapped[Company] = relationship()
+    employee: Mapped[Employee] = relationship()
+
+
+class EmployeeLaborAction(Base):
+    """Amonestación, suspensión or permission record for an employee."""
+
+    __tablename__ = "employee_labor_actions"
+    __table_args__ = (
+        CheckConstraint("action_type IN ('Amonestación', 'Suspensión', 'Permiso')", name="ck_labor_action_type"),
+        CheckConstraint("status IN ('Registrado', 'Aprobado', 'Rechazado', 'Cumplido')", name="ck_labor_action_status"),
+        CheckConstraint("end_date IS NULL OR start_date IS NULL OR end_date >= start_date", name="ck_labor_action_date_range"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), index=True)
+    action_type: Mapped[str] = mapped_column(String(40), index=True)
+    action_date: Mapped[date] = mapped_column(Date, index=True)
+    start_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    end_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    reason: Mapped[str] = mapped_column(String(240), default="")
+    details: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(30), default="Registrado", index=True)
+    created_by: Mapped[str] = mapped_column(String(180), default="")
+    updated_by: Mapped[str] = mapped_column(String(180), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
+
+    company: Mapped[Company] = relationship()
+    employee: Mapped[Employee] = relationship()
+
+
+class LaborTelegram(Base):
+    """Drafting and follow-up record for labor collation telegrams."""
+
+    __tablename__ = "labor_telegrams"
+    __table_args__ = (
+        UniqueConstraint("company_id", "telegram_code", name="uq_telegram_code_per_company"),
+        CheckConstraint("telegram_type IN ('Intimación', 'Preaviso', 'Apercibimiento', 'Comunicación', 'Otro')", name="ck_telegram_type"),
+        CheckConstraint("status IN ('Borrador', 'Revisado', 'Emitido', 'Enviado', 'Anulado')", name="ck_telegram_status"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), index=True)
+    telegram_code: Mapped[str] = mapped_column(String(40), index=True)
+    telegram_type: Mapped[str] = mapped_column(String(40), index=True)
+    issue_date: Mapped[date] = mapped_column(Date, index=True)
+    destination_address: Mapped[str] = mapped_column(String(300), default="")
+    subject: Mapped[str] = mapped_column(String(200))
+    body: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(30), default="Borrador", index=True)
+    notes: Mapped[str] = mapped_column(Text, default="")
+    created_by: Mapped[str] = mapped_column(String(180), default="")
+    updated_by: Mapped[str] = mapped_column(String(180), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
+
+    company: Mapped[Company] = relationship()
+    employee: Mapped[Employee] = relationship()
+
+
 class LaborDeadline(Base):
     __tablename__ = "labor_deadlines"
 
