@@ -16,7 +16,7 @@ def test_sidebar_active_blue_styles_load_after_existing_theme_and_brand():
     ]
     assert all(position >= 0 for position in order)
     assert order == sorted(order)
-    assert "?v=20261028c" in base
+    assert "?v=20261028d" in base
 
 
 def test_only_active_non_hovered_sidebar_links_change_to_white_and_blue():
@@ -35,8 +35,8 @@ def test_only_active_non_hovered_sidebar_links_change_to_white_and_blue():
 def test_home_fix_targets_only_the_active_label_and_not_hover_or_inactive_states():
     css = (ROOT / "app" / "static" / "sidebar-active-269.css").read_text(encoding="utf-8")
     home_rule = (
-        ".app-body .workspace-sidebar .workspace-home-link.active:not(:hover) "
-        "> span:not(.workspace-home-symbol)"
+        '.app-body .workspace-sidebar a.workspace-home-link[href="/app"].active:not(:hover) '
+        '> span:not(.workspace-home-symbol)'
     )
     assert home_rule in css
     assert "color:#2563EB!important" in css
@@ -60,3 +60,9 @@ def test_home_active_label_forces_visible_blue_text_only_without_hover():
     assert "visibility:visible!important" in block
     assert "filter:none!important" in block
     assert ".workspace-home-link:hover" not in css
+
+
+def test_home_text_visibility_rule_does_not_target_admin_home_link():
+    css = (ROOT / "app" / "static" / "sidebar-active-269.css").read_text(encoding="utf-8")
+    assert 'a.workspace-home-link[href="/app"].active:not(:hover)' in css
+    assert 'a.workspace-home-link[href="/admin"].active:not(:hover)' not in css
