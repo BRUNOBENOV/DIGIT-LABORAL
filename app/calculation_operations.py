@@ -199,3 +199,62 @@ def validate_settlement(*, termination_date: str | date, termination_reason: str
         "notes": notes_value,
         "review_required": True,
     }
+
+
+VACATION_STATUSES = ("Pendiente", "Aprobada", "Completada")
+AGUINALDO_STATUSES = ("Borrador", "Revisar", "Aprobado", "Pagado", "Anulado")
+
+
+def validate_vacation_record(*, period_year: int | str, entitled_days: int | str, used_days: int | str = 0,
+                             start_date: str | date | None = None, end_date: str | date | None = None,
+                             status: str = "Pendiente", notes: str = "", today: date | None = None) -> dict:
+    current = today or date.today()
+    try:
+        year = int(period_year)
+        entitled = int(entitled_days)
+        used = int(used_days or 0)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("El año, los días reconocidos y los días utilizados deben ser numéricos.") from exc
+    if year < 1900 or year > current.year:
+        raise ValueError("El año del período de vacaciones debe estar entre 1900 y el año actual.")
+    if not 0 <= entitled <= 365 or not 0 <= used <= 365:
+        raise ValueError("Los días de vacaciones deben estar entre 0 y 365.")
+    if used > entitled:
+        raise ValueError("Los días utilizados no pueden superar los días reconocidos del período.")
+    start = parse_iso_date(start_date, "La fecha inicial", required=False)
+    end = parse_iso_date(end_date, "La fecha final", required=False)
+    if bool(start) != bool(end):
+        raise ValueError("Ingresá ambas fechas del período de vacaciones o dejá ambas vacías.")
+    if start and end and end < start:
+        raise ValueError("La fecha final no puede ser anterior a la fecha inicial.")
+    normalized_status = str(status or "").strip()
+    if normalized_status not in VACATION_STATUSES:
+        raise ValueError("El estado de vacaciones no es válido.")
+    note = str(notes or "").strip()
+    if len(note) > 2000:
+        raise ValueError("Las observaciones no pueden superar los 2.000 caracteres.")
+    return {"period_year": year, "entitled_days": entitled, "used_days": used, "start_date": start, "end_date": end,
+            "status": normalized_status, "notes": note}
+
+
+def validate_aguinaldo_record(*, year: int | str, total_remunerations: int | str, status: str = "Borrador",
+                              notes: str = "", today: date | None = None) -> dict:
+    current = today or date.today()
+    try:
+        year_value = int(year)
+        remuneration_value = int(total_remunerations)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("El año y las remuneraciones totales deben ser números enteros.") from exc
+    if year_value < 1900 or year_value > current.year:
+        raise ValueError("El año del aguinaldo debe estar entre 1900 y el año actual.")
+    if remuneration_value < 0 or remuneration_value > 2_147_483_647:
+        raise ValueError("Las remuneraciones computables deben estar entre 0 y 2.147.483.647 guaraníes.")
+    normalized_status = str(status or "").strip()
+    if normalized_status not in AGUINALDO_STATUSES:
+        raise ValueError("El estado del aguinaldo no es válido.")
+    note = str(notes or "").strip()
+    if len(note) > 2000:
+        raise ValueError("Las observaciones no pueden superar los 2.000 caracteres.")
+    return {"year": year_value, "total_remunerations": remuneration_value,
+            "calculated_amount": (remuneration_value + 6) // 12,
+            "status": normalized_status, "notes": note}
