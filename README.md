@@ -4,7 +4,7 @@ Plataforma de gestión y cumplimiento laboral para estudios contables paraguayos
 
 ## Novedades de la versión 2.6.23
 
-- Salario calcula las horas extra por cantidad cargada en tramos de recargo del 30 %, 50 % y 100 %, mostrando un desglose por concepto y una vista previa inmediata.
+- Salario diferencia el adicional nocturno ordinario del 30 %, las horas extraordinarias diurnas (mínimo 50 %), las extraordinarias nocturnas (100 %) y el adicional por feriado (100 %), con vista previa inmediata.
 - La carga horaria deja de figurar como submódulo separado de Cálculo; se conserva su ruta de compatibilidad sin eliminar operaciones ni registros antiguos.
 - Se mantiene el importe manual de horas extras para casos heredados/excepcionales, con validación que impide duplicarlo con las horas por tramo.
 
