@@ -4,6 +4,27 @@
 
 {% if p.startswith('/app/companies') or p.startswith('/app/employees') %}
   {# Estos módulos ya incorporan navegación propia para el directorio y el expediente. #}
+{% elif p.startswith('/app/work-hours') or p.startswith('/app/advances') or p.startswith('/app/labor-actions') or p.startswith('/app/telegrams') or p.startswith('/app/employee-history') %}
+  {% set calc_tabs = [
+    {'label':'Calculadoras', 'href':'/app/calculations', 'active':p == '/app/calculations' and not query_type},
+    {'label':'Salarios', 'href':'/app/calculations?tipo=salary', 'active':p == '/app/calculations' and query_type == 'salary'},
+    {'label':'Horas y recargos', 'href':'/app/calculations?tipo=hours', 'active':p == '/app/calculations' and query_type == 'hours'},
+    {'label':'Carga de horas', 'href':'/app/work-hours', 'active':p.startswith('/app/work-hours')},
+    {'label':'Aguinaldo', 'href':'/app/calculations?tipo=aguinaldo', 'active':p == '/app/calculations' and query_type == 'aguinaldo'},
+    {'label':'Vacaciones', 'href':'/app/calculations?tipo=vacation', 'active':p == '/app/calculations' and query_type == 'vacation'},
+    {'label':'Preaviso', 'href':'/app/calculations?tipo=notice', 'active':p == '/app/calculations' and query_type == 'notice'},
+    {'label':'Liquidación final', 'href':'/app/liquidaciones?tipo=settlement', 'active':p.startswith('/app/liquidaciones')},
+    {'label':'Histórico funcionario', 'href':'/app/employee-history', 'active':p.startswith('/app/employee-history')}
+  ] %}
+  {% if user.role in ['administrador','contador'] %}
+    {% set calc_tabs = calc_tabs + [
+      {'label':'Anticipos', 'href':'/app/advances', 'active':p.startswith('/app/advances')},
+      {'label':'Amonestaciones / permisos', 'href':'/app/labor-actions', 'active':p.startswith('/app/labor-actions')},
+      {'label':'Telegramas', 'href':'/app/telegrams', 'active':p.startswith('/app/telegrams')},
+      {'label':'Examen médico', 'href':'/app/medical-exams', 'active':p.startswith('/app/medical-exams')}
+    ] %}
+  {% endif %}
+  {{ tab_nav('Submódulos de cálculo y gestión laboral', calc_tabs) }}
 {% elif p.startswith('/app/users') or p.startswith('/app/parameters') %}
   {% if user.role == 'administrador' %}
     {{ tab_nav('Subsecciones de mantenimientos', [
