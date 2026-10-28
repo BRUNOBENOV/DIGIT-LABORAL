@@ -79,3 +79,46 @@
     max-height:65px;
   }
 }
+
+/* Sitio público: logo horizontal completo en navegación y pie de página. */
+.dl-brand-full{
+  display:flex!important;
+  align-items:center!important;
+  min-width:0;
+}
+.dl-brand-full-logo{
+  display:block;
+  width:158px;
+  max-width:100%;
+  height:auto;
+  max-height:66px;
+  object-fit:contain;
+  background:#fff;
+  border:1px solid #E3E7EF;
+  border-radius:8px;
+  padding:3px;
+}
+.dl-footer-brand-full{
+  align-items:center;
+  gap:14px;
+}
+.dl-footer-full-logo{
+  display:block;
+  width:156px;
+  max-width:100%;
+  max-height:64px;
+  height:auto;
+  object-fit:contain;
+  background:#fff;
+  border:1px solid #E3E7EF;
+  border-radius:8px;
+  padding:3px;
+}
+.dl-footer-brand-full .dl-footer-tagline{
+  margin:0;
+}
+@media(max-width:760px){
+  .dl-brand-full-logo{width:132px;max-height:56px}
+  .dl-footer-full-logo{width:140px;max-height:58px}
+  .dl-footer-brand-full{flex-wrap:wrap}
+}
