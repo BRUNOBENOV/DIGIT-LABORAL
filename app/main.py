@@ -5901,6 +5901,73 @@ def api_delete_aguinaldo(aguinaldo_id: int, user: User = Depends(require_roles("
     return {"ok": True}
 
 
+
+# --- REST API del submódulo Mantenimientos / Exámenes médicos ---
+
+@app.get("/api/medical-exams")
+def api_list_medical_exams(employee_id: OptionalQueryId = None, exam_type: str = "", result_filter: str = "", user: User = Depends(require_roles("administrador", "contador")), db: Session = Depends(get_db)):
+    company_ids = company_ids_for_user(db, user)
+    query = select(MedicalExam).where(MedicalExam.company_id.in_(company_ids)).options(selectinload(MedicalExam.employee), selectinload(MedicalExam.company)) if company_ids else select(MedicalExam).where(False)
+    if employee_id is not None: _operation_employee(db, user, employee_id); query = query.where(MedicalExam.employee_id == employee_id)
+    if exam_type:
+        if exam_type not in MEDICAL_EXAM_TYPES: raise HTTPException(422, "Tipo de examen inválido.")
+        query = query.where(MedicalExam.exam_type == exam_type)
+    if result_filter:
+        if result_filter not in MEDICAL_EXAM_RESULTS: raise HTTPException(422, "Resultado inválido.")
+        query = query.where(MedicalExam.result == result_filter)
+    return {"items": [{"id": r.id, "company_id": r.company_id, "employee_id": r.employee_id, "exam_code": r.exam_code, "exam_type": r.exam_type,
+        "exam_date": r.exam_date.isoformat(), "result": r.result, "expires_on": r.expires_on.isoformat(), "observations": r.observations,
+        "company_name": r.company.legal_name, "employee_name": r.employee.full_name} for r in db.scalars(query.order_by(MedicalExam.exam_date.desc()).limit(500))]}
+
+
+@app.post("/api/medical-exams", status_code=201)
+async def api_create_medical_exam(request: Request, user: User = Depends(require_roles("administrador", "contador")), db: Session = Depends(get_db)):
+    p = await _json_object(request)
+    try: employee, company = _operation_employee(db, user, int(p.get("employee_id") or 0))
+    except (TypeError, ValueError) as exc: raise HTTPException(422, "employee_id es obligatorio.") from exc
+    try: values = validate_medical_exam_fields(
+        company_id=company.id, exam_code=p.get("exam_code", ""), exam_type=p.get("exam_type"),
+        exam_date_raw=p.get("exam_date"), result=p.get("result"), expires_on_raw=p.get("expires_on"),
+        observations=p.get("observations", ""),
+    )
+    except ValueError as exc: raise HTTPException(422, str(exc)) from exc
+    duplicate = db.scalar(select(MedicalExam.id).where(MedicalExam.company_id == company.id, MedicalExam.exam_code == values["exam_code"]))
+    if duplicate: raise HTTPException(409, "El código de examen ya existe en la empresa.")
+    item = MedicalExam(company_id=company.id, employee_id=employee.id, **values, created_by=user.email, updated_by=user.email)
+    db.add(item); db.flush(); write_audit(db, user, "crear_api", "examen_medico", str(item.id), item.exam_code); db.commit()
+    return {"id": item.id, "exam_code": item.exam_code, "exam_date": item.exam_date.isoformat(), "expires_on": item.expires_on.isoformat(), "result": item.result}
+
+
+@app.put("/api/medical-exams/{exam_id}")
+async def api_update_medical_exam(exam_id: int, request: Request, user: User = Depends(require_roles("administrador", "contador")), db: Session = Depends(get_db)):
+    item = db.get(MedicalExam, exam_id)
+    if not item or item.company_id not in company_ids_for_user(db, user): raise HTTPException(404, "Registro de examen médico no encontrado.")
+    p = await _json_object(request)
+    try: employee, company = _operation_employee(db, user, int(p.get("employee_id", item.employee_id)))
+    except (TypeError, ValueError) as exc: raise HTTPException(422, "employee_id es inválido.") from exc
+    try: values = validate_medical_exam_fields(
+        company_id=company.id, exam_code=p.get("exam_code", item.exam_code), exam_type=p.get("exam_type", item.exam_type),
+        exam_date_raw=p.get("exam_date", item.exam_date.isoformat()), result=p.get("result", item.result),
+        expires_on_raw=p.get("expires_on", item.expires_on.isoformat()), observations=p.get("observations", item.observations),
+    )
+    except ValueError as exc: raise HTTPException(422, str(exc)) from exc
+    duplicate = db.scalar(select(MedicalExam.id).where(MedicalExam.company_id == company.id, MedicalExam.exam_code == values["exam_code"], MedicalExam.id != item.id))
+    if duplicate: raise HTTPException(409, "El código de examen ya existe en la empresa.")
+    for key, value in values.items(): setattr(item, key, value)
+    item.employee_id, item.company_id, item.updated_by = employee.id, company.id, user.email
+    write_audit(db, user, "editar_api", "examen_medico", str(item.id), item.exam_code); db.commit()
+    return {"id": item.id, "exam_code": item.exam_code, "result": item.result}
+
+
+@app.delete("/api/medical-exams/{exam_id}")
+def api_delete_medical_exam(exam_id: int, user: User = Depends(require_roles("administrador", "contador")), db: Session = Depends(get_db)):
+    item = db.get(MedicalExam, exam_id)
+    if not item or item.company_id not in company_ids_for_user(db, user): raise HTTPException(404, "Registro de examen médico no encontrado.")
+    write_audit(db, user, "eliminar_api", "examen_medico", str(item.id), item.exam_code)
+    db.delete(item); db.commit()
+    return {"ok": True}
+
+
 CALCULATION_MODULES = {
     "salary": {"title": "Salarios", "eyebrow": "CÁLCULO DE SALARIOS", "description": "Ingresá haberes, descuentos y base de IPS para revisar el bruto, el aporte y el neto estimado."},
     "hours": {"title": "Horas y recargos", "eyebrow": "CÁLCULO DE HORAS", "description": "Calculá el valor hora con una jornada y un multiplicador previamente revisados."},
