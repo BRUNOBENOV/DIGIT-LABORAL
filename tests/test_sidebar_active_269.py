@@ -102,3 +102,17 @@ def test_inline_home_label_fix_targets_explicit_label_after_external_stylesheets
     assert "visibility:visible!important" in block
     assert "filter:none!important" in block
     assert "mix-blend-mode:normal!important" in block
+
+
+def test_home_label_is_blue_when_a_subsection_route_is_active_without_hover():
+    base = (ROOT / "app" / "templates" / "base.html").read_text(encoding="utf-8")
+    assert "'home-in-section-context' if active_path.startswith('/app/') else ''" in base
+    rule_start = base.find("a.workspace-home-link[href=\"/app\"].home-in-section-context:not(:hover)")
+    assert rule_start > base.find("home-label-fix-2613.css")
+    rule = base[rule_start:base.find("}", rule_start) + 1]
+    assert "> span.workspace-home-label" in rule
+    assert "color:#2563EB!important" in rule
+    assert "-webkit-text-fill-color:#2563EB!important" in rule
+    assert "opacity:1!important" in rule
+    assert "visibility:visible!important" in rule
+    assert ":hover)" in rule
