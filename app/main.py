@@ -129,6 +129,7 @@ from .notification_worker import (
 )
 
 from .report_export import build_employee_report_pdf
+from .report_center import REPORTS, REPORT_GROUPS, fetch_report, get_report, make_pdf, make_xlsx
 from .backup_service import build_studio_export
 from .seed import seed_database
 from .labor_code_sync import (
@@ -5992,6 +5993,8 @@ def reports_page(
         certificates=certificates,
         payrolls=payrolls,
         calculation_labels={key: calculation_label(key) for key in ("salary", "hours", "aguinaldo", "vacation", "notice")},
+        report_groups=REPORT_GROUPS,
+        report_count=len(REPORTS),
     )
 
 
@@ -6065,6 +6068,227 @@ def employee_integral_report(
         io.BytesIO(payload),
         media_type="application/pdf",
         headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
+    )
+
+
+
+
+# Shared, tenant-scoped report catalog, query API and export endpoints.
+_REPORT_SENSITIVE_KEYS = {"listado-examen-medico"}
+_REPORT_EXPORT_LIMIT = 25000
+
+
+def _validate_report_scope(report_key: str, company_id: int | None, employee_id: int | None, user: User, db: Session):
+    spec = get_report(report_key)
+    if spec is None:
+        raise HTTPException(404, "El submódulo de informe no existe.")
+    if spec.key in _REPORT_SENSITIVE_KEYS and user.role not in {"administrador", "contador", "auxiliar"}:
+        raise HTTPException(403, "Tu perfil no está autorizado para consultar exámenes médicos.")
+    allowed_company_ids = company_ids_for_user(db, user)
+    if company_id is not None and company_id not in allowed_company_ids:
+        raise HTTPException(404, "La empresa no está disponible para este usuario.")
+    if employee_id is not None:
+        employee = db.get(Employee, employee_id)
+        if not employee or employee.company_id not in allowed_company_ids:
+            raise HTTPException(404, "El funcionario no está disponible para este usuario.")
+        if company_id is not None and employee.company_id != company_id:
+            raise HTTPException(404, "El funcionario no pertenece a la empresa seleccionada.")
+    return spec, allowed_company_ids
+
+
+def _report_query_parameters(q, company_id, employee_id, status_filter, year, period, page, page_size, sort):
+    params = {}
+    for key, value in (
+        ("q", q), ("company_id", company_id), ("employee_id", employee_id),
+        ("status", status_filter), ("year", year), ("period", period),
+        ("page_size", page_size), ("sort", sort),
+    ):
+        if value not in (None, ""):
+            params[key] = value
+    if page not in (None, 1):
+        params["page"] = page
+    return params
+
+
+def _all_report_export_rows(db, spec, company_ids, company_id, employee_id, q, status_filter, year, period, sort):
+    first_page = fetch_report(
+        db, spec, company_ids, company_id, employee_id, q, status_filter, year, period, 1, 100, sort
+    )
+    rows = list(first_page["records"])
+    target = min(int(first_page["total"]), _REPORT_EXPORT_LIMIT)
+    for page_no in range(2, (target + 99) // 100 + 1):
+        page_data = fetch_report(
+            db, spec, company_ids, company_id, employee_id, q, status_filter, year, period, page_no, 100, sort
+        )
+        rows.extend(page_data["records"])
+    return rows, int(first_page["total"])
+
+
+def _report_export_response(report_key, output_format, company_id, employee_id, q, status_filter, year, period, sort, user, db):
+    spec, allowed_company_ids = _validate_report_scope(report_key, company_id, employee_id, user, db)
+    fmt = (output_format or "xlsx").strip().lower()
+    if fmt not in {"xlsx", "pdf", "csv"}:
+        raise HTTPException(400, "Formato no admitido. Usá xlsx, pdf o csv.")
+    rows, total = _all_report_export_rows(
+        db, spec, allowed_company_ids, company_id, employee_id, q, status_filter, year, period, sort
+    )
+    if fmt == "xlsx":
+        payload = make_xlsx(spec, rows)
+        media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    elif fmt == "pdf":
+        company_name = ""
+        if company_id is not None:
+            company = db.get(Company, company_id)
+            company_name = company.legal_name if company else ""
+        payload = make_pdf(spec, rows, company_name)
+        media_type = "application/pdf"
+    else:
+        output = io.StringIO()
+        writer = csv.writer(output)
+        columns = fetch_report(db, spec, allowed_company_ids, company_id, employee_id, q, status_filter, year, period, 1, 1, sort)["columns"]
+        writer.writerow(columns)
+        for row in rows:
+            writer.writerow([_csv_safe_cell(row.get(column, "")) for column in columns])
+        payload = ("\ufeff" + output.getvalue()).encode("utf-8")
+        media_type = "text/csv; charset=utf-8"
+    filename = safe_download_name(f"Informe {spec.label}", "", fmt)
+    write_audit(db, user, "descargar", "informe_laboral", spec.key, f"formato={fmt}; filas={len(rows)}; total={total}")
+    db.commit()
+    headers = {"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"}
+    if total > _REPORT_EXPORT_LIMIT:
+        headers["X-Report-Result-Limit"] = str(_REPORT_EXPORT_LIMIT)
+        headers["X-Report-Total-Available"] = str(total)
+    return Response(content=payload, media_type=media_type, headers=headers)
+
+
+@app.get("/api/reports/catalog")
+def reports_catalog_api(user: User = Depends(require_user), db: Session = Depends(get_db)):
+    groups = []
+    for group in REPORT_GROUPS:
+        visible = [
+            {
+                "key": spec.key,
+                "label": spec.label,
+                "group": spec.group,
+                "description": spec.description,
+                "note": spec.note,
+                "endpoint": f"/api/reports/{spec.key}",
+                "export_endpoint": f"/api/reports/{spec.key}/export",
+            }
+            for spec in group["reports"]
+            if spec.key not in _REPORT_SENSITIVE_KEYS or user.role in {"administrador", "contador", "auxiliar"}
+        ]
+        if visible:
+            groups.append({"title": group["title"], "reports": visible})
+    return {"version": "2.6.30", "total": sum(len(group["reports"]) for group in groups), "groups": groups}
+
+
+@app.get("/api/reports/{report_key}")
+def report_data_api(
+    report_key: str,
+    company_id: OptionalQueryId = None,
+    employee_id: OptionalQueryId = None,
+    q: str = "",
+    status_filter: str = Form(default=""),
+    year: int | None = None,
+    period: str = "",
+    page: int = 1,
+    page_size: int = 25,
+    sort: str = "",
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    spec, allowed_company_ids = _validate_report_scope(report_key, company_id, employee_id, user, db)
+    if year is not None and (year < 1900 or year > 2100):
+        raise HTTPException(400, "El año debe estar entre 1900 y 2100.")
+    result = fetch_report(
+        db, spec, allowed_company_ids, company_id, employee_id, q, status_filter, year, period, page, page_size, sort
+    )
+    return {
+        "report": {"key": spec.key, "label": spec.label, "group": spec.group, "description": spec.description, "note": spec.note},
+        **result,
+    }
+
+
+@app.get("/api/reports/{report_key}/export")
+def report_data_api_export(
+    report_key: str,
+    format: str = "xlsx",
+    company_id: OptionalQueryId = None,
+    employee_id: OptionalQueryId = None,
+    q: str = "",
+    status: str = "",
+    year: int | None = None,
+    period: str = "",
+    sort: str = "",
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    if year is not None and (year < 1900 or year > 2100):
+        raise HTTPException(400, "El año debe estar entre 1900 y 2100.")
+    return _report_export_response(
+        report_key, format, company_id, employee_id, q, status, year, period, sort, user, db
+    )
+
+
+@app.get("/app/reports/{report_key}/export")
+def report_page_export(
+    report_key: str,
+    format: str = "xlsx",
+    company_id: OptionalQueryId = None,
+    employee_id: OptionalQueryId = None,
+    q: str = "",
+    status: str = "",
+    year: int | None = None,
+    period: str = "",
+    sort: str = "",
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    if year is not None and (year < 1900 or year > 2100):
+        raise HTTPException(400, "El año debe estar entre 1900 y 2100.")
+    return _report_export_response(
+        report_key, format, company_id, employee_id, q, status, year, period, sort, user, db
+    )
+
+
+@app.get("/app/reports/{report_key}", response_class=HTMLResponse)
+def report_detail_page(
+    request: Request,
+    report_key: str,
+    company_id: OptionalQueryId = None,
+    employee_id: OptionalQueryId = None,
+    q: str = "",
+    status_filter: str = Form(default=""),
+    year: int | None = None,
+    period: str = "",
+    page: int = 1,
+    page_size: int = 25,
+    sort: str = "",
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    spec, allowed_company_ids = _validate_report_scope(report_key, company_id, employee_id, user, db)
+    if year is not None and (year < 1900 or year > 2100):
+        raise HTTPException(400, "El año debe estar entre 1900 y 2100.")
+    result = fetch_report(
+        db, spec, allowed_company_ids, company_id, employee_id, q, status_filter, year, period, page, page_size, sort
+    )
+    companies = list(db.scalars(select(Company).where(Company.id.in_(allowed_company_ids)).order_by(Company.legal_name))) if allowed_company_ids else []
+    employee_query = select(Employee).where(Employee.company_id.in_(allowed_company_ids)).order_by(Employee.full_name) if allowed_company_ids else select(Employee).where(False)
+    if company_id is not None:
+        employee_query = employee_query.where(Employee.company_id == company_id)
+    employees = list(db.scalars(employee_query.limit(1000)))
+    params = _report_query_parameters(q, company_id, employee_id, status_filter, year, period, 1, page_size, sort)
+    export_base = f"/app/reports/{report_key}/export?{urlencode(params)}"
+    pagination_base = f"/app/reports/{report_key}?{urlencode(params)}"
+    return render(
+        request, "report_detail.html", db, user,
+        report=spec, companies=companies, employees=employees,
+        selected_company=company_id, selected_employee=employee_id,
+        filters={"q": q, "status": status_filter, "year": year, "period": period},
+        pagination=result, columns=result["columns"], rows=result["records"],
+        export_base=export_base, pagination_base=pagination_base,
     )
 
 
