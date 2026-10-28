@@ -77,7 +77,7 @@ def test_final_home_label_fix_loads_last_and_overrides_pale_text_only():
         'a.workspace-home-link[href="/app"].active:not(:hover) '
         '> span:not(.workspace-home-symbol)'
     )
-    assert selector in css
+    assert " ".join(selector.split()) in " ".join(css.split())
     assert "color: #2563EB !important;" in css
     assert "-webkit-text-fill-color: #2563EB !important;" in css
     assert "opacity: 1 !important;" in css
