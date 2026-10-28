@@ -17,7 +17,6 @@
   {{ tab_nav('Subsecciones de cálculo laboral', [
     {'label':'Salario', 'href':'/app/liquidaciones?tipo=salary', 'active':p == '/app/liquidaciones' and query_type == 'salary'},
     {'label':'Liquidación', 'href':'/app/liquidaciones?tipo=settlement', 'active':p == '/app/liquidaciones' and (query_type == 'settlement' or not query_type)},
-    {'label':'Carga de hora', 'href':'/app/calculation-operations?tipo=hours', 'active':p.startswith('/app/calculation-operations') and query_type == 'hours'},
     {'label':'Aguinaldo', 'href':'/app/aguinaldo', 'active':p.startswith('/app/aguinaldo')},
     {'label':'Preaviso', 'href':'/app/calculations?tipo=notice', 'active':p.startswith('/app/calculations') and query_type == 'notice'},
     {'label':'Vacaciones', 'href':'/app/vacations', 'active':p.startswith('/app/vacations')},
