@@ -5301,6 +5301,126 @@ def api_delete_advance(advance_id: int, user: User = Depends(require_roles("admi
     return {"ok": True}
 
 
+
+# --- Amonestaciones, suspensiones y permisos laborales ---
+
+@app.get("/app/labor-actions", response_class=HTMLResponse)
+def labor_actions_page(request: Request, employee_id: OptionalQueryId = None, action_type: str = "", status_filter: str = "", edit_id: OptionalQueryId = None, user: User = Depends(require_roles("administrador", "contador")), db: Session = Depends(get_db)):
+    company_ids = company_ids_for_user(db, user)
+    employees = list(db.scalars(select(Employee).options(selectinload(Employee.company)).where(Employee.company_id.in_(company_ids)).order_by(Employee.full_name))) if company_ids else []
+    query = select(EmployeeLaborAction).where(EmployeeLaborAction.company_id.in_(company_ids)).options(selectinload(EmployeeLaborAction.employee), selectinload(EmployeeLaborAction.company)) if company_ids else select(EmployeeLaborAction).where(False)
+    if employee_id is not None: _operation_employee(db, user, employee_id); query = query.where(EmployeeLaborAction.employee_id == employee_id)
+    if action_type:
+        if action_type not in LABOR_ACTION_TYPES: raise HTTPException(422, "Tipo de movimiento inválido.")
+        query = query.where(EmployeeLaborAction.action_type == action_type)
+    if status_filter:
+        if status_filter not in LABOR_ACTION_STATUSES: raise HTTPException(422, "Estado inválido.")
+        query = query.where(EmployeeLaborAction.status == status_filter)
+    rows = list(db.scalars(query.order_by(EmployeeLaborAction.action_date.desc(), EmployeeLaborAction.id.desc()).limit(500)))
+    record = None
+    if edit_id is not None:
+        record = db.get(EmployeeLaborAction, edit_id)
+        if not record or record.company_id not in company_ids: raise HTTPException(404, "Movimiento laboral no encontrado.")
+    return render(request, "labor_actions.html", db, user, entries=rows, employees=employees, employee_filter=employee_id, action_type=action_type,
+                  status_filter=status_filter, action_types=LABOR_ACTION_TYPES, statuses=LABOR_ACTION_STATUSES, edit_record=record,
+                  form_error=request.query_params.get("form_error", ""), saved=request.query_params.get("saved") == "1", today=date.today())
+
+
+@app.post("/app/labor-actions")
+def create_labor_action(employee_id: Annotated[int, Form()], action_type: Annotated[str, Form()], action_date: Annotated[str, Form()], reason: Annotated[str, Form()], start_date: Annotated[str, Form()] = "", end_date: Annotated[str, Form()] = "", details: Annotated[str, Form()] = "", user: User = Depends(require_roles("administrador", "contador")), db: Session = Depends(get_db)):
+    employee, company = _operation_employee(db, user, employee_id)
+    try: values = validate_labor_action(action_type=action_type, action_date=action_date, start_date=start_date or None, end_date=end_date or None, reason=reason, details=details)
+    except ValueError as exc: return _operation_redirect("/app/labor-actions", message=str(exc))
+    item = EmployeeLaborAction(company_id=company.id, employee_id=employee.id, **values, created_by=user.email, updated_by=user.email)
+    db.add(item); db.flush(); write_audit(db, user, "crear", "movimiento_laboral", str(item.id), item.action_type); db.commit()
+    return _operation_redirect("/app/labor-actions", flag="saved")
+
+
+@app.post("/app/labor-actions/{action_id}/edit")
+def edit_labor_action(action_id: int, employee_id: Annotated[int, Form()], action_type: Annotated[str, Form()], action_date: Annotated[str, Form()], reason: Annotated[str, Form()], status_value: Annotated[str, Form(alias="status")] = "Registrado", start_date: Annotated[str, Form()] = "", end_date: Annotated[str, Form()] = "", details: Annotated[str, Form()] = "", user: User = Depends(require_roles("administrador", "contador")), db: Session = Depends(get_db)):
+    item = db.get(EmployeeLaborAction, action_id)
+    if not item or item.company_id not in company_ids_for_user(db, user): raise HTTPException(404, "Movimiento laboral no encontrado.")
+    employee, company = _operation_employee(db, user, employee_id)
+    try: values = validate_labor_action(action_type=action_type, action_date=action_date, start_date=start_date or None, end_date=end_date or None, reason=reason, details=details, status=status_value)
+    except ValueError as exc: return _operation_redirect("/app/labor-actions", message=str(exc), edit_id=action_id)
+    for key, value in values.items(): setattr(item, key, value)
+    item.employee_id, item.company_id, item.updated_by = employee.id, company.id, user.email
+    write_audit(db, user, "editar", "movimiento_laboral", str(item.id), item.action_type); db.commit()
+    return _operation_redirect("/app/labor-actions", flag="saved")
+
+
+@app.post("/app/labor-actions/{action_id}/delete")
+def delete_labor_action(action_id: int, user: User = Depends(require_roles("administrador", "contador")), db: Session = Depends(get_db)):
+    item = db.get(EmployeeLaborAction, action_id)
+    if not item or item.company_id not in company_ids_for_user(db, user): raise HTTPException(404, "Movimiento laboral no encontrado.")
+    write_audit(db, user, "eliminar", "movimiento_laboral", str(item.id), item.action_type)
+    db.delete(item); db.commit()
+    return _operation_redirect("/app/labor-actions", flag="saved")
+
+
+@app.get("/app/labor-actions/export.csv")
+def export_labor_actions(employee_id: OptionalQueryId = None, action_type: str = "", status_filter: str = "", user: User = Depends(require_roles("administrador", "contador")), db: Session = Depends(get_db)):
+    company_ids = company_ids_for_user(db, user)
+    query = select(EmployeeLaborAction).where(EmployeeLaborAction.company_id.in_(company_ids)).options(selectinload(EmployeeLaborAction.employee), selectinload(EmployeeLaborAction.company)) if company_ids else select(EmployeeLaborAction).where(False)
+    if employee_id is not None: _operation_employee(db, user, employee_id); query = query.where(EmployeeLaborAction.employee_id == employee_id)
+    if action_type in LABOR_ACTION_TYPES: query = query.where(EmployeeLaborAction.action_type == action_type)
+    if status_filter in LABOR_ACTION_STATUSES: query = query.where(EmployeeLaborAction.status == status_filter)
+    rows = list(db.scalars(query.order_by(EmployeeLaborAction.action_date.desc())))
+    output = io.StringIO(newline=""); writer = csv.writer(output)
+    writer.writerow(["Empresa", "Funcionario", "Tipo", "Fecha", "Desde", "Hasta", "Motivo", "Estado", "Detalle"])
+    for r in rows: writer.writerow([r.company.legal_name, r.employee.full_name, r.action_type, r.action_date.isoformat(), r.start_date.isoformat() if r.start_date else "", r.end_date.isoformat() if r.end_date else "", r.reason, r.status, r.details])
+    payload = ("\ufeff" + output.getvalue()).encode("utf-8")
+    write_audit(db, user, "exportar", "movimientos_laborales", "", f"{len(rows)} registros"); db.commit()
+    return StreamingResponse(io.BytesIO(payload), media_type="text/csv; charset=utf-8", headers={"Content-Disposition": "attachment; filename=movimientos_laborales_digit_laboral.csv"})
+
+
+@app.get("/api/labor-actions")
+def api_list_labor_actions(employee_id: OptionalQueryId = None, action_type: str = "", user: User = Depends(require_roles("administrador", "contador")), db: Session = Depends(get_db)):
+    company_ids = company_ids_for_user(db, user)
+    query = select(EmployeeLaborAction).where(EmployeeLaborAction.company_id.in_(company_ids)) if company_ids else select(EmployeeLaborAction).where(False)
+    if employee_id is not None: _operation_employee(db, user, employee_id); query = query.where(EmployeeLaborAction.employee_id == employee_id)
+    if action_type:
+        if action_type not in LABOR_ACTION_TYPES: raise HTTPException(422, "Tipo inválido.")
+        query = query.where(EmployeeLaborAction.action_type == action_type)
+    return {"items": [{"id": r.id, "company_id": r.company_id, "employee_id": r.employee_id, "action_type": r.action_type, "action_date": r.action_date.isoformat(), "start_date": r.start_date.isoformat() if r.start_date else None, "end_date": r.end_date.isoformat() if r.end_date else None, "reason": r.reason, "details": r.details, "status": r.status} for r in db.scalars(query.order_by(EmployeeLaborAction.action_date.desc()).limit(500))]}
+
+
+@app.post("/api/labor-actions", status_code=201)
+async def api_create_labor_action(request: Request, user: User = Depends(require_roles("administrador", "contador")), db: Session = Depends(get_db)):
+    p = await _json_object(request)
+    try: employee, company = _operation_employee(db, user, int(p.get("employee_id") or 0))
+    except (ValueError, TypeError) as exc: raise HTTPException(422, "employee_id es obligatorio.") from exc
+    try: values = validate_labor_action(action_type=p.get("action_type"), action_date=p.get("action_date"), start_date=p.get("start_date"), end_date=p.get("end_date"), reason=p.get("reason"), details=p.get("details", ""), status=p.get("status", "Registrado"))
+    except ValueError as exc: raise HTTPException(422, str(exc)) from exc
+    item = EmployeeLaborAction(company_id=company.id, employee_id=employee.id, **values, created_by=user.email, updated_by=user.email)
+    db.add(item); db.flush(); write_audit(db, user, "crear_api", "movimiento_laboral", str(item.id), item.action_type); db.commit()
+    return {"id": item.id, "action_type": item.action_type, "status": item.status}
+
+
+@app.put("/api/labor-actions/{action_id}")
+async def api_update_labor_action(action_id: int, request: Request, user: User = Depends(require_roles("administrador", "contador")), db: Session = Depends(get_db)):
+    item = db.get(EmployeeLaborAction, action_id)
+    if not item or item.company_id not in company_ids_for_user(db, user): raise HTTPException(404, "Movimiento laboral no encontrado.")
+    p = await _json_object(request)
+    try: employee, company = _operation_employee(db, user, int(p.get("employee_id") or 0))
+    except (ValueError, TypeError) as exc: raise HTTPException(422, "employee_id es obligatorio.") from exc
+    try: values = validate_labor_action(action_type=p.get("action_type"), action_date=p.get("action_date"), start_date=p.get("start_date"), end_date=p.get("end_date"), reason=p.get("reason"), details=p.get("details", ""), status=p.get("status", item.status))
+    except ValueError as exc: raise HTTPException(422, str(exc)) from exc
+    for key, value in values.items(): setattr(item, key, value)
+    item.employee_id, item.company_id, item.updated_by = employee.id, company.id, user.email
+    write_audit(db, user, "editar_api", "movimiento_laboral", str(item.id), item.action_type); db.commit()
+    return {"id": item.id, "status": item.status}
+
+
+@app.delete("/api/labor-actions/{action_id}")
+def api_delete_labor_action(action_id: int, user: User = Depends(require_roles("administrador", "contador")), db: Session = Depends(get_db)):
+    item = db.get(EmployeeLaborAction, action_id)
+    if not item or item.company_id not in company_ids_for_user(db, user): raise HTTPException(404, "Movimiento laboral no encontrado.")
+    write_audit(db, user, "eliminar_api", "movimiento_laboral", str(item.id), item.action_type)
+    db.delete(item); db.commit()
+    return {"ok": True}
+
+
 CALCULATION_MODULES = {
     "salary": {"title": "Salarios", "eyebrow": "CÁLCULO DE SALARIOS", "description": "Ingresá haberes, descuentos y base de IPS para revisar el bruto, el aporte y el neto estimado."},
     "hours": {"title": "Horas y recargos", "eyebrow": "CÁLCULO DE HORAS", "description": "Calculá el valor hora con una jornada y un multiplicador previamente revisados."},
