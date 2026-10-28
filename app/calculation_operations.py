@@ -161,3 +161,41 @@ def validate_work_hours(
         raise ValueError("Las observaciones no pueden superar los 2.000 caracteres.")
     return {"work_date": when, "work_period": when.strftime("%Y-%m"), **buckets,
             "status": normalized_status, "notes": notes_value}
+
+
+SETTLEMENT_REASONS = ("Renuncia", "Despido con causa", "Despido sin causa", "Fin de contrato", "Mutuo acuerdo", "Otro")
+SETTLEMENT_AMOUNT_FIELDS = ("pending_salary", "vacation_pay", "aguinaldo_prorated", "notice_pay", "severance_pay", "other_income", "discounts")
+
+
+def validate_settlement(*, termination_date: str | date, termination_reason: str, amounts: dict, notes: str = "") -> dict:
+    """Validate a termination settlement proposal without deciding legal entitlement."""
+    when = parse_iso_date(termination_date, "La fecha de terminación")
+    reason = str(termination_reason or "").strip()
+    if reason not in SETTLEMENT_REASONS:
+        raise ValueError("Seleccioná una causa de terminación válida.")
+    normalized_amounts = {}
+    for field in SETTLEMENT_AMOUNT_FIELDS:
+        raw = amounts.get(field, 0)
+        try:
+            value = int(raw or 0)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"El rubro {field} debe ser un importe entero en guaraníes.") from exc
+        if value < 0 or value > 2_147_483_647:
+            raise ValueError(f"El rubro {field} debe estar entre 0 y 2.147.483.647 guaraníes.")
+        normalized_amounts[field] = value
+    total_entitlements = sum(normalized_amounts[key] for key in SETTLEMENT_AMOUNT_FIELDS if key != "discounts")
+    net = total_entitlements - normalized_amounts["discounts"]
+    if total_entitlements > 2_147_483_647:
+        raise ValueError("La suma de los rubros supera el máximo admitido; revisá los importes.")
+    notes_value = str(notes or "").strip()
+    if len(notes_value) > 4000:
+        raise ValueError("Las observaciones no pueden superar los 4.000 caracteres.")
+    return {
+        "termination_date": when,
+        "termination_reason": reason,
+        **normalized_amounts,
+        "total_entitlements": total_entitlements,
+        "net_amount": net,
+        "notes": notes_value,
+        "review_required": True,
+    }
