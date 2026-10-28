@@ -49,8 +49,8 @@ def test_home_fix_targets_only_the_active_label_and_not_hover_or_inactive_states
 def test_home_active_label_forces_visible_blue_text_only_without_hover():
     css = (ROOT / "app" / "static" / "sidebar-active-269.css").read_text(encoding="utf-8")
     selector = (
-        ".workspace-home-link.active:not(:hover) "
-        "> span:not(.workspace-home-symbol)"
+        'a.workspace-home-link[href="/app"].active:not(:hover) '
+        '> span:not(.workspace-home-symbol)'
     )
     start = css.index(selector)
     block = css[start:css.index("}", start) + 1]
