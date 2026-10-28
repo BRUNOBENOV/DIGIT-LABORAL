@@ -6189,7 +6189,7 @@ def report_data_api(
     company_id: OptionalQueryId = None,
     employee_id: OptionalQueryId = None,
     q: str = "",
-    status_filter: str = Form(default=""),
+    status: str = "",
     year: int | None = None,
     period: str = "",
     page: int = 1,
@@ -6202,7 +6202,7 @@ def report_data_api(
     if year is not None and (year < 1900 or year > 2100):
         raise HTTPException(400, "El año debe estar entre 1900 y 2100.")
     result = fetch_report(
-        db, spec, allowed_company_ids, company_id, employee_id, q, status_filter, year, period, page, page_size, sort
+        db, spec, allowed_company_ids, company_id, employee_id, q, status, year, period, page, page_size, sort
     )
     return {
         "report": {"key": spec.key, "label": spec.label, "group": spec.group, "description": spec.description, "note": spec.note},
@@ -6279,14 +6279,14 @@ def report_detail_page(
     if company_id is not None:
         employee_query = employee_query.where(Employee.company_id == company_id)
     employees = list(db.scalars(employee_query.limit(1000)))
-    params = _report_query_parameters(q, company_id, employee_id, status_filter, year, period, 1, page_size, sort)
+    params = _report_query_parameters(q, company_id, employee_id, status, year, period, 1, page_size, sort)
     export_base = f"/app/reports/{report_key}/export?{urlencode(params)}"
     pagination_base = f"/app/reports/{report_key}?{urlencode(params)}"
     return render(
         request, "report_detail.html", db, user,
         report=spec, companies=companies, employees=employees,
         selected_company=company_id, selected_employee=employee_id,
-        filters={"q": q, "status": status_filter, "year": year, "period": period},
+        filters={"q": q, "status": status, "year": year, "period": period},
         pagination=result, columns=result["columns"], rows=result["records"],
         export_base=export_base, pagination_base=pagination_base,
     )
