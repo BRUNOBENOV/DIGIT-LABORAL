@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_home_active_label_keeps_original_color_rules():
     css = (ROOT / "app" / "static" / "brand-adjustments-267.css").read_text(encoding="utf-8")
-    # This file handles branding only; the Home active/hover colors remain controlled by the existing theme.
+    # The branding stylesheet does not own navigation colors; the selected-only rule lives in sidebar-active-269.css.
     assert ".workspace-home-link.active:not(:hover)" not in css
     assert ".workspace-home-link:hover" not in css
 
