@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 import re
+from io import BytesIO
 
 from fastapi.testclient import TestClient
+from openpyxl import load_workbook
+from sqlalchemy import select
 
 from app.config import settings
 from app.main import app
-from app.report_center import REPORTS
+from app.database import SessionLocal
+from app.models import CalculationRecord, Company
+from app.report_center import REPORTS, get_report, make_xlsx, report_columns
 
 
 def _login(client: TestClient) -> None:
@@ -85,3 +90,58 @@ def test_report_detail_and_excel_pdf_exports_work():
 
         bad_format = client.get("/api/reports/listado-empresa/export?format=exe")
         assert bad_format.status_code == 400
+
+
+def test_report_queries_include_professional_suite_calculations():
+    marker = "report-center-suite-data-check"
+    with TestClient(app) as client:
+        _login(client)
+        with SessionLocal() as db:
+            company = db.scalar(select(Company).order_by(Company.id))
+            assert company is not None
+            company_id = company.id
+            for calc_type in ("suite_salary", "suite_settlement", "suite_aguinaldo", "suite_vacation"):
+                db.add(
+                    CalculationRecord(
+                        company_id=company_id,
+                        calculation_type=calc_type,
+                        reference_period="2026-10",
+                        amount=987654,
+                        status="Borrador",
+                        source="test",
+                        notes=marker,
+                        created_by="qa-report-center",
+                    )
+                )
+            db.commit()
+
+        cases = (
+            ("liquidacion-salario", "suite_salary"),
+            ("liquidacion-haberes", "suite_settlement"),
+            ("liquidacion-aguinaldo", "suite_aguinaldo"),
+            ("liquidacion-vacacion", "suite_vacation"),
+        )
+        for report_key, expected_type in cases:
+            response = client.get(
+                f"/api/reports/{report_key}",
+                params={"company_id": company_id, "q": marker, "page_size": 100},
+            )
+            assert response.status_code == 200, f"{report_key}: {response.text[:250]}"
+            payload = response.json()
+            assert any(
+                row.get("Importe (Gs.)") == 987654
+                and row.get("Tipo de cálculo") == expected_type.removeprefix("suite_").capitalize()
+                for row in payload["records"]
+            ) or any(row.get("Importe (Gs.)") == 987654 for row in payload["records"]), report_key
+
+
+def test_excel_export_forces_user_supplied_strings_to_text():
+    spec = get_report("listado-empresa")
+    assert spec is not None
+    row = {column: "" for column in report_columns(spec)}
+    row["Empresa"] = "=HYPERLINK(\\"https://example.invalid\\",\\"click\\")"
+    payload = make_xlsx(spec, [row])
+    workbook = load_workbook(BytesIO(payload), data_only=False)
+    cell = workbook["Informe"].cell(row=3, column=2)
+    assert cell.data_type != "f"
+    assert isinstance(cell.value, str) and cell.value.startswith("'=")
