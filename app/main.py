@@ -5063,6 +5063,127 @@ async def api_update_calculation_status(calculation_id: int, request: Request, u
     return {"id": item.id, "status": item.status}
 
 
+
+# --- Carga de horas trabajadas y recargos ---
+
+@app.get("/app/work-hours", response_class=HTMLResponse)
+def work_hours_page(request: Request, employee_id: OptionalQueryId = None, work_period: str = "", status_filter: str = "", edit_id: OptionalQueryId = None, user: User = Depends(require_roles("administrador", "contador", "auxiliar")), db: Session = Depends(get_db)):
+    company_ids = company_ids_for_user(db, user)
+    employees = list(db.scalars(select(Employee).options(selectinload(Employee.company)).where(Employee.company_id.in_(company_ids), Employee.status == "Activo").order_by(Employee.full_name))) if company_ids else []
+    if work_period and not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", work_period):
+        raise HTTPException(422, "El período debe usar formato AAAA-MM.")
+    query = select(WorkHoursEntry).where(WorkHoursEntry.company_id.in_(company_ids)).options(selectinload(WorkHoursEntry.employee), selectinload(WorkHoursEntry.company)) if company_ids else select(WorkHoursEntry).where(False)
+    if employee_id is not None:
+        _operation_employee(db, user, employee_id)
+        query = query.where(WorkHoursEntry.employee_id == employee_id)
+    if work_period: query = query.where(WorkHoursEntry.work_period == work_period)
+    if status_filter:
+        if status_filter not in WORK_HOURS_STATUSES: raise HTTPException(422, "Estado inválido.")
+        query = query.where(WorkHoursEntry.status == status_filter)
+    rows = list(db.scalars(query.order_by(WorkHoursEntry.work_date.desc(), WorkHoursEntry.id.desc()).limit(500)))
+    record = None
+    if edit_id is not None:
+        record = db.get(WorkHoursEntry, edit_id)
+        if not record or record.company_id not in company_ids: raise HTTPException(404, "Carga horaria no encontrada.")
+    total_hours = sum(float(r.ordinary_hours + r.overtime_hours + r.night_hours + r.holiday_hours) for r in rows)
+    return render(request, "work_hours.html", db, user, entries=rows, employees=employees, employee_filter=employee_id,
+                  work_period=work_period, status_filter=status_filter, statuses=WORK_HOURS_STATUSES, edit_record=record,
+                  form_error=request.query_params.get("form_error", ""), saved=request.query_params.get("saved") == "1",
+                  today=date.today(), total_hours=total_hours)
+
+
+@app.post("/app/work-hours")
+def create_work_hours(employee_id: Annotated[int, Form()], work_date: Annotated[str, Form()], ordinary_hours: Annotated[str, Form()] = "0", overtime_hours: Annotated[str, Form()] = "0", night_hours: Annotated[str, Form()] = "0", holiday_hours: Annotated[str, Form()] = "0", notes: Annotated[str, Form()] = "", user: User = Depends(require_roles("administrador", "contador", "auxiliar")), db: Session = Depends(get_db)):
+    employee, company = _operation_employee(db, user, employee_id)
+    try: values = validate_work_hours(work_date=work_date, ordinary_hours=ordinary_hours, overtime_hours=overtime_hours, night_hours=night_hours, holiday_hours=holiday_hours, notes=notes)
+    except ValueError as exc: return _operation_redirect("/app/work-hours", message=str(exc))
+    item = WorkHoursEntry(company_id=company.id, employee_id=employee.id, **values, created_by=user.email, updated_by=user.email)
+    db.add(item); db.flush()
+    write_audit(db, user, "crear", "carga_horaria", str(item.id), f"{employee.full_name} · {item.work_period}")
+    db.commit()
+    return _operation_redirect("/app/work-hours", flag="saved")
+
+
+@app.post("/app/work-hours/{entry_id}/edit")
+def edit_work_hours(entry_id: int, employee_id: Annotated[int, Form()], work_date: Annotated[str, Form()], ordinary_hours: Annotated[str, Form()] = "0", overtime_hours: Annotated[str, Form()] = "0", night_hours: Annotated[str, Form()] = "0", holiday_hours: Annotated[str, Form()] = "0", status_value: Annotated[str, Form(alias="status")] = "Registrada", notes: Annotated[str, Form()] = "", user: User = Depends(require_roles("administrador", "contador", "auxiliar")), db: Session = Depends(get_db)):
+    entry = db.get(WorkHoursEntry, entry_id)
+    if not entry or entry.company_id not in company_ids_for_user(db, user): raise HTTPException(404, "Carga horaria no encontrada.")
+    employee, company = _operation_employee(db, user, employee_id)
+    try: values = validate_work_hours(work_date=work_date, ordinary_hours=ordinary_hours, overtime_hours=overtime_hours, night_hours=night_hours, holiday_hours=holiday_hours, status=status_value, notes=notes)
+    except ValueError as exc: return _operation_redirect("/app/work-hours", message=str(exc), edit_id=entry_id)
+    for key, value in values.items(): setattr(entry, key, value)
+    entry.employee_id, entry.company_id, entry.updated_by = employee.id, company.id, user.email
+    write_audit(db, user, "editar", "carga_horaria", str(entry.id), f"{employee.full_name} · {entry.work_period}")
+    db.commit()
+    return _operation_redirect("/app/work-hours", flag="saved")
+
+
+@app.post("/app/work-hours/{entry_id}/delete")
+def delete_work_hours(entry_id: int, user: User = Depends(require_roles("administrador", "contador")), db: Session = Depends(get_db)):
+    entry = db.get(WorkHoursEntry, entry_id)
+    if not entry or entry.company_id not in company_ids_for_user(db, user): raise HTTPException(404, "Carga horaria no encontrada.")
+    write_audit(db, user, "eliminar", "carga_horaria", str(entry.id), entry.work_date.isoformat())
+    db.delete(entry); db.commit()
+    return _operation_redirect("/app/work-hours", flag="saved")
+
+
+@app.get("/app/work-hours/export.csv")
+def export_work_hours(employee_id: OptionalQueryId = None, work_period: str = "", user: User = Depends(require_roles("administrador", "contador", "auxiliar")), db: Session = Depends(get_db)):
+    company_ids = company_ids_for_user(db, user)
+    query = select(WorkHoursEntry).where(WorkHoursEntry.company_id.in_(company_ids)).options(selectinload(WorkHoursEntry.employee), selectinload(WorkHoursEntry.company)) if company_ids else select(WorkHoursEntry).where(False)
+    if employee_id is not None: _operation_employee(db, user, employee_id); query = query.where(WorkHoursEntry.employee_id == employee_id)
+    if work_period: query = query.where(WorkHoursEntry.work_period == work_period)
+    rows = list(db.scalars(query.order_by(WorkHoursEntry.work_date.desc())))
+    output = io.StringIO(newline=""); writer = csv.writer(output)
+    writer.writerow(["Empresa", "Funcionario", "Fecha", "Periodo", "Horas ordinarias", "Horas extra", "Horas nocturnas", "Horas feriado/descanso", "Estado", "Observaciones"])
+    for r in rows: writer.writerow([r.company.legal_name, r.employee.full_name, r.work_date.isoformat(), r.work_period, r.ordinary_hours, r.overtime_hours, r.night_hours, r.holiday_hours, r.status, r.notes])
+    payload = ("\ufeff" + output.getvalue()).encode("utf-8")
+    write_audit(db, user, "exportar", "carga_horaria", "", f"{len(rows)} registros"); db.commit()
+    return StreamingResponse(io.BytesIO(payload), media_type="text/csv; charset=utf-8", headers={"Content-Disposition": "attachment; filename=carga_horaria_digit_laboral.csv"})
+
+
+@app.get("/api/work-hours")
+def api_list_work_hours(employee_id: OptionalQueryId = None, work_period: str = "", user: User = Depends(require_roles("administrador", "contador", "auxiliar")), db: Session = Depends(get_db)):
+    company_ids = company_ids_for_user(db, user)
+    query = select(WorkHoursEntry).where(WorkHoursEntry.company_id.in_(company_ids)) if company_ids else select(WorkHoursEntry).where(False)
+    if employee_id is not None: _operation_employee(db, user, employee_id); query = query.where(WorkHoursEntry.employee_id == employee_id)
+    if work_period: query = query.where(WorkHoursEntry.work_period == work_period)
+    return {"items": [{"id": r.id, "company_id": r.company_id, "employee_id": r.employee_id, "work_date": r.work_date.isoformat(), "work_period": r.work_period, "ordinary_hours": float(r.ordinary_hours), "overtime_hours": float(r.overtime_hours), "night_hours": float(r.night_hours), "holiday_hours": float(r.holiday_hours), "status": r.status, "notes": r.notes} for r in db.scalars(query.order_by(WorkHoursEntry.work_date.desc()).limit(500))]}
+
+
+@app.post("/api/work-hours", status_code=201)
+async def api_create_work_hours(request: Request, user: User = Depends(require_roles("administrador", "contador", "auxiliar")), db: Session = Depends(get_db)):
+    payload = await _json_object(request)
+    employee, company = _operation_employee(db, user, int(payload.get("employee_id") or 0))
+    try: values = validate_work_hours(work_date=payload.get("work_date"), ordinary_hours=payload.get("ordinary_hours", 0), overtime_hours=payload.get("overtime_hours", 0), night_hours=payload.get("night_hours", 0), holiday_hours=payload.get("holiday_hours", 0), status=payload.get("status", "Registrada"), notes=payload.get("notes", ""))
+    except ValueError as exc: raise HTTPException(422, str(exc)) from exc
+    item = WorkHoursEntry(company_id=company.id, employee_id=employee.id, **values, created_by=user.email, updated_by=user.email)
+    db.add(item); db.flush(); write_audit(db, user, "crear_api", "carga_horaria", str(item.id), item.work_period); db.commit()
+    return {"id": item.id, "work_date": item.work_date.isoformat(), "work_period": item.work_period, "status": item.status}
+
+
+@app.put("/api/work-hours/{entry_id}")
+async def api_update_work_hours(entry_id: int, request: Request, user: User = Depends(require_roles("administrador", "contador", "auxiliar")), db: Session = Depends(get_db)):
+    item = db.get(WorkHoursEntry, entry_id)
+    if not item or item.company_id not in company_ids_for_user(db, user): raise HTTPException(404, "Carga horaria no encontrada.")
+    payload = await _json_object(request)
+    employee, company = _operation_employee(db, user, int(payload.get("employee_id") or 0))
+    try: values = validate_work_hours(work_date=payload.get("work_date"), ordinary_hours=payload.get("ordinary_hours", 0), overtime_hours=payload.get("overtime_hours", 0), night_hours=payload.get("night_hours", 0), holiday_hours=payload.get("holiday_hours", 0), status=payload.get("status", item.status), notes=payload.get("notes", ""))
+    except ValueError as exc: raise HTTPException(422, str(exc)) from exc
+    for key, value in values.items(): setattr(item, key, value)
+    item.employee_id, item.company_id, item.updated_by = employee.id, company.id, user.email
+    write_audit(db, user, "editar_api", "carga_horaria", str(item.id), item.work_period); db.commit()
+    return {"id": item.id, "status": item.status}
+
+
+@app.delete("/api/work-hours/{entry_id}")
+def api_delete_work_hours(entry_id: int, user: User = Depends(require_roles("administrador", "contador")), db: Session = Depends(get_db)):
+    item = db.get(WorkHoursEntry, entry_id)
+    if not item or item.company_id not in company_ids_for_user(db, user): raise HTTPException(404, "Carga horaria no encontrada.")
+    write_audit(db, user, "eliminar_api", "carga_horaria", str(item.id), item.work_date.isoformat()); db.delete(item); db.commit()
+    return {"ok": True}
+
+
 CALCULATION_MODULES = {
     "salary": {"title": "Salarios", "eyebrow": "CÁLCULO DE SALARIOS", "description": "Ingresá haberes, descuentos y base de IPS para revisar el bruto, el aporte y el neto estimado."},
     "hours": {"title": "Horas y recargos", "eyebrow": "CÁLCULO DE HORAS", "description": "Calculá el valor hora con una jornada y un multiplicador previamente revisados."},
