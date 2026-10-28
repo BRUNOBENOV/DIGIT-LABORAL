@@ -556,11 +556,26 @@ def fetch_report(
     else:
         query, count_query = _related_query(spec.dataset, company_ids, company_id, employee_id, q, status_filter, year, period)
         if spec.dataset == "aguinaldo":
-            query = query.order_by(Aguinaldo.year.desc(), Employee.full_name.asc())
+            sort_map = {"period": Aguinaldo.year, "year": Aguinaldo.year, "amount": Aguinaldo.calculated_amount, "employee": Employee.full_name, "name": Employee.full_name, "status": Aguinaldo.status, "date": Aguinaldo.created_at}
+            if sort in sort_map:
+                order_column = sort_map[sort]
+                query = query.order_by(order_column.asc() if sort in {"period", "year", "employee", "name", "status"} else order_column.desc())
+            else:
+                query = query.order_by(Aguinaldo.year.desc(), Employee.full_name.asc())
         elif spec.dataset == "vacation":
-            query = query.order_by(Vacation.period_year.desc(), Employee.full_name.asc())
+            sort_map = {"period": Vacation.period_year, "year": Vacation.period_year, "employee": Employee.full_name, "name": Employee.full_name, "status": Vacation.status, "date": Vacation.start_date}
+            if sort in sort_map:
+                order_column = sort_map[sort]
+                query = query.order_by(order_column.asc() if sort in {"employee", "name", "status"} else order_column.desc())
+            else:
+                query = query.order_by(Vacation.period_year.desc(), Employee.full_name.asc())
         elif spec.dataset == "medical_exam":
-            query = query.order_by(MedicalExam.exam_date.desc(), MedicalExam.id.desc())
+            sort_map = {"date": MedicalExam.exam_date, "employee": Employee.full_name, "name": Employee.full_name, "status": MedicalExam.result, "amount": MedicalExam.expires_on}
+            if sort in sort_map:
+                order_column = sort_map[sort]
+                query = query.order_by(order_column.asc() if sort in {"employee", "name", "status"} else order_column.desc())
+            else:
+                query = query.order_by(MedicalExam.exam_date.desc(), MedicalExam.id.desc())
         elif spec.dataset == "operation":
             if spec.variant == "hours":
                 query = query.where(or_(LaborOperation.operation_type.ilike("%hour%"), LaborOperation.operation_type.ilike("%hora%"), LaborOperation.operation_type.ilike("%overtime%"), LaborOperation.operation_type.ilike("%hora_extra%")))
@@ -568,13 +583,33 @@ def fetch_report(
                 query = query.where(or_(LaborOperation.operation_type.ilike("%advance%"), LaborOperation.operation_type.ilike("%anticipo%")))
             elif spec.variant == "communication":
                 query = query.where(or_(LaborOperation.operation_type.ilike("%telegram%"), LaborOperation.operation_type.ilike("%communication%"), LaborOperation.operation_type.ilike("%comunic%")))
-            query = query.order_by(LaborOperation.effective_date.desc(), LaborOperation.id.desc())
+            sort_map = {"date": LaborOperation.effective_date, "amount": LaborOperation.amount, "status": LaborOperation.status, "name": Employee.full_name}
+            if sort in sort_map:
+                order_column = sort_map[sort]
+                query = query.order_by(order_column.asc() if sort in {"status", "name"} else order_column.desc(), LaborOperation.id.desc())
+            else:
+                query = query.order_by(LaborOperation.effective_date.desc(), LaborOperation.id.desc())
         elif spec.dataset == "certificate":
-            query = query.order_by(GeneratedCertificate.issue_date.desc(), GeneratedCertificate.id.desc())
+            sort_map = {"date": GeneratedCertificate.issue_date, "status": GeneratedCertificate.status, "name": GeneratedCertificate.employee_name_snapshot}
+            if sort in sort_map:
+                order_column = sort_map[sort]
+                query = query.order_by(order_column.asc() if sort in {"status", "name"} else order_column.desc())
+            else:
+                query = query.order_by(GeneratedCertificate.issue_date.desc(), GeneratedCertificate.id.desc())
         elif spec.dataset == "employee_event":
-            query = query.order_by(EmployeeEvent.effective_date.desc(), EmployeeEvent.id.desc())
+            sort_map = {"date": EmployeeEvent.effective_date, "name": Employee.full_name, "status": EmployeeEvent.event_type}
+            if sort in sort_map:
+                order_column = sort_map[sort]
+                query = query.order_by(order_column.asc() if sort in {"name", "status"} else order_column.desc())
+            else:
+                query = query.order_by(EmployeeEvent.effective_date.desc(), EmployeeEvent.id.desc())
         elif spec.dataset == "deadline":
-            query = query.order_by(LaborDeadline.due_date.asc(), LaborDeadline.id.desc())
+            sort_map = {"date": LaborDeadline.due_date, "period": LaborDeadline.due_date, "status": LaborDeadline.status, "name": Company.legal_name}
+            if sort in sort_map:
+                order_column = sort_map[sort]
+                query = query.order_by(order_column.asc(), LaborDeadline.id.desc())
+            else:
+                query = query.order_by(LaborDeadline.due_date.asc(), LaborDeadline.id.desc())
     # Count the fully filtered query itself so every joined filter is included in the total.
     total_query = select(func.count()).select_from(query.order_by(None).subquery())
     total = int(db.scalar(total_query) or 0)
