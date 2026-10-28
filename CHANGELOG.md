@@ -1,4 +1,11 @@
 # Registro de cambios
+## 2.6.8 — Restaurar el color original de Inicio
+
+- Revierte exclusivamente la regla introducida en 2.6.7 que forzaba el texto de Inicio a azul cuando estaba seleccionado y el cursor no estaba encima.
+- Conserva íntegramente el logo horizontal nuevo en el encabezado, la sidebar, las pantallas de acceso y el sitio público.
+- No agrega estilos para hover ni cambia el resto de la paleta o navegación.
+- Actualiza las pruebas de regresión para exigir el color original de Inicio y seguir verificando la marca nueva.
+
 ## 2.6.7 — Ajuste de Inicio y actualización de marca
 
 - Corrige el color del texto **Inicio** cuando la opción está seleccionada y el cursor no está encima; el estado hover existente se conserva sin cambios.
