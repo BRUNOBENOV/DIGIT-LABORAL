@@ -13,20 +13,19 @@
       {'label':'Parámetros', 'href':'/app/parameters', 'active':p.startswith('/app/parameters')}
     ]) }}
   {% endif %}
-{% elif p.startswith('/app/calculations') or p.startswith('/app/payrolls') or p.startswith('/app/liquidaciones') or p.startswith('/app/vacations') or p.startswith('/app/aguinaldo') or p.startswith('/app/calculation-operations') or p.startswith('/app/employee-history') or p.startswith('/app/medical-exams') %}
+{% elif p.startswith('/app/calculations') or p.startswith('/app/payrolls') or p.startswith('/app/liquidaciones') or p.startswith('/app/vacations') or p.startswith('/app/aguinaldo') or p.startswith('/app/calculation-operations') or p.startswith('/app/employee-history') %}
   {{ tab_nav('Subsecciones de cálculo laboral', [
-    {'label':'Panel', 'href':'/app/calculations', 'active':p == '/app/calculations' and not query_type},
-    {'label':'Salario', 'href':'/app/calculations?tipo=salary', 'active':p == '/app/calculations' and query_type == 'salary'},
-    {'label':'Liquidación', 'href':'/app/liquidaciones?tipo=settlement', 'active':p.startswith('/app/liquidaciones')},
+    {'label':'Salario', 'href':'/app/liquidaciones?tipo=salary', 'active':p == '/app/liquidaciones' and query_type == 'salary'},
+    {'label':'Liquidación', 'href':'/app/liquidaciones?tipo=settlement', 'active':p == '/app/liquidaciones' and (query_type == 'settlement' or not query_type)},
     {'label':'Carga de hora', 'href':'/app/calculation-operations?tipo=hours', 'active':p.startswith('/app/calculation-operations') and query_type == 'hours'},
     {'label':'Aguinaldo', 'href':'/app/aguinaldo', 'active':p.startswith('/app/aguinaldo')},
-    {'label':'Preaviso', 'href':'/app/calculations?tipo=notice', 'active':p == '/app/calculations' and query_type == 'notice'},
+    {'label':'Preaviso', 'href':'/app/calculations?tipo=notice', 'active':p.startswith('/app/calculations') and query_type == 'notice'},
     {'label':'Vacaciones', 'href':'/app/vacations', 'active':p.startswith('/app/vacations')},
     {'label':'Anticipo', 'href':'/app/calculation-operations?tipo=advance', 'active':p.startswith('/app/calculation-operations') and query_type == 'advance'},
     {'label':'Amonestaciones / Suspensión / Permisos', 'href':'/app/calculation-operations?tipo=discipline', 'active':p.startswith('/app/calculation-operations') and query_type == 'discipline'},
     {'label':'Telegrama colacionado', 'href':'/app/calculation-operations?tipo=telegram', 'active':p.startswith('/app/calculation-operations') and query_type == 'telegram'},
     {'label':'Histórico funcionario', 'href':'/app/employee-history', 'active':p.startswith('/app/employee-history')},
-    {'label':'Examen médico', 'href':'/app/medical-exams', 'active':p.startswith('/app/medical-exams')}
+    {'label':'Examen Médico', 'href':'/app/medical-exams', 'active':p.startswith('/app/medical-exams')}
   ]) }}
 {% elif p.startswith('/app/reports') or p.startswith('/app/compliance') or p.startswith('/app/audit') %}
   {% if user.role == 'administrador' %}

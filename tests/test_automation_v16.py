@@ -36,7 +36,7 @@ def test_new_automation_pages_render():
         for path, marker in (
             ("/app/reports", "Informes"),
             ("/app/ai", "Asistente IA"),
-            ("/app/calculations", "Calculadoras laborales"),
+            ("/app/calculations", "Cálculo laboral"),
             ("/app/certificates", "Documentos laborales"),
         ):
             response = client.get(path)
