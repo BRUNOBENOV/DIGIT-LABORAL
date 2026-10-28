@@ -23,6 +23,19 @@
 {% if group.advanced %}<details class="dl-form-section"><summary>{{ group.title }}</summary><div class="dl-fields">{% for field in group.fields %}{{ input_field(field) }}{% endfor %}</div></details>
 {% else %}<fieldset class="dl-form-section"><legend>{{ group.title }}</legend><div class="dl-fields">{% for field in group.fields %}{{ input_field(field) }}{% endfor %}</div></fieldset>{% endif %}
 {% endfor %}
+{% if kind == 'salary' %}
+<fieldset class="dl-form-section dl-overtime-preview" aria-describedby="overtime-preview-note">
+  <legend>Vista previa de horas extras</legend>
+  <div class="dl-fields">
+    <div class="dl-field"><label>Valor hora ordinaria aplicado</label><output id="overtime-hourly-base-preview">0 Gs.</output></div>
+    <div class="dl-field"><label>Importe con recargo del 30 %</label><output id="overtime-30-preview">0 Gs.</output></div>
+    <div class="dl-field"><label>Importe con recargo del 50 %</label><output id="overtime-50-preview">0 Gs.</output></div>
+    <div class="dl-field"><label>Importe con recargo del 100 %</label><output id="overtime-100-preview">0 Gs.</output></div>
+    <div class="dl-field"><label>Total estimado de horas extras</label><output id="overtime-total-preview">0 Gs.</output></div>
+  </div>
+  <p class="dl-caption" id="overtime-preview-note" role="status" aria-live="polite">La vista previa se actualiza al cambiar el salario o las horas; el importe definitivo se valida al calcular.</p>
+</fieldset>
+{% endif %}
 {% if private and employee and kind == 'salary' %}
 <p id="salary-history-hint" class="dl-caption" aria-live="polite">La sugerencia usa la vigencia registrada al inicio del mes. Si falta un salario vigente para ese período, verificá el importe manualmente; revisá también cambios ocurridos dentro del mes.</p>
 {% elif private and employee and kind == 'settlement' %}
@@ -30,6 +43,66 @@
 {% endif %}
 <div class="dl-form-submit"><button class="dl-button" type="submit" data-keep-enabled="true">{{ 'Recalcular' if result else 'Calcular liquidación' }} <span aria-hidden="true">→</span></button><span>Revisá los conceptos antes de firmar.</span></div>
 </form>
+{% if kind == 'salary' %}
+<script>
+(() => {
+  const form = document.getElementById("labor-form");
+  if (!form) return;
+  const read = name => {
+    const field = form.elements.namedItem(name);
+    if (!field) return 0;
+    const value = Number(String(field.value ?? "").trim());
+    return Number.isFinite(value) && value >= 0 ? value : 0;
+  };
+  const fieldValue = name => {
+    const field = form.elements.namedItem(name);
+    return field ? String(field.value ?? "").trim() : "";
+  };
+  const money = value => new Intl.NumberFormat("es-PY", {maximumFractionDigits: 0})
+    .format(Math.round(value)) + " Gs.";
+  const baseDisplay = value => new Intl.NumberFormat("es-PY", {maximumFractionDigits: 4})
+    .format(value) + " Gs.";
+  const set = (id, value) => {
+    const node = document.getElementById(id);
+    if (node) node.textContent = value;
+  };
+  function refreshOvertimePreview() {
+    const salary = read("salary");
+    const override = fieldValue("overtime_hourly_base");
+    const hourlyBase = override ? read("overtime_hourly_base") : salary / 240;
+    set("overtime-hourly-base-preview", baseDisplay(hourlyBase));
+    const tiers = [
+      ["overtime_30_hours", 1.30, "overtime-30-preview"],
+      ["overtime_50_hours", 1.50, "overtime-50-preview"],
+      ["overtime_100_hours", 2.00, "overtime-100-preview"]
+    ];
+    let hoursEntered = 0;
+    let total = 0;
+    for (const [name, factor, id] of tiers) {
+      const hours = read(name);
+      const amount = Math.round(hourlyBase * hours * factor);
+      hoursEntered += hours;
+      total += amount;
+      set(id, money(amount));
+    }
+    const manual = read("overtime");
+    if (hoursEntered > 0 && manual > 0) {
+      set("overtime-total-preview", "Revisar combinación");
+      set("overtime-preview-note", "No combines horas por tramo con el ajuste manual: duplicaría haberes y el servidor rechazará el cálculo.");
+    } else if (hoursEntered === 0 && manual > 0) {
+      set("overtime-total-preview", money(manual));
+      set("overtime-preview-note", "Vista previa del importe manual de compatibilidad. Verificá respaldo y posibles duplicaciones.");
+    } else {
+      set("overtime-total-preview", money(total));
+      set("overtime-preview-note", "Vista previa estimada. El cálculo final validará los importes; verificá la clasificación de jornada y el recargo aplicable.");
+    }
+  }
+  form.addEventListener("input", refreshOvertimePreview);
+  form.addEventListener("change", refreshOvertimePreview);
+  refreshOvertimePreview();
+})();
+</script>
+{% endif %}
 <aside class="dl-output">
 {% if result %}
 <p class="dl-alert dl-stale" hidden role="status">Cambiaste datos. Volvé a calcular para actualizar el resultado y las descargas.</p>
