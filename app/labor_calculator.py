@@ -211,7 +211,7 @@ def calculate(data):
                         "No se calculó automáticamente la asignación familiar porque no se pudo determinar el mínimo "
                         "legal mensual de referencia para este período y categoría."
                     )
-                elif salary > Decimal(minimum) * 2:
+                elif Decimal(proposed_ips_base) > Decimal(minimum) * 2:
                     result["warnings"].append(
                         "No se agregó automáticamente la asignación familiar: la base mensual supera el límite de "
                         "dos salarios mínimos indicado en el artículo 263. Verificá la remuneración y el régimen aplicable."
