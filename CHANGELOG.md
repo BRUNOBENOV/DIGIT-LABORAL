@@ -1,4 +1,11 @@
 # Registro de cambios
+## 2.6.15 — Corrección final de la etiqueta Inicio en plantilla
+
+- Asigna una clase propia `workspace-home-label` al texto `Inicio`, sin cambiar el ícono ni la ruta del enlace.
+- Aplica la corrección en el bloque de estilos de `base.html`, después de todas las hojas CSS externas, para evitar que reglas anteriores lo sobreescriban.
+- Solo afecta a `/app` cuando está activo y el cursor no está encima: azul `#2563EB`, relleno de texto azul, opacidad 1, visibilidad visible y filtros/mezclas neutralizados.
+- No altera estados hover, normales, otros enlaces ni el logo.
+
 ## 2.6.14 — Corregir la regla fuente del color de Inicio
 
 - Modifica el bloque original de `sidebar-contrast-265.css` que aplicaba `color:#F1F5F9!important` a todos los enlaces de inicio.

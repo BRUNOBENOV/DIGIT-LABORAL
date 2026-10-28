@@ -86,3 +86,19 @@ def test_final_home_label_fix_loads_last_and_overrides_pale_text_only():
     assert "mix-blend-mode: normal !important;" in css
     assert ":hover {" not in css
     assert 'href="/admin"' not in css
+
+
+def test_inline_home_label_fix_targets_explicit_label_after_external_stylesheets():
+    base = (ROOT / "app" / "templates" / "base.html").read_text(encoding="utf-8")
+    external_css = base.find("home-label-fix-2613.css")
+    inline_rule = base.find('body.app-body #modernMobileNav a.workspace-home-link[href="/app"].active:not(:hover) > span.workspace-home-label')
+    assert 'class="workspace-home-label">Inicio</span>' in base
+    assert external_css >= 0
+    assert inline_rule > external_css
+    block = base[inline_rule:base.find("}", inline_rule) + 1]
+    assert "color:#2563EB!important" in block
+    assert "-webkit-text-fill-color:#2563EB!important" in block
+    assert "opacity:1!important" in block
+    assert "visibility:visible!important" in block
+    assert "filter:none!important" in block
+    assert "mix-blend-mode:normal!important" in block
