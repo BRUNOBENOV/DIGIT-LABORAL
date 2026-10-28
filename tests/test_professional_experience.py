@@ -107,7 +107,6 @@ def test_calculation_pages_render_only_the_selected_module():
     # The active module has one canonical entrypoint per requested submodule.
     for route in (
         '/app/liquidaciones?tipo=salary',
-        '/app/calculation-operations?tipo=hours',
         '/app/aguinaldo',
         '/app/vacations',
         '/app/calculations?tipo=notice',

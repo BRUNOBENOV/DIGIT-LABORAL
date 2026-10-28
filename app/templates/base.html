@@ -113,7 +113,6 @@
           <div class="workspace-submenu">
             <a class="workspace-nav-link {{ 'active' if active_path == '/app/liquidaciones' and request.query_params.get('tipo') == 'salary' else '' }}" href="/app/liquidaciones?tipo=salary">Salario</a>
             <a class="workspace-nav-link {{ 'active' if active_path == '/app/liquidaciones' and request.query_params.get('tipo', 'settlement') != 'salary' else '' }}" href="/app/liquidaciones?tipo=settlement">Liquidación</a>
-            <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/calculation-operations') and request.query_params.get('tipo') == 'hours' else '' }}" href="/app/calculation-operations?tipo=hours">Carga de hora</a>
             <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/aguinaldo') else '' }}" href="/app/aguinaldo">Aguinaldo</a>
             <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/calculations') and request.query_params.get('tipo') == 'notice' else '' }}" href="/app/calculations?tipo=notice">Preaviso</a>
             <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/vacations') else '' }}" href="/app/vacations">Vacaciones</a>

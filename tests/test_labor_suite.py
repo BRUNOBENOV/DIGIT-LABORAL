@@ -237,6 +237,69 @@ def test_family_and_reimbursements_do_not_increase_default_ips_base():
     assert r["discounts"] == 315000
     assert r["net"] == 3485000
 
+def test_salary_overtime_types_use_distinct_legal_factors_and_enter_ips_base():
+    result = calculate(salary(
+        salary="2400000", night_premium_hours="2", day_extra_hours="3",
+        night_extra_hours="1", holiday_hours="1"
+    ))
+    earnings = {item["label"]: item["amount"] for item in result["earnings"]}
+    assert earnings["Recargo nocturno ordinario (30 % adicional)"] == 6_000
+    assert earnings["Horas extraordinarias diurnas (mínimo 50 %)"] == 45_000
+    assert earnings["Horas extraordinarias nocturnas (100 %)"] == 29_714
+    assert earnings["Recargo por trabajo en feriado (100 % adicional)"] == 10_000
+    assert result["gross"] == 2_490_714
+    assert result["discounts"] == 224_164
+    assert result["net"] == 2_266_550
+    assert {"label": "Base IPS", "value": "Gs. 2.490.714"} in result["facts"]
+    assert any("horas feriadas junto con otras categorías horarias" in warning for warning in result["warnings"])
+
+
+def test_salary_overtime_custom_day_and_night_hourly_bases():
+    result = calculate(salary(
+        salary="2400000", day_extra_hours="1", night_extra_hours="2",
+        overtime_day_hourly_base="12000", overtime_night_hourly_base="15000", apply_ips=""
+    ))
+    earnings = {item["label"]: item["amount"] for item in result["earnings"]}
+    assert earnings["Horas extraordinarias diurnas (mínimo 50 %)"] == 18_000
+    assert earnings["Horas extraordinarias nocturnas (100 %)"] == 60_000
+    assert result["gross"] == 2_478_000
+    assert {"label": "Base horaria diurna aplicada", "value": "Gs. 12000.0000"} in result["facts"]
+    assert {"label": "Base horaria nocturna aplicada", "value": "Gs. 15000.0000"} in result["facts"]
+
+
+def test_salary_night_premium_is_not_added_twice_when_night_minimum_scale_is_selected():
+    with pytest.raises(CalculationError) as error:
+        calculate(salary(minimum_wage_category="general_night", night_premium_hours="1"))
+    assert error.value.field == "night_premium_hours"
+
+
+def test_salary_special_scale_requires_explicit_hourly_bases():
+    with pytest.raises(CalculationError) as error:
+        calculate(salary(minimum_wage_category="special", day_extra_hours="1"))
+    assert error.value.field == "overtime_day_hourly_base"
+    result = calculate(salary(
+        minimum_wage_category="special", day_extra_hours="1",
+        overtime_day_hourly_base="15000", apply_ips=""
+    ))
+    assert result["gross"] == 3_522_500
+
+
+def test_salary_overtime_manual_compatibility_fallback_cannot_be_combined_with_hour_quantities():
+    manual = calculate(salary(overtime="25000", apply_ips=""))
+    assert next(item["amount"] for item in manual["earnings"] if item["label"] == "Horas extras (importe manual)") == 25_000
+    assert any("importe manual de horas extras" in warning for warning in manual["warnings"])
+
+    with pytest.raises(CalculationError) as error:
+        calculate(salary(overtime="25000", day_extra_hours="1"))
+    assert error.value.field == "overtime"
+
+
+@pytest.mark.parametrize("invalid", ["-1", "1.001", "abc", "745"])
+def test_salary_overtime_hours_reject_invalid_quantities(invalid):
+    with pytest.raises(CalculationError):
+        calculate(salary(day_extra_hours=invalid))
+
+
 def test_salary_minimum_wage_control_uses_the_scale_effective_in_the_selected_month():
     current = calculate(salary(salary="3000000", month="2026-09", minimum_wage_category="general_day"))
     assert {"label": "Mínimo legal mensual de referencia", "value": "Gs. 3.044.000"} in current["facts"]

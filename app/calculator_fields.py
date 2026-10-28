@@ -10,14 +10,38 @@ def group(title, fields, advanced=False):
 SALARY = field("salary", "Salario mensual · Gs.", required=True, min="1")
 DAYS = field("days_paid", "Días a liquidar", value="30", max="30",
              help="Para remuneración mensual se utiliza base de 30 días.", required=True)
-EXTRA_FIELDS = [
-    field("overtime", "Importe de horas extras · Gs.", help="Registrá las horas y el recargo en Carga de hora; ingresá aquí el importe total revisado. No sumes dos veces un importe ya incluido en otro concepto."),
+REMUNERATIVE_EXTRA_FIELDS = [
     field("commissions", "Comisiones · Gs."),
     field("bonuses", "Bonificaciones remunerativas · Gs."),
     field("other_income", "Otros haberes remunerativos · Gs.")
 ]
+EXTRA_FIELDS = [
+    field("overtime", "Ajuste manual de horas extras · Gs.",
+          help="Compatibilidad para casos anteriores o ajustes excepcionales. No lo combines con horas cargadas en los tramos de recargo."),
+    *REMUNERATIVE_EXTRA_FIELDS,
+]
 EXTRAS = group("Otros haberes", EXTRA_FIELDS, True)
-SALARY_EXTRAS = group("Haberes adicionales", EXTRA_FIELDS, False)
+SALARY_EXTRAS = group("Haberes adicionales", REMUNERATIVE_EXTRA_FIELDS, False)
+SALARY_OVERTIME = group("Horas nocturnas, extras y feriados", [
+    field("night_premium_hours", "Horas ordinarias nocturnas · adicional del 30 %", max="744", step="0.01",
+          help="Es solo el adicional nocturno sobre la base diurna, no el pago total de la hora. No lo ingreses si el salario pactado ya corresponde a la escala nocturna."),
+    field("day_extra_hours", "Horas extraordinarias diurnas · mínimo 50 % (total 150 %)", max="744", step="0.01",
+          help="El cálculo paga 1,5 veces la hora diurna por ser tiempo adicional al salario mensual."),
+    field("night_extra_hours", "Horas extraordinarias nocturnas · recargo 100 % (total 200 %)", max="744", step="0.01",
+          help="El cálculo paga 2 veces la hora nocturna ordinaria. Verificá jornada y base nocturna aplicable."),
+    field("holiday_hours", "Horas trabajadas en feriado · adicional 100 %", max="744", step="0.01",
+          help="Adicional sobre la hora ordinaria diurna, suponiendo que el salario mensual ya cubre la remuneración ordinaria. Si coincide con trabajo nocturno o extraordinario, revisá la acumulación de recargos y no cuentes dos veces la misma hora.")
+])
+SALARY_OVERTIME_ADJUSTMENTS = group("Bases horarias y ajustes excepcionales", [
+    field("overtime_day_hourly_base", "Valor de hora ordinaria diurna · Gs. (opcional)",
+          min="0", step="0.0001",
+          help="Por defecto se estima según el salario mensual y la escala seleccionada. Ingresá el valor revisado cuando el contrato, jornada o régimen lo requiera."),
+    field("overtime_night_hourly_base", "Valor de hora ordinaria nocturna · Gs. (opcional)",
+          min="0", step="0.0001",
+          help="Por defecto se estima según la escala salarial nocturna. Revisá el valor para actividades o categorías especiales."),
+    field("overtime", "Ajuste manual de horas extras · Gs.",
+          help="Compatibilidad con importes antiguos o excepción documentada. No se combina con horas ingresadas por tipo.")
+], True)
 IPS = group("Aportes y descuentos", [
     field("apply_ips", "Aplicar aporte IPS", "checkbox", "on"),
     field("ips_rate", "IPS trabajador · %", value="9", max="100", step="0.01"),
@@ -57,7 +81,9 @@ GROUPS = {
                            ("apprentice", "Aprendizaje / aprendizaje dual"),
                            ("special", "Actividad o categoría con mínimo diferenciado")],
                   help="Seleccioná la escala conforme a la actividad y jornada. Algunos sectores tienen mínimos específicos.")]),
+        SALARY_OVERTIME,
         SALARY_EXTRAS,
+        SALARY_OVERTIME_ADJUSTMENTS,
         group("Asignación familiar", [
             field("family_children", "Cantidad de hijos con derecho documentado", value="0", max="20",
                   help="Menores de 17 años o hijos con discapacidad que cumplan las condiciones legales."),

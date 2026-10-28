@@ -1,5 +1,16 @@
 # Registro de cambios
 
+## 2.6.23 — Integración de horas extras dentro de Salario
+
+- Integra en Salario el adicional por trabajo nocturno ordinario del 30 %, las horas extraordinarias diurnas (mínimo 50 %), las extraordinarias nocturnas (100 %) y el adicional de feriado (100 %).
+- Distingue el adicional nocturno ordinario (solo el 30 % incremental) del pago total de horas extraordinarias diurnas (1,5 × base) y nocturnas (2 × base); el adicional de feriado se calcula sobre la hora diurna, suponiendo que el salario mensual ya cubre la remuneración ordinaria.
+- Propone bases diurna/nocturna conforme a la escala general seleccionada, permite bases manuales revisadas para categorías especiales y presenta una vista previa accesible actualizada al cambiar los campos.
+- Incorpora los importes calculados a los haberes brutos y la base de aporte propuesta; el motor valida cantidades, decimales, combinación con importe manual y valores negativos.
+- Añade referencias al Código del Trabajo, art. 234 y a la guía MTESS para revisión de conceptos y evita aplicar el adicional nocturno del 30 % cuando la escala elegida ya es nocturna.
+- Advierte si hay feriados cargados junto con otras categorías horarias y recuerda verificar solapamientos y recargos acumulables.
+- Retira “Carga de hora” de la navegación principal y contextual de Cálculo. La ruta y los registros existentes se conservan para compatibilidad.
+- Añade pruebas para cálculos, base IPS, alternativa manual, conflictos y entradas inválidas.
+
 ## 2.6.22 — Control de salario mínimo y asignación familiar en Salario
 
 - Agrega escalas de salario mínimo con vigencia para julio de 2025 y julio de 2026, a partir de publicaciones oficiales del MTESS.
