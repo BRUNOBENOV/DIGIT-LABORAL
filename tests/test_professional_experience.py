@@ -33,10 +33,10 @@ def test_workspace_navigation_uses_five_accounting_areas():
 
     for route in (
         "/app/companies", "/app/employees", "/app/calculations",
-        "/app/liquidaciones", "/app/payrolls", "/app/vacations",
-        "/app/aguinaldo", "/app/reports", "/app/compliance",
-        "/app/certificates", "/app/documents", "/app/requests",
-        "/app/notifications", "/app/security",
+        "/app/liquidaciones", "/app/vacations", "/app/aguinaldo",
+        "/app/reports", "/app/compliance", "/app/certificates",
+        "/app/documents", "/app/requests", "/app/notifications",
+        "/app/security",
     ):
         assert route in base
 
@@ -103,7 +103,16 @@ def test_calculation_pages_render_only_the_selected_module():
     assert "CalculationRecord.calculation_type == tipo" in main
     for kind in ("salary", "hours", "aguinaldo", "vacation", "notice"):
         assert f"active_calculation_type == '{kind}'" in template
-        assert f'href="/app/calculations?tipo={kind}"' in base
+
+    # The active module has one canonical entrypoint per requested submodule.
+    for route in (
+        '/app/liquidaciones?tipo=salary',
+        '/app/calculation-operations?tipo=hours',
+        '/app/aguinaldo',
+        '/app/vacations',
+        '/app/calculations?tipo=notice',
+    ):
+        assert f'href="{route}"' in base
     assert "calculation-index-grid" in template
     assert '{% if not private %}<nav class="dl-tabs"' in workbench
     assert 'tipo: str = "settlement"' in calculator_routes
