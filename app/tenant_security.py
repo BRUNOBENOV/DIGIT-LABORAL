@@ -37,6 +37,7 @@ COMPANY_POLICIES = {
     "company_sections": "company_id IN (SELECT id FROM companies WHERE studio_id = digit_current_studio_id())",
     "employees": "company_id IN (SELECT id FROM companies WHERE studio_id = digit_current_studio_id())",
     "salary_advances": "company_id IN (SELECT id FROM companies WHERE studio_id = digit_current_studio_id())",
+    "work_hours_entries": "company_id IN (SELECT id FROM companies WHERE studio_id = digit_current_studio_id())",
     "employee_labor_actions": "company_id IN (SELECT id FROM companies WHERE studio_id = digit_current_studio_id())",
     "labor_telegrams": "company_id IN (SELECT id FROM companies WHERE studio_id = digit_current_studio_id())",
     "medical_exams": "company_id IN (SELECT id FROM companies WHERE studio_id = digit_current_studio_id())",
