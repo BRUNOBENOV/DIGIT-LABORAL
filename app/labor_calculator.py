@@ -6,7 +6,7 @@ from datetime import date
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from .labor_wage_rules import minimum_wage_for_period
 
-VERSION = "2026.09.2"
+VERSION = "2026.10.1"
 SOURCE = "Centro laboral"
 TITLES = {"salary": "Liquidación de salario", "settlement": "Liquidación de haberes",
           "aguinaldo": "Aguinaldo", "vacation": "Vacaciones", "hours": "Horas y recargos"}
@@ -151,8 +151,49 @@ def calculate(data):
                 fact("Jornadas trabajadas", number(data, "days_worked", maximum="31"))
             else:
                 result["warnings"].append("Completá las jornadas trabajadas antes de firmar el recibo (art. 235).")
-        for key, label in (("overtime", "Horas extras"), ("commissions", "Comisiones"),
-                           ("bonuses", "Bonificaciones remunerativas"), ("other_income", "Otros haberes remunerativos")):
+        if kind == "salary":
+            overtime_tiers = (
+                ("overtime_30_hours", "Horas con recargo del 30 %", Decimal("1.30")),
+                ("overtime_50_hours", "Horas con recargo del 50 %", Decimal("1.50")),
+                ("overtime_100_hours", "Horas con recargo del 100 %", Decimal("2.00")),
+            )
+            quantities = {
+                key: number(data, key, label, maximum="744", decimals=2)
+                for key, label, _factor in overtime_tiers
+            }
+            total_overtime_hours = sum(quantities.values(), ZERO)
+            manual_overtime = number(data, "overtime", "ajuste manual de horas extras")
+            if total_overtime_hours and manual_overtime:
+                raise CalculationError(
+                    "Elegí las horas por tramo de recargo o el importe manual excepcional; no se pueden combinar porque duplicarían haberes.",
+                    "overtime"
+                )
+            if total_overtime_hours:
+                raw_hourly_base = str(data.get("overtime_hourly_base", "")).strip()
+                hourly_base = number(
+                    data, "overtime_hourly_base", "valor de hora ordinaria", decimals=4
+                ) if raw_hourly_base else salary / Decimal("240")
+                if hourly_base <= ZERO:
+                    raise CalculationError("El valor de la hora ordinaria debe ser mayor que cero.", "overtime_hourly_base")
+                fact("Base horaria aplicada a horas extras", f"Gs. {hourly_base:.4f}")
+                for key, label, factor in overtime_tiers:
+                    quantity = quantities[key]
+                    if quantity:
+                        add(
+                            label, hourly_base * quantity * factor,
+                            f"Gs. {hourly_base} × {quantity} × {factor}",
+                            "Multiplicador seleccionado por el usuario; verificar la clasificación de jornada aplicable."
+                        )
+            elif manual_overtime:
+                add("Horas extras (importe manual)", manual_overtime, "Importe manual informado")
+                result["warnings"].append(
+                    "Se utilizó un importe manual de horas extras por compatibilidad o excepción. Verificá su respaldo y que no duplique horas incorporadas en otro concepto."
+                )
+        else:
+            add("Horas extras", number(data, "overtime"), "Importe informado")
+        for key, label in (("commissions", "Comisiones"),
+                           ("bonuses", "Bonificaciones remunerativas"),
+                           ("other_income", "Otros haberes remunerativos")):
             add(label, number(data, key), "Importe informado")
         proposed_ips_base = sum(row["amount"] for row in earnings)
         if kind == "salary":
