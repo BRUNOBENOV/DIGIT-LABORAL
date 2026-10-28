@@ -237,6 +237,50 @@ def test_family_and_reimbursements_do_not_increase_default_ips_base():
     assert r["discounts"] == 315000
     assert r["net"] == 3485000
 
+def test_salary_minimum_wage_control_uses_the_scale_effective_in_the_selected_month():
+    current = calculate(salary(salary="3000000", month="2026-09", minimum_wage_category="general_day"))
+    assert {"label": "Mínimo legal mensual de referencia", "value": "Gs. 3.044.000"} in current["facts"]
+    assert any("está por debajo del mínimo de referencia" in warning for warning in current["warnings"])
+    assert {"label": "Diferencia de la base frente al mínimo", "value": "Gs. 44.000"} in current["facts"]
+
+    previous = calculate(salary(salary="2800000", month="2026-06", minimum_wage_category="general_day"))
+    assert {"label": "Mínimo legal mensual de referencia", "value": "Gs. 2.899.048"} in previous["facts"]
+    assert any("está por debajo del mínimo de referencia" in warning for warning in previous["warnings"])
+
+
+def test_salary_special_minimum_requires_manual_period_specific_amount():
+    missing = calculate(salary(minimum_wage_category="special", minimum_wage_manual="0"))
+    assert any("requiere un mínimo especial" in warning for warning in missing["warnings"])
+
+    checked = calculate(salary(minimum_wage_category="special", minimum_wage_manual="4000000"))
+    assert {"label": "Mínimo legal mensual de referencia", "value": "Gs. 4.000.000"} in checked["facts"]
+    assert any("está por debajo del mínimo de referencia" in warning for warning in checked["warnings"])
+
+
+def test_salary_family_allowance_is_calculated_per_child_and_excluded_from_ips_base():
+    result = calculate(salary(family_children="2", family_right_verified="on"))
+    assert result["gross"] == 3_804_400
+    assert result["discounts"] == 315_000
+    assert result["net"] == 3_489_400
+    assert result["employer_contribution"] == 577_500
+    assert {"label": "Base IPS", "value": "Gs. 3.500.000"} in result["facts"]
+    assert {"label": "Asignación familiar por hijo", "value": "Gs. 152.200"} in result["facts"]
+
+
+def test_salary_family_allowance_requires_documented_right_and_200_percent_threshold():
+    unverified = calculate(salary(family_children="1"))
+    assert unverified["gross"] == 3_500_000
+    assert any("No se agregó la asignación automática" in warning for warning in unverified["warnings"])
+
+    over_limit = calculate(salary(salary="6500000", family_children="1", family_right_verified="on"))
+    assert over_limit["gross"] == 6_500_000
+    assert any("supera el límite de dos salarios mínimos" in warning for warning in over_limit["warnings"])
+
+    conflict = salary(family_children="1", family_right_verified="on", family="100000")
+    with pytest.raises(CalculationError) as error:
+        calculate(conflict)
+    assert error.value.field == "family"
+
 
 def test_rounding_half_up_per_item():
     r = calculate(salary(salary="305",days_paid="15",apply_ips=""))
