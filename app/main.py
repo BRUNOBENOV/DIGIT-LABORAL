@@ -5599,6 +5599,191 @@ def api_employee_history(employee_id: int, user: User = Depends(require_roles("a
     }
 
 
+
+# --- Liquidación final: propuesta económica registrada y revisable ---
+
+@app.get("/app/liquidaciones", response_class=HTMLResponse)
+def liquidations_page(request: Request, company_id: OptionalQueryId = None, employee_id: OptionalQueryId = None, user: User = Depends(require_roles("administrador", "contador", "auxiliar")), db: Session = Depends(get_db)):
+    company_ids = company_ids_for_user(db, user)
+    company_id, employee_id = default_labor_context(request, db, user, company_ids, company_id, employee_id)
+    companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name))) if company_ids else []
+    employees = list(db.scalars(select(Employee).options(selectinload(Employee.company)).where(Employee.company_id.in_(company_ids)).order_by(Employee.full_name))) if company_ids else []
+    query = select(CalculationRecord).where(CalculationRecord.company_id.in_(company_ids), CalculationRecord.calculation_type == "settlement") if company_ids else select(CalculationRecord).where(False)
+    if company_id is not None:
+        if company_id not in company_ids: raise HTTPException(404, "Empresa no encontrada.")
+        query = query.where(CalculationRecord.company_id == company_id)
+    if employee_id is not None:
+        employee, _ = _operation_employee(db, user, employee_id)
+        query = query.where(CalculationRecord.employee_id == employee.id)
+    records = list(db.scalars(query.order_by(CalculationRecord.created_at.desc()).limit(100)))
+    return render(request, "liquidations.html", db, user, companies=companies, employees=employees,
+                  selected_company=company_id, selected_employee=employee_id, records=records,
+                  settlement_reasons=SETTLEMENT_REASONS, today=date.today(),
+                  form_error=request.query_params.get("form_error", ""), saved=request.query_params.get("saved") == "1")
+
+
+@app.post("/app/liquidaciones")
+def create_liquidation(
+    company_id: Annotated[int, Form()], employee_id: Annotated[int, Form()],
+    termination_date: Annotated[str, Form()], termination_reason: Annotated[str, Form()],
+    pending_salary: Annotated[str, Form()] = "0", vacation_pay: Annotated[str, Form()] = "0",
+    aguinaldo_prorated: Annotated[str, Form()] = "0", notice_pay: Annotated[str, Form()] = "0",
+    severance_pay: Annotated[str, Form()] = "0", other_income: Annotated[str, Form()] = "0",
+    discounts: Annotated[str, Form()] = "0", notes: Annotated[str, Form()] = "",
+    user: User = Depends(require_roles("administrador", "contador", "auxiliar")), db: Session = Depends(get_db),
+):
+    company = company_allowed(db, user, company_id)
+    employee, checked_company = _operation_employee(db, user, employee_id)
+    if checked_company.id != company.id:
+        raise HTTPException(422, "El funcionario no pertenece a la empresa seleccionada.")
+    try:
+        values = validate_settlement(
+            termination_date=termination_date, termination_reason=termination_reason,
+            amounts={"pending_salary": pending_salary, "vacation_pay": vacation_pay,
+                     "aguinaldo_prorated": aguinaldo_prorated, "notice_pay": notice_pay,
+                     "severance_pay": severance_pay, "other_income": other_income, "discounts": discounts},
+            notes=notes,
+        )
+    except ValueError as exc:
+        return _operation_redirect("/app/liquidaciones", message=str(exc))
+    inputs = {key: value.isoformat() if isinstance(value, date) else value for key, value in values.items() if key not in {"net_amount", "review_required", "total_entitlements"}}
+    results = {
+        "total_entitlements": values["total_entitlements"],
+        "discounts": values["discounts"],
+        "net_amount": values["net_amount"],
+        "review_required": True,
+        "notice_pay_manually_reviewed": values["notice_pay"],
+        "severance_pay_manually_reviewed": values["severance_pay"],
+    }
+    item = CalculationRecord(
+        company_id=company.id, employee_id=employee.id, calculation_type="settlement",
+        reference_period=values["termination_date"].isoformat(),
+        input_json=json.dumps(inputs, ensure_ascii=False, separators=(",", ":")),
+        result_json=json.dumps(results, ensure_ascii=False, separators=(",", ":")),
+        amount=values["net_amount"], status="Revisar", source="Cálculo de liquidación",
+        notes=values["notes"], created_by=user.email,
+    )
+    db.add(item); db.flush()
+    write_audit(db, user, "crear", "liquidacion_final", str(item.id), f"Funcionario {employee.employee_code or employee.id} · revisar rubros")
+    db.commit()
+    return RedirectResponse(f"/app/liquidaciones/{item.id}", status_code=303)
+
+
+@app.get("/app/liquidaciones/{calculation_id}", response_class=HTMLResponse)
+def liquidation_detail_page(calculation_id: int, request: Request, user: User = Depends(require_roles("administrador", "contador", "auxiliar")), db: Session = Depends(get_db)):
+    item = db.get(CalculationRecord, calculation_id)
+    if not item or item.company_id not in company_ids_for_user(db, user): raise HTTPException(404, "Liquidación no encontrada.")
+    if item.calculation_type != "settlement":
+        raise HTTPException(404, "La referencia no corresponde a una liquidación final.")
+    employee = db.get(Employee, item.employee_id) if item.employee_id else None
+    company = db.get(Company, item.company_id)
+    inputs = json_dict(item.input_json); results = json_dict(item.result_json)
+    return render(request, "liquidation_detail.html", db, user, record=item, employee=employee, company=company,
+                  inputs=inputs, results=results, today=date.today())
+
+
+@app.get("/app/liquidaciones/{calculation_id}/pdf")
+def export_liquidation_pdf(calculation_id: int, user: User = Depends(require_roles("administrador", "contador", "auxiliar")), db: Session = Depends(get_db)):
+    item = db.get(CalculationRecord, calculation_id)
+    if not item or item.company_id not in company_ids_for_user(db, user): raise HTTPException(404, "Liquidación no encontrada.")
+    if item.calculation_type != "settlement": raise HTTPException(404, "La referencia no corresponde a una liquidación final.")
+    employee = db.get(Employee, item.employee_id) if item.employee_id else None
+    company = db.get(Company, item.company_id)
+    inputs = json_dict(item.input_json); results = json_dict(item.result_json)
+    labels = [
+        ("Haberes pendientes", inputs.get("pending_salary", 0)),
+        ("Vacaciones", inputs.get("vacation_pay", 0)),
+        ("Aguinaldo proporcional", inputs.get("aguinaldo_prorated", 0)),
+        ("Pago sustitutivo de preaviso (ingresado para revisión)", inputs.get("notice_pay", 0)),
+        ("Indemnización (ingresada para revisión)", inputs.get("severance_pay", 0)),
+        ("Otros haberes", inputs.get("other_income", 0)),
+        ("Descuentos informados", inputs.get("discounts", 0)),
+    ]
+    body = "\\n\\n".join(f"{label}: Gs. {format_gs(amount)}" for label, amount in labels)
+    body += f"\\n\\nTOTAL DE HABERES CONSIGNADOS: Gs. {format_gs(results.get('total_entitlements', 0))}"
+    body += f"\\n\\nRESULTADO ARITMÉTICO PRELIMINAR: Gs. {format_gs(results.get('net_amount', item.amount))}"
+    body += f"\\n\\nFecha de terminación: {inputs.get('termination_date', '—')}\\nCausa consignada: {inputs.get('termination_reason', '—')}"
+    body += f"\\n\\nObservaciones: {inputs.get('notes', '') or 'Sin observaciones.'}"
+    body += "\\n\\nIMPORTANTE: propuesta administrativa preliminar, con rubros ingresados manualmente. No determina por sí sola la procedencia jurídica de indemnización, preaviso, descuentos ni prestaciones. Requiere revisión profesional antes de aprobar o pagar."
+    payload = build_pdf_bytes(ExportData(
+        document_type="liquidacion_final", title="Propuesta preliminar de liquidación final",
+        city=company.city or "Paraguay", issue_date=date.today(), company_name=company.legal_name,
+        company_ruc=company.ruc or "", company_address=company.address or "", company_phone=company.phone or "",
+        company_email=company.email or "", legal_representative=company.legal_representative or "",
+        employee_name=employee.full_name if employee else "", employee_document=employee.document_number if employee else "",
+        position=employee.position if employee else "", admission_date=employee.admission_date if employee else None,
+        body=body, status=item.status, created_by=user.email, created_at=item.created_at,
+        metadata={"document_number": f"LIQ-{item.id:06d}"},
+        document_footer="Documento interno de cálculo; sujeto a validación profesional.",
+    ))
+    filename = safe_download_name("Propuesta liquidacion final", employee.full_name if employee else str(item.id), "pdf")
+    write_audit(db, user, "exportar", "liquidacion_final", str(item.id), "Propuesta PDF"); db.commit()
+    return StreamingResponse(io.BytesIO(payload), media_type="application/pdf", headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"})
+
+
+@app.get("/api/liquidations")
+def api_list_liquidations(company_id: OptionalQueryId = None, employee_id: OptionalQueryId = None, user: User = Depends(require_roles("administrador", "contador", "auxiliar")), db: Session = Depends(get_db)):
+    company_ids = company_ids_for_user(db, user)
+    query = select(CalculationRecord).where(CalculationRecord.company_id.in_(company_ids), CalculationRecord.calculation_type == "settlement") if company_ids else select(CalculationRecord).where(False)
+    if company_id is not None:
+        if company_id not in company_ids: raise HTTPException(404, "Empresa no encontrada.")
+        query = query.where(CalculationRecord.company_id == company_id)
+    if employee_id is not None: _operation_employee(db, user, employee_id); query = query.where(CalculationRecord.employee_id == employee_id)
+    return {"items": [{"id": r.id, "company_id": r.company_id, "employee_id": r.employee_id, "inputs": json_dict(r.input_json), "results": json_dict(r.result_json), "amount": r.amount, "status": r.status, "created_at": r.created_at.isoformat() if r.created_at else None} for r in db.scalars(query.order_by(CalculationRecord.created_at.desc()).limit(500))]}
+
+
+@app.post("/api/liquidations", status_code=201)
+async def api_create_liquidation(request: Request, user: User = Depends(require_roles("administrador", "contador", "auxiliar")), db: Session = Depends(get_db)):
+    p = await _json_object(request)
+    try:
+        company = company_allowed(db, user, int(p.get("company_id")))
+        employee, checked_company = _operation_employee(db, user, int(p.get("employee_id")))
+    except (TypeError, ValueError) as exc: raise HTTPException(422, "Empresa y funcionario son obligatorios.") from exc
+    if checked_company.id != company.id: raise HTTPException(422, "El funcionario no pertenece a la empresa seleccionada.")
+    try:
+        values = validate_settlement(
+            termination_date=p.get("termination_date"), termination_reason=p.get("termination_reason"),
+            amounts={key: p.get(key, 0) for key in ("pending_salary", "vacation_pay", "aguinaldo_prorated", "notice_pay", "severance_pay", "other_income", "discounts")},
+            notes=p.get("notes", ""),
+        )
+    except ValueError as exc: raise HTTPException(422, str(exc)) from exc
+    inputs = {key: value.isoformat() if isinstance(value, date) else value for key, value in values.items() if key not in {"net_amount", "review_required", "total_entitlements"}}
+    results = {"total_entitlements": values["total_entitlements"], "discounts": values["discounts"], "net_amount": values["net_amount"], "review_required": True}
+    item = CalculationRecord(company_id=company.id, employee_id=employee.id, calculation_type="settlement",
+        reference_period=values["termination_date"].isoformat(), input_json=json.dumps(inputs, ensure_ascii=False),
+        result_json=json.dumps(results, ensure_ascii=False), amount=values["net_amount"], status="Revisar",
+        source="API Liquidación", notes=values["notes"], created_by=user.email)
+    db.add(item); db.flush(); write_audit(db, user, "crear_api", "liquidacion_final", str(item.id), "Propuesta para revisión"); db.commit()
+    return {"id": item.id, "amount": item.amount, "status": item.status, "results": results}
+
+
+@app.get("/api/liquidations/{calculation_id}")
+def api_get_liquidation(calculation_id: int, user: User = Depends(require_roles("administrador", "contador", "auxiliar")), db: Session = Depends(get_db)):
+    item = db.get(CalculationRecord, calculation_id)
+    if not item or item.company_id not in company_ids_for_user(db, user) or item.calculation_type != "settlement": raise HTTPException(404, "Liquidación no encontrada.")
+    return {"id": item.id, "company_id": item.company_id, "employee_id": item.employee_id, "inputs": json_dict(item.input_json), "results": json_dict(item.result_json), "amount": item.amount, "status": item.status}
+
+
+@app.patch("/api/liquidations/{calculation_id}")
+async def api_update_liquidation_status(calculation_id: int, request: Request, user: User = Depends(require_roles("administrador", "contador")), db: Session = Depends(get_db)):
+    item = db.get(CalculationRecord, calculation_id)
+    if not item or item.company_id not in company_ids_for_user(db, user) or item.calculation_type != "settlement": raise HTTPException(404, "Liquidación no encontrada.")
+    p = await _json_object(request); state = str(p.get("status") or "").strip()
+    if state not in {"Revisar", "Aprobado", "Anulado"}: raise HTTPException(422, "Estado inválido.")
+    item.status = state; write_audit(db, user, "actualizar_estado_api", "liquidacion_final", str(item.id), state); db.commit()
+    return {"id": item.id, "status": item.status}
+
+
+@app.delete("/api/liquidations/{calculation_id}")
+def api_delete_liquidation(calculation_id: int, user: User = Depends(require_roles("administrador")), db: Session = Depends(get_db)):
+    item = db.get(CalculationRecord, calculation_id)
+    if not item or item.company_id not in company_ids_for_user(db, user) or item.calculation_type != "settlement": raise HTTPException(404, "Liquidación no encontrada.")
+    if item.status == "Aprobado": raise HTTPException(409, "No se elimina una liquidación aprobada; anulala para conservar la trazabilidad.")
+    write_audit(db, user, "eliminar_api", "liquidacion_final", str(item.id), "Registro eliminado por administrador")
+    db.delete(item); db.commit()
+    return {"ok": True}
+
+
 CALCULATION_MODULES = {
     "salary": {"title": "Salarios", "eyebrow": "CÁLCULO DE SALARIOS", "description": "Ingresá haberes, descuentos y base de IPS para revisar el bruto, el aporte y el neto estimado."},
     "hours": {"title": "Horas y recargos", "eyebrow": "CÁLCULO DE HORAS", "description": "Calculá el valor hora con una jornada y un multiplicador previamente revisados."},
