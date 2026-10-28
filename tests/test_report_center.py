@@ -121,6 +121,12 @@ def test_report_queries_include_professional_suite_calculations():
             ("liquidacion-aguinaldo", "suite_aguinaldo"),
             ("liquidacion-vacacion", "suite_vacation"),
         )
+        expected_labels = {
+            "suite_salary": "Salario neto",
+            "suite_settlement": "Liquidación de haberes",
+            "suite_aguinaldo": "Aguinaldo",
+            "suite_vacation": "Vacaciones",
+        }
         for report_key, expected_type in cases:
             response = client.get(
                 f"/api/reports/{report_key}",
@@ -130,9 +136,9 @@ def test_report_queries_include_professional_suite_calculations():
             payload = response.json()
             assert any(
                 row.get("Importe (Gs.)") == 987654
-                and row.get("Tipo de cálculo") == expected_type.removeprefix("suite_").capitalize()
+                and row.get("Tipo de cálculo") == expected_labels[expected_type]
                 for row in payload["records"]
-            ) or any(row.get("Importe (Gs.)") == 987654 for row in payload["records"]), report_key
+            ), report_key
 
 
 def test_excel_export_forces_user_supplied_strings_to_text():
