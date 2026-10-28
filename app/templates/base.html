@@ -25,6 +25,7 @@
   <link rel="stylesheet" href="{{ url_for('static', path='brand-adjustments-267.css') }}?v=20261028b">
   <link rel="stylesheet" href="{{ url_for('static', path='sidebar-active-269.css') }}?v=20261028d">
   <link rel="stylesheet" href="{{ url_for('static', path='home-label-fix-2613.css') }}?v=20261028a">
+  <link rel="stylesheet" href="{{ url_for('static', path='calculation-expansion-2619.css') }}?v=20261028a">
   <link rel="stylesheet" href="{{ url_for('static', path='medical-exams-2618.css') }}?v=20261028a">
   <link rel="stylesheet" href="{{ url_for('static', path='sidebar-brand-transparent-2617.css') }}?v=20261028a">
 
@@ -107,7 +108,7 @@
         </details>
 
         {% if user.role in ['administrador', 'contador', 'auxiliar'] %}
-        <details class="workspace-nav-group" {% if active_path.startswith('/app/liquidaciones') or active_path.startswith('/app/payrolls') or active_path.startswith('/app/vacations') or active_path.startswith('/app/aguinaldo') or active_path.startswith('/app/calculations') %}open{% endif %}>
+        <details class="workspace-nav-group" {% if active_path.startswith('/app/liquidaciones') or active_path.startswith('/app/payrolls') or active_path.startswith('/app/vacations') or active_path.startswith('/app/aguinaldo') or active_path.startswith('/app/calculations') or active_path.startswith('/app/work-hours') or active_path.startswith('/app/advances') or active_path.startswith('/app/labor-actions') or active_path.startswith('/app/telegrams') or active_path.startswith('/app/employee-history') %}open{% endif %}>
           <summary><span class="workspace-group-symbol">02</span><span class="workspace-group-name">Cálculo</span><span class="workspace-group-chevron">⌄</span></summary>
           <div class="workspace-submenu">
             <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/calculations') and not request.query_params.get('tipo') else '' }}" href="/app/calculations">Calculadoras laborales</a>
@@ -120,6 +121,14 @@
             <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/payrolls') else '' }}" href="/app/payrolls">Liquidaciones mensuales</a>
             <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/vacations') else '' }}" href="/app/vacations">Gestión de vacaciones</a>
             <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/aguinaldo') else '' }}" href="/app/aguinaldo">Registro de aguinaldos</a>
+            <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/work-hours') else '' }}" href="/app/work-hours">Carga de horas</a>
+            {% if user.role in ['administrador', 'contador'] %}
+              <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/advances') else '' }}" href="/app/advances">Anticipos de salario</a>
+              <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/labor-actions') else '' }}" href="/app/labor-actions">Amonestaciones / permisos</a>
+              <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/telegrams') else '' }}" href="/app/telegrams">Telegrama colacionado</a>
+              <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/medical-exams') else '' }}" href="/app/medical-exams">Examen médico</a>
+            {% endif %}
+            <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/employee-history') else '' }}" href="/app/employee-history">Histórico funcionario</a>
           </div>
         </details>
         {% endif %}
