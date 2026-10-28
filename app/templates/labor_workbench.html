@@ -25,15 +25,17 @@
 {% endfor %}
 {% if kind == 'salary' %}
 <fieldset class="dl-form-section dl-overtime-preview" aria-describedby="overtime-preview-note">
-  <legend>Vista previa de horas extras</legend>
+  <legend>Vista previa de horas y recargos</legend>
   <div class="dl-fields">
-    <div class="dl-field"><label>Valor hora ordinaria aplicado</label><output id="overtime-hourly-base-preview">0 Gs.</output></div>
-    <div class="dl-field"><label>Importe con recargo del 30 %</label><output id="overtime-30-preview">0 Gs.</output></div>
-    <div class="dl-field"><label>Importe con recargo del 50 %</label><output id="overtime-50-preview">0 Gs.</output></div>
-    <div class="dl-field"><label>Importe con recargo del 100 %</label><output id="overtime-100-preview">0 Gs.</output></div>
-    <div class="dl-field"><label>Total estimado de horas extras</label><output id="overtime-total-preview">0 Gs.</output></div>
+    <div class="dl-field"><label>Base horaria diurna</label><output id="overtime-day-base-preview">Pendiente</output></div>
+    <div class="dl-field"><label>Base horaria nocturna</label><output id="overtime-night-base-preview">Pendiente</output></div>
+    <div class="dl-field"><label>Adicional nocturno ordinario · 30 %</label><output id="overtime-night-preview">0 Gs.</output></div>
+    <div class="dl-field"><label>Horas extra diurnas · 150 % total</label><output id="overtime-day-extra-preview">0 Gs.</output></div>
+    <div class="dl-field"><label>Horas extra nocturnas · 200 % total</label><output id="overtime-night-extra-preview">0 Gs.</output></div>
+    <div class="dl-field"><label>Adicional por feriado · 100 %</label><output id="overtime-holiday-preview">0 Gs.</output></div>
+    <div class="dl-field"><label>Total estimado a sumar al bruto</label><output id="overtime-total-preview">0 Gs.</output></div>
   </div>
-  <p class="dl-caption" id="overtime-preview-note" role="status" aria-live="polite">La vista previa se actualiza al cambiar el salario o las horas; el importe definitivo se valida al calcular.</p>
+  <p class="dl-caption" id="overtime-preview-note" role="status" aria-live="polite">La vista previa es orientativa. Verificá los recargos aplicables y no declares la misma hora en más de una categoría.</p>
 </fieldset>
 {% endif %}
 {% if private and employee and kind == 'salary' %}
@@ -68,33 +70,45 @@
   };
   function refreshOvertimePreview() {
     const salary = read("salary");
-    const override = fieldValue("overtime_hourly_base");
-    const hourlyBase = override ? read("overtime_hourly_base") : salary / 240;
-    set("overtime-hourly-base-preview", baseDisplay(hourlyBase));
-    const tiers = [
-      ["overtime_30_hours", 1.30, "overtime-30-preview"],
-      ["overtime_50_hours", 1.50, "overtime-50-preview"],
-      ["overtime_100_hours", 2.00, "overtime-100-preview"]
+    const category = fieldValue("minimum_wage_category") || "general_day";
+    const dayOverride = fieldValue("overtime_day_hourly_base");
+    const nightOverride = fieldValue("overtime_night_hourly_base");
+    const dayBase = dayOverride ? read("overtime_day_hourly_base") :
+      category === "general_day" ? salary / 240 :
+      category === "general_night" ? salary / (1.3 * 240) : null;
+    const nightBase = nightOverride ? read("overtime_night_hourly_base") :
+      category === "general_day" ? salary * 1.3 / 210 :
+      category === "general_night" ? salary / 210 : null;
+    set("overtime-day-base-preview", dayBase === null ? "Ingresá base manual" : baseDisplay(dayBase));
+    set("overtime-night-base-preview", nightBase === null ? "Ingresá base manual" : baseDisplay(nightBase));
+    const items = [
+      ["night_premium_hours", 0.30, dayBase, "overtime-night-preview"],
+      ["day_extra_hours", 1.50, dayBase, "overtime-day-extra-preview"],
+      ["night_extra_hours", 2.00, nightBase, "overtime-night-extra-preview"],
+      ["holiday_hours", 1.00, dayBase, "overtime-holiday-preview"]
     ];
     let hoursEntered = 0;
     let total = 0;
-    for (const [name, factor, id] of tiers) {
+    for (const [name, factor, base, id] of items) {
       const hours = read(name);
-      const amount = Math.round(hourlyBase * hours * factor);
+      const amount = base === null ? 0 : Math.round(base * hours * factor);
       hoursEntered += hours;
       total += amount;
-      set(id, money(amount));
+      set(id, base === null && hours > 0 ? "Definir base" : money(amount));
     }
     const manual = read("overtime");
     if (hoursEntered > 0 && manual > 0) {
       set("overtime-total-preview", "Revisar combinación");
-      set("overtime-preview-note", "No combines horas por tramo con el ajuste manual: duplicaría haberes y el servidor rechazará el cálculo.");
+      set("overtime-preview-note", "No combines las horas por tipo con el ajuste manual: duplicaría haberes y el servidor rechazará el cálculo.");
     } else if (hoursEntered === 0 && manual > 0) {
       set("overtime-total-preview", money(manual));
       set("overtime-preview-note", "Vista previa del importe manual de compatibilidad. Verificá respaldo y posibles duplicaciones.");
     } else {
       set("overtime-total-preview", money(total));
-      set("overtime-preview-note", "Vista previa estimada. El cálculo final validará los importes; verificá la clasificación de jornada y el recargo aplicable.");
+      set("overtime-preview-note", category === "general_night" && read("night_premium_hours") > 0 ?
+        "La base nocturna ya incorpora el recargo ordinario del 30 %; no lo agregues de nuevo." :
+        "Vista previa estimada. El 30 % es un adicional nocturno ordinario, el 50 % aplica a horas extras diurnas y el 100 % a horas extras nocturnas y feriados. Revisá horas solapadas."
+      );
     }
   }
   form.addEventListener("input", refreshOvertimePreview);
