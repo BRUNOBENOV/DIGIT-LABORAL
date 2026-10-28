@@ -1,5 +1,14 @@
 # Registro de cambios
 
+## 2.6.21 — Depuración de Cálculo e inicio de modernización de Salario
+
+- La navegación lateral y contextual de Cálculo se limita a los 11 submódulos definidos por el usuario.
+- Se quitan del acceso principal los accesos auxiliares a cobertura de períodos, liquidaciones mensuales y calculadoras de horas, aguinaldo y vacaciones que no forman parte de la lista.
+- Salario abre el motor profesional existente, con historial salarial, desglose de haberes y descuentos, control de IPS y emisión de documentos.
+- Los haberes adicionales del salario quedan visibles al entrar; el importe de horas extras indica cómo relacionarlo con Carga de hora y evita su duplicación.
+- Se conservan rutas de compatibilidad, motores compartidos y registros históricos; esta depuración no elimina información ni tablas.
+
+
 ## 2.6.20 — Estructura unificada del módulo Cálculo
 
 - Ordena la navegación principal y la navegación contextual alrededor de los 11 submódulos solicitados.
