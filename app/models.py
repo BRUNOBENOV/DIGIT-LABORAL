@@ -4,7 +4,7 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Optional
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, LargeBinary, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, ForeignKey, Integer, LargeBinary, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -107,6 +107,7 @@ class Company(Base):
     branding: Mapped[Optional["CompanyBranding"]] = relationship(back_populates="company", cascade="all, delete-orphan", uselist=False)
     calculations: Mapped[list["CalculationRecord"]] = relationship(back_populates="company", cascade="all, delete-orphan")
     ai_interactions: Mapped[list["AIInteraction"]] = relationship(back_populates="company", cascade="all, delete-orphan")
+    medical_exams: Mapped[list["MedicalExam"]] = relationship(back_populates="company", cascade="all, delete-orphan")
 
 
 class Branch(Base):
@@ -185,6 +186,38 @@ class Employee(Base):
     official_certificates: Mapped[list["OfficialCertificateRecord"]] = relationship(back_populates="employee")
     calculations: Mapped[list["CalculationRecord"]] = relationship(back_populates="employee")
     ai_interactions: Mapped[list["AIInteraction"]] = relationship(back_populates="employee")
+    medical_exams: Mapped[list["MedicalExam"]] = relationship(back_populates="employee")
+
+
+class MedicalExam(Base):
+    """Occupational medical examination record associated with a company and employee."""
+
+    __tablename__ = "medical_exams"
+    __table_args__ = (
+        UniqueConstraint("company_id", "exam_code", name="uq_medical_exam_code_per_company"),
+        CheckConstraint("exam_type IN ('Ingreso', 'Periódico', 'Salida', 'Especial')", name="ck_medical_exam_type"),
+        CheckConstraint("result IN ('Apto', 'No apto', 'Observaciones')", name="ck_medical_exam_result"),
+        CheckConstraint("expires_on >= exam_date", name="ck_medical_exam_expiry_after_exam"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), index=True)
+    exam_code: Mapped[str] = mapped_column(String(40), index=True)
+    exam_type: Mapped[str] = mapped_column(String(30), index=True)
+    exam_date: Mapped[date] = mapped_column(Date, index=True)
+    result: Mapped[str] = mapped_column(String(30), index=True)
+    expires_on: Mapped[date] = mapped_column(Date, index=True)
+    observations: Mapped[str] = mapped_column(Text, default="")
+    created_by: Mapped[str] = mapped_column(String(180), default="")
+    updated_by: Mapped[str] = mapped_column(String(180), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC)
+    )
+
+    company: Mapped[Company] = relationship(back_populates="medical_exams")
+    employee: Mapped[Employee] = relationship(back_populates="medical_exams")
 
 
 class CompanyRequest(Base):

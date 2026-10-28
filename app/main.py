@@ -30,7 +30,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import String, func, or_, select, text
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
@@ -42,6 +42,7 @@ from .config import settings
 from .database import Base, SessionLocal, apply_session_tenant_context, engine, postgres_rls_role_issues
 from .document_export import (
     DOCUMENT_LABELS,
+    ExportData,
     build_document_body,
     document_detail_table_data,
     build_docx_bytes,
@@ -70,6 +71,7 @@ from .models import (
     CalculationRecord,
     Document,
     Employee,
+    MedicalExam,
     EmployeeEvent,
     EmployeeComplianceProfile,
     GeneratedCertificate,
@@ -95,6 +97,14 @@ from .models import (
     User,
     UserSecurity,
     Vacation,
+)
+from .medical_exam_service import (
+    MEDICAL_EXAM_RESULTS,
+    MEDICAL_EXAM_TYPES,
+    MEDICAL_EXAM_WARNING_DAYS,
+    generate_medical_exam_code,
+    medical_exam_expiry_state,
+    validate_medical_exam_fields,
 )
 from .notification_service import create_notification, dispatch_notification_outbox, send_notification_delivery
 from .official_certificates import (
@@ -2816,6 +2826,382 @@ def api_archive_employee(
         write_audit(db, user, "archivar", "funcionario", str(employee.id), f"Legajo {employee.employee_code} · {employee.full_name}")
         db.commit()
     return {"ok": True, "id": employee.id, "employee_code": employee.employee_code, "status": employee.status}
+
+
+
+# ---------------------------------------------------------------------------
+# Mantenimientos · Exámenes médicos ocupacionales
+# Solo administradores y contadores pueden consultar o administrar información
+# médica. Todos los accesos se limitan a las empresas del estudio autenticado.
+# ---------------------------------------------------------------------------
+
+def _medical_exam_filtered_query(
+    db: Session,
+    user: User,
+    *,
+    q: str = "",
+    employee_id: int | None = None,
+    exam_type: str = "",
+    result_filter: str = "",
+):
+    allowed_company_ids = company_ids_for_user(db, user)
+    query = (
+        select(MedicalExam)
+        .join(Employee, Employee.id == MedicalExam.employee_id)
+        .join(Company, Company.id == MedicalExam.company_id)
+        .where(
+            MedicalExam.company_id.in_(allowed_company_ids),
+            Employee.company_id == MedicalExam.company_id,
+        )
+        .options(selectinload(MedicalExam.employee), selectinload(MedicalExam.company))
+        if allowed_company_ids
+        else select(MedicalExam).where(False)
+    )
+    if employee_id is not None:
+        query = query.where(MedicalExam.employee_id == employee_id)
+    if exam_type:
+        if exam_type not in MEDICAL_EXAM_TYPES:
+            raise HTTPException(422, "El tipo de examen seleccionado no es válido.")
+        query = query.where(MedicalExam.exam_type == exam_type)
+    if result_filter:
+        if result_filter not in MEDICAL_EXAM_RESULTS:
+            raise HTTPException(422, "El resultado seleccionado no es válido.")
+        query = query.where(MedicalExam.result == result_filter)
+    if q.strip():
+        term = f"%{q.strip()[:100]}%"
+        query = query.where(or_(
+            MedicalExam.exam_code.ilike(term),
+            Employee.full_name.ilike(term),
+            Employee.document_number.ilike(term),
+            func.cast(Employee.employee_code, String).ilike(term),
+            Company.legal_name.ilike(term),
+        ))
+    return query
+
+
+def _medical_exam_allowed(db: Session, user: User, exam_id: int) -> MedicalExam:
+    exam = db.get(MedicalExam, exam_id)
+    if not exam or exam.company_id not in company_ids_for_user(db, user):
+        # No se revela si el ID existe en otra empresa/estudio.
+        raise HTTPException(404, "Registro de examen médico no encontrado.")
+    employee = db.get(Employee, exam.employee_id)
+    if not employee or employee.company_id != exam.company_id:
+        raise HTTPException(404, "Registro de examen médico no encontrado.")
+    return exam
+
+
+def _medical_exam_form_redirect(message: str, *, edit_id: int | None = None) -> RedirectResponse:
+    query_string = f"form_error={quote(message)}"
+    if edit_id is not None:
+        query_string += f"&edit_id={edit_id}"
+    query_string += "#medicalExamEditor"
+    return RedirectResponse(f"/app/medical-exams?{query_string}", status_code=303)
+
+
+@app.get("/app/medical-exams", response_class=HTMLResponse)
+def medical_exams_page(
+    request: Request,
+    q: str = "",
+    employee_id: OptionalQueryId = None,
+    exam_type: str = "",
+    result_filter: str = "",
+    sort: str = "exam_date",
+    direction: str = "desc",
+    edit_id: OptionalQueryId = None,
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    allowed_company_ids = company_ids_for_user(db, user)
+    employees = list(db.scalars(
+        select(Employee)
+        .join(Company, Company.id == Employee.company_id)
+        .where(Employee.company_id.in_(allowed_company_ids), Company.status != "Archivada")
+        .options(selectinload(Employee.company))
+        .order_by(Company.legal_name, Employee.full_name)
+    )) if allowed_company_ids else []
+
+    sort_columns = {
+        "exam_code": MedicalExam.exam_code,
+        "employee": Employee.full_name,
+        "exam_type": MedicalExam.exam_type,
+        "exam_date": MedicalExam.exam_date,
+        "result": MedicalExam.result,
+        "expires_on": MedicalExam.expires_on,
+    }
+    if sort not in sort_columns:
+        sort = "exam_date"
+    if direction not in {"asc", "desc"}:
+        direction = "desc"
+
+    query = _medical_exam_filtered_query(
+        db, user, q=q, employee_id=employee_id, exam_type=exam_type, result_filter=result_filter
+    )
+    sort_column = sort_columns[sort]
+    rows = list(db.scalars(
+        query.order_by(sort_column.asc() if direction == "asc" else sort_column.desc(), MedicalExam.id.desc())
+    ))
+    edit_record = _medical_exam_allowed(db, user, edit_id) if edit_id is not None else None
+    today_value = date.today()
+    expiry_states = {item.id: medical_exam_expiry_state(item.expires_on, today=today_value) for item in rows}
+
+    if allowed_company_ids:
+        total_count = db.scalar(select(func.count(MedicalExam.id)).where(
+            MedicalExam.company_id.in_(allowed_company_ids)
+        )) or 0
+        expired_count = db.scalar(select(func.count(MedicalExam.id)).where(
+            MedicalExam.company_id.in_(allowed_company_ids), MedicalExam.expires_on < today_value
+        )) or 0
+        expiring_count = db.scalar(select(func.count(MedicalExam.id)).where(
+            MedicalExam.company_id.in_(allowed_company_ids),
+            MedicalExam.expires_on >= today_value,
+            MedicalExam.expires_on <= today_value + timedelta(days=MEDICAL_EXAM_WARNING_DAYS),
+        )) or 0
+    else:
+        total_count = expired_count = expiring_count = 0
+
+    return render(
+        request, "medical_exams.html", db, user,
+        exams=rows, employees=employees, q=q, employee_filter=employee_id,
+        exam_type=exam_type, result_filter=result_filter, sort=sort, direction=direction,
+        sort_options=[
+            ("exam_date", "Fecha del examen"), ("expires_on", "Vencimiento"),
+            ("employee", "Empleado"), ("exam_code", "Código"),
+            ("exam_type", "Tipo"), ("result", "Resultado"),
+        ],
+        exam_types=MEDICAL_EXAM_TYPES, exam_results=MEDICAL_EXAM_RESULTS,
+        expiry_states=expiry_states, today=today_value,
+        total_count=total_count, expired_count=expired_count, expiring_count=expiring_count,
+        edit_record=edit_record, form_error=request.query_params.get("form_error", ""),
+        created=request.query_params.get("created") == "1",
+        updated=request.query_params.get("updated") == "1",
+        deleted=request.query_params.get("deleted") == "1",
+    )
+
+
+@app.post("/app/medical-exams/create")
+def create_medical_exam(
+    employee_id_raw: Annotated[str, Form(alias="employee_id")],
+    exam_type: Annotated[str, Form()],
+    exam_date_raw: Annotated[str, Form(alias="exam_date")],
+    result: Annotated[str, Form()],
+    expires_on_raw: Annotated[str, Form(alias="expires_on")],
+    exam_code: Annotated[str, Form()] = "",
+    observations: Annotated[str, Form()] = "",
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    try:
+        employee_id_value = int(employee_id_raw)
+        if employee_id_value <= 0:
+            raise ValueError
+    except (TypeError, ValueError):
+        return _medical_exam_form_redirect("Seleccioná un empleado válido.")
+
+    employee = db.get(Employee, employee_id_value)
+    allowed_company_ids = company_ids_for_user(db, user)
+    if not employee or employee.company_id not in allowed_company_ids:
+        raise HTTPException(404, "Funcionario no encontrado.")
+    company = company_allowed(db, user, employee.company_id)
+    if company.status == "Archivada":
+        return _medical_exam_form_redirect("No se pueden crear registros para una empresa archivada.")
+
+    try:
+        values = validate_medical_exam_fields(
+            company_id=employee.company_id, exam_code=exam_code, exam_type=exam_type,
+            exam_date_raw=exam_date_raw, result=result, expires_on_raw=expires_on_raw,
+            observations=observations,
+        )
+    except ValueError as exc:
+        return _medical_exam_form_redirect(str(exc))
+
+    duplicate = db.scalar(select(MedicalExam.id).where(
+        MedicalExam.company_id == employee.company_id, MedicalExam.exam_code == values["exam_code"]
+    ))
+    if duplicate:
+        return _medical_exam_form_redirect("Ese código de examen ya existe en la empresa.")
+    record = MedicalExam(
+        company_id=employee.company_id, employee_id=employee.id, **values,
+        created_by=user.email, updated_by=user.email,
+    )
+    db.add(record)
+    try:
+        db.flush()
+        write_audit(db, user, "crear", "examen_medico", str(record.id),
+                    f"{record.exam_code} · legajo {employee.employee_code or employee.id}")
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        return _medical_exam_form_redirect("No se pudo guardar: el código de examen ya existe o los datos no son válidos.")
+    return RedirectResponse("/app/medical-exams?created=1", status_code=303)
+
+
+@app.post("/app/medical-exams/{exam_id}/edit")
+def update_medical_exam(
+    exam_id: int,
+    employee_id_raw: Annotated[str, Form(alias="employee_id")],
+    exam_type: Annotated[str, Form()],
+    exam_date_raw: Annotated[str, Form(alias="exam_date")],
+    result: Annotated[str, Form()],
+    expires_on_raw: Annotated[str, Form(alias="expires_on")],
+    exam_code: Annotated[str, Form()] = "",
+    observations: Annotated[str, Form()] = "",
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    record = _medical_exam_allowed(db, user, exam_id)
+    try:
+        employee_id_value = int(employee_id_raw)
+        if employee_id_value <= 0:
+            raise ValueError
+    except (TypeError, ValueError):
+        return _medical_exam_form_redirect("Seleccioná un empleado válido.", edit_id=exam_id)
+    employee = db.get(Employee, employee_id_value)
+    if not employee or employee.company_id not in company_ids_for_user(db, user):
+        raise HTTPException(404, "Funcionario no encontrado.")
+    try:
+        values = validate_medical_exam_fields(
+            company_id=employee.company_id, exam_code=exam_code, exam_type=exam_type,
+            exam_date_raw=exam_date_raw, result=result, expires_on_raw=expires_on_raw,
+            observations=observations,
+        )
+    except ValueError as exc:
+        return _medical_exam_form_redirect(str(exc), edit_id=exam_id)
+    duplicate = db.scalar(select(MedicalExam.id).where(
+        MedicalExam.company_id == employee.company_id,
+        MedicalExam.exam_code == values["exam_code"],
+        MedicalExam.id != record.id,
+    ))
+    if duplicate:
+        return _medical_exam_form_redirect("Ese código de examen ya existe en la empresa.", edit_id=exam_id)
+
+    old_code = record.exam_code
+    record.company_id = employee.company_id
+    record.employee_id = employee.id
+    for key, value in values.items():
+        setattr(record, key, value)
+    record.updated_by = user.email
+    record.updated_at = datetime.now(UTC)
+    try:
+        write_audit(db, user, "editar", "examen_medico", str(record.id),
+                    f"{old_code} → {record.exam_code} · legajo {employee.employee_code or employee.id}")
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        return _medical_exam_form_redirect("No se pudo actualizar: verificá el código y las fechas.", edit_id=exam_id)
+    return RedirectResponse("/app/medical-exams?updated=1", status_code=303)
+
+
+@app.post("/app/medical-exams/{exam_id}/delete")
+def delete_medical_exam(
+    exam_id: int,
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    record = _medical_exam_allowed(db, user, exam_id)
+    employee = db.get(Employee, record.employee_id)
+    code = record.exam_code
+    detail = f"{code} · legajo {(employee.employee_code or employee.id) if employee else record.employee_id}"
+    write_audit(db, user, "eliminar", "examen_medico", str(record.id), detail)
+    db.delete(record)
+    db.commit()
+    return RedirectResponse("/app/medical-exams?deleted=1", status_code=303)
+
+
+@app.get("/app/medical-exams/export.csv")
+def export_medical_exams_csv(
+    q: str = "",
+    employee_id: OptionalQueryId = None,
+    exam_type: str = "",
+    result_filter: str = "",
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    query = _medical_exam_filtered_query(
+        db, user, q=q, employee_id=employee_id, exam_type=exam_type, result_filter=result_filter
+    )
+    rows = list(db.scalars(query.order_by(MedicalExam.exam_date.desc(), MedicalExam.id.desc())))
+    output = io.StringIO(newline="")
+    writer = csv.writer(output)
+    writer.writerow(["Código", "Empresa", "Empleado", "Cédula", "Tipo de examen",
+                     "Fecha del examen", "Resultado", "Vigencia / vencimiento", "Estado de vigencia", "Observaciones"])
+    today_value = date.today()
+    for item in rows:
+        writer.writerow([
+            item.exam_code, item.company.legal_name, item.employee.full_name, item.employee.document_number,
+            item.exam_type, item.exam_date.isoformat(), item.result, item.expires_on.isoformat(),
+            medical_exam_expiry_state(item.expires_on, today=today_value), item.observations or "",
+        ])
+    filename = safe_download_name("Informe de examenes medicos", date.today().isoformat(), "csv")
+    payload = ("\ufeff" + output.getvalue()).encode("utf-8")
+    write_audit(db, user, "exportar", "informe_examenes_medicos", "", f"{len(rows)} registros")
+    db.commit()
+    return StreamingResponse(
+        io.BytesIO(payload), media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
+    )
+
+
+@app.get("/app/medical-exams/{exam_id}/certificate.pdf")
+def export_medical_exam_certificate(
+    exam_id: int,
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    record = _medical_exam_allowed(db, user, exam_id)
+    employee = db.get(Employee, record.employee_id)
+    company = db.get(Company, record.company_id)
+    if not employee or not company:
+        raise HTTPException(404, "Registro de examen médico no encontrado.")
+    branding = db.scalar(select(CompanyBranding).where(CompanyBranding.company_id == company.id))
+    primary_color = getattr(branding, "primary_color", "#173B86") if branding else "#173B86"
+    if not re.fullmatch(r"#[0-9A-Fa-f]{6}", str(primary_color or "")):
+        primary_color = "#173B86"
+    body = (
+        f"Código del registro: {record.exam_code}\n"
+        f"Empleado: {employee.full_name}\n"
+        f"Cédula de identidad: {employee.document_number}\n"
+        f"Cargo: {employee.position or 'No consignado'}\n"
+        f"Tipo de examen: {record.exam_type}\n"
+        f"Fecha del examen: {record.exam_date.strftime('%d/%m/%Y')}\n"
+        f"Resultado registrado: {record.result}\n"
+        f"Vigencia / vencimiento: {record.expires_on.strftime('%d/%m/%Y')}\n"
+        f"Estado de vigencia al {date.today().strftime('%d/%m/%Y')}: "
+        f"{medical_exam_expiry_state(record.expires_on)}\n\n"
+        f"Observaciones registradas: {record.observations or 'Sin observaciones consignadas.'}\n\n"
+        "AVISO: Documento administrativo generado a partir de los datos ingresados en Digit Laboral. "
+        "No constituye diagnóstico, certificado médico profesional ni reemplaza el informe emitido "
+        "por el profesional o centro médico competente."
+    )
+    payload = build_pdf_bytes(ExportData(
+        document_type="registro_examen_medico",
+        title="Constancia administrativa de registro de examen médico ocupacional",
+        city=company.city or "Paraguay",
+        issue_date=date.today(),
+        company_name=company.legal_name,
+        company_ruc=company.ruc or "",
+        company_address=company.address or "",
+        company_phone=company.phone or "",
+        company_email=company.email or "",
+        legal_representative=company.legal_representative or "",
+        primary_color=primary_color,
+        employee_name=employee.full_name,
+        employee_document=employee.document_number,
+        position=employee.position or "",
+        admission_date=employee.admission_date,
+        body=body,
+        status=record.result,
+        created_by=user.email,
+        created_at=record.created_at,
+        metadata={"document_number": record.exam_code},
+        document_footer="Documento administrativo interno. No sustituye el certificado o informe médico original.",
+    ))
+    filename = safe_download_name("Constancia examen medico", employee.full_name, "pdf")
+    write_audit(db, user, "exportar", "constancia_examen_medico", str(record.id), record.exam_code)
+    db.commit()
+    return StreamingResponse(
+        io.BytesIO(payload), media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
+    )
 
 
 @app.get("/app/employees", response_class=HTMLResponse)

@@ -1,0 +1,224 @@
+{% extends "base.html" %}
+{% block title %}Exámenes médicos | Digit Laboral{% endblock %}
+{% block page_name %}Exámenes médicos{% endblock %}
+{% block content %}
+<header class="page-header medical-exams-header">
+  <div>
+    <span class="eyebrow">MANTENIMIENTOS · SALUD OCUPACIONAL</span>
+    <h1>Exámenes médicos</h1>
+    <p>Registrá y controlá los exámenes médicos ocupacionales vinculados a los legajos de funcionarios.</p>
+  </div>
+  <div class="header-actions medical-exams-header-actions">
+    <a class="btn outline" href="/app/medical-exams/export.csv?q={{ q|urlencode }}&employee_id={{ employee_filter or '' }}&exam_type={{ exam_type|urlencode }}&result_filter={{ result_filter|urlencode }}">
+      <span aria-hidden="true">↓</span> Exportar CSV
+    </a>
+    <a class="btn primary" href="#medicalExamEditor">+ Nuevo examen</a>
+  </div>
+</header>
+
+<nav class="medical-exams-subnav" aria-label="Subsecciones de Mantenimientos">
+  <a href="/app/companies">Empresas<span>Directorio patronal</span></a>
+  <a href="/app/employees">Funcionarios<span>Legajos laborales</span></a>
+  <a href="/app/sections">Secciones<span>Áreas internas</span></a>
+  <a class="is-active" href="/app/medical-exams" aria-current="page">Exámenes médicos<span>Vigencia ocupacional</span></a>
+</nav>
+
+<div class="medical-exams-notice" role="note">
+  <span class="medical-exams-notice-icon" aria-hidden="true">i</span>
+  <p>Este módulo gestiona datos administrativos de exámenes ocupacionales. No reemplaza el informe ni el certificado emitido por un profesional o centro médico habilitado.</p>
+</div>
+
+{% if form_error %}
+<div class="medical-exams-alert error" role="alert"><strong>No se pudo guardar el registro.</strong> {{ form_error }}</div>
+{% elif created %}
+<div class="medical-exams-alert success" role="status">El examen médico se registró correctamente.</div>
+{% elif updated %}
+<div class="medical-exams-alert success" role="status">El registro del examen médico se actualizó correctamente.</div>
+{% elif deleted %}
+<div class="medical-exams-alert success" role="status">El registro del examen médico se eliminó.</div>
+{% endif %}
+
+<section class="medical-exams-metrics" aria-label="Resumen de exámenes médicos">
+  <article class="medical-exams-metric"><span>Registros</span><strong>{{ total_count }}</strong><small>En las empresas habilitadas</small></article>
+  <article class="medical-exams-metric metric-danger"><span>Vencidos</span><strong>{{ expired_count }}</strong><small>Requieren seguimiento</small></article>
+  <article class="medical-exams-metric metric-warning"><span>Por vencer</span><strong>{{ expiring_count }}</strong><small>Próximos 30 días</small></article>
+</section>
+
+<section class="medical-exams-panel" aria-labelledby="medicalExamFiltersTitle">
+  <div class="medical-exams-panel-heading">
+    <div><span class="eyebrow">CONSULTA DE REGISTROS</span><h2 id="medicalExamFiltersTitle">Filtrar exámenes</h2></div>
+    <span class="medical-exams-result-count">{{ exams|length }} resultado(s)</span>
+  </div>
+  <form method="get" class="medical-exams-filter-form" role="search">
+    <label class="medical-exams-search-field">Búsqueda
+      <input type="search" name="q" value="{{ q }}" maxlength="100" placeholder="Código, empleado, cédula o empresa" autocomplete="off">
+    </label>
+    <label>Empleado
+      <select name="employee_id">
+        <option value="">Todos los empleados</option>
+        {% for item in employees %}
+        <option value="{{ item.id }}" {{ 'selected' if employee_filter == item.id else '' }}>{{ item.full_name }} · {{ item.company.legal_name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Tipo de examen
+      <select name="exam_type">
+        <option value="">Todos los tipos</option>
+        {% for kind in exam_types %}
+        <option value="{{ kind }}" {{ 'selected' if exam_type == kind else '' }}>{{ kind }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Resultado
+      <select name="result_filter">
+        <option value="">Todos los resultados</option>
+        {% for item in exam_results %}
+        <option value="{{ item }}" {{ 'selected' if result_filter == item else '' }}>{{ item }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Ordenar por
+      <select name="sort">
+        {% for key,label in sort_options %}
+        <option value="{{ key }}" {{ 'selected' if sort == key else '' }}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Dirección
+      <select name="direction">
+        <option value="desc" {{ 'selected' if direction == 'desc' else '' }}>Descendente</option>
+        <option value="asc" {{ 'selected' if direction == 'asc' else '' }}>Ascendente</option>
+      </select>
+    </label>
+    <div class="medical-exams-filter-actions">
+      <button class="btn primary" type="submit">Aplicar filtros</button>
+      <a class="btn ghost" href="/app/medical-exams">Limpiar</a>
+    </div>
+  </form>
+</section>
+
+<section class="medical-exams-panel" id="medicalExamEditor" aria-labelledby="medicalExamEditorTitle">
+  <div class="medical-exams-panel-heading">
+    <div><span class="eyebrow">LEGAJO DE SALUD OCUPACIONAL</span><h2 id="medicalExamEditorTitle">{{ 'Editar registro · ' ~ edit_record.exam_code if edit_record else 'Registrar nuevo examen' }}</h2></div>
+    {% if edit_record %}<a class="btn ghost" href="/app/medical-exams#medicalExamEditor">Cancelar edición</a>{% endif %}
+  </div>
+  <p class="medical-exams-panel-intro">Los campos marcados con * son obligatorios. El código puede asignarse automáticamente si lo dejás vacío.</p>
+  <form method="post" action="{{ '/app/medical-exams/' ~ edit_record.id ~ '/edit' if edit_record else '/app/medical-exams/create' }}" class="medical-exams-editor-form" id="medicalExamForm">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Empleado asociado *
+      <select name="employee_id" id="medicalExamEmployee" required>
+        <option value="">Seleccioná un funcionario</option>
+        {% for item in employees %}
+        <option value="{{ item.id }}" {{ 'selected' if edit_record and edit_record.employee_id == item.id else '' }}>
+          {{ item.employee_code if item.employee_code is not none else item.id }} · {{ item.full_name }} · {{ item.company.legal_name }}
+        </option>
+        {% endfor %}
+      </select>
+      <small>La empresa se toma del legajo seleccionado para evitar asociaciones cruzadas.</small>
+    </label>
+    <label>Código del examen
+      <input type="text" name="exam_code" value="{{ edit_record.exam_code if edit_record else '' }}" maxlength="40" pattern="[A-Za-z0-9][A-Za-z0-9._/-]{0,39}" placeholder="Automático si se deja vacío" autocomplete="off">
+      <small>Debe ser único dentro de la empresa. Se normaliza a mayúsculas.</small>
+    </label>
+    <label>Tipo de examen *
+      <select name="exam_type" required>
+        <option value="">Seleccioná el tipo</option>
+        {% for kind in exam_types %}
+        <option value="{{ kind }}" {{ 'selected' if edit_record and edit_record.exam_type == kind else '' }}>{{ kind }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Fecha del examen *
+      <input type="date" id="medicalExamDate" name="exam_date" value="{{ edit_record.exam_date.isoformat() if edit_record else '' }}" max="{{ today.isoformat() }}" required>
+    </label>
+    <label>Estado / resultado *
+      <select name="result" required>
+        <option value="">Seleccioná el resultado</option>
+        {% for item in exam_results %}
+        <option value="{{ item }}" {{ 'selected' if edit_record and edit_record.result == item else '' }}>{{ item }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Fecha de vigencia o vencimiento *
+      <input type="date" id="medicalExamExpiry" name="expires_on" value="{{ edit_record.expires_on.isoformat() if edit_record else '' }}" min="{{ edit_record.exam_date.isoformat() if edit_record else '' }}" required>
+      <small>Debe ser igual o posterior a la fecha del examen.</small>
+    </label>
+    <label class="medical-exams-observations-field">Observaciones
+      <textarea name="observations" rows="3" maxlength="3000" placeholder="Observaciones administrativas relevantes (máximo 3.000 caracteres)">{{ edit_record.observations if edit_record else '' }}</textarea>
+    </label>
+    <div class="medical-exams-form-actions">
+      <button class="btn primary" type="submit">{{ 'Guardar cambios' if edit_record else 'Registrar examen' }}</button>
+      {% if edit_record %}<a class="btn ghost" href="/app/medical-exams">Cancelar</a>{% else %}<button class="btn ghost" type="reset">Limpiar formulario</button>{% endif %}
+    </div>
+  </form>
+</section>
+
+<section class="medical-exams-panel" aria-labelledby="medicalExamListTitle">
+  <div class="medical-exams-panel-heading">
+    <div><span class="eyebrow">SEGUIMIENTO</span><h2 id="medicalExamListTitle">Registros de exámenes</h2></div>
+    <a class="btn outline" href="/app/medical-exams/export.csv?q={{ q|urlencode }}&employee_id={{ employee_filter or '' }}&exam_type={{ exam_type|urlencode }}&result_filter={{ result_filter|urlencode }}">Descargar informe</a>
+  </div>
+  <div class="medical-exams-table-wrap">
+    <table class="medical-exams-table">
+      <caption class="sr-only">Exámenes médicos registrados y su vigencia</caption>
+      <thead><tr><th scope="col">Código / empleado</th><th scope="col">Tipo</th><th scope="col">Fecha</th><th scope="col">Resultado</th><th scope="col">Vencimiento</th><th scope="col">Acciones</th></tr></thead>
+      <tbody>
+      {% for exam in exams %}
+        {% set expiry_state = expiry_states[exam.id] %}
+        <tr class="{{ 'is-expired' if expiry_state == 'Vencido' else 'is-expiring' if expiry_state == 'Por vencer' else '' }}">
+          <td>
+            <strong class="medical-exam-code">{{ exam.exam_code }}</strong>
+            <span class="medical-exam-employee">{{ exam.employee.full_name }}</span>
+            <span class="medical-exam-company">{{ exam.company.legal_name }} · C.I. {{ exam.employee.document_number }}</span>
+          </td>
+          <td>{{ exam.exam_type }}</td>
+          <td><time datetime="{{ exam.exam_date.isoformat() }}">{{ exam.exam_date.strftime('%d/%m/%Y') }}</time></td>
+          <td><span class="medical-exam-result {{ exam.result|lower|replace(' ', '-') }}">{{ exam.result }}</span></td>
+          <td>
+            <time datetime="{{ exam.expires_on.isoformat() }}">{{ exam.expires_on.strftime('%d/%m/%Y') }}</time>
+            <span class="medical-exam-expiry {{ expiry_state|lower|replace(' ', '-') }}">{{ expiry_state }}</span>
+          </td>
+          <td>
+            <div class="medical-exam-row-actions">
+              <a class="btn small ghost" href="/app/medical-exams?edit_id={{ exam.id }}#medicalExamEditor" aria-label="Editar examen {{ exam.exam_code }}">Editar</a>
+              <a class="btn small outline" href="/app/medical-exams/{{ exam.id }}/certificate.pdf" aria-label="Descargar constancia PDF del examen {{ exam.exam_code }}">PDF</a>
+              <form method="post" action="/app/medical-exams/{{ exam.id }}/delete" onsubmit="return confirm('¿Eliminar el registro {{ exam.exam_code }}? Esta acción no se puede deshacer.');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button class="btn small danger-outline" type="submit" aria-label="Eliminar examen {{ exam.exam_code }}">Eliminar</button>
+              </form>
+            </div>
+            {% if exam.observations %}<details class="medical-exam-observations"><summary>Ver observaciones</summary><p>{{ exam.observations }}</p></details>{% endif %}
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="6" class="medical-exams-empty"><strong>No hay registros para mostrar.</strong><span>Creá un examen o modificá los filtros de búsqueda.</span></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<script>
+(() => {
+  const examDate = document.getElementById("medicalExamDate");
+  const expiryDate = document.getElementById("medicalExamExpiry");
+  const form = document.getElementById("medicalExamForm");
+  if (!examDate || !expiryDate || !form) return;
+  const validateDates = () => {
+    expiryDate.min = examDate.value || "";
+    if (examDate.value && expiryDate.value && expiryDate.value < examDate.value) {
+      expiryDate.setCustomValidity("El vencimiento no puede ser anterior a la fecha del examen.");
+    } else {
+      expiryDate.setCustomValidity("");
+    }
+  };
+  examDate.addEventListener("change", validateDates);
+  expiryDate.addEventListener("change", validateDates);
+  form.addEventListener("submit", (event) => {
+    validateDates();
+    if (!form.reportValidity()) event.preventDefault();
+  });
+  validateDates();
+})();
+</script>
+{% endblock %}
