@@ -1,4 +1,4 @@
-/* Digit Laboral v2.6.11 — robust visibility for the active Inicio label.
+/* Digit Laboral v2.6.12 — robust visibility for the active Inicio label.
    The rule targets only the label span, only while active and not hovered. */
 
 /* Home / Inicio: preserve the white active tile; color only the label text.
@@ -7,7 +7,7 @@
   background:#FFFFFF!important;
   border-color:#DCE6FA!important;
 }
-.app-body .workspace-sidebar .workspace-home-link.active:not(:hover) > span:not(.workspace-home-symbol){
+.app-body .workspace-sidebar a.workspace-home-link[href="/app"].active:not(:hover) > span:not(.workspace-home-symbol){
   color:#2563EB!important;
   -webkit-text-fill-color:#2563EB!important;
   opacity:1!important;

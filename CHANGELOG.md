@@ -1,4 +1,11 @@
 # Registro de cambios
+## 2.6.12 — Selector limitado al botón Inicio
+
+- Limita las reglas de color y visibilidad del texto a `a.workspace-home-link[href="/app"]`, el botón Inicio del espacio laboral.
+- Evita alterar el enlace independiente de Administración general, que usa una clase compartida.
+- Conserva `color`, `-webkit-text-fill-color`, `opacity`, `visibility` y `filter` forzados en el estado activo sin hover.
+- No modifica los estados hover, normal ni el logo.
+
 ## 2.6.11 — Visibilidad forzada del texto Inicio
 
 - Refuerza únicamente la etiqueta de texto dentro del botón Inicio cuando está activo y no está bajo el cursor.
