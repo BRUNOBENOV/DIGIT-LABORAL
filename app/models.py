@@ -539,6 +539,31 @@ class EmployeeEvent(Base):
     employee: Mapped[Employee] = relationship()
 
 
+class LaborOperation(Base):
+    """Tenant-scoped operational record for hours, salary advances, employee actions and labour telegram drafts."""
+
+    __tablename__ = "labor_operations"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), index=True)
+    operation_type: Mapped[str] = mapped_column(String(40), index=True)
+    reference_code: Mapped[str] = mapped_column(String(50), default="", index=True)
+    title: Mapped[str] = mapped_column(String(180))
+    effective_date: Mapped[date] = mapped_column(Date, index=True)
+    end_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    quantity: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2), nullable=True)
+    amount: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    status: Mapped[str] = mapped_column(String(40), default="Registrado", index=True)
+    payload_json: Mapped[str] = mapped_column(Text, default="{}")
+    notes: Mapped[str] = mapped_column(Text, default="")
+    created_by: Mapped[str] = mapped_column(String(180), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC), index=True)
+
+    company: Mapped[Company] = relationship()
+    employee: Mapped[Employee] = relationship()
+
+
 class SalaryHistory(Base):
     __tablename__ = "salary_history"
 
