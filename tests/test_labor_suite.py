@@ -464,6 +464,37 @@ def test_public_flow_csrf_validation_xss_and_download(web_case):
     assert invalid.status_code == 422 and "Revisá los datos" in invalid.text
 
 
+def test_salary_calculation_and_pdf_flag_midmonth_salary_change(web_case):
+    client, db, _, company, employee, _ = web_case
+    from app.models import SalaryHistory
+
+    employee.admission_date = date(2020, 1, 1)
+    db.add_all([
+        SalaryHistory(
+            employee_id=employee.id, previous_salary=0, new_salary=3_500_000,
+            effective_from=date(2020, 1, 1), reason="Alta salarial",
+        ),
+        SalaryHistory(
+            employee_id=employee.id, previous_salary=3_500_000, new_salary=4_000_000,
+            effective_from=date(2026, 9, 15), reason="Aumento",
+        ),
+    ])
+    db.commit()
+    csrf = token(client, f"/app/liquidaciones?tipo=salary&company_id={company.id}&employee_id={employee.id}")
+    data = salary(
+        company_id=str(company.id), employee_id=str(employee.id), csrf_token=csrf,
+        month="2026-09", salary="3500000",
+    )
+    response = client.post("/app/liquidaciones/calcular", data=data)
+    assert response.status_code == 200, response.text
+    assert "cambio salarial con vigencia 15/09/2026" in response.text
+
+    pdf = client.post("/app/liquidaciones/exportar/pdf", data=data)
+    assert pdf.status_code == 200 and pdf.content.startswith(b"%PDF")
+    pdf_text = "\n".join(page.extract_text() or "" for page in PdfReader(io.BytesIO(pdf.content)).pages)
+    assert "cambio salarial con vigencia 15/09/2026" in pdf_text
+
+
 def test_private_context_save_snapshot_and_tenant_boundaries(web_case,monkeypatch):
     client,db,box,company,employee,other=web_case
     csrf=token(client,f"/app/liquidaciones?company_id={company.id}&employee_id={employee.id}")
