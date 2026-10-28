@@ -10,9 +10,14 @@ def group(title, fields, advanced=False):
 SALARY = field("salary", "Salario mensual · Gs.", required=True, min="1")
 DAYS = field("days_paid", "Días a liquidar", value="30", max="30",
              help="Para remuneración mensual se utiliza base de 30 días.", required=True)
-EXTRAS = group("Otros haberes", [
-    field("overtime", "Horas extras liquidadas · Gs."), field("commissions", "Comisiones · Gs."),
-    field("bonuses", "Bonificaciones remunerativas · Gs."), field("other_income", "Otros haberes remunerativos · Gs.")], True)
+EXTRA_FIELDS = [
+    field("overtime", "Importe de horas extras · Gs.", help="Registrá las horas y el recargo en Carga de hora; ingresá aquí el importe total revisado. No sumes dos veces un importe ya incluido en otro concepto."),
+    field("commissions", "Comisiones · Gs."),
+    field("bonuses", "Bonificaciones remunerativas · Gs."),
+    field("other_income", "Otros haberes remunerativos · Gs.")
+]
+EXTRAS = group("Otros haberes", EXTRA_FIELDS, True)
+SALARY_EXTRAS = group("Haberes adicionales", EXTRA_FIELDS, False)
 IPS = group("Aportes y descuentos", [
     field("apply_ips", "Aplicar aporte IPS", "checkbox", "on"),
     field("ips_rate", "IPS trabajador · %", value="9", max="100", step="0.01"),
@@ -46,7 +51,7 @@ GROUPS = {
         group("Salario del período", [field("month", "Mes liquidado", "month", required=True), SALARY, DAYS,
             field("days_worked", "Jornadas efectivamente trabajadas", max="31",
                   help="Dato del recibo. Distinto de la base mensual de 30 días.")]),
-        EXTRAS, group("Conceptos separados", [
+        SALARY_EXTRAS, group("Conceptos separados", [
             field("family", "Bonificación familiar · Gs.", help="Ingresá el importe cuyo derecho verificaste."),
             field("reimbursements", "Reintegros documentados · Gs.")], True), IPS, RECEIPT_REVIEW, IDENTITY],
     "settlement": [
