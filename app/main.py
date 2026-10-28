@@ -1286,6 +1286,7 @@ def calculate_values(
     gross: int = 0,
     other_income: int = 0,
     other_discount: int = 0,
+    ips_base: int | None = None,
     apply_ips: bool = True,
     salary: int = 0,
     monthly_hours: float = 240,
@@ -1298,6 +1299,7 @@ def calculate_values(
         "gross": max(0, int(gross or 0)),
         "other_income": max(0, int(other_income or 0)),
         "other_discount": max(0, int(other_discount or 0)),
+        "ips_base": max(0, int(ips_base)) if ips_base is not None else None,
         "apply_ips": bool(apply_ips),
         "salary": max(0, int(salary or 0)),
         "monthly_hours": max(1, float(monthly_hours or 240)),
@@ -1308,10 +1310,11 @@ def calculate_values(
     }
     if calculation_type == "salary":
         computable = inputs["gross"] + inputs["other_income"]
-        ips = round_gs(computable * ips_rate / 100) if inputs["apply_ips"] else 0
+        effective_ips_base = inputs["ips_base"] if inputs["ips_base"] is not None else computable
+        ips = round_gs(effective_ips_base * ips_rate / 100) if inputs["apply_ips"] else 0
         discounts = ips + inputs["other_discount"]
         amount = max(0, computable - discounts)
-        results = {"gross_computable": computable, "ips_employee": ips, "discounts": discounts, "net": amount}
+        results = {"gross_computable": computable, "ips_base": effective_ips_base, "ips_employee": ips, "discounts": discounts, "net": amount}
     elif calculation_type == "hours":
         base = inputs["salary"] / inputs["monthly_hours"]
         amount = round_gs(base * inputs["hours_quantity"] * inputs["multiplier"])
@@ -5127,6 +5130,7 @@ def save_calculation(
     gross: Annotated[int, Form()] = 0,
     other_income: Annotated[int, Form()] = 0,
     other_discount: Annotated[int, Form()] = 0,
+    ips_base: Annotated[int | None, Form()] = None,
     apply_ips: Annotated[str | None, Form()] = None,
     salary: Annotated[int, Form()] = 0,
     monthly_hours: Annotated[float, Form()] = 240,
@@ -5151,6 +5155,7 @@ def save_calculation(
         gross=gross,
         other_income=other_income,
         other_discount=other_discount,
+        ips_base=ips_base,
         apply_ips=apply_ips == "on",
         salary=salary,
         monthly_hours=monthly_hours,
