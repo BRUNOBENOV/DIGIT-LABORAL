@@ -14,7 +14,7 @@
     ]) }}
   {% endif %}
 {% elif p.startswith('/app/calculations') or p.startswith('/app/payrolls') or p.startswith('/app/liquidaciones') or p.startswith('/app/vacations') or p.startswith('/app/aguinaldo') or p.startswith('/app/calculation-operations') or p.startswith('/app/employee-history') or p.startswith('/app/medical-exams') %}
-  {{ tab_nav('Submódulos de Cálculo', [
+  {{ tab_nav('Subsecciones de cálculo laboral', [
     {'label':'Panel', 'href':'/app/calculations', 'active':p == '/app/calculations' and not query_type},
     {'label':'Salario', 'href':'/app/calculations?tipo=salary', 'active':p == '/app/calculations' and query_type == 'salary'},
     {'label':'Liquidación', 'href':'/app/liquidaciones?tipo=settlement', 'active':p.startswith('/app/liquidaciones')},
