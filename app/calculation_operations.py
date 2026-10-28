@@ -121,3 +121,43 @@ def validate_telegram(
     return {"telegram_code": code, "telegram_type": kind, "issue_date": when,
             "destination_address": address, "subject": subject_value, "body": body_value,
             "status": state, "notes": notes_value}
+
+
+WORK_HOURS_STATUSES = ("Registrada", "Incorporada a nómina", "Anulada")
+
+
+def _decimal_hours(value: str | int | float, label: str):
+    from decimal import Decimal, InvalidOperation
+
+    try:
+        number = Decimal(str(value or "0"))
+    except (InvalidOperation, TypeError, ValueError) as exc:
+        raise ValueError(f"{label} debe ser un número válido.") from exc
+    if not number.is_finite() or number < 0 or number > 24:
+        raise ValueError(f"{label} debe estar entre 0 y 24 horas.")
+    return number.quantize(Decimal("0.01"))
+
+
+def validate_work_hours(
+    *, work_date: str | date, ordinary_hours: str | int | float = 0,
+    overtime_hours: str | int | float = 0, night_hours: str | int | float = 0,
+    holiday_hours: str | int | float = 0, status: str = "Registrada", notes: str = "",
+) -> dict:
+    when = parse_iso_date(work_date, "La fecha trabajada")
+    buckets = {
+        "ordinary_hours": _decimal_hours(ordinary_hours, "Las horas ordinarias"),
+        "overtime_hours": _decimal_hours(overtime_hours, "Las horas extraordinarias"),
+        "night_hours": _decimal_hours(night_hours, "Las horas nocturnas"),
+        "holiday_hours": _decimal_hours(holiday_hours, "Las horas en feriado/descanso"),
+    }
+    total = sum(buckets.values())
+    if total > 24:
+        raise ValueError("La suma de horas por día no puede superar 24.")
+    normalized_status = str(status or "").strip()
+    if normalized_status not in WORK_HOURS_STATUSES:
+        raise ValueError("El estado de la carga horaria no es válido.")
+    notes_value = str(notes or "").strip()
+    if len(notes_value) > 2000:
+        raise ValueError("Las observaciones no pueden superar los 2.000 caracteres.")
+    return {"work_date": when, "work_period": when.strftime("%Y-%m"), **buckets,
+            "status": normalized_status, "notes": notes_value}
