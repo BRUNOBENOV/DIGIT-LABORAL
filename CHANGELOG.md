@@ -1,4 +1,13 @@
 # Registro de cambios
+
+## 2.6.20 — Estructura unificada del módulo Cálculo
+
+- Ordena la navegación principal y la navegación contextual alrededor de los 11 submódulos solicitados.
+- Incorpora un panel de entrada con acceso directo a los módulos operativos existentes de liquidación, carga horaria, anticipos, novedades disciplinarias, telegramas e histórico del funcionario.
+- Mantiene disponibles las calculadoras auxiliares de horas/recargos, aguinaldo y vacaciones, además de las liquidaciones mensuales y la cobertura de períodos.
+- Integra el acceso a Examen Médico con el módulo existente de Mantenimientos; no crea un registro médico paralelo.
+- Esta fase organiza rutas y navegación; las mejoras funcionales y legales se abordarán submódulo por submódulo.
+
 ## 2.6.16 — Corregir el estado de Inicio al entrar en subapartados
 
 - Corrige la causa de la regla que no surtía efecto: el enlace Inicio solo tenía la clase `active` en la ruta exacta `/app`, no cuando se visitaba Empresas, Secciones o Funcionarios.
