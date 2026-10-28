@@ -4,6 +4,7 @@ import io
 import json
 import re
 import unicodedata
+from calendar import monthrange
 import zipfile
 from datetime import date, datetime
 from decimal import Decimal
@@ -22,7 +23,7 @@ from .labor_calculator import CalculationError, SOURCE, TITLES, VERSION, amount 
 from .liquidation_export import build_liquidation_pdf, build_liquidation_csv
 from .labor_examples import example_values
 from .models import CalculationRecord, Company, Employee, Payroll, PayrollLine, PayrollComplianceDetail, User
-from .salary_history import employee_salary_history, salary_from_history
+from .salary_history import employee_salary_history, salary_from_history, salary_for_period
 
 router = APIRouter()
 HEADERS = {"Cache-Control": "no-store", "X-Digit-Laboral-Version": VERSION}
@@ -83,6 +84,32 @@ def private_context(db, user, data):
     return dict(private=True, companies=companies, employees=employees, company=company,
                 employee=employee, company_id=company_id, employee_id=employee_id, history=history,
                 salary_history=salary_history)
+
+
+def add_salary_period_warnings(result, db, scoped, data):
+    """Attach review warnings for hires and salary changes within a monthly period.
+
+    Never prorates a salary change automatically: a monthly salary snapshot can
+    represent only one base amount, so the result must remain subject to review.
+    """
+    if result.get("kind") != "salary" or not scoped.get("employee"):
+        return result
+    try:
+        period_start = date.fromisoformat(str(result.get("period", "")) + "-01")
+    except ValueError:
+        return result
+    period_end = date(
+        period_start.year, period_start.month,
+        monthrange(period_start.year, period_start.month)[1],
+    )
+    _, period_warnings = salary_for_period(
+        db, scoped["employee"], period_start, period_end
+    )
+    existing = result.setdefault("warnings", [])
+    for warning in period_warnings:
+        if warning not in existing:
+            existing.append(warning)
+    return result
 
 
 def page(request, kind, data=None, result=None, error=None, db=None, user=None, copied_from=None):
@@ -156,6 +183,7 @@ async def professional_calculate(request: Request, user: User = Depends(core.req
     scoped = private_context(db, user, data)
     try:
         result = calculate(data)
+        result = add_salary_period_warnings(result, db, scoped, data)
     except CalculationError as exc:
         return page(request, data["kind"], data, error=exc, db=db, user=user)
     return page(request, data["kind"], data, result=result, db=db, user=user)
@@ -191,7 +219,9 @@ async def professional_export(request: Request, fmt: str, user: User = Depends(c
     data = await form_values(request)
     scoped = private_context(db, user, data)
     try:
-        return await download(calculate(data), fmt)
+        result = calculate(data)
+        result = add_salary_period_warnings(result, db, scoped, data)
+        return await download(result, fmt)
     except CalculationError as exc:
         return page(request, data["kind"], data, error=exc, db=db, user=user)
 
@@ -206,6 +236,7 @@ async def save_calculation(request: Request,
         if not scoped["company"] or not scoped["employee"]:
             raise CalculationError("Seleccioná empresa y funcionario para guardar el cálculo.")
         result = calculate(data)
+        result = add_salary_period_warnings(result, db, scoped, data)
         if result["net"] > 2147483647:
             raise CalculationError("Este monto supera el límite del historial actual; podés descargar el cálculo.")
     except CalculationError as exc:
@@ -346,6 +377,7 @@ async def api_create_calculation(
         raise HTTPException(422, "Seleccioná empresa y funcionario para guardar el cálculo.")
     try:
         result = calculate(data)
+        result = add_salary_period_warnings(result, db, scoped, data)
     except CalculationError as exc:
         raise HTTPException(422, str(exc)) from None
     if result["net"] > 2147483647:

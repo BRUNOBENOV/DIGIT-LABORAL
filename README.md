@@ -1,6 +1,12 @@
-# Digit Laboral 2.6.21
+# Digit Laboral 2.6.22
 
 Plataforma de gestión y cumplimiento laboral para estudios contables paraguayos.
+
+## Novedades de la versión 2.6.22
+
+- Salario compara la base mensual con la escala legal seleccionada y advierte si queda por debajo del mínimo de referencia vigente en el período.
+- Se incorpora cálculo de asignación familiar por hijo, sujeto a confirmación del derecho, documentación y límite de remuneración.
+- Las actividades con escala salarial especial requieren registrar el mínimo aplicable; el sistema no presume la escala general.
 
 ## Novedades de la versión 2.6.21
 

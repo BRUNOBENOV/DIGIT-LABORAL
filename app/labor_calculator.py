@@ -4,6 +4,7 @@ from __future__ import annotations
 from calendar import monthrange
 from datetime import date
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from .labor_wage_rules import minimum_wage_for_period
 
 VERSION = "2026.09.2"
 SOURCE = "Centro laboral"
@@ -14,6 +15,9 @@ SOURCES = [
     ("Aportes · IPS", "https://portal.ips.gov.py/sistemas/ipsportal/contenido.php?c=69"),
     ("Base de aporte · IPS", "https://portal.ips.gov.py/sistemas/ipsportal/contenido.php?c=59"),
     ("Vacaciones · MTESS", "https://www.mtess.gov.py/?p=34520"),
+    ("Salario mínimo vigente · Resolución MTESS N.º 670/2026", "https://www.mtess.gov.py/?p=36371"),
+    ("Salario mínimo anterior · Resolución MTESS N.º 677/2025", "https://www.mtess.gov.py/?p=30682"),
+    ("Asignación familiar · Código del Trabajo, arts. 261–268", "https://www.mtess.gov.py/wp-content/uploads/2026/01/Ley_213.pdf"),
 ]
 ZERO = Decimal(0)
 
@@ -152,7 +156,82 @@ def calculate(data):
             add(label, number(data, key), "Importe informado")
         proposed_ips_base = sum(row["amount"] for row in earnings)
         if kind == "salary":
-            add("Bonificación familiar", number(data, "family"), "Importe y derecho verificados por el liquidador")
+            category = str(data.get("minimum_wage_category") or "general_day")
+            manual_minimum = number(data, "minimum_wage_manual", "mínimo mensual especial")
+            wage_rule = minimum_wage_for_period(period, category, manual_minimum)
+            minimum = wage_rule.get("amount")
+
+            if minimum:
+                fact("Escala de mínimo legal", wage_rule["label"])
+                fact("Mínimo legal mensual de referencia", "Gs. " + gs(minimum))
+                if wage_rule.get("effective_from"):
+                    fact("Vigencia del mínimo usado", wage_rule["effective_from"].strftime("%d/%m/%Y"))
+                if salary < minimum:
+                    difference = int(minimum) - int(salary)
+                    fact("Diferencia de la base frente al mínimo", "Gs. " + gs(difference))
+                    result["warnings"].append(
+                        f"La base mensual ingresada (Gs. {gs(salary)}) está por debajo del mínimo de referencia "
+                        f"(Gs. {gs(minimum)}; diferencia Gs. {gs(difference)}). Verificá la jornada, la categoría "
+                        "legal, la escala de la actividad y el período antes de emitir el recibo."
+                    )
+            elif wage_rule.get("reason") == "manual_required":
+                result["warnings"].append(
+                    "La actividad seleccionada requiere un mínimo especial. Abrí «Mínimo legal especial» e ingresá "
+                    "el importe mensual vigente para esa actividad antes de validar el salario."
+                )
+            elif wage_rule.get("reason") == "historical_scale_unavailable":
+                result["warnings"].append(
+                    "No hay una escala automática de salario mínimo cargada para este período anterior a julio de 2025. "
+                    "Verificá manualmente la resolución vigente antes de emitir el recibo."
+                )
+            elif wage_rule.get("reason") == "unknown_category":
+                raise CalculationError("Elegí una escala de salario mínimo reconocida.", "minimum_wage_category")
+
+            family_children = number(data, "family_children", "cantidad de hijos con derecho", maximum="20")
+            family_manual = number(data, "family", "bonificación familiar manual")
+            family_verified = checked(data, "family_right_verified")
+            if family_children:
+                if not family_verified:
+                    result["warnings"].append(
+                        "Se declararon hijos para la asignación familiar, pero no se confirmó el derecho, la "
+                        "documentación y la comunicación escrita al empleador. No se agregó la asignación automática."
+                    )
+                    if family_manual:
+                        result["warnings"].append(
+                            "El importe manual de bonificación familiar no se aplicó porque hay hijos declarados "
+                            "sin confirmación documental."
+                        )
+                elif family_manual:
+                    raise CalculationError(
+                        "Usá la cantidad de hijos para calcular la asignación familiar automática o el importe manual "
+                        "para una excepción, pero no ambos.", "family"
+                    )
+                elif minimum is None:
+                    result["warnings"].append(
+                        "No se calculó automáticamente la asignación familiar porque no se pudo determinar el mínimo "
+                        "legal mensual de referencia para este período y categoría."
+                    )
+                elif Decimal(proposed_ips_base) > Decimal(minimum) * 2:
+                    result["warnings"].append(
+                        "No se agregó automáticamente la asignación familiar: la base mensual supera el límite de "
+                        "dos salarios mínimos indicado en el artículo 263. Verificá la remuneración y el régimen aplicable."
+                    )
+                else:
+                    per_child = amount(Decimal(minimum) * Decimal("0.05"))
+                    family_total = per_child * int(family_children)
+                    add("Bonificación familiar", family_total,
+                        f"Gs. {gs(minimum)} × 5% × {int(family_children)} hijo(s)",
+                        "Arts. 261–268; derecho y comunicación documental confirmados por el liquidador")
+                    fact("Hijos con derecho a asignación familiar", int(family_children))
+                    fact("Asignación familiar por hijo", "Gs. " + gs(per_child))
+            elif family_manual:
+                add("Bonificación familiar manual", family_manual,
+                    "Importe ingresado por el liquidador; revisar derecho, vigencia y soporte documental",
+                    "Arts. 261–268; revisión manual")
+                result["warnings"].append(
+                    "La bonificación familiar fue ingresada manualmente. Verificá el salario mínimo aplicable, "
+                    "el límite de remuneración, la comunicación escrita, la documentación y el derecho por cada hijo."
+                )
             add("Reintegro de gastos documentados", number(data, "reimbursements"), "Importe informado")
 
     if kind == "settlement":

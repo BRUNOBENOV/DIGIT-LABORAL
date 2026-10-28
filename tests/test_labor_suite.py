@@ -237,6 +237,56 @@ def test_family_and_reimbursements_do_not_increase_default_ips_base():
     assert r["discounts"] == 315000
     assert r["net"] == 3485000
 
+def test_salary_minimum_wage_control_uses_the_scale_effective_in_the_selected_month():
+    current = calculate(salary(salary="3000000", month="2026-09", minimum_wage_category="general_day"))
+    assert {"label": "Mínimo legal mensual de referencia", "value": "Gs. 3.044.000"} in current["facts"]
+    assert any("está por debajo del mínimo de referencia" in warning for warning in current["warnings"])
+    assert {"label": "Diferencia de la base frente al mínimo", "value": "Gs. 44.000"} in current["facts"]
+
+    previous = calculate(salary(salary="2800000", month="2026-06", minimum_wage_category="general_day"))
+    assert {"label": "Mínimo legal mensual de referencia", "value": "Gs. 2.899.048"} in previous["facts"]
+    assert any("está por debajo del mínimo de referencia" in warning for warning in previous["warnings"])
+
+
+def test_salary_special_minimum_requires_manual_period_specific_amount():
+    missing = calculate(salary(minimum_wage_category="special", minimum_wage_manual="0"))
+    assert any("requiere un mínimo especial" in warning for warning in missing["warnings"])
+
+    checked = calculate(salary(minimum_wage_category="special", minimum_wage_manual="4000000"))
+    assert {"label": "Mínimo legal mensual de referencia", "value": "Gs. 4.000.000"} in checked["facts"]
+    assert any("está por debajo del mínimo de referencia" in warning for warning in checked["warnings"])
+
+
+def test_salary_family_allowance_is_calculated_per_child_and_excluded_from_ips_base():
+    result = calculate(salary(family_children="2", family_right_verified="on"))
+    assert result["gross"] == 3_804_400
+    assert result["discounts"] == 315_000
+    assert result["net"] == 3_489_400
+    assert result["employer_contribution"] == 577_500
+    assert {"label": "Base IPS", "value": "Gs. 3.500.000"} in result["facts"]
+    assert {"label": "Asignación familiar por hijo", "value": "Gs. 152.200"} in result["facts"]
+
+
+def test_salary_family_allowance_requires_documented_right_and_200_percent_threshold():
+    unverified = calculate(salary(family_children="1"))
+    assert unverified["gross"] == 3_500_000
+    assert any("No se agregó la asignación automática" in warning for warning in unverified["warnings"])
+
+    over_limit = calculate(salary(salary="6500000", family_children="1", family_right_verified="on"))
+    assert over_limit["gross"] == 6_500_000
+    assert any("supera el límite de dos salarios mínimos" in warning for warning in over_limit["warnings"])
+
+    bonus_crosses_limit = calculate(salary(
+        salary="6000000", bonuses="100000", family_children="1", family_right_verified="on"
+    ))
+    assert bonus_crosses_limit["gross"] == 6_100_000
+    assert any("supera el límite de dos salarios mínimos" in warning for warning in bonus_crosses_limit["warnings"])
+
+    conflict = salary(family_children="1", family_right_verified="on", family="100000")
+    with pytest.raises(CalculationError) as error:
+        calculate(conflict)
+    assert error.value.field == "family"
+
 
 def test_rounding_half_up_per_item():
     r = calculate(salary(salary="305",days_paid="15",apply_ips=""))
@@ -412,6 +462,37 @@ def test_public_flow_csrf_validation_xss_and_download(web_case):
     data["salary"]="-1"
     invalid=client.post("/herramientas/calcular",data=data)
     assert invalid.status_code == 422 and "Revisá los datos" in invalid.text
+
+
+def test_salary_calculation_and_pdf_flag_midmonth_salary_change(web_case):
+    client, db, _, company, employee, _ = web_case
+    from app.models import SalaryHistory
+
+    employee.admission_date = date(2020, 1, 1)
+    db.add_all([
+        SalaryHistory(
+            employee_id=employee.id, previous_salary=0, new_salary=3_500_000,
+            effective_from=date(2020, 1, 1), reason="Alta salarial",
+        ),
+        SalaryHistory(
+            employee_id=employee.id, previous_salary=3_500_000, new_salary=4_000_000,
+            effective_from=date(2026, 9, 15), reason="Aumento",
+        ),
+    ])
+    db.commit()
+    csrf = token(client, f"/app/liquidaciones?tipo=salary&company_id={company.id}&employee_id={employee.id}")
+    data = salary(
+        company_id=str(company.id), employee_id=str(employee.id), csrf_token=csrf,
+        month="2026-09", salary="3500000",
+    )
+    response = client.post("/app/liquidaciones/calcular", data=data)
+    assert response.status_code == 200, response.text
+    assert "cambio salarial con vigencia 15/09/2026" in response.text
+
+    pdf = client.post("/app/liquidaciones/exportar/pdf", data=data)
+    assert pdf.status_code == 200 and pdf.content.startswith(b"%PDF")
+    pdf_text = "\n".join(page.extract_text() or "" for page in PdfReader(io.BytesIO(pdf.content)).pages)
+    assert "cambio salarial con vigencia 15/09/2026" in pdf_text
 
 
 def test_private_context_save_snapshot_and_tenant_boundaries(web_case,monkeypatch):

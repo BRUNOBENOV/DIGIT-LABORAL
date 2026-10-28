@@ -50,9 +50,23 @@ GROUPS = {
     "salary": [
         group("Salario del período", [field("month", "Mes liquidado", "month", required=True), SALARY, DAYS,
             field("days_worked", "Jornadas efectivamente trabajadas", max="31",
-                  help="Dato del recibo. Distinto de la base mensual de 30 días.")]),
-        SALARY_EXTRAS, group("Conceptos separados", [
-            field("family", "Bonificación familiar · Gs.", help="Ingresá el importe cuyo derecho verificaste."),
+                  help="Dato del recibo. Distinto de la base mensual de 30 días."),
+            field("minimum_wage_category", "Escala de salario mínimo aplicable", "select", "general_day",
+                  options=[("general_day", "Actividades diversas · jornada diurna"),
+                           ("general_night", "Jornada nocturna · escala general"),
+                           ("apprentice", "Aprendizaje / aprendizaje dual"),
+                           ("special", "Actividad o categoría con mínimo diferenciado")],
+                  help="Seleccioná la escala conforme a la actividad y jornada. Algunos sectores tienen mínimos específicos.")]),
+        SALARY_EXTRAS,
+        group("Asignación familiar", [
+            field("family_children", "Cantidad de hijos con derecho documentado", value="0", max="20",
+                  help="Menores de 17 años o hijos con discapacidad que cumplan las condiciones legales."),
+            field("family_right_verified", "Derecho, documentación y comunicación escrita al empleador verificados", "checkbox")]),
+        group("Mínimo legal especial", [
+            field("minimum_wage_manual", "Mínimo mensual de la actividad · Gs.", help="Obligatorio si la escala elegida es especial; ingresá el mínimo vigente para el mes liquidado.")], True),
+        group("Conceptos separados", [
+            field("family", "Bonificación familiar manual (excepción) · Gs.",
+                  help="Usá la cantidad de hijos para el cálculo automático. Este importe se reserva para casos excepcionales revisados manualmente."),
             field("reimbursements", "Reintegros documentados · Gs.")], True), IPS, RECEIPT_REVIEW, IDENTITY],
     "settlement": [
         group("Relación laboral", [SALARY, field("days_paid", "Días de salario pendientes", value="0", max="30", required=True),
