@@ -41,8 +41,10 @@
     .module-selection-form button{white-space:nowrap}
     @media(max-width:680px){.module-selection-form{display:grid;grid-template-columns:1fr}.module-selection-form label{min-width:0}.module-selection-form button{width:100%}}
 
-    /* Corrección final aislada: solo la etiqueta de Inicio activa, sin hover. */
-    body.app-body #modernMobileNav a.workspace-home-link[href="/app"].active:not(:hover) > span.workspace-home-label{
+    /* Inicio en la portada o al navegar por sus subapartados:
+       solo cambia el texto cuando no hay hover; el fondo y el icono no se tocan. */
+    body.app-body #modernMobileNav a.workspace-home-link[href="/app"].active:not(:hover) > span.workspace-home-label,
+    body.app-body #modernMobileNav a.workspace-home-link[href="/app"].home-in-section-context:not(:hover) > span.workspace-home-label{
       color:#2563EB!important;
       -webkit-text-fill-color:#2563EB!important;
       opacity:1!important;
@@ -84,7 +86,7 @@
       {% if user.role == 'superadmin' %}
         <a class="workspace-home-link {{ 'active' if active_path.startswith('/admin') else '' }}" href="/admin"><span class="workspace-home-symbol">⌂</span><span>Administración general</span></a>
       {% else %}
-        <a class="workspace-home-link {{ 'active' if active_path == '/app' else '' }}" href="/app"><span class="workspace-home-symbol">⌂</span><span class="workspace-home-label">Inicio</span></a>
+        <a class="workspace-home-link {{ 'active' if active_path == '/app' else '' }} {{ 'home-in-section-context' if active_path.startswith('/app/') else '' }}" href="/app"><span class="workspace-home-symbol">⌂</span><span class="workspace-home-label">Inicio</span></a>
 
         <details class="workspace-nav-group" {% if active_path.startswith('/app/companies') or active_path.startswith('/app/employees') or active_path.startswith('/app/users') or active_path.startswith('/app/parameters') or active_path.startswith('/app/sections') %}open{% endif %}>
           <summary><span class="workspace-group-symbol">01</span><span class="workspace-group-name">Mantenimientos</span><span class="workspace-group-chevron">⌄</span></summary>
