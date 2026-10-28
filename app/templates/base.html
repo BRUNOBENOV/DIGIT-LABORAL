@@ -126,16 +126,16 @@
         </details>
         {% endif %}
 
-        {% if user.role != 'empresa' %}
-        <details class="workspace-nav-group" {% if active_path.startswith('/app/reports') or active_path.startswith('/app/compliance') or active_path.startswith('/app/audit') %}open{% endif %}>
+        <details class="workspace-nav-group" {% if active_path.startswith('/app/reports') or (user.role != 'empresa' and active_path.startswith('/app/compliance')) or (user.role == 'administrador' and active_path.startswith('/app/audit')) %}open{% endif %}>
           <summary><span class="workspace-group-symbol">03</span><span class="workspace-group-name">Informes</span><span class="workspace-group-chevron">⌄</span></summary>
           <div class="workspace-submenu">
-            <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/reports') else '' }}" href="/app/reports">Informes laborales</a>
-            <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/compliance') else '' }}" href="/app/compliance">Cumplimiento REI / REOP</a>
+            <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/reports') else '' }}" href="/app/reports" title="Abrir catálogo de informes laborales">Centro de informes</a>
+            {% if user.role != 'empresa' %}
+              <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/compliance') else '' }}" href="/app/compliance">Cumplimiento REI / REOP</a>
+            {% endif %}
             {% if user.role == 'administrador' %}<a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/audit') else '' }}" href="/app/audit">Auditoría</a>{% endif %}
           </div>
         </details>
-        {% endif %}
 
         <details class="workspace-nav-group" {% if active_path.startswith('/app/certificates') or active_path.startswith('/app/documents') %}open{% endif %}>
           <summary><span class="workspace-group-symbol">04</span><span class="workspace-group-name">Certificados</span><span class="workspace-group-chevron">⌄</span></summary>
