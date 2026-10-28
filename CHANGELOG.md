@@ -1,3 +1,10 @@
+## 2.6.28 — Visibilidad del Centro de Informes
+
+- Hace visible el Centro de Informes en el menú lateral para el perfil empresa, que antes no veía el grupo Informes.
+- Conserva ocultos para el perfil empresa los accesos de Cumplimiento REI/REOP y Auditoría.
+- Mantiene la protección del listado de exámenes médicos; el catálogo de empresa muestra únicamente los 34 informes permitidos.
+- Añade prueba de navegación y catálogo para perfil empresa.
+
 ## 2.6.27 — Integridad de informes y exportaciones
 
 - Incluye en los informes los cálculos persistidos por el motor profesional (`suite_salary`, `suite_settlement`, `suite_aguinaldo` y `suite_vacation`) y los presenta con etiquetas legibles.
