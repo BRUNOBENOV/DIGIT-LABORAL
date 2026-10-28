@@ -276,6 +276,12 @@ def test_salary_family_allowance_requires_documented_right_and_200_percent_thres
     assert over_limit["gross"] == 6_500_000
     assert any("supera el límite de dos salarios mínimos" in warning for warning in over_limit["warnings"])
 
+    bonus_crosses_limit = calculate(salary(
+        salary="6000000", bonuses="100000", family_children="1", family_right_verified="on"
+    ))
+    assert bonus_crosses_limit["gross"] == 6_100_000
+    assert any("supera el límite de dos salarios mínimos" in warning for warning in bonus_crosses_limit["warnings"])
+
     conflict = salary(family_children="1", family_right_verified="on", family="100000")
     with pytest.raises(CalculationError) as error:
         calculate(conflict)
