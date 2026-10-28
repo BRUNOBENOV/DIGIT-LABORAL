@@ -13,7 +13,7 @@
       {'label':'Parámetros', 'href':'/app/parameters', 'active':p.startswith('/app/parameters')}
     ]) }}
   {% endif %}
-{% elif p.startswith('/app/calculations') or p.startswith('/app/payrolls') or p.startswith('/app/liquidaciones') or p.startswith('/app/vacations') or p.startswith('/app/aguinaldo') %}
+{% elif p.startswith('/app/calculations') or p.startswith('/app/payrolls') or p.startswith('/app/liquidaciones') or p.startswith('/app/vacations') or p.startswith('/app/aguinaldo') or p.startswith('/app/calculation-operations') or p.startswith('/app/employee-history') %}
   {{ tab_nav('Subsecciones de cálculo laboral', [
     {'label':'Calculadoras', 'href':'/app/calculations', 'active':p == '/app/calculations' and not query_type},
     {'label':'Salarios', 'href':'/app/calculations?tipo=salary', 'active':p == '/app/calculations' and query_type == 'salary'},

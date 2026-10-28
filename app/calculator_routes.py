@@ -255,6 +255,200 @@ async def saved_export(record_id: int, fmt: str, user: User = Depends(core.requi
     return await download(result, fmt)
 
 
+
+# REST API for the existing professional calculator engine. The HTML screens above
+# and this API share the same calculation and tenant-scoping logic.
+def _calculation_api_item(item: CalculationRecord) -> dict:
+    try:
+        inputs = json.loads(item.input_json or "{}")
+    except (ValueError, TypeError):
+        inputs = {}
+    try:
+        result = json.loads(item.result_json or "{}")
+    except (ValueError, TypeError):
+        result = {}
+    return {
+        "id": item.id,
+        "company_id": item.company_id,
+        "employee_id": item.employee_id,
+        "calculation_type": item.calculation_type,
+        "reference_period": item.reference_period or "",
+        "amount": item.amount,
+        "status": item.status,
+        "source": item.source,
+        "notes": item.notes or "",
+        "inputs": inputs,
+        "result": result,
+        "created_by": item.created_by or "",
+        "created_at": item.created_at.isoformat() if item.created_at else None,
+    }
+
+
+@router.get("/api/calculations")
+def api_list_calculations(
+    company_id: int | None = None,
+    employee_id: int | None = None,
+    tipo: str | None = None,
+    limit: int = 100,
+    user: User = Depends(core.require_roles("administrador", "contador", "auxiliar")),
+    db: Session = Depends(core.get_db),
+):
+    company_ids = core.company_ids_for_user(db, user)
+    if limit < 1 or limit > 500:
+        raise HTTPException(422, "El límite debe estar entre 1 y 500.")
+    query = select(CalculationRecord).where(
+        CalculationRecord.company_id.in_(company_ids), CalculationRecord.source == SOURCE
+    ) if company_ids else select(CalculationRecord).where(False)
+    if company_id:
+        if company_id not in company_ids:
+            raise HTTPException(404, "Empresa no encontrada.")
+        query = query.where(CalculationRecord.company_id == company_id)
+    if employee_id:
+        employee = db.get(Employee, employee_id)
+        if not employee or employee.company_id not in company_ids or (company_id and employee.company_id != company_id):
+            raise HTTPException(404, "Funcionario no encontrado.")
+        query = query.where(CalculationRecord.employee_id == employee_id)
+    if tipo:
+        if tipo not in TITLES:
+            raise HTTPException(422, "Tipo de cálculo no válido.")
+        query = query.where(CalculationRecord.calculation_type == "suite_" + tipo)
+    items = list(db.scalars(query.order_by(CalculationRecord.created_at.desc()).limit(limit)))
+    return {"items": [_calculation_api_item(item) for item in items], "count": len(items), "limit": limit}
+
+
+@router.get("/api/calculations/{record_id}")
+def api_get_calculation(
+    record_id: int,
+    user: User = Depends(core.require_user),
+    db: Session = Depends(core.get_db),
+):
+    item, _ = saved_result(db, user, record_id)
+    return _calculation_api_item(item)
+
+
+@router.post("/api/calculations", status_code=201)
+async def api_create_calculation(
+    request: Request,
+    user: User = Depends(core.require_roles("administrador", "contador", "auxiliar")),
+    db: Session = Depends(core.get_db),
+):
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(400, "Se esperaba un cuerpo JSON válido.") from None
+    if not isinstance(payload, dict):
+        raise HTTPException(422, "El cuerpo debe ser un objeto JSON.")
+    data = {key: str(value) for key, value in payload.items() if value is not None}
+    if data.get("kind") not in TITLES:
+        raise HTTPException(422, "Tipo de cálculo no válido.")
+    scoped = private_context(db, user, data)
+    if not scoped["company"] or not scoped["employee"]:
+        raise HTTPException(422, "Seleccioná empresa y funcionario para guardar el cálculo.")
+    try:
+        result = calculate(data)
+    except CalculationError as exc:
+        raise HTTPException(422, str(exc)) from None
+    if result["net"] > 2147483647:
+        raise HTTPException(422, "El resultado supera el límite de importe admitido.")
+    item = CalculationRecord(
+        company_id=scoped["company"].id,
+        employee_id=scoped["employee"].id,
+        calculation_type="suite_" + data["kind"],
+        reference_period=result["period"][:20],
+        input_json=json.dumps(data, ensure_ascii=False),
+        result_json=json.dumps(result, ensure_ascii=False),
+        amount=result["net"], status="Borrador", source=SOURCE,
+        notes=clean(data.get("notes"), 600), created_by=user.full_name,
+    )
+    db.add(item)
+    db.flush()
+    core.write_audit(db, user, "crear_api", "liquidacion", str(item.id), "Motor " + VERSION)
+    db.commit()
+    db.refresh(item)
+    return JSONResponse(_calculation_api_item(item), status_code=201)
+
+
+@router.put("/api/calculations/{record_id}")
+async def api_replace_calculation(
+    record_id: int,
+    request: Request,
+    user: User = Depends(core.require_roles("administrador", "contador")),
+    db: Session = Depends(core.get_db),
+):
+    item, _ = saved_result(db, user, record_id)
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(400, "Se esperaba un cuerpo JSON válido.") from None
+    if not isinstance(payload, dict):
+        raise HTTPException(422, "El cuerpo debe ser un objeto JSON.")
+    data = {key: str(value) for key, value in payload.items() if value is not None}
+    expected_kind = item.calculation_type.removeprefix("suite_")
+    if data.get("kind", expected_kind) != expected_kind:
+        raise HTTPException(422, "No se puede cambiar el tipo de una liquidación existente.")
+    data["kind"] = expected_kind
+    data["company_id"] = str(item.company_id)
+    data["employee_id"] = str(item.employee_id or "")
+    scoped = private_context(db, user, data)
+    if not scoped["company"] or not scoped["employee"] or scoped["company"].id != item.company_id:
+        raise HTTPException(422, "El funcionario debe permanecer dentro de la empresa del registro.")
+    try:
+        result = calculate(data)
+    except CalculationError as exc:
+        raise HTTPException(422, str(exc)) from None
+    if result["net"] > 2147483647:
+        raise HTTPException(422, "El resultado supera el límite de importe admitido.")
+    item.reference_period = result["period"][:20]
+    item.input_json = json.dumps(data, ensure_ascii=False)
+    item.result_json = json.dumps(result, ensure_ascii=False)
+    item.amount = result["net"]
+    item.notes = clean(data.get("notes"), 600)
+    item.status = "Borrador"
+    core.write_audit(db, user, "actualizar_api", "liquidacion", str(item.id), "Motor " + VERSION)
+    db.commit()
+    db.refresh(item)
+    return _calculation_api_item(item)
+
+
+@router.patch("/api/calculations/{record_id}")
+async def api_update_calculation_status(
+    record_id: int,
+    request: Request,
+    user: User = Depends(core.require_roles("administrador", "contador")),
+    db: Session = Depends(core.get_db),
+):
+    item, _ = saved_result(db, user, record_id)
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(400, "Se esperaba un cuerpo JSON válido.") from None
+    if not isinstance(payload, dict):
+        raise HTTPException(422, "El cuerpo debe ser un objeto JSON.")
+    if "status" in payload:
+        if payload["status"] not in {"Borrador", "Revisar", "Aprobado", "Anulado"}:
+            raise HTTPException(422, "Estado no válido.")
+        item.status = payload["status"]
+    if "notes" in payload:
+        item.notes = clean(payload["notes"], 600)
+    core.write_audit(db, user, "actualizar_api", "liquidacion", str(item.id), item.status)
+    db.commit()
+    db.refresh(item)
+    return _calculation_api_item(item)
+
+
+@router.delete("/api/calculations/{record_id}", status_code=204)
+def api_delete_calculation(
+    record_id: int,
+    user: User = Depends(core.require_roles("administrador", "contador")),
+    db: Session = Depends(core.get_db),
+):
+    item, _ = saved_result(db, user, record_id)
+    item.status = "Anulado"
+    core.write_audit(db, user, "anular_api", "liquidacion", str(item.id), item.status)
+    db.commit()
+    return Response(status_code=204)
+
+
 def payroll_result(payroll, line, detail=None):
     names = (("base_salary","Salario base"), ("overtime","Horas extras"), ("commissions","Comisiones"),
              ("bonuses","Bonificaciones"), ("other_income","Otros ingresos"))

@@ -77,6 +77,7 @@ from .models import (
     GeneratedCertificate,
     LaborArticle,
     LaborDeadline,
+    LaborOperation,
     IntegrationBatch,
     IntegrationBatchItem,
     LaborParameter,
@@ -97,6 +98,13 @@ from .models import (
     User,
     UserSecurity,
     Vacation,
+)
+from .labor_operation_service import (
+    OPERATION_LABELS,
+    OPERATION_STATUSES,
+    OPERATION_TYPES,
+    operation_to_dict,
+    validate_labor_operation,
 )
 from .medical_exam_service import (
     MEDICAL_EXAM_RESULTS,
@@ -1278,6 +1286,7 @@ def calculate_values(
     gross: int = 0,
     other_income: int = 0,
     other_discount: int = 0,
+    ips_base: int | None = None,
     apply_ips: bool = True,
     salary: int = 0,
     monthly_hours: float = 240,
@@ -1290,6 +1299,7 @@ def calculate_values(
         "gross": max(0, int(gross or 0)),
         "other_income": max(0, int(other_income or 0)),
         "other_discount": max(0, int(other_discount or 0)),
+        "ips_base": max(0, int(ips_base)) if ips_base is not None else None,
         "apply_ips": bool(apply_ips),
         "salary": max(0, int(salary or 0)),
         "monthly_hours": max(1, float(monthly_hours or 240)),
@@ -1300,10 +1310,11 @@ def calculate_values(
     }
     if calculation_type == "salary":
         computable = inputs["gross"] + inputs["other_income"]
-        ips = round_gs(computable * ips_rate / 100) if inputs["apply_ips"] else 0
+        effective_ips_base = inputs["ips_base"] if inputs["ips_base"] is not None else computable
+        ips = round_gs(effective_ips_base * ips_rate / 100) if inputs["apply_ips"] else 0
         discounts = ips + inputs["other_discount"]
         amount = max(0, computable - discounts)
-        results = {"gross_computable": computable, "ips_employee": ips, "discounts": discounts, "net": amount}
+        results = {"gross_computable": computable, "ips_base": effective_ips_base, "ips_employee": ips, "discounts": discounts, "net": amount}
     elif calculation_type == "hours":
         base = inputs["salary"] / inputs["monthly_hours"]
         amount = round_gs(base * inputs["hours_quantity"] * inputs["multiplier"])
@@ -5119,6 +5130,7 @@ def save_calculation(
     gross: Annotated[int, Form()] = 0,
     other_income: Annotated[int, Form()] = 0,
     other_discount: Annotated[int, Form()] = 0,
+    ips_base: Annotated[int | None, Form()] = None,
     apply_ips: Annotated[str | None, Form()] = None,
     salary: Annotated[int, Form()] = 0,
     monthly_hours: Annotated[float, Form()] = 240,
@@ -5143,6 +5155,7 @@ def save_calculation(
         gross=gross,
         other_income=other_income,
         other_discount=other_discount,
+        ips_base=ips_base,
         apply_ips=apply_ips == "on",
         salary=salary,
         monthly_hours=monthly_hours,
@@ -6471,6 +6484,436 @@ def create_aguinaldo(
     return RedirectResponse("/app/aguinaldo", status_code=303)
 
 
+
+# Supplementary calculation operations: time entries, advances, employee actions and telegram drafts.
+def _visible_labor_operation(db: Session, user: User, operation_id: int) -> LaborOperation:
+    item = db.get(LaborOperation, operation_id)
+    if not item or item.company_id not in company_ids_for_user(db, user):
+        raise HTTPException(404, "Registro no encontrado.")
+    return item
+
+
+def _labor_operation_query(
+    db: Session,
+    user: User,
+    operation_type: str | None = None,
+    company_id: int | None = None,
+    employee_id: int | None = None,
+):
+    company_ids = company_ids_for_user(db, user)
+    query = select(LaborOperation).where(LaborOperation.company_id.in_(company_ids)) if company_ids else select(LaborOperation).where(False)
+    if operation_type:
+        query = query.where(LaborOperation.operation_type == operation_type)
+    if company_id:
+        if company_id not in company_ids:
+            raise HTTPException(404, "Empresa no encontrada.")
+        query = query.where(LaborOperation.company_id == company_id)
+    if employee_id:
+        employee = db.get(Employee, employee_id)
+        if not employee or employee.company_id not in company_ids:
+            raise HTTPException(404, "Funcionario no encontrado.")
+        query = query.where(LaborOperation.employee_id == employee_id)
+    return query
+
+
+def _validated_operation_context(db: Session, user: User, payload: dict) -> tuple[Company, Employee, dict]:
+    if not isinstance(payload, dict):
+        raise HTTPException(422, "El cuerpo de la operación debe ser un objeto JSON.")
+    try:
+        company_id = int(payload.get("company_id") or 0)
+        employee_id = int(payload.get("employee_id") or 0)
+    except (TypeError, ValueError):
+        raise HTTPException(422, "Empresa y funcionario son obligatorios.") from None
+    company = company_allowed(db, user, company_id)
+    employee = db.get(Employee, employee_id)
+    if not employee or employee.company_id != company.id:
+        raise HTTPException(422, "El funcionario debe pertenecer a la empresa seleccionada.")
+    try:
+        values = validate_labor_operation(payload, today=current_paraguay_date())
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from None
+    return company, employee, values
+
+
+def _save_labor_operation(
+    db: Session,
+    user: User,
+    company: Company,
+    employee: Employee,
+    values: dict,
+    item: LaborOperation | None = None,
+) -> LaborOperation:
+    if item is None:
+        item = LaborOperation(
+            company_id=company.id,
+            employee_id=employee.id,
+            operation_type=values["operation_type"],
+            created_by=user.email,
+        )
+        db.add(item)
+    elif item.company_id != company.id:
+        raise HTTPException(400, "No se puede mover un registro entre empresas.")
+    item.employee_id = employee.id
+    item.operation_type = values["operation_type"]
+    item.reference_code = values["reference_code"]
+    item.title = values["title"]
+    item.effective_date = values["effective_date"]
+    item.end_date = values["end_date"]
+    item.quantity = values["quantity"]
+    item.amount = values["amount"]
+    item.status = values["status"]
+    item.payload_json = values["payload_json"]
+    item.notes = values["notes"]
+    db.flush()
+    return item
+
+
+def _operation_payload_from_model(item: LaborOperation) -> dict:
+    values = operation_to_dict(item)
+    return {
+        **values,
+        **(values.get("payload") or {}),
+        "operation_type": item.operation_type,
+        "company_id": item.company_id,
+        "employee_id": item.employee_id,
+        "title": item.title,
+        "effective_date": item.effective_date.isoformat(),
+        "end_date": item.end_date.isoformat() if item.end_date else "",
+        "reference_code": item.reference_code or "",
+        "quantity": float(item.quantity) if item.quantity is not None else "",
+        "amount": item.amount if item.amount is not None else "",
+        "status": item.status,
+        "notes": item.notes or "",
+    }
+
+
+@app.get("/app/calculation-operations", response_class=HTMLResponse)
+def calculation_operations_page(
+    request: Request,
+    tipo: str = "hours",
+    company_id: OptionalQueryId = None,
+    employee_id: OptionalQueryId = None,
+    q: str = "",
+    edit: int | None = None,
+    user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
+    db: Session = Depends(get_db),
+):
+    if tipo not in OPERATION_TYPES:
+        raise HTTPException(404, "Submódulo no encontrado.")
+    company_ids = company_ids_for_user(db, user)
+    selected_company, selected_employee = default_labor_context(
+        request, db, user, company_ids, company_id, employee_id
+    )
+    companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name))) if company_ids else []
+    employee_query = select(Employee).where(Employee.company_id.in_(company_ids)) if company_ids else select(Employee).where(False)
+    if selected_company:
+        employee_query = employee_query.where(Employee.company_id == selected_company)
+    employees = list(db.scalars(employee_query.order_by(Employee.full_name)))
+    query = _labor_operation_query(db, user, tipo, selected_company, selected_employee)
+    term = q.strip()[:120]
+    if term:
+        query = query.join(Employee, Employee.id == LaborOperation.employee_id).where(
+            or_(
+                LaborOperation.title.ilike(f"%{term}%"),
+                LaborOperation.reference_code.ilike(f"%{term}%"),
+                LaborOperation.notes.ilike(f"%{term}%"),
+                Employee.full_name.ilike(f"%{term}%"),
+            )
+        )
+    items = list(db.scalars(query.order_by(LaborOperation.effective_date.desc(), LaborOperation.created_at.desc()).limit(300)))
+    editing = _visible_labor_operation(db, user, edit) if edit else None
+    if editing and editing.operation_type != tipo:
+        raise HTTPException(400, "El registro no pertenece al submódulo seleccionado.")
+    editing_payload = _operation_payload_from_model(editing) if editing else {}
+    selected_employee_obj = next((employee for employee in employees if employee.id == selected_employee), None)
+    selected_company_obj = next((company for company in companies if company.id == selected_company), None)
+    return render(
+        request, "calculation_operations.html", db, user,
+        companies=companies, employees=employees, items=items,
+        selected_employee_obj=selected_employee_obj, selected_company_obj=selected_company_obj,
+        selected_company=selected_company, selected_employee=selected_employee,
+        selected_type=tipo, type_label=OPERATION_LABELS[tipo], status_options=OPERATION_STATUSES[tipo],
+        editing=editing, editing_payload=editing_payload, search_term=term,
+        today=current_paraguay_date(), format_gs=format_gs,
+    )
+
+
+@app.post("/app/calculation-operations")
+def save_calculation_operation(
+    request: Request,
+    operation_type: Annotated[str, Form()],
+    company_id: Annotated[int, Form()],
+    employee_id: Annotated[int, Form()],
+    effective_date: Annotated[date, Form()],
+    title: Annotated[str, Form()],
+    operation_id: Annotated[int | None, Form()] = None,
+    reference_code: Annotated[str, Form()] = "",
+    end_date: Annotated[date | None, Form()] = None,
+    status_value: Annotated[str, Form(alias="status")] = "",
+    notes: Annotated[str, Form()] = "",
+    regular_hours: Annotated[str, Form()] = "",
+    overtime_hours: Annotated[str, Form()] = "",
+    salary_reference: Annotated[str, Form()] = "",
+    monthly_hours: Annotated[str, Form()] = "240",
+    multiplier: Annotated[str, Form()] = "1.5",
+    amount: Annotated[str, Form()] = "",
+    deduction_period: Annotated[str, Form()] = "",
+    payment_method: Annotated[str, Form()] = "",
+    subtype: Annotated[str, Form()] = "",
+    reason: Annotated[str, Form()] = "",
+    authorized_by: Annotated[str, Form()] = "",
+    quantity: Annotated[str, Form()] = "",
+    recipient: Annotated[str, Form()] = "",
+    recipient_document: Annotated[str, Form()] = "",
+    recipient_address: Annotated[str, Form()] = "",
+    sender: Annotated[str, Form()] = "",
+    body: Annotated[str, Form()] = "",
+    legal_review: Annotated[str, Form()] = "",
+    user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
+    db: Session = Depends(get_db),
+):
+    payload = {
+        "operation_type": operation_type, "company_id": company_id, "employee_id": employee_id,
+        "effective_date": effective_date, "end_date": end_date, "title": title,
+        "reference_code": reference_code, "status": status_value or None, "notes": notes,
+        "regular_hours": regular_hours, "overtime_hours": overtime_hours,
+        "salary_reference": salary_reference, "monthly_hours": monthly_hours, "multiplier": multiplier,
+        "amount": amount, "deduction_period": deduction_period, "payment_method": payment_method,
+        "subtype": subtype, "reason": reason, "authorized_by": authorized_by, "quantity": quantity,
+        "recipient": recipient, "recipient_document": recipient_document,
+        "recipient_address": recipient_address, "sender": sender, "body": body, "legal_review": legal_review,
+    }
+    company, employee, values = _validated_operation_context(db, user, payload)
+    item = _visible_labor_operation(db, user, operation_id) if operation_id else None
+    if item and item.operation_type != operation_type:
+        raise HTTPException(400, "No se puede cambiar el tipo de un registro existente.")
+    item = _save_labor_operation(db, user, company, employee, values, item)
+    write_audit(db, user, "actualizar" if operation_id else "crear", "operacion_laboral", str(item.id),
+                f"{OPERATION_LABELS[operation_type]} · {employee.full_name}")
+    db.commit()
+    return RedirectResponse(f"/app/calculation-operations?tipo={quote(operation_type)}&{'updated' if operation_id else 'saved'}={item.id}&company_id={company.id}&employee_id={employee.id}", status_code=303)
+
+
+@app.post("/app/calculation-operations/{operation_id}/status")
+def update_calculation_operation_status(
+    operation_id: int,
+    status_value: Annotated[str, Form(alias="status")],
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    item = _visible_labor_operation(db, user, operation_id)
+    if status_value not in OPERATION_STATUSES.get(item.operation_type, ()):
+        raise HTTPException(422, "Estado no válido para este submódulo.")
+    item.status = status_value
+    write_audit(db, user, "actualizar_estado", "operacion_laboral", str(item.id), status_value)
+    db.commit()
+    return RedirectResponse(f"/app/calculation-operations?tipo={quote(item.operation_type)}&company_id={item.company_id}&employee_id={item.employee_id}", status_code=303)
+
+
+@app.post("/app/calculation-operations/{operation_id}/delete")
+def delete_calculation_operation(
+    operation_id: int,
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    item = _visible_labor_operation(db, user, operation_id)
+    if item.status in {"Aprobado", "Descontado", "Enviado"}:
+        raise HTTPException(409, "El registro ya fue finalizado. Cambiá su estado a Anulado para conservar la trazabilidad.")
+    item.status = "Anulado"
+    write_audit(db, user, "anular", "operacion_laboral", str(item.id), item.title)
+    db.commit()
+    return RedirectResponse(f"/app/calculation-operations?tipo={quote(item.operation_type)}&company_id={item.company_id}&employee_id={item.employee_id}&deleted=1", status_code=303)
+
+
+@app.get("/app/calculation-operations/export.csv")
+def export_calculation_operations(
+    tipo: str = "hours",
+    company_id: OptionalQueryId = None,
+    employee_id: OptionalQueryId = None,
+    user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
+    db: Session = Depends(get_db),
+):
+    if tipo not in OPERATION_TYPES:
+        raise HTTPException(404, "Submódulo no encontrado.")
+    query = _labor_operation_query(db, user, tipo, company_id, employee_id)
+    items = list(db.scalars(query.order_by(LaborOperation.effective_date.desc()).limit(10000)))
+    output = io.StringIO(newline="")
+    writer = csv.writer(output)
+    writer.writerow(["Código", "Empresa", "Funcionario", "Submódulo", "Concepto", "Fecha", "Fecha fin", "Cantidad", "Importe Gs.", "Estado", "Observaciones"])
+    for item in items:
+        writer.writerow([
+            item.reference_code or item.id, item.company.legal_name, item.employee.full_name,
+            OPERATION_LABELS[item.operation_type], item.title, item.effective_date.isoformat(),
+            item.end_date.isoformat() if item.end_date else "", float(item.quantity) if item.quantity is not None else "",
+            item.amount if item.amount is not None else "", item.status, item.notes,
+        ])
+    filename = f"digit-laboral-{tipo}-{current_paraguay_date().isoformat()}.csv"
+    return Response(content="\ufeff" + output.getvalue(), media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+@app.get("/app/calculation-operations/{operation_id}/print", response_class=HTMLResponse)
+def print_labour_telegram(
+    operation_id: int,
+    request: Request,
+    user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
+    db: Session = Depends(get_db),
+):
+    item = _visible_labor_operation(db, user, operation_id)
+    if item.operation_type != "telegram":
+        raise HTTPException(404, "Solo los telegramas tienen vista imprimible.")
+    operation = operation_to_dict(item)
+    return render(request, "telegram_print.html", db, user, item=item, operation=operation,
+                  company=item.company, employee=item.employee, payload=operation.get("payload") or {})
+
+
+@app.get("/api/labor-operations")
+def api_list_labor_operations(
+    tipo: str | None = None,
+    company_id: int | None = None,
+    employee_id: int | None = None,
+    limit: int = 100,
+    user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
+    db: Session = Depends(get_db),
+):
+    if tipo and tipo not in OPERATION_TYPES:
+        raise HTTPException(422, "Tipo de operación no válido.")
+    if limit < 1 or limit > 500:
+        raise HTTPException(422, "El límite debe estar entre 1 y 500.")
+    query = _labor_operation_query(db, user, tipo, company_id, employee_id)
+    items = list(db.scalars(query.order_by(LaborOperation.created_at.desc()).limit(limit)))
+    results = []
+    for item in items:
+        data = operation_to_dict(item)
+        data["company_name"] = item.company.legal_name
+        data["employee_name"] = item.employee.full_name
+        results.append(data)
+    return {"items": results, "count": len(results), "limit": limit}
+
+
+@app.get("/api/labor-operations/{operation_id}")
+def api_get_labor_operation(
+    operation_id: int,
+    user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
+    db: Session = Depends(get_db),
+):
+    item = _visible_labor_operation(db, user, operation_id)
+    data = operation_to_dict(item)
+    data["company_name"] = item.company.legal_name
+    data["employee_name"] = item.employee.full_name
+    return data
+
+
+@app.post("/api/labor-operations", status_code=201)
+async def api_create_labor_operation(
+    request: Request,
+    user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
+    db: Session = Depends(get_db),
+):
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(400, "Se esperaba un cuerpo JSON válido.") from None
+    company, employee, values = _validated_operation_context(db, user, payload)
+    item = _save_labor_operation(db, user, company, employee, values)
+    write_audit(db, user, "crear_api", "operacion_laboral", str(item.id), item.title)
+    db.commit()
+    db.refresh(item)
+    result = operation_to_dict(item)
+    result["company_name"] = company.legal_name
+    result["employee_name"] = employee.full_name
+    return JSONResponse(result, status_code=201)
+
+
+@app.patch("/api/labor-operations/{operation_id}")
+async def api_update_labor_operation(
+    operation_id: int,
+    request: Request,
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    item = _visible_labor_operation(db, user, operation_id)
+    try:
+        incoming = await request.json()
+    except Exception:
+        raise HTTPException(400, "Se esperaba un cuerpo JSON válido.") from None
+    if not isinstance(incoming, dict):
+        raise HTTPException(422, "El cuerpo debe ser un objeto JSON.")
+    payload = _operation_payload_from_model(item)
+    payload.update(incoming)
+    payload["operation_type"] = item.operation_type
+    company, employee, values = _validated_operation_context(db, user, payload)
+    item = _save_labor_operation(db, user, company, employee, values, item)
+    write_audit(db, user, "actualizar_api", "operacion_laboral", str(item.id), item.title)
+    db.commit()
+    db.refresh(item)
+    result = operation_to_dict(item)
+    result["company_name"] = company.legal_name
+    result["employee_name"] = employee.full_name
+    return result
+
+
+@app.delete("/api/labor-operations/{operation_id}", status_code=204)
+def api_delete_labor_operation(
+    operation_id: int,
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    item = _visible_labor_operation(db, user, operation_id)
+    if item.status in {"Aprobado", "Descontado", "Enviado"}:
+        raise HTTPException(409, "El registro ya fue finalizado; anulalo para conservar trazabilidad.")
+    item.status = "Anulado"
+    write_audit(db, user, "anular_api", "operacion_laboral", str(item.id), item.title)
+    db.commit()
+    return Response(status_code=204)
+
+
+@app.get("/app/employee-history", response_class=HTMLResponse)
+def employee_history_page(
+    request: Request,
+    company_id: OptionalQueryId = None,
+    employee_id: OptionalQueryId = None,
+    q: str = "",
+    user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
+    db: Session = Depends(get_db),
+):
+    company_ids = company_ids_for_user(db, user)
+    selected_company, selected_employee = default_labor_context(
+        request, db, user, company_ids, company_id, employee_id
+    )
+    companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name))) if company_ids else []
+    query = select(Employee).where(Employee.company_id.in_(company_ids)) if company_ids else select(Employee).where(False)
+    if selected_company:
+        query = query.where(Employee.company_id == selected_company)
+    term = q.strip()[:120]
+    if term:
+        query = query.where(or_(Employee.full_name.ilike(f"%{term}%"), Employee.document_number.ilike(f"%{term}%")))
+    employees = list(db.scalars(query.order_by(Employee.full_name).limit(500)))
+    selected = db.get(Employee, selected_employee) if selected_employee else None
+    if selected and selected.company_id not in company_ids:
+        raise HTTPException(404, "Funcionario no encontrado.")
+    if selected and selected_company and selected.company_id != selected_company:
+        raise HTTPException(400, "El funcionario no pertenece a la empresa seleccionada.")
+    history = {}
+    if selected:
+        history = {
+            "events": list(db.scalars(select(EmployeeEvent).where(EmployeeEvent.employee_id == selected.id).order_by(EmployeeEvent.effective_date.desc(), EmployeeEvent.created_at.desc()).limit(100))),
+            "salary_history": list(db.scalars(select(SalaryHistory).where(SalaryHistory.employee_id == selected.id).order_by(SalaryHistory.effective_from.desc()).limit(100))),
+            "calculations": list(db.scalars(select(CalculationRecord).where(CalculationRecord.employee_id == selected.id).order_by(CalculationRecord.created_at.desc()).limit(100))),
+            "operations": list(db.scalars(select(LaborOperation).where(LaborOperation.employee_id == selected.id).order_by(LaborOperation.effective_date.desc()).limit(100))),
+            "vacations": list(db.scalars(select(Vacation).where(Vacation.employee_id == selected.id).order_by(Vacation.period_year.desc()).limit(100))),
+            "aguinaldos": list(db.scalars(select(Aguinaldo).where(Aguinaldo.employee_id == selected.id).order_by(Aguinaldo.year.desc()).limit(100))),
+            "medical_exams": (
+                list(db.scalars(select(MedicalExam).where(MedicalExam.employee_id == selected.id).order_by(MedicalExam.exam_date.desc()).limit(100)))
+                if user.role in {"administrador", "contador"} else []
+            ),
+            "payroll_lines": list(db.scalars(select(PayrollLine).where(PayrollLine.employee_id == selected.id).order_by(PayrollLine.id.desc()).limit(100))),
+        }
+    return render(request, "employee_history.html", db, user, companies=companies, employees=employees,
+                  selected_company=selected_company, selected_employee=selected.id if selected else None,
+                  selected=selected, history=history, search_term=term, format_gs=format_gs)
+
+
 @app.get("/app/documents", response_class=HTMLResponse)
 def documents_page(
     request: Request,
@@ -7789,3 +8232,336 @@ def health_ready(db: Session = Depends(get_db)):
         )
     warnings = [*settings.production_issues(), *postgres_rls_role_issues()]
     return {"status": "ready" if not warnings else "degraded", "checks": checks, "warnings": warnings, "version": APP_VERSION}
+
+
+
+# REST resources for annual vacation balances and aguinaldo records already exposed in the UI.
+VACATION_API_STATUSES = {"Pendiente", "Aprobada", "Completada", "Cancelada"}
+AGUINALDO_API_STATUSES = {"Borrador", "Revisar", "Aprobado", "Pagado", "Anulado"}
+
+
+def _employee_in_user_scope(db: Session, user: User, employee_id: int) -> Employee:
+    employee = db.get(Employee, employee_id)
+    if not employee or employee.company_id not in company_ids_for_user(db, user):
+        raise HTTPException(404, "Funcionario no encontrado.")
+    return employee
+
+
+def _vacation_api_record(item: Vacation) -> dict:
+    return {
+        "id": item.id,
+        "company_id": item.employee.company_id,
+        "employee_id": item.employee_id,
+        "employee_name": item.employee.full_name,
+        "period_year": item.period_year,
+        "entitled_days": item.entitled_days,
+        "used_days": item.used_days,
+        "balance_days": item.entitled_days - item.used_days,
+        "start_date": item.start_date.isoformat() if item.start_date else None,
+        "end_date": item.end_date.isoformat() if item.end_date else None,
+        "status": item.status,
+        "notes": item.notes or "",
+        "created_at": item.created_at.isoformat() if item.created_at else None,
+    }
+
+
+def _aguinaldo_api_record(item: Aguinaldo) -> dict:
+    return {
+        "id": item.id,
+        "company_id": item.employee.company_id,
+        "employee_id": item.employee_id,
+        "employee_name": item.employee.full_name,
+        "year": item.year,
+        "total_remunerations": item.total_remunerations,
+        "calculated_amount": item.calculated_amount,
+        "status": item.status,
+        "notes": item.notes or "",
+        "created_at": item.created_at.isoformat() if item.created_at else None,
+    }
+
+
+def _api_date(value, label: str) -> date | None:
+    if value in (None, ""):
+        return None
+    if isinstance(value, date):
+        return value
+    try:
+        return date.fromisoformat(str(value))
+    except (TypeError, ValueError):
+        raise HTTPException(422, f"{label} debe ser una fecha válida en formato AAAA-MM-DD.") from None
+
+
+def _api_int(value, label: str, *, minimum: int = 0, maximum: int = 2147483647) -> int:
+    if isinstance(value, bool):
+        raise HTTPException(422, f"{label} debe ser un número entero.")
+    try:
+        result = int(str(value))
+    except (TypeError, ValueError):
+        raise HTTPException(422, f"{label} debe ser un número entero.") from None
+    if str(value).strip() not in {str(result), f"+{result}"} or not minimum <= result <= maximum:
+        raise HTTPException(422, f"{label} debe estar entre {minimum} y {maximum}.")
+    return result
+
+
+@app.get("/api/vacations")
+def api_list_vacations(
+    company_id: int | None = None,
+    employee_id: int | None = None,
+    year: int | None = None,
+    limit: int = 100,
+    user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
+    db: Session = Depends(get_db),
+):
+    company_ids = company_ids_for_user(db, user)
+    if not 1 <= limit <= 500:
+        raise HTTPException(422, "El límite debe estar entre 1 y 500.")
+    query = select(Vacation).join(Employee).where(Employee.company_id.in_(company_ids)) if company_ids else select(Vacation).where(False)
+    if company_id:
+        if company_id not in company_ids:
+            raise HTTPException(404, "Empresa no encontrada.")
+        query = query.where(Employee.company_id == company_id)
+    if employee_id:
+        employee = _employee_in_user_scope(db, user, employee_id)
+        if company_id and employee.company_id != company_id:
+            raise HTTPException(422, "El funcionario no pertenece a la empresa indicada.")
+        query = query.where(Vacation.employee_id == employee_id)
+    if year is not None:
+        query = query.where(Vacation.period_year == year)
+    items = list(db.scalars(query.order_by(Vacation.period_year.desc(), Vacation.created_at.desc()).limit(limit)))
+    return {"items": [_vacation_api_record(item) for item in items], "count": len(items), "limit": limit}
+
+
+@app.post("/api/vacations", status_code=201)
+async def api_create_vacation(
+    request: Request,
+    user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
+    db: Session = Depends(get_db),
+):
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(400, "Se esperaba un cuerpo JSON válido.") from None
+    if not isinstance(payload, dict):
+        raise HTTPException(422, "El cuerpo debe ser un objeto JSON.")
+    employee = _employee_in_user_scope(db, user, _api_int(payload.get("employee_id"), "employee_id", minimum=1))
+    today = current_paraguay_date()
+    year = _api_int(payload.get("period_year", today.year), "period_year", minimum=1990, maximum=today.year + 2)
+    entitled = _api_int(payload.get("entitled_days", 0), "entitled_days", maximum=365)
+    used = _api_int(payload.get("used_days", 0), "used_days", maximum=365)
+    if used > entitled:
+        raise HTTPException(422, "Los días utilizados no pueden superar los días concedidos.")
+    start = _api_date(payload.get("start_date"), "start_date")
+    end = _api_date(payload.get("end_date"), "end_date")
+    if bool(start) != bool(end):
+        raise HTTPException(422, "Ingresá ambas fechas del periodo de vacaciones.")
+    if start and end and end < start:
+        raise HTTPException(422, "La fecha de fin no puede ser anterior a la fecha de inicio.")
+    status_value = str(payload.get("status") or "Pendiente").strip()
+    if status_value not in VACATION_API_STATUSES - {"Cancelada"}:
+        raise HTTPException(422, "El estado de vacaciones no es válido para un nuevo registro.")
+    notes = str(payload.get("notes") or "").strip()
+    if len(notes) > 3000:
+        raise HTTPException(422, "Las observaciones superan el máximo de 3.000 caracteres.")
+    item = Vacation(employee_id=employee.id, period_year=year, entitled_days=entitled, used_days=used,
+                    start_date=start, end_date=end, status=status_value, notes=notes)
+    db.add(item)
+    db.flush()
+    if start:
+        ensure_compliance_event(
+            db, company_id=employee.company_id, employee_id=employee.id, branch_id=employee.branch_id,
+            authority="REOP", event_type="Vacaciones", event_date=start, due_date=None,
+            payload={"vacation_id": item.id, "period_year": year, "end_date": end.isoformat() if end else ""},
+            created_by=user.email, source_key=f"vacation:{item.id}:reop",
+        )
+    write_audit(db, user, "crear_api", "vacaciones", str(item.id), employee.full_name)
+    db.commit()
+    db.refresh(item)
+    return JSONResponse(_vacation_api_record(item), status_code=201)
+
+
+@app.patch("/api/vacations/{vacation_id}")
+async def api_update_vacation(
+    vacation_id: int,
+    request: Request,
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    item = db.get(Vacation, vacation_id)
+    if not item or item.employee.company_id not in company_ids_for_user(db, user):
+        raise HTTPException(404, "Registro de vacaciones no encontrado.")
+    if item.status == "Cancelada":
+        raise HTTPException(409, "El registro está cancelado.")
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(400, "Se esperaba un cuerpo JSON válido.") from None
+    if not isinstance(payload, dict):
+        raise HTTPException(422, "El cuerpo debe ser un objeto JSON.")
+    year = _api_int(payload.get("period_year", item.period_year), "period_year", minimum=1990, maximum=current_paraguay_date().year + 2)
+    entitled = _api_int(payload.get("entitled_days", item.entitled_days), "entitled_days", maximum=365)
+    used = _api_int(payload.get("used_days", item.used_days), "used_days", maximum=365)
+    if used > entitled:
+        raise HTTPException(422, "Los días utilizados no pueden superar los días concedidos.")
+    start = _api_date(payload.get("start_date", item.start_date), "start_date")
+    end = _api_date(payload.get("end_date", item.end_date), "end_date")
+    if bool(start) != bool(end) or (start and end and end < start):
+        raise HTTPException(422, "Revisá el rango de fechas del periodo de vacaciones.")
+    status_value = str(payload.get("status", item.status)).strip()
+    if status_value not in VACATION_API_STATUSES:
+        raise HTTPException(422, "El estado de vacaciones no es válido.")
+    notes = str(payload.get("notes", item.notes or "")).strip()
+    if len(notes) > 3000:
+        raise HTTPException(422, "Las observaciones superan el máximo de 3.000 caracteres.")
+    item.period_year, item.entitled_days, item.used_days = year, entitled, used
+    item.start_date, item.end_date, item.status, item.notes = start, end, status_value, notes
+    write_audit(db, user, "actualizar_api", "vacaciones", str(item.id), f"{item.employee.full_name} · {status_value}")
+    db.commit()
+    db.refresh(item)
+    return _vacation_api_record(item)
+
+
+@app.delete("/api/vacations/{vacation_id}", status_code=204)
+def api_cancel_vacation(
+    vacation_id: int,
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    item = db.get(Vacation, vacation_id)
+    if not item or item.employee.company_id not in company_ids_for_user(db, user):
+        raise HTTPException(404, "Registro de vacaciones no encontrado.")
+    if item.status == "Completada":
+        raise HTTPException(409, "No se puede cancelar un periodo completado; conservá la trazabilidad.")
+    item.status = "Cancelada"
+    write_audit(db, user, "cancelar_api", "vacaciones", str(item.id), item.employee.full_name)
+    db.commit()
+    return Response(status_code=204)
+
+
+@app.get("/api/aguinaldos")
+def api_list_aguinaldos(
+    company_id: int | None = None,
+    employee_id: int | None = None,
+    year: int | None = None,
+    limit: int = 100,
+    user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
+    db: Session = Depends(get_db),
+):
+    company_ids = company_ids_for_user(db, user)
+    if not 1 <= limit <= 500:
+        raise HTTPException(422, "El límite debe estar entre 1 y 500.")
+    query = select(Aguinaldo).join(Employee).where(Employee.company_id.in_(company_ids)) if company_ids else select(Aguinaldo).where(False)
+    if company_id:
+        if company_id not in company_ids:
+            raise HTTPException(404, "Empresa no encontrada.")
+        query = query.where(Employee.company_id == company_id)
+    if employee_id:
+        employee = _employee_in_user_scope(db, user, employee_id)
+        if company_id and employee.company_id != company_id:
+            raise HTTPException(422, "El funcionario no pertenece a la empresa indicada.")
+        query = query.where(Aguinaldo.employee_id == employee_id)
+    if year is not None:
+        query = query.where(Aguinaldo.year == year)
+    items = list(db.scalars(query.order_by(Aguinaldo.year.desc(), Aguinaldo.created_at.desc()).limit(limit)))
+    return {"items": [_aguinaldo_api_record(item) for item in items], "count": len(items), "limit": limit}
+
+
+@app.post("/api/aguinaldos", status_code=201)
+async def api_create_aguinaldo(
+    request: Request,
+    user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
+    db: Session = Depends(get_db),
+):
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(400, "Se esperaba un cuerpo JSON válido.") from None
+    if not isinstance(payload, dict):
+        raise HTTPException(422, "El cuerpo debe ser un objeto JSON.")
+    employee = _employee_in_user_scope(db, user, _api_int(payload.get("employee_id"), "employee_id", minimum=1))
+    today = current_paraguay_date()
+    year = _api_int(payload.get("year", today.year), "year", minimum=1900, maximum=2100)
+    total = _api_int(payload.get("total_remunerations"), "total_remunerations", maximum=2147483647)
+    notes = str(payload.get("notes") or "").strip()
+    if len(notes) > 3000:
+        raise HTTPException(422, "Las observaciones superan el máximo de 3.000 caracteres.")
+    item = Aguinaldo(employee_id=employee.id, year=year, total_remunerations=total,
+                     calculated_amount=round_gs(total / 12), notes=notes, status="Borrador")
+    db.add(item)
+    try:
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409, "Ya existe un cálculo de aguinaldo para ese funcionario y año.") from None
+    ensure_compliance_event(
+        db, company_id=employee.company_id, employee_id=employee.id, branch_id=employee.branch_id,
+        authority="REOP", event_type="Aguinaldo", event_date=date(year, 12, 31), due_date=None,
+        payload={"aguinaldo_id": item.id, "year": year, "amount": item.calculated_amount},
+        created_by=user.email, source_key=f"aguinaldo:{item.id}:reop",
+    )
+    write_audit(db, user, "crear_api", "aguinaldo", str(item.id), employee.full_name)
+    db.commit()
+    db.refresh(item)
+    return JSONResponse(_aguinaldo_api_record(item), status_code=201)
+
+
+@app.patch("/api/aguinaldos/{aguinaldo_id}")
+async def api_update_aguinaldo(
+    aguinaldo_id: int,
+    request: Request,
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    item = db.get(Aguinaldo, aguinaldo_id)
+    if not item or item.employee.company_id not in company_ids_for_user(db, user):
+        raise HTTPException(404, "Registro de aguinaldo no encontrado.")
+    if item.status in {"Pagado", "Anulado"}:
+        raise HTTPException(409, "El registro fue cerrado; no se puede modificar.")
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(400, "Se esperaba un cuerpo JSON válido.") from None
+    if not isinstance(payload, dict):
+        raise HTTPException(422, "El cuerpo debe ser un objeto JSON.")
+    year = _api_int(payload.get("year", item.year), "year", minimum=1900, maximum=2100)
+    total = _api_int(payload.get("total_remunerations", item.total_remunerations), "total_remunerations", maximum=2147483647)
+    status_value = str(payload.get("status", item.status)).strip()
+    if status_value not in AGUINALDO_API_STATUSES:
+        raise HTTPException(422, "El estado del aguinaldo no es válido.")
+    notes = str(payload.get("notes", item.notes or "")).strip()
+    if len(notes) > 3000:
+        raise HTTPException(422, "Las observaciones superan el máximo de 3.000 caracteres.")
+    duplicate = db.scalar(select(Aguinaldo.id).where(
+        Aguinaldo.employee_id == item.employee_id, Aguinaldo.year == year, Aguinaldo.id != item.id
+    ))
+    if duplicate:
+        raise HTTPException(409, "Ya existe un cálculo de aguinaldo para ese funcionario y año.")
+    item.year, item.total_remunerations = year, total
+    item.calculated_amount = round_gs(total / 12)
+    item.status, item.notes = status_value, notes
+    write_audit(db, user, "actualizar_api", "aguinaldo", str(item.id), f"{item.employee.full_name} · {status_value}")
+    db.commit()
+    db.refresh(item)
+    return _aguinaldo_api_record(item)
+
+
+@app.delete("/api/aguinaldos/{aguinaldo_id}", status_code=204)
+def api_cancel_aguinaldo(
+    aguinaldo_id: int,
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    item = db.get(Aguinaldo, aguinaldo_id)
+    if not item or item.employee.company_id not in company_ids_for_user(db, user):
+        raise HTTPException(404, "Registro de aguinaldo no encontrado.")
+    if item.status == "Pagado":
+        raise HTTPException(409, "No se puede anular un aguinaldo marcado como pagado.")
+    item.status = "Anulado"
+    write_audit(db, user, "anular_api", "aguinaldo", str(item.id), item.employee.full_name)
+    db.commit()
+    return Response(status_code=204)
+
+
+
+# Register the existing professional calculation engine only after core helpers are defined.
+from .calculator_routes import router as calculator_router
+app.include_router(calculator_router)
