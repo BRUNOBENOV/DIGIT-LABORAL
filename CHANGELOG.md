@@ -1,5 +1,13 @@
 # Registro de cambios
 
+## 2.6.23 — Integración de horas extras dentro de Salario
+
+- Incorpora carga por cantidad de horas y tramos de recargo del 30 %, 50 % y 100 % dentro de Salario.
+- Calcula la base horaria de referencia como salario mensual / 240, permite un valor horario manual para excepciones y presenta una vista previa accesible actualizada al cambiar los campos.
+- Incorpora los importes calculados a los haberes brutos y la base de aporte propuesta; el motor valida cantidades, decimales, combinación con importe manual y valores negativos.
+- Retira “Carga de hora” de la navegación principal y contextual de Cálculo. La ruta y los registros existentes se conservan para compatibilidad.
+- Añade pruebas para cálculos, base IPS, alternativa manual, conflictos y entradas inválidas.
+
 ## 2.6.22 — Control de salario mínimo y asignación familiar en Salario
 
 - Agrega escalas de salario mínimo con vigencia para julio de 2025 y julio de 2026, a partir de publicaciones oficiales del MTESS.
