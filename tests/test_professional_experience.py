@@ -137,10 +137,10 @@ def test_official_brand_identity_assets_are_used_across_the_product():
     assert wordmark.startswith(b"RIFF") and wordmark[8:12] == b"WEBP"
     assert "#0B2D78" in favicon
     assert "brand-identity.css" in base and "v=20261023b" in base
-    assert "digit-laboral-mark.webp" in base
-    assert "digit-laboral-wordmark.webp" in login
-    assert "digit-laboral-mark.webp" in public_nav
-    assert "digit-laboral-mark.webp" in public_footer
+    assert "digit-laboral-logo-267.webp" in base
+    assert "digit-laboral-logo-267.webp" in login
+    assert "digit-laboral-logo-267.webp" in public_nav
+    assert "digit-laboral-logo-267.webp" in public_footer
     assert ".official-wordmark" in css and "--accent:#0B2D78" in css
 
 
