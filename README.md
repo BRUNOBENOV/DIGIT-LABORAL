@@ -1,6 +1,14 @@
-# Digit Laboral 2.6.22
+# Digit Laboral 2.6.23
 
 Plataforma de gestión y cumplimiento laboral para estudios contables paraguayos.
+
+## Novedades de la versión 2.6.23
+
+- Salario calcula las horas extra por cantidad cargada en tramos de recargo del 30 %, 50 % y 100 %, mostrando un desglose por concepto y una vista previa inmediata.
+- La carga horaria deja de figurar como submódulo separado de Cálculo; se conserva su ruta de compatibilidad sin eliminar operaciones ni registros antiguos.
+- Se mantiene el importe manual de horas extras para casos heredados/excepcionales, con validación que impide duplicarlo con las horas por tramo.
+
+## Novedades de la versión 2.6.22
 
 ## Novedades de la versión 2.6.22
 
