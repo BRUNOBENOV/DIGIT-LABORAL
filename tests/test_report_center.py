@@ -146,6 +146,7 @@ def test_excel_export_forces_user_supplied_strings_to_text():
     assert spec is not None
     row = {column: "" for column in report_columns(spec)}
     row["Empresa"] = '=HYPERLINK("https://example.invalid","click")'
+    row["Nombre comercial"] = '\t=HYPERLINK("https://example.invalid","click")'
     payload = make_xlsx(spec, [row])
     workbook = load_workbook(BytesIO(payload), data_only=False)
     cell = workbook["Informe"].cell(row=3, column=2)
