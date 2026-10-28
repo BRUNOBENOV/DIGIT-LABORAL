@@ -1,10 +1,6 @@
 /* Digit Laboral v2.6.7 — ajuste del estado seleccionado y nueva marca oficial */
 
-/* En el estado activo sin hover, el rótulo Inicio contrasta con su fondo claro.
-   El estado hover queda deliberadamente intacto. */
-.app-body .workspace-sidebar .workspace-home-link.active:not(:hover){
-  color:#0B2D78!important;
-}
+/* Se conserva el estilo original de Inicio; solo se ajusta la marca en este archivo. */
 
 /* Logo horizontal nuevo en la barra superior. */
 .modern-brand{
