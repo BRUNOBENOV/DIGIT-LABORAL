@@ -10,14 +10,33 @@ def group(title, fields, advanced=False):
 SALARY = field("salary", "Salario mensual · Gs.", required=True, min="1")
 DAYS = field("days_paid", "Días a liquidar", value="30", max="30",
              help="Para remuneración mensual se utiliza base de 30 días.", required=True)
-EXTRA_FIELDS = [
-    field("overtime", "Importe de horas extras · Gs.", help="Registrá las horas y el recargo en Carga de hora; ingresá aquí el importe total revisado. No sumes dos veces un importe ya incluido en otro concepto."),
+REMUNERATIVE_EXTRA_FIELDS = [
     field("commissions", "Comisiones · Gs."),
     field("bonuses", "Bonificaciones remunerativas · Gs."),
     field("other_income", "Otros haberes remunerativos · Gs.")
 ]
+EXTRA_FIELDS = [
+    field("overtime", "Ajuste manual de horas extras · Gs.",
+          help="Compatibilidad para casos anteriores o ajustes excepcionales. No lo combines con horas cargadas en los tramos de recargo."),
+    *REMUNERATIVE_EXTRA_FIELDS,
+]
 EXTRAS = group("Otros haberes", EXTRA_FIELDS, True)
-SALARY_EXTRAS = group("Haberes adicionales", EXTRA_FIELDS, False)
+SALARY_EXTRAS = group("Haberes adicionales", REMUNERATIVE_EXTRA_FIELDS, False)
+SALARY_OVERTIME = group("Horas extras y recargos", [
+    field("overtime_30_hours", "Horas con recargo del 30 %", max="744", step="0.01",
+          help="Ingresá la cantidad de horas del período. El sistema estima el total automáticamente."),
+    field("overtime_50_hours", "Horas con recargo del 50 %", max="744", step="0.01",
+          help="Ingresá la cantidad de horas del período. El sistema estima el total automáticamente."),
+    field("overtime_100_hours", "Horas con recargo del 100 %", max="744", step="0.01",
+          help="Ingresá la cantidad de horas del período. El sistema estima el total automáticamente."),
+])
+SALARY_OVERTIME_ADJUSTMENTS = group("Ajustes de horas extras", [
+    field("overtime_hourly_base", "Valor de hora ordinaria · Gs. (excepción manual)",
+          min="0", step="0.0001",
+          help="Vacío: se propone salario mensual / 240. Usá un valor distinto solo cuando corresponda a la jornada, categoría o régimen del trabajador."),
+    field("overtime", "Ajuste manual de horas extras · Gs.",
+          help="Solo para compatibilidad o excepciones revisadas. Si ingresás horas en los tramos anteriores, dejá este importe en cero.")
+], True)
 IPS = group("Aportes y descuentos", [
     field("apply_ips", "Aplicar aporte IPS", "checkbox", "on"),
     field("ips_rate", "IPS trabajador · %", value="9", max="100", step="0.01"),
@@ -57,7 +76,9 @@ GROUPS = {
                            ("apprentice", "Aprendizaje / aprendizaje dual"),
                            ("special", "Actividad o categoría con mínimo diferenciado")],
                   help="Seleccioná la escala conforme a la actividad y jornada. Algunos sectores tienen mínimos específicos.")]),
+        SALARY_OVERTIME,
         SALARY_EXTRAS,
+        SALARY_OVERTIME_ADJUSTMENTS,
         group("Asignación familiar", [
             field("family_children", "Cantidad de hijos con derecho documentado", value="0", max="20",
                   help="Menores de 17 años o hijos con discapacidad que cumplan las condiciones legales."),
