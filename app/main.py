@@ -6512,6 +6512,8 @@ def _labor_operation_query(
 
 
 def _validated_operation_context(db: Session, user: User, payload: dict) -> tuple[Company, Employee, dict]:
+    if not isinstance(payload, dict):
+        raise HTTPException(422, "El cuerpo de la operación debe ser un objeto JSON.")
     try:
         company_id = int(payload.get("company_id") or 0)
         employee_id = int(payload.get("employee_id") or 0)
@@ -6715,7 +6717,7 @@ def delete_calculation_operation(
     item.status = "Anulado"
     write_audit(db, user, "anular", "operacion_laboral", str(item.id), item.title)
     db.commit()
-    return RedirectResponse(f"/app/calculation-operations?tipo={quote(item.operation_type)}&company_id={item.company_id}&employee_id={item.employee_id}", status_code=303)
+    return RedirectResponse(f"/app/calculation-operations?tipo={quote(item.operation_type)}&company_id={item.company_id}&employee_id={item.employee_id}&deleted=1", status_code=303)
 
 
 @app.get("/app/calculation-operations/export.csv")
