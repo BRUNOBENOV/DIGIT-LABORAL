@@ -31,7 +31,8 @@ def _text(value: Any, field: str, maximum: int, *, required: bool = False) -> st
     if required and not result:
         raise ValueError(f"{field} es obligatorio.")
     if len(result) > maximum:
-        raise ValueError(f"{field} supera el máximo de {maximum} caracteres.")
+        limit_label = f"{maximum:,}".replace(",", ".")
+        raise ValueError(f"{field} supera el máximo de {limit_label} caracteres.")
     return result
 
 
