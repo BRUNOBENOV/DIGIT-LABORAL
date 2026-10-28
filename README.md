@@ -1,6 +1,13 @@
-# Digit Laboral 2.5.9
+# Digit Laboral 2.6.20
 
 Plataforma de gestión y cumplimiento laboral para estudios contables paraguayos.
+
+## Novedades de la versión 2.6.20
+
+- El módulo Cálculo presenta los 11 submódulos en una navegación unificada.
+- Se conservan rutas diferenciadas entre calculadoras, nóminas, gestión operativa e histórico para evitar duplicar funciones existentes.
+- Examen Médico enlaza al registro compartido de Mantenimientos.
+- Esta versión establece la estructura inicial; no implica que todos los procesos jurídicos estén completamente automatizados.
 
 ## Novedades de la versión 2.5.9
 
