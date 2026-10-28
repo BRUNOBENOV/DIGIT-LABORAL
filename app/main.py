@@ -5785,6 +5785,122 @@ def api_delete_liquidation(calculation_id: int, user: User = Depends(require_rol
     return {"ok": True}
 
 
+
+# --- APIs REST para vacaciones y aguinaldo registrados ---
+
+@app.get("/api/vacations")
+def api_list_vacations(employee_id: OptionalQueryId = None, period_year: int | None = None, user: User = Depends(require_roles("administrador", "contador", "auxiliar")), db: Session = Depends(get_db)):
+    company_ids = company_ids_for_user(db, user)
+    query = select(Vacation).join(Employee, Employee.id == Vacation.employee_id).where(Employee.company_id.in_(company_ids)) if company_ids else select(Vacation).where(False)
+    if employee_id is not None: _operation_employee(db, user, employee_id); query = query.where(Vacation.employee_id == employee_id)
+    if period_year is not None:
+        if period_year < 1900 or period_year > date.today().year: raise HTTPException(422, "Año de vacaciones inválido.")
+        query = query.where(Vacation.period_year == period_year)
+    return {"items": [{"id": r.id, "employee_id": r.employee_id, "period_year": r.period_year, "entitled_days": r.entitled_days, "used_days": r.used_days, "start_date": r.start_date.isoformat() if r.start_date else None, "end_date": r.end_date.isoformat() if r.end_date else None, "status": r.status, "notes": r.notes} for r in db.scalars(query.order_by(Vacation.period_year.desc(), Vacation.created_at.desc()).limit(500))]}
+
+
+@app.post("/api/vacations", status_code=201)
+async def api_create_vacation(request: Request, user: User = Depends(require_roles("administrador", "contador", "auxiliar")), db: Session = Depends(get_db)):
+    p = await _json_object(request)
+    try: employee, _ = _operation_employee(db, user, int(p.get("employee_id") or 0))
+    except (TypeError, ValueError) as exc: raise HTTPException(422, "employee_id es obligatorio.") from exc
+    try: v = validate_vacation_record(period_year=p.get("period_year"), entitled_days=p.get("entitled_days"), used_days=p.get("used_days", 0), start_date=p.get("start_date"), end_date=p.get("end_date"), status=p.get("status", "Pendiente"), notes=p.get("notes", ""))
+    except ValueError as exc: raise HTTPException(422, str(exc)) from exc
+    item = Vacation(employee_id=employee.id, **v)
+    db.add(item); db.flush()
+    if item.start_date:
+        ensure_compliance_event(db, company_id=employee.company_id, employee_id=employee.id, branch_id=employee.branch_id,
+            authority="REOP", event_type="Vacaciones", event_date=item.start_date, due_date=None,
+            payload={"vacation_id": item.id, "period_year": item.period_year, "end_date": item.end_date.isoformat() if item.end_date else ""},
+            created_by=user.email, source_key=f"vacation:{item.id}:reop")
+    write_audit(db, user, "crear_api", "vacaciones", str(item.id), f"Funcionario {employee.employee_code or employee.id} · período {item.period_year}")
+    db.commit()
+    return {"id": item.id, "period_year": item.period_year, "entitled_days": item.entitled_days, "used_days": item.used_days, "status": item.status}
+
+
+@app.put("/api/vacations/{vacation_id}")
+async def api_update_vacation(vacation_id: int, request: Request, user: User = Depends(require_roles("administrador", "contador", "auxiliar")), db: Session = Depends(get_db)):
+    item = db.get(Vacation, vacation_id)
+    if not item: raise HTTPException(404, "Registro de vacaciones no encontrado.")
+    _operation_employee(db, user, item.employee_id)
+    p = await _json_object(request)
+    try: employee, _ = _operation_employee(db, user, int(p.get("employee_id", item.employee_id)))
+    except (TypeError, ValueError) as exc: raise HTTPException(422, "employee_id es inválido.") from exc
+    try: v = validate_vacation_record(period_year=p.get("period_year", item.period_year), entitled_days=p.get("entitled_days", item.entitled_days), used_days=p.get("used_days", item.used_days), start_date=p.get("start_date", item.start_date.isoformat() if item.start_date else None), end_date=p.get("end_date", item.end_date.isoformat() if item.end_date else None), status=p.get("status", item.status), notes=p.get("notes", item.notes))
+    except ValueError as exc: raise HTTPException(422, str(exc)) from exc
+    for key, value in v.items(): setattr(item, key, value)
+    item.employee_id = employee.id
+    write_audit(db, user, "editar_api", "vacaciones", str(item.id), f"Período {item.period_year}")
+    db.commit()
+    return {"id": item.id, "status": item.status}
+
+
+@app.delete("/api/vacations/{vacation_id}")
+def api_delete_vacation(vacation_id: int, user: User = Depends(require_roles("administrador", "contador")), db: Session = Depends(get_db)):
+    item = db.get(Vacation, vacation_id)
+    if not item: raise HTTPException(404, "Registro de vacaciones no encontrado.")
+    employee, _ = _operation_employee(db, user, item.employee_id)
+    write_audit(db, user, "eliminar_api", "vacaciones", str(item.id), f"Funcionario {employee.employee_code or employee.id} · período {item.period_year}")
+    db.delete(item); db.commit()
+    return {"ok": True}
+
+
+@app.get("/api/aguinaldos")
+def api_list_aguinaldos(employee_id: OptionalQueryId = None, year: int | None = None, user: User = Depends(require_roles("administrador", "contador", "auxiliar")), db: Session = Depends(get_db)):
+    company_ids = company_ids_for_user(db, user)
+    query = select(Aguinaldo).join(Employee, Employee.id == Aguinaldo.employee_id).where(Employee.company_id.in_(company_ids)) if company_ids else select(Aguinaldo).where(False)
+    if employee_id is not None: _operation_employee(db, user, employee_id); query = query.where(Aguinaldo.employee_id == employee_id)
+    if year is not None:
+        if year < 1900 or year > date.today().year: raise HTTPException(422, "Año de aguinaldo inválido.")
+        query = query.where(Aguinaldo.year == year)
+    return {"items": [{"id": r.id, "employee_id": r.employee_id, "year": r.year, "total_remunerations": r.total_remunerations, "calculated_amount": r.calculated_amount, "status": r.status, "notes": r.notes} for r in db.scalars(query.order_by(Aguinaldo.year.desc(), Aguinaldo.created_at.desc()).limit(500))]}
+
+
+@app.post("/api/aguinaldos", status_code=201)
+async def api_create_aguinaldo(request: Request, user: User = Depends(require_roles("administrador", "contador", "auxiliar")), db: Session = Depends(get_db)):
+    p = await _json_object(request)
+    try: employee, _ = _operation_employee(db, user, int(p.get("employee_id") or 0))
+    except (TypeError, ValueError) as exc: raise HTTPException(422, "employee_id es obligatorio.") from exc
+    try: v = validate_aguinaldo_record(year=p.get("year"), total_remunerations=p.get("total_remunerations"), status=p.get("status", "Borrador"), notes=p.get("notes", ""))
+    except ValueError as exc: raise HTTPException(422, str(exc)) from exc
+    duplicate = db.scalar(select(Aguinaldo.id).where(Aguinaldo.employee_id == employee.id, Aguinaldo.year == v["year"]))
+    if duplicate: raise HTTPException(409, "Ya existe un registro de aguinaldo para ese funcionario y año.")
+    item = Aguinaldo(employee_id=employee.id, **v)
+    db.add(item); db.flush()
+    write_audit(db, user, "crear_api", "aguinaldo", str(item.id), f"Funcionario {employee.employee_code or employee.id} · año {item.year}")
+    db.commit()
+    return {"id": item.id, "year": item.year, "total_remunerations": item.total_remunerations, "calculated_amount": item.calculated_amount, "status": item.status}
+
+
+@app.put("/api/aguinaldos/{aguinaldo_id}")
+async def api_update_aguinaldo(aguinaldo_id: int, request: Request, user: User = Depends(require_roles("administrador", "contador", "auxiliar")), db: Session = Depends(get_db)):
+    item = db.get(Aguinaldo, aguinaldo_id)
+    if not item: raise HTTPException(404, "Registro de aguinaldo no encontrado.")
+    _operation_employee(db, user, item.employee_id)
+    p = await _json_object(request)
+    try: employee, _ = _operation_employee(db, user, int(p.get("employee_id", item.employee_id)))
+    except (TypeError, ValueError) as exc: raise HTTPException(422, "employee_id es inválido.") from exc
+    try: v = validate_aguinaldo_record(year=p.get("year", item.year), total_remunerations=p.get("total_remunerations", item.total_remunerations), status=p.get("status", item.status), notes=p.get("notes", item.notes))
+    except ValueError as exc: raise HTTPException(422, str(exc)) from exc
+    duplicate = db.scalar(select(Aguinaldo.id).where(Aguinaldo.employee_id == employee.id, Aguinaldo.year == v["year"], Aguinaldo.id != item.id))
+    if duplicate: raise HTTPException(409, "Ya existe un registro de aguinaldo para ese funcionario y año.")
+    for key, value in v.items(): setattr(item, key, value)
+    item.employee_id = employee.id
+    write_audit(db, user, "editar_api", "aguinaldo", str(item.id), f"Año {item.year}")
+    db.commit()
+    return {"id": item.id, "status": item.status, "calculated_amount": item.calculated_amount}
+
+
+@app.delete("/api/aguinaldos/{aguinaldo_id}")
+def api_delete_aguinaldo(aguinaldo_id: int, user: User = Depends(require_roles("administrador", "contador")), db: Session = Depends(get_db)):
+    item = db.get(Aguinaldo, aguinaldo_id)
+    if not item: raise HTTPException(404, "Registro de aguinaldo no encontrado.")
+    employee, _ = _operation_employee(db, user, item.employee_id)
+    write_audit(db, user, "eliminar_api", "aguinaldo", str(item.id), f"Funcionario {employee.employee_code or employee.id} · año {item.year}")
+    db.delete(item); db.commit()
+    return {"ok": True}
+
+
 CALCULATION_MODULES = {
     "salary": {"title": "Salarios", "eyebrow": "CÁLCULO DE SALARIOS", "description": "Ingresá haberes, descuentos y base de IPS para revisar el bruto, el aporte y el neto estimado."},
     "hours": {"title": "Horas y recargos", "eyebrow": "CÁLCULO DE HORAS", "description": "Calculá el valor hora con una jornada y un multiplicador previamente revisados."},
