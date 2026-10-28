@@ -1,6 +1,13 @@
-# Digit Laboral 2.6.24
+# Digit Laboral 2.6.25
 
 Plataforma de gestión y cumplimiento laboral para estudios contables paraguayos.
+
+## Novedades de la versión 2.6.25
+
+- Liquidación final distingue ocho causales/supuestos de egreso y muestra cuándo el cálculo es solo un subtotal sujeto a revisión.
+- El motor informa antigüedad exacta en años, meses y días, además de la duración calendario de la relación.
+- El retiro justificado y los casos de estabilidad, protección especial, fin de contrato a plazo/obra, mutuo consentimiento y fallecimiento tienen advertencias específicas.
+- Se conservan la API REST, la auditoría, el historial, los estados del registro y los formatos PDF/CSV.
 
 ## Novedades de la versión 2.6.24
 
