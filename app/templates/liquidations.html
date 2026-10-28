@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Liquidación final | Digit Laboral{% endblock %}
+{% block page_name %}Liquidación final{% endblock %}
+{% block content %}
+<header class="page-header"><div><span class="eyebrow">CÁLCULO · TERMINACIÓN LABORAL</span><h1>Liquidación final</h1><p>Prepará una propuesta de cierre con rubros separados y revisión obligatoria antes de aprobar o pagar.</p></div><div class="header-actions"><a class="btn outline" href="/app/payrolls">Liquidaciones mensuales</a><a class="btn primary" href="#liquidationEditor">+ Nueva propuesta</a></div></header>
+<nav class="maintenance-subnav calculation-extra-nav" aria-label="Submódulos de cálculo"><a href="/app/calculations?tipo=salary">Salario<span>Haberes y descuentos</span></a><a href="/app/work-hours">Carga de horas<span>Registro diario</span></a><a href="/app/calculations?tipo=aguinaldo">Aguinaldo<span>Remuneración anual</span></a><a href="/app/calculations?tipo=vacation">Vacaciones<span>Descanso anual</span></a><a href="/app/calculations?tipo=notice">Preaviso<span>Plazos y estimación</span></a><a class="is-active" href="/app/liquidaciones">Liquidación final<span>Propuesta de cierre</span></a><a href="/app/employee-history">Histórico funcionario<span>Expediente</span></a></nav>
+{% if form_error %}<div class="alert error" role="alert">{{ form_error }}</div>{% elif saved %}<div class="alert success" role="status">La liquidación se guardó correctamente.</div>{% endif %}
+<div class="v24-professional-note"><span class="v24-note-icon">§</span><div><b>El sistema no presume rubros legales.</b> Los importes de vacaciones, aguinaldo proporcional, preaviso, indemnización y descuentos se ingresan y revisan según los hechos, la antigüedad, el promedio salarial y el motivo de terminación. Esta es una propuesta aritmética, no un dictamen de procedencia.</div></div>
+<section class="panel calc-ops-panel" id="liquidationEditor"><header class="panel-head"><div><span class="eyebrow">PROPUESTA ECONÓMICA</span><h2>Nueva liquidación final</h2></div></header>
+<form method="post" action="/app/liquidaciones" class="calc-ops-form" id="calcOperationForm"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+<label>Empresa *<select name="company_id" data-module-company required><option value="">Seleccioná empresa</option>{% for company in companies %}<option value="{{ company.id }}" {{ 'selected' if selected_company == company.id }}>{{ company.legal_name }}</option>{% endfor %}</select></label>
+<label>Funcionario *<select name="employee_id" data-module-employee required><option value="">Seleccioná funcionario</option>{% for item in employees %}<option value="{{ item.id }}" data-company="{{ item.company_id }}" {{ 'selected' if selected_employee == item.id }}>{{ item.full_name }} · {{ item.company.legal_name }}</option>{% endfor %}</select></label>
+<label>Fecha de terminación *<input type="date" name="termination_date" required value="{{ today.isoformat() }}"></label>
+<label>Causa consignada *<select name="termination_reason" required><option value="">Seleccioná la causa</option>{% for reason in settlement_reasons %}<option value="{{ reason }}">{{ reason }}</option>{% endfor %}</select></label>
+<label>Haberes pendientes (Gs.)<input type="number" name="pending_salary" min="0" step="1" value="0" required></label>
+<label>Vacaciones a pagar (Gs.)<input type="number" name="vacation_pay" min="0" step="1" value="0" required></label>
+<label>Aguinaldo proporcional (Gs.)<input type="number" name="aguinaldo_prorated" min="0" step="1" value="0" required></label>
+<label>Pago sustitutivo de preaviso (Gs.)<input type="number" name="notice_pay" min="0" step="1" value="0" required><small>Ingresar únicamente si el profesional revisó que corresponda.</small></label>
+<label>Indemnización (Gs.)<input type="number" name="severance_pay" min="0" step="1" value="0" required><small>No se determina automáticamente por la causa consignada.</small></label>
+<label>Otros haberes (Gs.)<input type="number" name="other_income" min="0" step="1" value="0" required></label>
+<label>Descuentos revisados (Gs.)<input type="number" name="discounts" min="0" step="1" value="0" required></label>
+<label class="calc-ops-span">Observaciones de revisión<textarea name="notes" rows="3" maxlength="4000" placeholder="Antigüedad, promedio salarial, conceptos examinados, documentos revisados y ajustes."></textarea></label>
+<div class="calc-ops-form-actions"><button class="btn primary" type="submit">Guardar para revisión</button><button class="btn ghost" type="reset">Restablecer</button></div></form>
+<p class="form-help">Ejemplo aritmético: haberes consignados Gs. 5.000.000 menos descuentos revisados Gs. 200.000 = Gs. 4.800.000. El ejemplo no representa una liquidación real ni define qué conceptos son exigibles.</p>
+</section>
+<section class="panel calc-ops-panel"><header class="panel-head"><div><span class="eyebrow">TRAZABILIDAD</span><h2>Propuestas guardadas</h2></div><span class="calc-ops-count">{{ records|length }} registros</span></header>
+<form method="get" class="calc-ops-filters"><label>Empresa<select name="company_id"><option value="">Todas las empresas</option>{% for company in companies %}<option value="{{ company.id }}" {{ 'selected' if selected_company == company.id }}>{{ company.legal_name }}</option>{% endfor %}</select></label><label>Funcionario<select name="employee_id"><option value="">Todos los funcionarios</option>{% for item in employees %}<option value="{{ item.id }}" {{ 'selected' if selected_employee == item.id }}>{{ item.full_name }}</option>{% endfor %}</select></label><button class="btn primary" type="submit">Filtrar</button><a class="btn ghost" href="/app/liquidaciones">Limpiar</a></form>
+<div class="table-wrap calc-ops-table-wrap"><table><thead><tr><th>Fecha de registro</th><th>Funcionario</th><th>Terminación</th><th>Resultado aritmético</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>{% for item in records %}<tr><td>{{ item.created_at.strftime('%d/%m/%Y') }}</td><td><b>{{ item.employee.full_name if item.employee else '—' }}</b><small class="table-sub">{{ item.company.legal_name }}</small></td><td>{{ item.reference_period or '—' }}</td><td><b>Gs. {{ item.amount|gs }}</b></td><td>{{ item.status }}</td><td><div class="calc-ops-row-actions"><a class="btn small outline" href="/app/liquidaciones/{{ item.id }}">Ver detalle</a><a class="btn small ghost" href="/app/liquidaciones/{{ item.id }}/pdf">PDF</a></div></td></tr>{% else %}<tr><td colspan="6" class="empty-state">No hay propuestas guardadas con estos filtros.</td></tr>{% endfor %}</tbody></table></div></section>
+<script>
+(() => {
+ const company=document.querySelector('[data-module-company]');
+ const employee=document.querySelector('[data-module-employee]');
+ if(!company||!employee)return;
+ const filter=()=>{Array.from(employee.options).forEach(o=>{if(!o.dataset.company)return;const ok=!company.value||o.dataset.company===company.value;o.hidden=!ok;o.disabled=!ok;});if(employee.selectedOptions[0]?.disabled)employee.value='';};
+ company.addEventListener('change',filter);filter();
+})();
+</script>
+{% endblock %}
