@@ -1,3 +1,13 @@
+## 2.6.26 — Centro de Informes
+
+- Incorpora el catálogo navegable de los 35 submódulos de Informes, agrupados por liquidaciones/remuneraciones, legajos/empresas, IPS/cumplimiento, vacaciones/aguinaldo, trámites/seguimiento, salud ocupacional y registros anuales.
+- Añade consultas paginadas en base de datos, búsqueda, filtros por empresa/funcionario/estado/año/periodo y ordenamiento por campos permitidos.
+- Añade exportaciones PDF, Excel (.xlsx) y CSV con encabezados, nombre de archivo seguro y registro de auditoría para descargas.
+- Publica API de catálogo, consulta paginada y exportación: `/api/reports/catalog`, `/api/reports/{report_key}` y `/api/reports/{report_key}/export`.
+- Las consultas se restringen a las empresas autorizadas del usuario; el reporte de exámenes médicos se reserva a los roles de estudio autorizados.
+- Los informes usan registros reales existentes, sin fabricar nóminas ni expedientes de prueba en producción. Los preimpresos IPS/MTESS se identifican como preparatorios y no como formularios oficiales.
+- No se agregan tablas ni migraciones. Se incorporan pruebas del catálogo completo, APIs, vistas y exportaciones.
+
 # Registro de cambios
 
 ## 2.6.25 — Revisión de causales y antigüedad en liquidación final
