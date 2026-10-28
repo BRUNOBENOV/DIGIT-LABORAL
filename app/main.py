@@ -8234,6 +8234,334 @@ def health_ready(db: Session = Depends(get_db)):
     return {"status": "ready" if not warnings else "degraded", "checks": checks, "warnings": warnings, "version": APP_VERSION}
 
 
+
+# REST resources for annual vacation balances and aguinaldo records already exposed in the UI.
+VACATION_API_STATUSES = {"Pendiente", "Aprobada", "Completada", "Cancelada"}
+AGUINALDO_API_STATUSES = {"Borrador", "Revisar", "Aprobado", "Pagado", "Anulado"}
+
+
+def _employee_in_user_scope(db: Session, user: User, employee_id: int) -> Employee:
+    employee = db.get(Employee, employee_id)
+    if not employee or employee.company_id not in company_ids_for_user(db, user):
+        raise HTTPException(404, "Funcionario no encontrado.")
+    return employee
+
+
+def _vacation_api_record(item: Vacation) -> dict:
+    return {
+        "id": item.id,
+        "company_id": item.employee.company_id,
+        "employee_id": item.employee_id,
+        "employee_name": item.employee.full_name,
+        "period_year": item.period_year,
+        "entitled_days": item.entitled_days,
+        "used_days": item.used_days,
+        "balance_days": item.entitled_days - item.used_days,
+        "start_date": item.start_date.isoformat() if item.start_date else None,
+        "end_date": item.end_date.isoformat() if item.end_date else None,
+        "status": item.status,
+        "notes": item.notes or "",
+        "created_at": item.created_at.isoformat() if item.created_at else None,
+    }
+
+
+def _aguinaldo_api_record(item: Aguinaldo) -> dict:
+    return {
+        "id": item.id,
+        "company_id": item.employee.company_id,
+        "employee_id": item.employee_id,
+        "employee_name": item.employee.full_name,
+        "year": item.year,
+        "total_remunerations": item.total_remunerations,
+        "calculated_amount": item.calculated_amount,
+        "status": item.status,
+        "notes": item.notes or "",
+        "created_at": item.created_at.isoformat() if item.created_at else None,
+    }
+
+
+def _api_date(value, label: str) -> date | None:
+    if value in (None, ""):
+        return None
+    if isinstance(value, date):
+        return value
+    try:
+        return date.fromisoformat(str(value))
+    except (TypeError, ValueError):
+        raise HTTPException(422, f"{label} debe ser una fecha válida en formato AAAA-MM-DD.") from None
+
+
+def _api_int(value, label: str, *, minimum: int = 0, maximum: int = 2147483647) -> int:
+    if isinstance(value, bool):
+        raise HTTPException(422, f"{label} debe ser un número entero.")
+    try:
+        result = int(str(value))
+    except (TypeError, ValueError):
+        raise HTTPException(422, f"{label} debe ser un número entero.") from None
+    if str(value).strip() not in {str(result), f"+{result}"} or not minimum <= result <= maximum:
+        raise HTTPException(422, f"{label} debe estar entre {minimum} y {maximum}.")
+    return result
+
+
+@app.get("/api/vacations")
+def api_list_vacations(
+    company_id: int | None = None,
+    employee_id: int | None = None,
+    year: int | None = None,
+    limit: int = 100,
+    user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
+    db: Session = Depends(get_db),
+):
+    company_ids = company_ids_for_user(db, user)
+    if not 1 <= limit <= 500:
+        raise HTTPException(422, "El límite debe estar entre 1 y 500.")
+    query = select(Vacation).join(Employee).where(Employee.company_id.in_(company_ids)) if company_ids else select(Vacation).where(False)
+    if company_id:
+        if company_id not in company_ids:
+            raise HTTPException(404, "Empresa no encontrada.")
+        query = query.where(Employee.company_id == company_id)
+    if employee_id:
+        employee = _employee_in_user_scope(db, user, employee_id)
+        if company_id and employee.company_id != company_id:
+            raise HTTPException(422, "El funcionario no pertenece a la empresa indicada.")
+        query = query.where(Vacation.employee_id == employee_id)
+    if year is not None:
+        query = query.where(Vacation.period_year == year)
+    items = list(db.scalars(query.order_by(Vacation.period_year.desc(), Vacation.created_at.desc()).limit(limit)))
+    return {"items": [_vacation_api_record(item) for item in items], "count": len(items), "limit": limit}
+
+
+@app.post("/api/vacations", status_code=201)
+async def api_create_vacation(
+    request: Request,
+    user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
+    db: Session = Depends(get_db),
+):
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(400, "Se esperaba un cuerpo JSON válido.") from None
+    if not isinstance(payload, dict):
+        raise HTTPException(422, "El cuerpo debe ser un objeto JSON.")
+    employee = _employee_in_user_scope(db, user, _api_int(payload.get("employee_id"), "employee_id", minimum=1))
+    today = current_paraguay_date()
+    year = _api_int(payload.get("period_year", today.year), "period_year", minimum=1990, maximum=today.year + 2)
+    entitled = _api_int(payload.get("entitled_days", 0), "entitled_days", maximum=365)
+    used = _api_int(payload.get("used_days", 0), "used_days", maximum=365)
+    if used > entitled:
+        raise HTTPException(422, "Los días utilizados no pueden superar los días concedidos.")
+    start = _api_date(payload.get("start_date"), "start_date")
+    end = _api_date(payload.get("end_date"), "end_date")
+    if bool(start) != bool(end):
+        raise HTTPException(422, "Ingresá ambas fechas del periodo de vacaciones.")
+    if start and end and end < start:
+        raise HTTPException(422, "La fecha de fin no puede ser anterior a la fecha de inicio.")
+    status_value = str(payload.get("status") or "Pendiente").strip()
+    if status_value not in VACATION_API_STATUSES - {"Cancelada"}:
+        raise HTTPException(422, "El estado de vacaciones no es válido para un nuevo registro.")
+    notes = str(payload.get("notes") or "").strip()
+    if len(notes) > 3000:
+        raise HTTPException(422, "Las observaciones superan el máximo de 3.000 caracteres.")
+    item = Vacation(employee_id=employee.id, period_year=year, entitled_days=entitled, used_days=used,
+                    start_date=start, end_date=end, status=status_value, notes=notes)
+    db.add(item)
+    db.flush()
+    if start:
+        ensure_compliance_event(
+            db, company_id=employee.company_id, employee_id=employee.id, branch_id=employee.branch_id,
+            authority="REOP", event_type="Vacaciones", event_date=start, due_date=None,
+            payload={"vacation_id": item.id, "period_year": year, "end_date": end.isoformat() if end else ""},
+            created_by=user.email, source_key=f"vacation:{item.id}:reop",
+        )
+    write_audit(db, user, "crear_api", "vacaciones", str(item.id), employee.full_name)
+    db.commit()
+    db.refresh(item)
+    return JSONResponse(_vacation_api_record(item), status_code=201)
+
+
+@app.patch("/api/vacations/{vacation_id}")
+async def api_update_vacation(
+    vacation_id: int,
+    request: Request,
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    item = db.get(Vacation, vacation_id)
+    if not item or item.employee.company_id not in company_ids_for_user(db, user):
+        raise HTTPException(404, "Registro de vacaciones no encontrado.")
+    if item.status == "Cancelada":
+        raise HTTPException(409, "El registro está cancelado.")
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(400, "Se esperaba un cuerpo JSON válido.") from None
+    if not isinstance(payload, dict):
+        raise HTTPException(422, "El cuerpo debe ser un objeto JSON.")
+    year = _api_int(payload.get("period_year", item.period_year), "period_year", minimum=1990, maximum=current_paraguay_date().year + 2)
+    entitled = _api_int(payload.get("entitled_days", item.entitled_days), "entitled_days", maximum=365)
+    used = _api_int(payload.get("used_days", item.used_days), "used_days", maximum=365)
+    if used > entitled:
+        raise HTTPException(422, "Los días utilizados no pueden superar los días concedidos.")
+    start = _api_date(payload.get("start_date", item.start_date), "start_date")
+    end = _api_date(payload.get("end_date", item.end_date), "end_date")
+    if bool(start) != bool(end) or (start and end and end < start):
+        raise HTTPException(422, "Revisá el rango de fechas del periodo de vacaciones.")
+    status_value = str(payload.get("status", item.status)).strip()
+    if status_value not in VACATION_API_STATUSES:
+        raise HTTPException(422, "El estado de vacaciones no es válido.")
+    notes = str(payload.get("notes", item.notes or "")).strip()
+    if len(notes) > 3000:
+        raise HTTPException(422, "Las observaciones superan el máximo de 3.000 caracteres.")
+    item.period_year, item.entitled_days, item.used_days = year, entitled, used
+    item.start_date, item.end_date, item.status, item.notes = start, end, status_value, notes
+    write_audit(db, user, "actualizar_api", "vacaciones", str(item.id), f"{item.employee.full_name} · {status_value}")
+    db.commit()
+    db.refresh(item)
+    return _vacation_api_record(item)
+
+
+@app.delete("/api/vacations/{vacation_id}", status_code=204)
+def api_cancel_vacation(
+    vacation_id: int,
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    item = db.get(Vacation, vacation_id)
+    if not item or item.employee.company_id not in company_ids_for_user(db, user):
+        raise HTTPException(404, "Registro de vacaciones no encontrado.")
+    if item.status == "Completada":
+        raise HTTPException(409, "No se puede cancelar un periodo completado; conservá la trazabilidad.")
+    item.status = "Cancelada"
+    write_audit(db, user, "cancelar_api", "vacaciones", str(item.id), item.employee.full_name)
+    db.commit()
+    return Response(status_code=204)
+
+
+@app.get("/api/aguinaldos")
+def api_list_aguinaldos(
+    company_id: int | None = None,
+    employee_id: int | None = None,
+    year: int | None = None,
+    limit: int = 100,
+    user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
+    db: Session = Depends(get_db),
+):
+    company_ids = company_ids_for_user(db, user)
+    if not 1 <= limit <= 500:
+        raise HTTPException(422, "El límite debe estar entre 1 y 500.")
+    query = select(Aguinaldo).join(Employee).where(Employee.company_id.in_(company_ids)) if company_ids else select(Aguinaldo).where(False)
+    if company_id:
+        if company_id not in company_ids:
+            raise HTTPException(404, "Empresa no encontrada.")
+        query = query.where(Employee.company_id == company_id)
+    if employee_id:
+        employee = _employee_in_user_scope(db, user, employee_id)
+        if company_id and employee.company_id != company_id:
+            raise HTTPException(422, "El funcionario no pertenece a la empresa indicada.")
+        query = query.where(Aguinaldo.employee_id == employee_id)
+    if year is not None:
+        query = query.where(Aguinaldo.year == year)
+    items = list(db.scalars(query.order_by(Aguinaldo.year.desc(), Aguinaldo.created_at.desc()).limit(limit)))
+    return {"items": [_aguinaldo_api_record(item) for item in items], "count": len(items), "limit": limit}
+
+
+@app.post("/api/aguinaldos", status_code=201)
+async def api_create_aguinaldo(
+    request: Request,
+    user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
+    db: Session = Depends(get_db),
+):
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(400, "Se esperaba un cuerpo JSON válido.") from None
+    if not isinstance(payload, dict):
+        raise HTTPException(422, "El cuerpo debe ser un objeto JSON.")
+    employee = _employee_in_user_scope(db, user, _api_int(payload.get("employee_id"), "employee_id", minimum=1))
+    today = current_paraguay_date()
+    year = _api_int(payload.get("year", today.year), "year", minimum=1900, maximum=2100)
+    total = _api_int(payload.get("total_remunerations"), "total_remunerations", maximum=2147483647)
+    notes = str(payload.get("notes") or "").strip()
+    if len(notes) > 3000:
+        raise HTTPException(422, "Las observaciones superan el máximo de 3.000 caracteres.")
+    item = Aguinaldo(employee_id=employee.id, year=year, total_remunerations=total,
+                     calculated_amount=round_gs(total / 12), notes=notes, status="Borrador")
+    db.add(item)
+    try:
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409, "Ya existe un cálculo de aguinaldo para ese funcionario y año.") from None
+    ensure_compliance_event(
+        db, company_id=employee.company_id, employee_id=employee.id, branch_id=employee.branch_id,
+        authority="REOP", event_type="Aguinaldo", event_date=date(year, 12, 31), due_date=None,
+        payload={"aguinaldo_id": item.id, "year": year, "amount": item.calculated_amount},
+        created_by=user.email, source_key=f"aguinaldo:{item.id}:reop",
+    )
+    write_audit(db, user, "crear_api", "aguinaldo", str(item.id), employee.full_name)
+    db.commit()
+    db.refresh(item)
+    return JSONResponse(_aguinaldo_api_record(item), status_code=201)
+
+
+@app.patch("/api/aguinaldos/{aguinaldo_id}")
+async def api_update_aguinaldo(
+    aguinaldo_id: int,
+    request: Request,
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    item = db.get(Aguinaldo, aguinaldo_id)
+    if not item or item.employee.company_id not in company_ids_for_user(db, user):
+        raise HTTPException(404, "Registro de aguinaldo no encontrado.")
+    if item.status in {"Pagado", "Anulado"}:
+        raise HTTPException(409, "El registro fue cerrado; no se puede modificar.")
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(400, "Se esperaba un cuerpo JSON válido.") from None
+    if not isinstance(payload, dict):
+        raise HTTPException(422, "El cuerpo debe ser un objeto JSON.")
+    year = _api_int(payload.get("year", item.year), "year", minimum=1900, maximum=2100)
+    total = _api_int(payload.get("total_remunerations", item.total_remunerations), "total_remunerations", maximum=2147483647)
+    status_value = str(payload.get("status", item.status)).strip()
+    if status_value not in AGUINALDO_API_STATUSES:
+        raise HTTPException(422, "El estado del aguinaldo no es válido.")
+    notes = str(payload.get("notes", item.notes or "")).strip()
+    if len(notes) > 3000:
+        raise HTTPException(422, "Las observaciones superan el máximo de 3.000 caracteres.")
+    duplicate = db.scalar(select(Aguinaldo.id).where(
+        Aguinaldo.employee_id == item.employee_id, Aguinaldo.year == year, Aguinaldo.id != item.id
+    ))
+    if duplicate:
+        raise HTTPException(409, "Ya existe un cálculo de aguinaldo para ese funcionario y año.")
+    item.year, item.total_remunerations = year, total
+    item.calculated_amount = round_gs(total / 12)
+    item.status, item.notes = status_value, notes
+    write_audit(db, user, "actualizar_api", "aguinaldo", str(item.id), f"{item.employee.full_name} · {status_value}")
+    db.commit()
+    db.refresh(item)
+    return _aguinaldo_api_record(item)
+
+
+@app.delete("/api/aguinaldos/{aguinaldo_id}", status_code=204)
+def api_cancel_aguinaldo(
+    aguinaldo_id: int,
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    item = db.get(Aguinaldo, aguinaldo_id)
+    if not item or item.employee.company_id not in company_ids_for_user(db, user):
+        raise HTTPException(404, "Registro de aguinaldo no encontrado.")
+    if item.status == "Pagado":
+        raise HTTPException(409, "No se puede anular un aguinaldo marcado como pagado.")
+    item.status = "Anulado"
+    write_audit(db, user, "anular_api", "aguinaldo", str(item.id), item.employee.full_name)
+    db.commit()
+    return Response(status_code=204)
+
+
+
 # Register the existing professional calculation engine only after core helpers are defined.
 from .calculator_routes import router as calculator_router
 app.include_router(calculator_router)
