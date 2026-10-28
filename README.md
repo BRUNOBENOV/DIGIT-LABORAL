@@ -1,6 +1,12 @@
-# Digit Laboral 2.6.20
+# Digit Laboral 2.6.21
 
 Plataforma de gestión y cumplimiento laboral para estudios contables paraguayos.
+
+## Novedades de la versión 2.6.21
+
+- La navegación de Cálculo se limita a los 11 submódulos definidos.
+- Salario usa el motor profesional existente y muestra sus haberes adicionales sin ocultarlos inicialmente.
+- Los accesos auxiliares no solicitados salen de la navegación principal; los datos y rutas compartidas se conservan para evitar pérdida de información.
 
 ## Novedades de la versión 2.6.20
 
