@@ -261,7 +261,7 @@ def test_salary_overtime_recargo_uses_manual_hourly_base_when_explicitly_provide
     assert earnings["Horas con recargo del 30 %"] == 15_600
     assert earnings["Horas con recargo del 100 %"] == 48_000
     assert result["gross"] == 2_463_600
-    assert { "label": "Base horaria aplicada a horas extras", "value": "Gs. 12.000,0000" } in result["facts"]
+    assert { "label": "Base horaria aplicada a horas extras", "value": "Gs. 12000.0000" } in result["facts"]
 
 
 def test_salary_overtime_manual_compatibility_fallback_cannot_be_combined_with_hour_quantities():
