@@ -14,7 +14,7 @@
 <label>Estado<input type="text" name="status" value="{{ filters.status or '' }}" placeholder="Ej.: Cerrado"></label>
 <label>Año<input type="number" name="year" min="2000" max="2100" value="{{ filters.year or '' }}" placeholder="Ej.: 2026"></label>
 <label>Periodo<input type="month" name="period" value="{{ filters.period or '' }}"></label>
-<label>Ordenar por<select name="sort"><option value="" {{ 'selected' if not filters.sort }}>Predeterminado</option><option value="name" {{ 'selected' if filters.sort == 'name' }}>Nombre</option><option value="employee" {{ 'selected' if filters.sort == 'employee' }}>Funcionario</option><option value="date" {{ 'selected' if filters.sort == 'date' }}>Fecha</option><option value="period" {{ 'selected' if filters.sort == 'period' }}>Periodo / año</option><option value="amount" {{ 'selected' if filters.sort == 'amount' }}>Importe</option><option value="status" {{ 'selected' if filters.sort == 'status' }}>Estado</option><option value="code" {{ 'selected' if filters.sort == 'code' }}>Código</option></select></label>
+<label>Ordenar por<select name="sort"><option value="" {{ 'selected' if not filters.sort }}>Predeterminado</option>{% for sort_key, sort_label in sort_options %}<option value="{{ sort_key }}" {{ 'selected' if filters.sort == sort_key }}>{{ sort_label }}</option>{% endfor %}</select></label>
 <input type="hidden" name="page_size" value="{{ pagination.page_size }}"><button class="btn primary" type="submit">Aplicar</button>
 </form>
 <div class="report-detail-metrics"><span><strong>{{ pagination.total }}</strong> registros encontrados · página {{ pagination.page }} de {{ pagination.pages if pagination.pages else 1 }}</span><span>Fuente: registros actuales de DIGIT-LABORAL</span></div>
