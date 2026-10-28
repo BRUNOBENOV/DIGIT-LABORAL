@@ -1,5 +1,15 @@
 # Registro de cambios
 
+## 2.6.22 — Control de salario mínimo y asignación familiar en Salario
+
+- Agrega escalas de salario mínimo con vigencia para julio de 2025 y julio de 2026, a partir de publicaciones oficiales del MTESS.
+- Advierte si la base mensual queda por debajo de la escala seleccionada; el cálculo no se bloquea ni declara automáticamente una infracción.
+- Permite indicar actividad o categoría con mínimo diferenciado y requiere ingresar su valor mensual vigente, sin adivinarlo.
+- Calcula la asignación familiar por hijo con derecho documentado, confirma sus requisitos mediante el usuario y aplica el límite de dos salarios mínimos.
+- La asignación familiar continúa fuera de la base de aporte IPS. Se mantiene el ingreso manual como excepción trazable con advertencia.
+- Añade pruebas de vigencias, mínimos especiales, documentación, límite del artículo 263 y base IPS.
+
+
 ## 2.6.21 — Depuración de Cálculo e inicio de modernización de Salario
 
 - La navegación lateral y contextual de Cálculo se limita a los 11 submódulos definidos por el usuario.
