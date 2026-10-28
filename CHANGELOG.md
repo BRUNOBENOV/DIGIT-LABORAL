@@ -1,4 +1,14 @@
 # Registro de cambios
+## 2.6.7 — Ajuste de Inicio y actualización de marca
+
+- Corrige el color del texto **Inicio** cuando la opción está seleccionada y el cursor no está encima; el estado hover existente se conserva sin cambios.
+- Sustituye el logo anterior por el nuevo logo horizontal proporcionado para el encabezado, el pie de la barra lateral y las pantallas de acceso, recuperación y segundo factor.
+- Añade reglas responsive y una base blanca discreta para mantener legible el logo sobre el fondo oscuro de la sidebar.
+- No modifica rutas, permisos, datos, API ni lógica laboral.
+
+### Validación
+- Incorpora pruebas de regresión para el color de Inicio y el uso coherente de la nueva marca.
+
 ## 2.6.6 — Módulo Secciones dentro de Mantenimientos
 
 - Añade una pantalla de gestión dedicada en `/app/sections`, accesible como subapartado de **Mantenimientos** junto a Empresas y Funcionarios.
