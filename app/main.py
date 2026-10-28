@@ -5558,6 +5558,47 @@ def api_delete_telegram(telegram_id: int, user: User = Depends(require_roles("ad
     return {"ok": True}
 
 
+
+# --- Histórico del funcionario: cálculo, salario y movimientos vinculados ---
+
+@app.get("/app/employee-history", response_class=HTMLResponse)
+def employee_history_page(request: Request, employee_id: OptionalQueryId = None, user: User = Depends(require_roles("administrador", "contador", "auxiliar")), db: Session = Depends(get_db)):
+    company_ids = company_ids_for_user(db, user)
+    employees = list(db.scalars(select(Employee).options(selectinload(Employee.company)).where(Employee.company_id.in_(company_ids)).order_by(Employee.full_name))) if company_ids else []
+    employee = None
+    events = []; salary_history = []; calculations = []; advances = []; actions = []; telegrams = []; hours = []; medical_exams = []
+    if employee_id is not None:
+        employee, _ = _operation_employee(db, user, employee_id)
+        events = list(db.scalars(select(EmployeeEvent).where(EmployeeEvent.employee_id == employee_id).order_by(EmployeeEvent.effective_date.desc(), EmployeeEvent.id.desc()).limit(100)))
+        salary_history = list(db.scalars(select(SalaryHistory).where(SalaryHistory.employee_id == employee_id).order_by(SalaryHistory.effective_from.desc()).limit(100)))
+        calculations = list(db.scalars(select(CalculationRecord).where(CalculationRecord.employee_id == employee_id, CalculationRecord.company_id == employee.company_id).order_by(CalculationRecord.created_at.desc()).limit(100)))
+        advances = list(db.scalars(select(SalaryAdvance).where(SalaryAdvance.employee_id == employee_id, SalaryAdvance.company_id == employee.company_id).order_by(SalaryAdvance.advance_date.desc()).limit(100)))
+        actions = list(db.scalars(select(EmployeeLaborAction).where(EmployeeLaborAction.employee_id == employee_id, EmployeeLaborAction.company_id == employee.company_id).order_by(EmployeeLaborAction.action_date.desc()).limit(100)))
+        telegrams = list(db.scalars(select(LaborTelegram).where(LaborTelegram.employee_id == employee_id, LaborTelegram.company_id == employee.company_id).order_by(LaborTelegram.issue_date.desc()).limit(100)))
+        hours = list(db.scalars(select(WorkHoursEntry).where(WorkHoursEntry.employee_id == employee_id, WorkHoursEntry.company_id == employee.company_id).order_by(WorkHoursEntry.work_date.desc()).limit(100)))
+        medical_exams = list(db.scalars(select(MedicalExam).where(MedicalExam.employee_id == employee_id, MedicalExam.company_id == employee.company_id).order_by(MedicalExam.exam_date.desc()).limit(100)))
+    return render(request, "employee_history.html", db, user, employees=employees, employee=employee,
+                  events=events, salary_history=salary_history, calculations=calculations, advances=advances,
+                  actions=actions, telegrams=telegrams, hours=hours, medical_exams=medical_exams,
+                  selected_employee_id=employee_id)
+
+
+@app.get("/api/employee-history/{employee_id}")
+def api_employee_history(employee_id: int, user: User = Depends(require_roles("administrador", "contador", "auxiliar")), db: Session = Depends(get_db)):
+    employee, _ = _operation_employee(db, user, employee_id)
+    return {
+        "employee": {"id": employee.id, "full_name": employee.full_name, "employee_code": employee.employee_code, "company_id": employee.company_id},
+        "events": [{"id": i.id, "type": i.event_type, "title": i.title, "detail": i.detail, "date": i.effective_date.isoformat()} for i in db.scalars(select(EmployeeEvent).where(EmployeeEvent.employee_id == employee.id).order_by(EmployeeEvent.effective_date.desc()).limit(100))],
+        "salary_history": [{"id": i.id, "previous_salary": i.previous_salary, "new_salary": i.new_salary, "date": i.effective_from.isoformat(), "reason": i.reason} for i in db.scalars(select(SalaryHistory).where(SalaryHistory.employee_id == employee.id).order_by(SalaryHistory.effective_from.desc()).limit(100))],
+        "calculations": [{"id": i.id, "type": i.calculation_type, "period": i.reference_period, "amount": i.amount, "status": i.status, "created_at": i.created_at.isoformat() if i.created_at else None} for i in db.scalars(select(CalculationRecord).where(CalculationRecord.employee_id == employee.id, CalculationRecord.company_id == employee.company_id).order_by(CalculationRecord.created_at.desc()).limit(100))],
+        "advances": [{"id": i.id, "amount": i.amount, "date": i.advance_date.isoformat(), "period": i.salary_period, "status": i.status} for i in db.scalars(select(SalaryAdvance).where(SalaryAdvance.employee_id == employee.id, SalaryAdvance.company_id == employee.company_id).order_by(SalaryAdvance.advance_date.desc()).limit(100))],
+        "actions": [{"id": i.id, "type": i.action_type, "date": i.action_date.isoformat(), "reason": i.reason, "status": i.status} for i in db.scalars(select(EmployeeLaborAction).where(EmployeeLaborAction.employee_id == employee.id, EmployeeLaborAction.company_id == employee.company_id).order_by(EmployeeLaborAction.action_date.desc()).limit(100))],
+        "telegrams": [{"id": i.id, "code": i.telegram_code, "type": i.telegram_type, "date": i.issue_date.isoformat(), "status": i.status} for i in db.scalars(select(LaborTelegram).where(LaborTelegram.employee_id == employee.id, LaborTelegram.company_id == employee.company_id).order_by(LaborTelegram.issue_date.desc()).limit(100))],
+        "work_hours": [{"id": i.id, "date": i.work_date.isoformat(), "period": i.work_period, "ordinary_hours": float(i.ordinary_hours), "overtime_hours": float(i.overtime_hours), "night_hours": float(i.night_hours), "holiday_hours": float(i.holiday_hours), "status": i.status} for i in db.scalars(select(WorkHoursEntry).where(WorkHoursEntry.employee_id == employee.id, WorkHoursEntry.company_id == employee.company_id).order_by(WorkHoursEntry.work_date.desc()).limit(100))],
+        "medical_exams": [{"id": i.id, "code": i.exam_code, "type": i.exam_type, "date": i.exam_date.isoformat(), "expires_on": i.expires_on.isoformat(), "result": i.result} for i in db.scalars(select(MedicalExam).where(MedicalExam.employee_id == employee.id, MedicalExam.company_id == employee.company_id).order_by(MedicalExam.exam_date.desc()).limit(100))],
+    }
+
+
 CALCULATION_MODULES = {
     "salary": {"title": "Salarios", "eyebrow": "CÁLCULO DE SALARIOS", "description": "Ingresá haberes, descuentos y base de IPS para revisar el bruto, el aporte y el neto estimado."},
     "hours": {"title": "Horas y recargos", "eyebrow": "CÁLCULO DE HORAS", "description": "Calculá el valor hora con una jornada y un multiplicador previamente revisados."},
