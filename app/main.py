@@ -6389,6 +6389,11 @@ def salary_settlement_report_detail(
     db: Session = Depends(get_db),
 ):
     from .salary_report_service import build_salary_report_model, salary_report_history
+    from .reop_salary_service import (
+        REOP_COMMUNICATIONS_URL,
+        REOP_FORMS_URL,
+        build_reop_salary_payload,
+    )
 
     item, company, employee = _salary_report_record(db, user, calculation_id)
     model = build_salary_report_model(db, item, company, employee)
@@ -6400,9 +6405,37 @@ def salary_settlement_report_detail(
             AuditLog.entity_id == str(item.id),
         ).order_by(AuditLog.created_at.desc(), AuditLog.id.desc()).limit(20)
     )) if user.studio_id else []
+    reop_default_payload = build_reop_salary_payload(db, item, company, employee, model)
+    reop_batches = list(db.scalars(
+        select(IntegrationBatch)
+        .where(
+            IntegrationBatch.company_id == company.id,
+            IntegrationBatch.calculation_record_id == item.id,
+            IntegrationBatch.authority == "REOP",
+        )
+        .order_by(IntegrationBatch.created_at.desc(), IntegrationBatch.id.desc())
+        .limit(20)
+    ))
+    reop_receipt_available = {}
+    for batch in reop_batches:
+        try:
+            reop_receipt_available[batch.id] = bool(
+                batch.receipt_bytes is not None
+                or (batch.receipt_storage_key and storage.exists(batch.receipt_storage_key))
+            )
+        except Exception:
+            reop_receipt_available[batch.id] = batch.receipt_bytes is not None
     return render(
         request, "salary_settlement_detail.html", db, user,
         item=item, model=model, history=history, audit_events=audit_events,
+        reop_batches=reop_batches,
+        reop_receipt_available=reop_receipt_available,
+        reop_default_payload=reop_default_payload,
+        reop_communications_url=REOP_COMMUNICATIONS_URL,
+        reop_forms_url=REOP_FORMS_URL,
+        reop_can_manage=user.role in {"administrador", "contador"},
+        integration_batch_transitions={key: sorted(value) for key, value in INTEGRATION_BATCH_STATUS_TRANSITIONS.items()},
+        reop_direct_enabled=settings.reop_direct_enabled,
         auto_print=request.query_params.get("imprimir") == "1",
     )
 
