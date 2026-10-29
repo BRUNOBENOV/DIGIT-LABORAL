@@ -99,7 +99,7 @@ def test_salary_liquidation_report_shows_saved_records_and_filters():
         assert f"/app/reports/liquidaciones-salarios/{record_id}" in response.text
         assert "Liquidación de Salarios" in response.text
         assert "Gs. 2.457.000" in response.text
-        assert "no inventa importes" in response.text.lower()
+        assert "origen: módulo cálculo" in response.text.lower()
 
 
 def test_salary_liquidation_detail_pdf_history_and_reprint_audit():
