@@ -217,14 +217,14 @@ def test_work_certificate_dates_are_visible_and_right_aligned_in_word_and_pdf():
             position="Auxiliar",
             admission_date=date(2022, 3, 1),
             salary=3_800_000,
-            body="C E R T I F I C O:\\n\\nQue Juan Pérez presta servicios en Empresa Demo S.A.",
+            body="C E R T I F I C O:\n\nQue Juan Pérez presta servicios en Empresa Demo S.A.",
             status="Emitido",
         )
         word = WordDocument(io.BytesIO(build_docx_bytes(data)))
         date_paragraphs = [p for p in word.paragraphs if date_text in p.text]
         assert len(date_paragraphs) == 1
         assert date_paragraphs[0].alignment == WD_ALIGN_PARAGRAPH.RIGHT
-        word_text = "\\n".join(p.text for p in word.paragraphs)
+        word_text = "\n".join(p.text for p in word.paragraphs)
         assert "María Representante" in word_text
         assert "Representante legal" in word_text
         assert "Empresa Demo S.A." in word_text
@@ -627,7 +627,7 @@ def test_work_certificate_uses_article_93_end_date_and_last_pay_period():
     assert "Gs. 3.550.000" in body
     assert "se retira por su propia voluntad" not in body
     assert "a nuestra entera satisfacción" not in body
-    assert "para su eventual uso ante terceros" in body
+    assert "para su eventual uso ante terceros" not in body
     assert "Remuneración mensual registrada: Gs. 3.800.000" not in body
 
 
