@@ -1119,11 +1119,13 @@ def build_docx_bytes(data: ExportData) -> bytes:
 
     certificate_model = data.document_type in {"certificado_trabajo_a", "certificado_trabajo_b", "constancia"}
     date_text = f"{data.city.upper()}, {format_date_long_es(data.issue_date)}" if certificate_model else f"{data.city}, {format_date_long_es(data.issue_date)}"
-    date_p = document.add_paragraph(date_text)
-    date_p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    date_p.paragraph_format.space_after = Pt(18)
-    date_p.runs[0].font.name = "Aptos"
-    date_p.runs[0].font.size = Pt(10.5)
+    show_issue_date = data.document_type != "constancia" or "Se expide la presente constancia en " not in data.body
+    if show_issue_date:
+        date_p = document.add_paragraph(date_text)
+        date_p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        date_p.paragraph_format.space_after = Pt(18)
+        date_p.runs[0].font.name = "Aptos"
+        date_p.runs[0].font.size = Pt(10.5)
 
     kicker = document.add_paragraph()
     kicker.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -1323,7 +1325,9 @@ def build_pdf_bytes(data: ExportData) -> bytes:
     )
     story.extend([header, Spacer(1, 10 * mm)])
     date_text = f"{data.city.upper()}, {format_date_long_es(data.issue_date)}" if certificate_model else f"{data.city}, {format_date_long_es(data.issue_date)}"
-    story.append(Paragraph(escape(date_text), date_style))
+    show_issue_date = data.document_type != "constancia" or "Se expide la presente constancia en " not in data.body
+    if show_issue_date:
+        story.append(Paragraph(escape(date_text), date_style))
     story.append(Paragraph("DOCUMENTO LABORAL", kicker_style))
     story.append(Paragraph(escape(data.title.upper()), title_style))
     document_number = str((data.metadata or {}).get("document_number") or "").strip()
