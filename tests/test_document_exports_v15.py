@@ -212,7 +212,7 @@ def test_work_certificate_for_active_employee_does_not_claim_termination():
     )
     assert title == "Certificado de Trabajo"
     assert "C E R T I F I C O:" in body
-    assert "presta servicios en esta firma comercial desde el 1 de marzo de 2022" in body
+    assert "presta servicios en la firma comercial Empresa Demo S.A. desde el 1 de marzo de 2022" in body
     assert "por su propia voluntad" not in body
     assert "eventual uso ante terceros" in body
 
