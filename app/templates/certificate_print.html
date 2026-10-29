@@ -114,6 +114,8 @@ body{margin:0;background:#edf1f6;color:#202a39;font-family:"Aptos","Segoe UI","H
 {% elif certificate.document_type in ['permiso_paternidad','renuncia','solicitud_vacacion','permiso_laboral'] %}
 <div class="signature"><b>{{ certificate.employee_name_snapshot }}</b><small>Firma del trabajador/a</small><small>C.I. N.º {{ certificate.employee_document_snapshot }}</small></div>
 <p class="signature-note">RECIBIDO / AUTORIZACIÓN: ____________________ FECHA: ____/____/________</p>
+{% elif certificate.document_type == 'certificado_trabajo_b' %}
+<div class="signature certificate-b-signature"><b>{{ certificate.company_name_snapshot }}</b>{% if certificate.company.address %}<small>{{ certificate.company.address }}</small>{% endif %}{% if certificate.company.phone %}<small>TEL. {{ certificate.company.phone }}</small>{% endif %}</div>
 {% else %}
 <div class="signature"><b>{{ certificate.company.branding.signature_name if certificate.company.branding and certificate.company.branding.signature_name else certificate.company.legal_representative or 'Firma autorizada' }}</b><small>{{ certificate.company.branding.signature_title if certificate.company.branding else 'Representante legal' }}</small><span>{{ certificate.company_name_snapshot }}</span></div>
 {% endif %}
