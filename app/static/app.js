@@ -311,8 +311,8 @@ if (certificateForm) {
           : 'Que ' + identity + ', pertenece a la dotación de personal de esta firma ' + company +
             ', habiendo ingresado a nuestro servicio el día ' + admission + ', desempeñándose como ' + role + '.') +
         '\n\nEste certificado lo expido a su solicitud y para su eventual uso ante terceros.',
-      constancia: 'Que ' + identity + ', de nacionalidad ' + (nationalityInput?.value || 'paraguaya') +
-        (civilStatusInput?.value ? ', de estado civil ' + civilStatusInput.value : '') +
+      constancia: 'C E R T I F I C O:\\n\\n' + 'Que ' + identity + ', de nacionalidad ' + (nationalityInput?.value || 'paraguaya').toUpperCase() +
+        (civilStatusInput?.value ? ', de estado civil ' + civilStatusInput.value.toUpperCase() : '') +
         ', domiciliado/a en ' + employeeAddress + ', ' +
         (value('effective_date')
           ? 'fue empleado/a de la firma comercial ' + company + ', ubicada en ' + companyAddress +
@@ -414,7 +414,7 @@ if (certificateForm) {
   function renderCertificatePreviewBody(type, bodyText) {
     const previewBody = document.querySelector('#certificatePreviewBody');
     const certifyHeading = 'C E R T I F I C O:\n\n';
-    const certificateModelTypes = new Set(['certificado_trabajo_a', 'certificado_trabajo_b']);
+    const certificateModelTypes = new Set(['certificado_trabajo_a', 'certificado_trabajo_b', 'constancia']);
     if (certificateModelTypes.has(type) && bodyText.startsWith(certifyHeading)) {
       const heading = document.createElement('div');
       heading.className = 'certificate-a-certify';
@@ -472,11 +472,12 @@ if (certificateForm) {
     const previewDate = document.querySelector('#certificatePreviewDate');
     const issueCity = cityInput.value || 'Ciudad del Este';
     const issueDate = longDate(issueDateInput.value);
-    const certificateModelTypes = new Set(['certificado_trabajo_a', 'certificado_trabajo_b']);
+    const certificateModelTypes = new Set(['certificado_trabajo_a', 'certificado_trabajo_b', 'constancia']);
     previewDate.textContent = certificateModelTypes.has(type)
       ? issueCity.toUpperCase() + ', ' + issueDate
       : issueCity + ', ' + issueDate;
     previewDate.style.textAlign = type === 'certificado_trabajo_a' ? 'center' : type === 'certificado_trabajo_b' ? 'left' : '';
+    previewDate.style.display = type === 'constancia' ? 'none' : '';
     const bodyText = buildBody();
     renderCertificatePreviewBody(type, bodyText);
     document.querySelector('#certificatePreviewHeaderCompany').textContent = company;
@@ -557,9 +558,12 @@ if (certificateForm) {
         : '';
       document.querySelector('#certificatePreviewPhone').textContent = '';
     } else if (type === 'constancia') {
-      document.querySelector('#certificatePreviewSignature').textContent = signature;
+      const signerLabel = signature && signature !== 'Firma autorizada' && !/^sr/i.test(signature)
+        ? 'Sr(a). ' + signature
+        : signature;
+      document.querySelector('#certificatePreviewSignature').textContent = signerLabel;
       document.querySelector('#certificatePreviewSignatureTitle').textContent = signatureTitle;
-      document.querySelector('#certificatePreviewCompany').textContent = company;
+      document.querySelector('#certificatePreviewCompany').textContent = '';
       document.querySelector('#certificatePreviewPhone').textContent = companyOption?.dataset.phone
         ? 'Tel. ' + companyOption.dataset.phone
         : '';
