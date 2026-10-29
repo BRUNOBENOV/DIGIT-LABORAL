@@ -108,6 +108,13 @@ if (certificateForm) {
   const recipientInput = document.querySelector('#certificateRecipient');
   const noticeStartInput = document.querySelector('#certificateNoticeStartDate');
   const noticeDaysInput = document.querySelector('#certificateNoticeDays');
+  const calculationIdInput = document.querySelector('#certificateCalculationId');
+  const noticePeriodSelect = document.querySelector('#certificateNoticeReferencePeriod');
+  const noticeStatus = document.querySelector('#preavisoCalculationStatus');
+  const noticeSummary = document.querySelector('#preavisoCalculationSummary');
+  const noticeSummaryTitle = document.querySelector('#preavisoCalculationSummaryTitle');
+  const noticeSummaryDetails = document.querySelector('#preavisoCalculationSummaryDetails');
+  const noticeSummaryNotes = document.querySelector('#preavisoCalculationSummaryNotes');
 
   const longDate = value => {
     if (!value) return 'fecha a confirmar';
@@ -162,6 +169,7 @@ if (certificateForm) {
     const company = selectedOption(companySelect);
     if (company?.dataset.city) cityInput.value = company.dataset.city;
     loadEmployee();
+    if (typeInput.value === 'notificacion_preaviso') refreshPreavisoCalculations();
   };
   const clearNewVacationRequestFields = () => {
     if (typeInput.value !== 'solicitud_vacacion') return;
@@ -394,6 +402,8 @@ if (certificateForm) {
       notificacion_preaviso: 'Señor/a\n' + identity +
         '\n\nRef.: Notificación de preaviso\n\n' + company +
         ' comunica formalmente que ha resuelto prescindir de sus servicios, con fecha efectiva de terminación el ' + longDate(effectiveDateInput?.value) + '.' +
+        '\n\nCargo registrado: ' + role + '.' +
+        (value('termination_reason').trim() ? '\n\nMotivo comunicado: ' + value('termination_reason').trim() + '.' : '') +
         '\n\nEl preaviso se computa desde el ' + longDate(noticeStartInput?.value || issueDateInput.value) +
         ' hasta el ' + longDate(effectiveDateInput?.value) + ', por un período de ' + (value('notice_days') || 'A completar') + ' días calendario.' +
         '\n\nDurante este período y sin disminución de su salario, podrá disponer, a su elección, de una licencia diaria de dos horas dentro de la jornada legal o de un día a la semana para buscar otra ocupación. A su opción, podrá utilizar en forma continuada todo el tiempo de licencia que le corresponda, conforme al artículo 89 de la Ley N.º 213/93, Código del Trabajo.' +
@@ -611,14 +621,224 @@ if (certificateForm) {
     scheduleCanonicalCertificatePreview(type);
   }
 
+  let preavisoCalculations = [];
+  let preavisoRequestSequence = 0;
+  const preavisoActionButtons = [...certificateForm.querySelectorAll('.certificate-actions button[type="submit"]')];
+  const preavisoGs = amount => 'Gs. ' + new Intl.NumberFormat('es-PY', {maximumFractionDigits: 0}).format(Number(amount || 0));
+  const datePlusDays = (rawDate, days) => {
+    if (!rawDate || !Number.isFinite(Number(days))) return '';
+    const [year, month, day] = rawDate.split('-').map(Number);
+    if (!year || !month || !day) return '';
+    const result = new Date(Date.UTC(year, month - 1, day));
+    result.setUTCDate(result.getUTCDate() + Math.round(Number(days)));
+    return [result.getUTCFullYear(), String(result.getUTCMonth() + 1).padStart(2, '0'), String(result.getUTCDate()).padStart(2, '0')].join('-');
+  };
+  const selectedPreavisoCalculation = () => {
+    const period = noticePeriodSelect?.value || '';
+    const calculationId = calculationIdInput?.value || '';
+    return preavisoCalculations.find(item => String(item.id) === String(calculationId) && item.reference_period === period) || null;
+  };
+  const setPreavisoStatus = (message, kind = '') => {
+    if (!noticeStatus) return;
+    noticeStatus.textContent = message;
+    noticeStatus.className = 'preaviso-calculation-status' + (kind ? ' ' + kind : '');
+  };
+  const updatePreavisoSummary = record => {
+    if (!noticeSummary) return;
+    noticeSummary.classList.toggle('hidden', !record);
+    if (!record) {
+      if (noticeSummaryTitle) noticeSummaryTitle.textContent = 'Cálculo vinculado';
+      if (noticeSummaryDetails) noticeSummaryDetails.textContent = '';
+      if (noticeSummaryNotes) noticeSummaryNotes.textContent = '';
+      return;
+    }
+    if (noticeSummaryTitle) noticeSummaryTitle.textContent = 'Cálculo #' + record.id + ' · Período ' + record.reference_period;
+    if (noticeSummaryDetails) {
+      noticeSummaryDetails.textContent = 'Base mensual revisada: ' + preavisoGs(record.salary) +
+        ' · Plazo registrado: ' + record.days + ' días · Importe estimado: ' + preavisoGs(record.amount) +
+        ' · Estado: ' + record.status;
+    }
+    if (noticeSummaryNotes) noticeSummaryNotes.textContent = record.notes ?
+      'Observaciones del cálculo: ' + record.notes :
+      'Importe referencial del cálculo guardado; no se imprime como rubro de la notificación.';
+  };
+  const updatePreavisoActionAvailability = () => {
+    const isPreaviso = typeInput.value === 'notificacion_preaviso';
+    if (!isPreaviso) {
+      preavisoActionButtons.forEach(button => { button.disabled = false; });
+      return;
+    }
+    const record = selectedPreavisoCalculation();
+    const datesValid = Boolean(noticeStartInput?.value && effectiveDateInput?.value &&
+      effectiveDateInput.value > noticeStartInput.value && Number(noticeDaysInput?.value || 0) > 0);
+    const ready = Boolean(record && Number(record.days) > 0 && datesValid);
+    preavisoActionButtons.forEach(button => { button.disabled = !ready; });
+    if (record && Number(record.days) <= 0) {
+      setPreavisoStatus('El registro existe, pero no tiene días de preaviso válidos. Corregí y guardá nuevamente el cálculo.', 'error');
+    } else if (record && !datesValid) {
+      setPreavisoStatus('Completá fechas válidas: la fecha efectiva debe ser posterior al inicio del preaviso.', 'error');
+    } else if (record && Number(noticeDaysInput.value) !== Number(record.days)) {
+      setPreavisoStatus('Las fechas editadas abarcan ' + noticeDaysInput.value + ' días, pero el cálculo vinculado registra ' + record.days + '. Revisá el plazo y el importe original antes de emitir.', 'error');
+    } else if (record) {
+      setPreavisoStatus('Cálculo encontrado y vinculado. Revisá los datos y el plazo legal antes de emitir.', 'success');
+    }
+    updatePreavisoSummary(record);
+  };
+  const applyPreavisoCalculation = (record, resetDates = false) => {
+    if (!record) {
+      if (calculationIdInput) calculationIdInput.value = '';
+      updatePreavisoSummary(null);
+      updatePreavisoActionAvailability();
+      updatePreview();
+      return;
+    }
+    if (calculationIdInput) calculationIdInput.value = String(record.id);
+    if (salaryInput && Number(record.salary) > 0) salaryInput.value = String(record.salary);
+    const startNeedsDefault = resetDates || !noticeStartInput?.value;
+    if (noticeStartInput && startNeedsDefault) {
+      noticeStartInput.value = issueDateInput.value || '';
+      noticeStartInput.dataset.preavisoAuto = 'true';
+    }
+    const effectiveNeedsDefault = resetDates || !effectiveDateInput?.value || effectiveDateInput.dataset.preavisoAuto === 'true';
+    if (effectiveDateInput && effectiveNeedsDefault && noticeStartInput?.value && Number(record.days) > 0) {
+      effectiveDateInput.value = datePlusDays(noticeStartInput.value, record.days);
+      effectiveDateInput.dataset.preavisoAuto = 'true';
+    }
+    if (noticeDaysInput) noticeDaysInput.value = String(Math.max(0, Number(record.days) || 0));
+    updateNoticeDays();
+    updatePreavisoSummary(record);
+    updatePreavisoActionAvailability();
+    updatePreview();
+  };
+  async function refreshPreavisoCalculations() {
+    if (typeInput.value !== 'notificacion_preaviso') {
+      updatePreavisoActionAvailability();
+      return;
+    }
+    const requestSequence = ++preavisoRequestSequence;
+    const companyId = companySelect.value;
+    const employeeId = employeeSelect.value;
+    const previousId = calculationIdInput?.value || '';
+    const previousPeriod = noticePeriodSelect?.value || '';
+    preavisoCalculations = [];
+    if (!companyId || !employeeId) {
+      if (calculationIdInput) calculationIdInput.value = '';
+      noticePeriodSelect.innerHTML = '<option value="">Seleccioná una empresa y un funcionario</option>';
+      noticePeriodSelect.disabled = true;
+      updatePreavisoSummary(null);
+      setPreavisoStatus('Seleccioná una empresa y un funcionario para consultar Cálculo → Preaviso.');
+      updatePreavisoActionAvailability();
+      return;
+    }
+    noticePeriodSelect.disabled = true;
+    noticePeriodSelect.innerHTML = '<option value="">Buscando cálculos guardados…</option>';
+    setPreavisoStatus('Buscando cálculos de Preaviso para el funcionario y sus períodos…');
+    updatePreavisoSummary(null);
+    updatePreavisoActionAvailability();
+    try {
+      const url = '/api/certificates/preaviso-calculations?company_id=' + encodeURIComponent(companyId) +
+        '&employee_id=' + encodeURIComponent(employeeId);
+      const response = await fetch(url, {credentials: 'same-origin', headers: {'Accept': 'application/json'}});
+      if (!response.ok) throw new Error('No fue posible consultar los cálculos.');
+      const payload = await response.json();
+      if (requestSequence !== preavisoRequestSequence || typeInput.value !== 'notificacion_preaviso' ||
+          companySelect.value !== companyId || employeeSelect.value !== employeeId) return;
+      preavisoCalculations = Array.isArray(payload.calculations) ? payload.calculations : [];
+      noticePeriodSelect.replaceChildren();
+      if (!preavisoCalculations.length) {
+        if (calculationIdInput) calculationIdInput.value = '';
+        const option = document.createElement('option');
+        option.value = '';
+        option.textContent = 'No hay registro para imprimir';
+        noticePeriodSelect.appendChild(option);
+        noticePeriodSelect.disabled = true;
+        setPreavisoStatus('No hay registro para imprimir. Guardá primero un cálculo en Cálculo → Preaviso para este funcionario y período.', 'error');
+        updatePreavisoSummary(null);
+        updatePreavisoActionAvailability();
+        updatePreview();
+        return;
+      }
+      const placeholder = document.createElement('option');
+      placeholder.value = '';
+      placeholder.textContent = 'Seleccioná el período';
+      noticePeriodSelect.appendChild(placeholder);
+      preavisoCalculations.forEach(record => {
+        const option = document.createElement('option');
+        option.value = record.reference_period;
+        option.textContent = record.reference_period + ' · Cálculo #' + record.id + ' · ' + record.status;
+        noticePeriodSelect.appendChild(option);
+      });
+      noticePeriodSelect.disabled = false;
+      const chosen = preavisoCalculations.find(item => String(item.id) === String(previousId)) ||
+        preavisoCalculations.find(item => item.reference_period === previousPeriod) || preavisoCalculations[0];
+      noticePeriodSelect.value = chosen.reference_period;
+      applyPreavisoCalculation(chosen, String(chosen.id) !== String(previousId));
+    } catch (error) {
+      if (requestSequence !== preavisoRequestSequence) return;
+      if (calculationIdInput) calculationIdInput.value = '';
+      preavisoCalculations = [];
+      noticePeriodSelect.replaceChildren();
+      const option = document.createElement('option');
+      option.value = '';
+      option.textContent = 'No se pudo consultar';
+      noticePeriodSelect.appendChild(option);
+      noticePeriodSelect.disabled = true;
+      setPreavisoStatus('No se pudieron consultar los cálculos. Verificá tu conexión o volvé a intentar.', 'error');
+      updatePreavisoSummary(null);
+      updatePreavisoActionAvailability();
+    }
+  };
+  noticePeriodSelect?.addEventListener('change', () => {
+    const record = preavisoCalculations.find(item => item.reference_period === noticePeriodSelect.value);
+    applyPreavisoCalculation(record || null, true);
+  });
+  noticeStartInput?.addEventListener('change', () => {
+    if (typeInput.value === 'notificacion_preaviso') {
+      const record = selectedPreavisoCalculation();
+      if (record && effectiveDateInput?.dataset.preavisoAuto === 'true') {
+        effectiveDateInput.value = datePlusDays(noticeStartInput.value, record.days);
+      }
+      noticeStartInput.dataset.preavisoAuto = 'false';
+      updatePreview();
+      updatePreavisoActionAvailability();
+    }
+  });
+  effectiveDateInput?.addEventListener('change', () => {
+    if (typeInput.value === 'notificacion_preaviso') {
+      effectiveDateInput.dataset.preavisoAuto = 'false';
+      updateNoticeDays();
+      updatePreview();
+      updatePreavisoActionAvailability();
+    }
+  });
+  issueDateInput?.addEventListener('change', () => {
+    if (typeInput.value === 'notificacion_preaviso' && noticeStartInput?.dataset.preavisoAuto === 'true') {
+      noticeStartInput.value = issueDateInput.value;
+      const record = selectedPreavisoCalculation();
+      if (record && effectiveDateInput?.dataset.preavisoAuto === 'true') {
+        effectiveDateInput.value = datePlusDays(noticeStartInput.value, record.days);
+      }
+      updateNoticeDays();
+      updatePreview();
+      updatePreavisoActionAvailability();
+    }
+  });
   document.querySelectorAll('[data-certificate-type]').forEach(button => button.addEventListener('click', () => {
     document.querySelectorAll('[data-certificate-type]').forEach(item => item.classList.toggle('active', item === button));
     typeInput.value = button.dataset.certificateType;
     updateSpecificFields();
     updatePreview();
+    if (typeInput.value === 'notificacion_preaviso') refreshPreavisoCalculations();
+    else updatePreavisoActionAvailability();
   }));
   companySelect.addEventListener('change', filterEmployees);
-  employeeSelect.addEventListener('change', loadEmployee);
+  employeeSelect.addEventListener('change', () => {
+    loadEmployee();
+    if (typeInput.value === 'notificacion_preaviso') refreshPreavisoCalculations();
+  });
+  document.querySelector('#cancelPreaviso')?.addEventListener('click', () => {
+    window.location.assign('/app/certificates');
+  });
   const includeSalaryCheckbox = document.querySelector('#certificateIncludeSalary');
   includeSalaryCheckbox?.addEventListener('change', () => {
     const hiddenSalaryState = document.querySelector('#certificateIncludeSalaryValue');
@@ -631,6 +851,7 @@ if (certificateForm) {
   });
   document.querySelector('#refreshCertificatePreview')?.addEventListener('click', updatePreview);
   updateSpecificFields();
+  updatePreavisoActionAvailability();
   filterEmployees();
 }
 
