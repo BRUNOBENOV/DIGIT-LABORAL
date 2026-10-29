@@ -88,6 +88,29 @@ def test_certificate_b_matches_requested_model():
     assert "Este certificado lo expido a su solicitud y para su eventual uso ante terceros." in body
     assert "Salario devengado" not in body
 
+    data = ExportData(
+        document_type="certificado_trabajo_b",
+        title=title,
+        city="Ciudad del Este",
+        issue_date=date(2026, 10, 29),
+        company_name="KAMNIZ SRL",
+        company_address="PIRIBEBUY E/MNHOR RODRIGUEZ",
+        company_phone="(061)518-452",
+        employee_name="DIEGO DAMIAN, FRANCO TABOADA",
+        employee_document="6.638.398",
+        position="DEPOSITERO",
+        admission_date=date(2026, 7, 1),
+        body=body,
+        status="Emitido",
+    )
+    word = WordDocument(io.BytesIO(build_docx_bytes(data)))
+    signature_text = "\n".join(paragraph.text for paragraph in word.paragraphs)
+    assert "KAMNIZ SRL\nPIRIBEBUY E/MNHOR RODRIGUEZ\nTEL. (061)518-452" in signature_text
+    pdf = PdfReader(io.BytesIO(build_pdf_bytes(data)))
+    pdf_text = "\n".join(page.extract_text() or "" for page in pdf.pages)
+    assert "PIRIBEBUY E/MNHOR RODRIGUEZ" in pdf_text
+    assert "TEL. (061)518-452" in pdf_text
+
 
 def test_certificate_preview_endpoint_uses_same_body_as_export_model():
     with TestClient(app) as client:
