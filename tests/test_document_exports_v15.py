@@ -269,7 +269,7 @@ def test_notification_preaviso_uses_formal_text_dates_and_article_89_rights():
         },
     )
     assert title == "Notificación de Preaviso"
-    assert "Señor/a\nALBINO HERMES, FRANCO, con C.I. N.º 1.234.567" in body
+    assert "Señor/a\nALBINO HERMES, FRANCO, C.I. N.º 1.234.567" in body
     assert "ha resuelto prescindir de sus servicios" in body
     assert "desde el 17 de julio de 2026" in body
     assert "hasta el 31 de agosto de 2026" in body
@@ -309,6 +309,36 @@ def test_preaviso_calculation_api_exposes_employee_period_amount_and_empty_state
         assert matched["days"] == 45
         assert matched["amount"] == 5_400_000
         assert matched["status"] == "Revisar"
+
+        issued = client.post(
+            "/app/certificates",
+            data={
+                "csrf_token": csrf,
+                "company_id": "1",
+                "employee_id": "1",
+                "document_type": "notificacion_preaviso",
+                "city": "Ciudad del Este",
+                "issue_date": "2026-07-17",
+                "position": "Auxiliar",
+                "admission_date": "2024-01-01",
+                "salary": "3600000",
+                "effective_date": "2026-08-31",
+                "notice_start_date": "2026-07-17",
+                "notice_days": "45",
+                "notice_reference_period": period,
+                "calculation_id": str(matched["id"]),
+                "termination_reason": "Reorganización operativa",
+                "intent": "save",
+            },
+            follow_redirects=False,
+        )
+        assert issued.status_code == 303
+        certificate_id = int(parse_qs(urlparse(issued.headers["location"]).query)["created"][0])
+        print_page = client.get(f"/app/certificates/{certificate_id}/print")
+        assert print_page.status_code == 200
+        assert "Motivo comunicado: Reorganización operativa." in print_page.text
+        assert "Cargo registrado: Auxiliar." in print_page.text
+        assert "Cálculo vinculado N.º" not in print_page.text
 
         empty = client.get(
             "/api/certificates/preaviso-calculations",
