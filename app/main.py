@@ -5285,7 +5285,7 @@ def certificates_page(
     branding = get_or_create_branding(db, selected_company) if selected_company else None
     if selected_company:
         db.commit()
-    return render(
+    page = render(
         request,
         "certificates.html",
         db,
@@ -5305,6 +5305,11 @@ def certificates_page(
         branding=branding,
         official_certificate_types=OFFICIAL_CERTIFICATE_TYPES,
     )
+    # La pantalla del generador debe consultar HTML y JavaScript frescos tras cada despliegue.
+    page.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    page.headers["Pragma"] = "no-cache"
+    page.headers["Expires"] = "0"
+    return page
 
 
 @app.post("/app/certificates")
@@ -5509,7 +5514,7 @@ def create_certificate(
     if document_type in {"certificado_trabajo_a", "certificado_trabajo_b", "constancia"} and not effective_date:
         if (employee.status or "").strip().lower() not in {"activo", "active"} and employee.termination_date:
             effective_date = employee.termination_date
-    if document_type in {"certificado_trabajo_a", "certificado_trabajo_b", "constancia"} and effective_date and field_amounts["last_period_salary_amount"] <= 0:
+    if document_type in {"certificado_trabajo_a", "constancia"} and effective_date and field_amounts["last_period_salary_amount"] <= 0 and intent != "preview":
         raise HTTPException(400, "Para un certificado al término de la relación, consigná el salario efectivamente devengado en el último período de pago, según nómina o recibo.")
     salary_value = max(0, salary or employee.base_salary)
     if calculation:
@@ -5581,8 +5586,10 @@ def create_certificate(
         "adenda_prorroga_contrato": "prorroga",
     }.get(document_type, "")
     contract_modality_value = contract_modality.strip() or default_modality
-    branding = get_or_create_branding(db, company)
-    document_number_value = document_number.strip() or next_document_number(db, company, document_type, branding)
+    branding = get_or_create_branding(db, company) if intent != "preview" else None
+    document_number_value = document_number.strip() or (
+        "Vista previa" if intent == "preview" else next_document_number(db, company, document_type, branding)
+    )
     metadata = {
         "notes": observations.strip(),
         "document_number": document_number_value,
@@ -5676,6 +5683,12 @@ def create_certificate(
         employee_email=employee.email or "",
         employee_birth_date=employee.birth_date,
     )
+    if intent == "preview":
+        return JSONResponse(
+            {"title": title, "body": body, "document_type": document_type},
+            headers={"Cache-Control": "no-store, max-age=0"},
+        )
+
     item = GeneratedCertificate(
         company_id=company.id,
         employee_id=employee.id,
