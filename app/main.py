@@ -5230,6 +5230,83 @@ def calculation_to_certificate(
     return RedirectResponse(f"/app/certificates?{query}", status_code=303)
 
 
+@app.get("/api/certificates/preaviso-calculations")
+def preaviso_calculations_api(
+    company_id: int,
+    employee_id: int,
+    reference_period: str = "",
+    user: User = Depends(require_roles("administrador", "contador", "auxiliar", "abogado")),
+    db: Session = Depends(get_db),
+):
+    """Return the latest saved Preaviso calculation per period for one authorized employee."""
+    company_ids = company_ids_for_user(db, user)
+    if company_id not in company_ids:
+        raise HTTPException(404, "Empresa no encontrada.")
+    employee = db.get(Employee, employee_id)
+    if not employee or employee.company_id != company_id:
+        raise HTTPException(404, "Funcionario no encontrado en la empresa seleccionada.")
+
+    query = (
+        select(CalculationRecord)
+        .where(
+            CalculationRecord.company_id == company_id,
+            CalculationRecord.employee_id == employee_id,
+            CalculationRecord.calculation_type == "notice",
+            CalculationRecord.source != "Centro laboral",
+        )
+        .order_by(CalculationRecord.created_at.desc(), CalculationRecord.id.desc())
+        .limit(100)
+    )
+    rows = list(db.scalars(query))
+    seen_periods: set[str] = set()
+    items: list[dict[str, object]] = []
+    selected_period = reference_period.strip()
+    for item in rows:
+        period = (item.reference_period or "").strip()
+        if not period:
+            continue
+        if selected_period and period != selected_period:
+            continue
+        if period in seen_periods:
+            continue
+        # The latest record controls this period. If it was annulled, do not revive an older version.
+        seen_periods.add(period)
+        if (item.status or "").strip().casefold() == "anulado":
+            continue
+        inputs = json_dict(item.input_json)
+        results = json_dict(item.result_json)
+        try:
+            days_value = float(results.get("days", inputs.get("days", 0)) or 0)
+        except (TypeError, ValueError):
+            days_value = 0
+        try:
+            salary_value = int(float(inputs.get("salary", 0) or 0))
+        except (TypeError, ValueError):
+            salary_value = 0
+        try:
+            daily_value = int(float(results.get("daily_value", 0) or 0))
+        except (TypeError, ValueError):
+            daily_value = 0
+        if salary_value <= 0 and days_value > 0 and int(item.amount or 0) > 0:
+            salary_value = max(0, round((int(item.amount or 0) * 30) / days_value))
+        items.append({
+            "id": item.id,
+            "reference_period": period,
+            "status": item.status or "Revisar",
+            "amount": int(item.amount or 0),
+            "salary": max(0, salary_value),
+            "days": max(0, days_value),
+            "daily_value": max(0, daily_value),
+            "notes": (item.notes or "").strip(),
+            "created_at": item.created_at.isoformat() if item.created_at else "",
+        })
+
+    return JSONResponse(
+        {"calculations": items},
+        headers={"Cache-Control": "no-store, max-age=0"},
+    )
+
+
 @app.get("/app/certificates", response_class=HTMLResponse)
 def certificates_page(
     request: Request,
@@ -5390,6 +5467,7 @@ def create_certificate(
     last_worked_date: Annotated[str, Form()] = "",
     notice_start_date: Annotated[str, Form()] = "",
     notice_days: Annotated[str, Form()] = "",
+    notice_reference_period: Annotated[str, Form()] = "",
     incident_date: Annotated[str, Form()] = "",
     incident_details: Annotated[str, Form()] = "",
     disciplinary_action: Annotated[str, Form()] = "Amonestación escrita",
@@ -5525,6 +5603,37 @@ def create_certificate(
         raise HTTPException(400, "El cálculo vinculado corresponde a otro funcionario.")
     calc_inputs = json_dict(calculation.input_json) if calculation else {}
     calc_results = json_dict(calculation.result_json) if calculation else {}
+    if document_type == "notificacion_preaviso" and intent != "preview":
+        if not calculation:
+            raise HTTPException(400, "No hay registro para imprimir. Guardá primero el cálculo de Preaviso para ese funcionario y período.")
+        if calculation.calculation_type != "notice":
+            raise HTTPException(400, "El documento debe vincularse a un cálculo del módulo Cálculo → Preaviso.")
+        if calculation.employee_id != employee.id:
+            raise HTTPException(400, "El cálculo de Preaviso no corresponde al funcionario seleccionado.")
+        if not notice_reference_period.strip() or calculation.reference_period != notice_reference_period.strip():
+            raise HTTPException(400, "Seleccioná el período que corresponde al cálculo de Preaviso vinculado.")
+        if (calculation.status or "").strip().casefold() == "anulado":
+            raise HTTPException(400, "El cálculo de Preaviso está anulado y no se puede utilizar para emitir la notificación.")
+        latest_for_period = db.scalar(
+            select(CalculationRecord)
+            .where(
+                CalculationRecord.company_id == company.id,
+                CalculationRecord.employee_id == employee.id,
+                CalculationRecord.calculation_type == "notice",
+                CalculationRecord.reference_period == notice_reference_period.strip(),
+                CalculationRecord.source != "Centro laboral",
+            )
+            .order_by(CalculationRecord.created_at.desc(), CalculationRecord.id.desc())
+            .limit(1)
+        )
+        if not latest_for_period or latest_for_period.id != calculation.id or (latest_for_period.status or "").strip().casefold() == "anulado":
+            raise HTTPException(400, "El cálculo seleccionado ya no es el registro vigente de ese período. Volvé a buscar los cálculos.")
+        try:
+            source_notice_days = float(calc_results.get("days", calc_inputs.get("days", 0)) or 0)
+        except (TypeError, ValueError):
+            source_notice_days = 0
+        if source_notice_days <= 0:
+            raise HTTPException(400, "El cálculo vinculado no tiene un plazo de preaviso válido. Revisá y guardá nuevamente el cálculo.")
     position_value = position.strip() or employee.position
     admission_value = admission_date or employee.admission_date
     if document_type in {"certificado_trabajo_a", "certificado_trabajo_b", "constancia"} and not effective_date:
@@ -5540,8 +5649,6 @@ def create_certificate(
             year = int(calculation.reference_period[:4]) if calculation.reference_period[:4].isdigit() else issue_date.year
             period_start, period_end = date(year, 1, 1), date(year, 12, 31)
         if document_type in {"solicitud_vacacion", "usufructo_vacaciones"} and not observations:
-            observations = f"Cálculo vinculado N.º {calculation.id}: {calc_results.get('days', calc_inputs.get('days', 0))} días, total estimado Gs. {format_gs(calculation.amount)}."
-        if document_type == "notificacion_preaviso" and not observations:
             observations = f"Cálculo vinculado N.º {calculation.id}: {calc_results.get('days', calc_inputs.get('days', 0))} días, total estimado Gs. {format_gs(calculation.amount)}."
     if not calculation and document_type in {"aguinaldo_anual", "aguinaldo_proporcional"}:
         latest_aguinaldo = db.scalar(
@@ -5688,6 +5795,10 @@ def create_certificate(
         "calculation_id": calculation.id if calculation else None,
         "calculation_type": calculation.calculation_type if calculation else "",
         "calculation_results": calc_results,
+        "notice_reference_period": notice_reference_period.strip(),
+        "notice_calculation_amount": int(calculation.amount or 0) if calculation and document_type == "notificacion_preaviso" else 0,
+        "notice_calculation_salary": int(calc_inputs.get("salary", 0) or 0) if calculation and document_type == "notificacion_preaviso" else 0,
+        "notice_calculation_days": calc_results.get("days", calc_inputs.get("days", 0)) if calculation and document_type == "notificacion_preaviso" else 0,
     }
     title, body = build_document_body(
         document_type,
