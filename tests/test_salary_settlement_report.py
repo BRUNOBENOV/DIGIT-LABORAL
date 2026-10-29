@@ -87,6 +87,25 @@ def _create_salary_record(*, company_id: int | None = None, employee_id: int | N
         return item.id, company.id, employee.id, marker
 
 
+def test_existing_report_center_entry_opens_enhanced_salary_report_without_duplicate_navigation():
+    with TestClient(app) as client:
+        _login(client)
+        catalog = client.get("/app/reports")
+        assert catalog.status_code == 200, catalog.text[:300]
+        assert 'href="/app/reports/liquidacion-salario"' in catalog.text
+        assert "Liquidación de Salarios" in catalog.text
+        assert catalog.text.count("Liquidación de Salarios") == 1
+        assert "INFORME DEDICADO" not in catalog.text
+        assert 'href="/app/reports/liquidaciones-salarios"' not in catalog.text
+
+        legacy_entry = client.get(
+            "/app/reports/liquidacion-salario?period=2026-10",
+            follow_redirects=False,
+        )
+        assert legacy_entry.status_code == 303
+        assert legacy_entry.headers["location"] == "/app/reports/liquidaciones-salarios?period=2026-10"
+
+
 def test_salary_liquidation_report_shows_saved_records_and_filters():
     with TestClient(app) as client:
         _login(client)
