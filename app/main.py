@@ -5314,11 +5314,24 @@ def certificates_page(
     company_id: OptionalQueryId = None,
     employee_id: OptionalQueryId = None,
     document_type: str = "",
+    edit_id: OptionalQueryId = None,
     user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ):
     company_ids = company_ids_for_user(db, user)
-    if not calculation_id:
+    editing_contract = None
+    editing_metadata: dict[str, Any] = {}
+    if edit_id:
+        editing_contract = db.get(GeneratedCertificate, edit_id)
+        if not editing_contract or editing_contract.company_id not in company_ids:
+            raise HTTPException(404, "Contrato no encontrado.")
+        if editing_contract.document_type != "contrato_trabajo":
+            raise HTTPException(400, "La edición por versiones está habilitada para Contrato Individual de Trabajo.")
+        company_id = editing_contract.company_id
+        employee_id = editing_contract.employee_id
+        document_type = editing_contract.document_type
+        editing_metadata = decode_metadata(editing_contract.observations)
+    elif not calculation_id:
         company_id, employee_id = default_labor_context(
             request, db, user, company_ids, company_id, employee_id
         )
@@ -5372,6 +5385,9 @@ def certificates_page(
         companies=companies,
         employees=employees,
         generated=generated,
+        generated_metadata={item.id: decode_metadata(item.observations) for item in generated},
+        editing_contract=editing_contract,
+        editing_metadata=editing_metadata,
         certificate_types=CERTIFICATE_TYPES,
         signature_modes={key: document_signature_mode(key) for key in CERTIFICATE_TYPES},
         receipt_modes={key: document_receipt_mode(key) for key in CERTIFICATE_TYPES},
@@ -5380,7 +5396,10 @@ def certificates_page(
         selected_employee=selected_employee,
         selected_vacation=selected_vacation,
         vacation_by_employee=vacation_by_employee,
-        selected_document_type=document_type if document_type in CERTIFICATE_TYPES else "",
+        selected_document_type=(
+            editing_contract.document_type if editing_contract
+            else document_type if document_type in CERTIFICATE_TYPES else ""
+        ),
         calculation_inputs=calculation_inputs,
         calculation_results=calculation_results,
         branding=branding,
@@ -5420,6 +5439,16 @@ def create_certificate(
     contract_modality: Annotated[str, Form()] = "",
     contract_end_date: Annotated[str, Form()] = "",
     contract_cause: Annotated[str, Form()] = "",
+    contract_worker_age: Annotated[str, Form()] = "",
+    contract_worker_gender: Annotated[str, Form()] = "",
+    contract_worker_civil_status: Annotated[str, Form()] = "",
+    contract_worker_nationality: Annotated[str, Form()] = "",
+    contract_benefits: Annotated[str, Form()] = "",
+    contract_payment_method: Annotated[str, Form()] = "",
+    contract_additional_terms: Annotated[str, Form()] = "",
+    contract_text: Annotated[str, Form()] = "",
+    contract_parent_id: Annotated[str, Form()] = "",
+    contract_signature_acknowledged: Annotated[str, Form()] = "",
     previous_contract_number: Annotated[str, Form()] = "",
     workplace: Annotated[str, Form()] = "",
     job_functions: Annotated[str, Form()] = "",
@@ -5491,6 +5520,15 @@ def create_certificate(
 ):
     if document_type not in CERTIFICATE_TYPES:
         raise HTTPException(400, "Tipo de documento inválido.")
+    if intent in {"approve", "signed"} and document_type != "contrato_trabajo":
+        raise HTTPException(400, "Los estados Aprobado y Firmado están disponibles para Contrato Individual de Trabajo.")
+    if intent == "signed" and contract_signature_acknowledged.strip().lower() not in {"on", "true", "1", "yes"}:
+        raise HTTPException(400, "Para registrar Firmado, confirmá que se recibió la firma del documento.")
+    if document_type == "contrato_trabajo" and len(contract_text) > 90000:
+        raise HTTPException(400, "El texto del contrato supera el límite permitido de 90.000 caracteres.")
+    if contract_worker_age.strip():
+        if not contract_worker_age.strip().isdigit() or not 0 <= int(contract_worker_age.strip()) <= 120:
+            raise HTTPException(400, "La edad debe ser un número entre 0 y 120.")
 
     # Los controles HTML de fecha envían "" cuando están vacíos. Normalizarlos
     # antes de cualquier validación evita rechazos Pydantic de campos opcionales.
@@ -5512,6 +5550,7 @@ def create_certificate(
     sanction_start_date = optional_date(sanction_start_date, field="inicio de la medida")
     sanction_end_date = optional_date(sanction_end_date, field="fin de la medida")
     calculation_id = optional_int(calculation_id, field="identificador de cálculo")
+    contract_parent_id = optional_int(contract_parent_id, field="versión de contrato anterior")
 
     if document_type == "notificacion_preaviso" and intent != "preview":
         if not effective_date:
@@ -5596,6 +5635,15 @@ def create_certificate(
     employee = db.get(Employee, employee_id)
     if not employee or employee.company_id != company.id:
         raise HTTPException(400, "El funcionario no pertenece a la empresa seleccionada.")
+    contract_parent = db.get(GeneratedCertificate, contract_parent_id) if contract_parent_id else None
+    if contract_parent_id and (
+        not contract_parent
+        or contract_parent.company_id != company.id
+        or contract_parent.employee_id != employee.id
+        or contract_parent.document_type != "contrato_trabajo"
+        or document_type != "contrato_trabajo"
+    ):
+        raise HTTPException(400, "La versión anterior no pertenece al mismo contrato, empresa y funcionario.")
     calculation = db.get(CalculationRecord, calculation_id) if calculation_id else None
     if calculation and (calculation.company_id != company.id or calculation.company_id not in company_ids_for_user(db, user)):
         raise HTTPException(400, "El cálculo vinculado no corresponde a la empresa seleccionada.")
@@ -5741,6 +5789,13 @@ def create_certificate(
         "contract_modality": contract_modality_value,
         "contract_end_date": contract_end_date.isoformat() if contract_end_date else "",
         "contract_cause": contract_cause.strip(),
+        "contract_worker_age": contract_worker_age.strip(),
+        "contract_worker_gender": contract_worker_gender.strip(),
+        "contract_worker_civil_status": contract_worker_civil_status.strip(),
+        "contract_worker_nationality": contract_worker_nationality.strip(),
+        "contract_benefits": contract_benefits.strip(),
+        "contract_payment_method": contract_payment_method.strip(),
+        "contract_additional_terms": contract_additional_terms.strip(),
         "previous_contract_number": previous_contract_number.strip(),
         "workplace": workplace.strip(),
         "job_functions": job_functions.strip(),
@@ -5800,6 +5855,45 @@ def create_certificate(
         "notice_calculation_salary": int(calc_inputs.get("salary", 0) or 0) if calculation and document_type == "notificacion_preaviso" else 0,
         "notice_calculation_days": calc_results.get("days", calc_inputs.get("days", 0)) if calculation and document_type == "notificacion_preaviso" else 0,
     }
+    document_status = (
+        "Aprobado" if intent == "approve"
+        else "Firmado" if intent == "signed"
+        else "Emitido" if intent in {"print", "docx", "pdf"}
+        else "Borrador"
+    )
+    if document_type == "contrato_trabajo":
+        version_number = 1
+        root_contract_id = None
+        if contract_parent:
+            parent_metadata = decode_metadata(contract_parent.observations)
+            try:
+                root_contract_id = int(parent_metadata.get("contract_root_id") or contract_parent.id)
+            except (TypeError, ValueError):
+                root_contract_id = contract_parent.id
+            previous_versions = []
+            existing_contracts = list(db.scalars(
+                select(GeneratedCertificate).where(
+                    GeneratedCertificate.company_id == company.id,
+                    GeneratedCertificate.employee_id == employee.id,
+                    GeneratedCertificate.document_type == "contrato_trabajo",
+                )
+            ))
+            for previous in existing_contracts:
+                previous_metadata = decode_metadata(previous.observations)
+                try:
+                    previous_root = int(previous_metadata.get("contract_root_id") or previous.id)
+                    previous_version = max(1, int(previous_metadata.get("contract_version") or 1))
+                except (TypeError, ValueError):
+                    previous_root, previous_version = previous.id, 1
+                if previous_root == root_contract_id:
+                    previous_versions.append(previous_version)
+            version_number = max(previous_versions or [1]) + 1
+        metadata.update({
+            "contract_version": version_number,
+            "contract_parent_id": contract_parent.id if contract_parent else None,
+            "contract_root_id": root_contract_id,
+            "contract_state": document_status,
+        })
     title, body = build_document_body(
         document_type,
         company_name=company.legal_name,
@@ -5821,6 +5915,9 @@ def create_certificate(
         employee_email=employee.email or "",
         employee_birth_date=employee.birth_date,
     )
+    if document_type == "contrato_trabajo" and contract_text.strip():
+        body = contract_text.replace("\x00", "").strip()
+
     if intent == "preview":
         return JSONResponse(
             {"title": title, "body": body, "document_type": document_type},
@@ -5842,12 +5939,16 @@ def create_certificate(
         salary_snapshot=salary_value,
         observations=encode_metadata(**metadata),
         body=body,
-        status="Emitido" if intent in {"print", "docx", "pdf"} else "Borrador",
+        status=document_status,
         created_by=user.email,
     )
     db.add(item)
     db.flush()
-    write_audit(db, user, "generar", "documento_laboral", str(item.id), title)
+    if document_type == "contrato_trabajo" and not metadata.get("contract_root_id"):
+        metadata["contract_root_id"] = item.id
+        item.observations = encode_metadata(**metadata)
+    audit_action = "aprobar" if intent == "approve" else "registrar_firma_recibida" if intent == "signed" else "generar"
+    write_audit(db, user, audit_action, "documento_laboral", str(item.id), title)
     db.commit()
 
     if intent == "print":
