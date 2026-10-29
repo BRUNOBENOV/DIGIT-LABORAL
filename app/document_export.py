@@ -1034,11 +1034,19 @@ def _add_signature_table_docx(document: Document, data: ExportData) -> None:
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         p.paragraph_format.space_before = Pt(22)
         p.add_run("_______________________________\n")
-        r = p.add_run(data.legal_representative or "Firma autorizada")
-        r.bold = True
-        if data.signature_title:
-            p.add_run(f"\n{data.signature_title}")
-        p.add_run(f"\n{data.company_name}")
+        if document_type == "certificado_trabajo_b":
+            r = p.add_run(data.company_name)
+            r.bold = True
+            if data.company_address:
+                p.add_run(f"\n{data.company_address}")
+            if data.company_phone:
+                p.add_run(f"\nTEL. {data.company_phone}")
+        else:
+            r = p.add_run(data.legal_representative or "Firma autorizada")
+            r.bold = True
+            if data.signature_title:
+                p.add_run(f"\n{data.signature_title}")
+            p.add_run(f"\n{data.company_name}")
 
 
 
@@ -1378,10 +1386,17 @@ def build_pdf_bytes(data: ExportData) -> bytes:
         story.append(Paragraph("RECIBIDO / AUTORIZACIÓN: ____________________    FECHA: ____/____/________", small_style))
     else:
         sig = "______________________________<br/>"
-        sig += f"<b>{escape(data.legal_representative or 'Firma autorizada')}</b>"
-        if data.signature_title:
-            sig += f"<br/>{escape(data.signature_title)}"
-        sig += f"<br/>{escape(data.company_name)}"
+        if data.document_type == "certificado_trabajo_b":
+            sig += f"<b>{escape(data.company_name)}</b>"
+            if data.company_address:
+                sig += f"<br/>{escape(data.company_address)}"
+            if data.company_phone:
+                sig += f"<br/>TEL. {escape(data.company_phone)}"
+        else:
+            sig += f"<b>{escape(data.legal_representative or 'Firma autorizada')}</b>"
+            if data.signature_title:
+                sig += f"<br/>{escape(data.signature_title)}"
+            sig += f"<br/>{escape(data.company_name)}"
         story.append(Paragraph(sig, ParagraphStyle("EmployerSig", parent=small_style, alignment=TA_CENTER)))
 
     if data.status.lower() == "borrador":
