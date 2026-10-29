@@ -5291,7 +5291,7 @@ def save_calculation(
     return RedirectResponse(f"/app/calculations?tipo={quote(calculation_type)}&saved={item.id}&company_id={company.id}" + (f"&employee_id={employee.id}" if employee else ""), status_code=303)
 
 
-def _revalidate_calculation_before_approval(item: CalculationRecord) -> None:
+def _revalidate_calculation_before_approval(item: CalculationRecord, db: Session) -> None:
     """Recompute persisted inputs before an accounting calculation is approved."""
     try:
         saved_inputs = json.loads(item.input_json or "{}")
@@ -5302,11 +5302,12 @@ def _revalidate_calculation_before_approval(item: CalculationRecord) -> None:
         raise HTTPException(409, "El cálculo guardado no contiene entradas y resultados válidos. Volvé a calcularlo.") from exc
 
     if item.source == "Cálculo automático":
-        if "ips_rate" not in saved_inputs:
-            raise HTTPException(
-                409,
-                "Este cálculo pertenece a una versión anterior y no conserva la tasa IPS usada. Volvé a calcularlo antes de aprobar.",
-            )
+        # Historical general calculations did not persist their IPS rate. Replay
+        # them with the current configured rate, but only approve if every stored
+        # component and the main amount still reproduce exactly.
+        legacy_inputs = "ips_rate" not in saved_inputs
+        if legacy_inputs:
+            saved_inputs["ips_rate"] = get_parameter(db, "ips_employee_rate_general", 9)
         try:
             _inputs, current_results, current_amount = calculate_values(
                 calculation_type=item.calculation_type,
@@ -5327,7 +5328,11 @@ def _revalidate_calculation_before_approval(item: CalculationRecord) -> None:
             )
         except HTTPException as exc:
             raise HTTPException(409, "Las entradas del cálculo guardado ya no superan las validaciones actuales. Recalculá antes de aprobar.") from exc
-        if current_results != saved_results or current_amount != item.amount:
+        results_match = (
+            all(current_results.get(key) == value for key, value in saved_results.items())
+            if legacy_inputs else current_results == saved_results
+        )
+        if not results_match or current_amount != item.amount:
             raise HTTPException(
                 409,
                 "El importe guardado no coincide con la fórmula reproducida. No se aprobó; revisá o recreá el cálculo.",
@@ -5366,7 +5371,7 @@ def calculation_status(
     if status_value not in {"Revisar", "Aprobado", "Anulado"}:
         raise HTTPException(400, "Estado inválido.")
     if status_value == "Aprobado":
-        _revalidate_calculation_before_approval(item)
+        _revalidate_calculation_before_approval(item, db)
     item.status = status_value
     write_audit(db, user, "actualizar_estado", "calculo", str(item.id), status_value)
     db.commit()
