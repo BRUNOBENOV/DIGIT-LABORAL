@@ -11,9 +11,11 @@
 .certificate-form-card{font-family:"Aptos","Segoe UI",Arial,sans-serif}
 .certificate-type-button{letter-spacing:.005em}
 .document-format-badge{font-variant-numeric:tabular-nums}
+.certificate-preview-signature-pair.hidden{display:none!important}
 .certificate-signature b,.certificate-signature small{display:block;line-height:1.5;margin-top:3px}
 .certificate-preview-signature-pair>div{display:flex;flex-direction:column;align-items:center;min-width:0}
 .certificate-preview-signature-pair b,.certificate-preview-signature-pair small{display:block;line-height:1.5;margin-top:3px;text-align:center}
+.certificate-preview-receipt{margin:16px 0 0;color:#68768c;font-size:.68rem;line-height:1.55;text-align:center}
 @media(max-width:760px){.certificate-type-menu{max-height:42vh;overflow:auto}}
 </style>
 <div class="page-header certificates-header">
@@ -43,7 +45,7 @@
 <form method="post" action="/app/certificates" class="certificate-workspace" id="certificateForm" data-module-selection><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <input type="hidden" name="calculation_id" value="{{ selected_calculation.id if selected_calculation else '' }}">
   <aside class="certificate-type-menu" aria-label="Tipos de documentos">
-    {% for key, label in certificate_menu_types %}<button type="button" class="certificate-type-button {{ 'active' if key == initial_type }}" data-certificate-type="{{ key }}">{{ label }}</button>{% endfor %}
+    {% for key, label in certificate_menu_types %}<button type="button" class="certificate-type-button {{ 'active' if key == initial_type }}" data-certificate-type="{{ key }}" data-signature-mode="{{ signature_modes.get(key, 'employer') }}" data-receipt-mode="{{ receipt_modes.get(key, '') }}">{{ label }}</button>{% endfor %}
     <input type="hidden" name="document_type" id="certificateType" value="{{ initial_type }}">
   </aside>
 
@@ -223,10 +225,11 @@
     <p class="certificate-preview-kicker">VISTA PREVIA · DOCUMENTO LABORAL</p>
     <p class="certificate-date" id="certificatePreviewDate">Ciudad del Este</p><h2 id="certificatePreviewTitle">DOCUMENTO LABORAL</h2><p class="preview-document-number" id="certificatePreviewNumber">Numeración automática</p><div class="certificate-body" id="certificatePreviewBody"></div>
     <div class="certificate-signature" id="certificatePreviewSingleSignature"><span></span><b id="certificatePreviewSignature">Firma autorizada</b><small id="certificatePreviewSignatureTitle">Representante legal</small><small id="certificatePreviewCompany">Empresa</small></div>
-    <div class="certificate-preview-signature-pair hidden" id="certificatePreviewSignaturePair">
+    <div class="certificate-preview-signature-pair hidden" id="certificatePreviewSignaturePair" style="display:none!important;">
       <div><span class="signature-line"></span><b>Firma / recepción del trabajador/a</b><small id="certificatePreviewEmployeeName">Funcionario/a</small><small id="certificatePreviewEmployeeDocument">C.I. N.º —</small></div>
       <div><span class="signature-line"></span><b>Firma del empleador/a</b><small id="certificatePreviewPairedSignature">Firma autorizada</small><small id="certificatePreviewPairedSignatureTitle">Representante legal</small><small id="certificatePreviewPairedCompany">Empresa</small></div>
     </div>
+    <p class="certificate-preview-receipt hidden" id="certificatePreviewReceipt" style="display:none!important;"></p>
     <footer class="certificate-preview-footer">DOCUMENTO DE TRABAJO · Vista previa del modelo. Revisá el texto y los datos antes de emitir.</footer>
     <p class="certificate-draft-note">BORRADOR · REVISAR ANTES DE FIRMAR</p>
   </article></section>

@@ -103,15 +103,15 @@ body{margin:0;background:#edf1f6;color:#202a39;font-family:"Aptos","Segoe UI","H
   </table>
 </section>
 {% endif %}
-{% if certificate.document_type in ['contrato_trabajo','contrato_tiempo_parcial','contrato_mipymes_plazo_determinado','contrato_mipymes_80','adenda_prorroga_contrato','notificacion_preaviso','despido','amonestacion','cambio_salarial','alta_funcionario','baja_funcionario','aguinaldo_anual','aguinaldo_proporcional','recibo_salario','liquidacion_final','notificacion_vacaciones','usufructo_vacaciones','recibo_vacaciones'] %}
+{% if signature_mode == 'both' %}
 <div class="signature-pair">
   <div class="sigline"><b>Firma / recepción del trabajador/a</b><small>{{ certificate.employee_name_snapshot }}</small><small>C.I. N.º {{ certificate.employee_document_snapshot }}</small></div>
   <div class="sigline"><b>Firma del empleador/a</b><small>{{ certificate.company.branding.signature_name if certificate.company.branding and certificate.company.branding.signature_name else certificate.company.legal_representative or 'Firma autorizada' }}</small><small>{{ certificate.company.branding.signature_title if certificate.company.branding else 'Representante legal' }}</small><small>{{ certificate.company_name_snapshot }}</small></div>
 </div>
-{% if certificate.document_type in ['notificacion_preaviso','despido','amonestacion','notificacion_vacaciones','baja_funcionario','alta_funcionario','cambio_salarial'] %}
-<p class="signature-note">Fecha de recepción: ____/____/________. La firma acredita recepción y no necesariamente conformidad con el contenido.</p>
+{% if receipt_mode in ['receipt_date','receipt_disclaimer'] %}
+<p class="signature-note">Fecha de recepción: ____/____/________{% if receipt_mode == 'receipt_disclaimer' %}. La firma acredita recepción y no necesariamente conformidad con el contenido{% endif %}.</p>
 {% endif %}
-{% elif certificate.document_type in ['permiso_paternidad','renuncia','solicitud_vacacion','permiso_laboral'] %}
+{% elif signature_mode == 'employee' %}
 <div class="signature"><b>{{ certificate.employee_name_snapshot }}</b><small>Firma del trabajador/a</small><small>C.I. N.º {{ certificate.employee_document_snapshot }}</small></div>
 <p class="signature-note">RECIBIDO / AUTORIZACIÓN: ____________________ FECHA: ____/____/________</p>
 {% elif certificate.document_type == 'certificado_trabajo_b' %}

@@ -514,21 +514,22 @@ if (certificateForm) {
 
     const signature = companyOption?.dataset.signature || 'Firma autorizada';
     const signatureTitle = companyOption?.dataset.signatureTitle || 'Representante legal';
-    const pairedTypes = new Set([
-      'contrato_trabajo', 'contrato_tiempo_parcial', 'contrato_mipymes_plazo_determinado',
-      'contrato_mipymes_80', 'adenda_prorroga_contrato', 'notificacion_preaviso', 'despido',
-      'amonestacion', 'cambio_salarial', 'alta_funcionario', 'baja_funcionario', 'aguinaldo_anual',
-      'aguinaldo_proporcional', 'recibo_salario', 'liquidacion_final', 'notificacion_vacaciones',
-      'usufructo_vacaciones', 'recibo_vacaciones'
-    ]);
-    const employeeOnlyTypes = new Set([
-      'permiso_paternidad', 'renuncia', 'solicitud_vacacion', 'permiso_laboral'
-    ]);
-    const usePair = pairedTypes.has(type);
+    const selectedTypeButton = [...document.querySelectorAll('[data-certificate-type]')]
+      .find(button => button.dataset.certificateType === type);
+    const signatureMode = selectedTypeButton?.dataset.signatureMode || 'employer';
+    const receiptMode = selectedTypeButton?.dataset.receiptMode || '';
+    const usePair = signatureMode === 'both';
+    const employeeOnly = signatureMode === 'employee';
     const singleSignature = document.querySelector('#certificatePreviewSingleSignature');
     const signaturePair = document.querySelector('#certificatePreviewSignaturePair');
-    if (singleSignature) singleSignature.classList.toggle('hidden', usePair);
-    if (signaturePair) signaturePair.classList.toggle('hidden', !usePair);
+    if (singleSignature) {
+      singleSignature.classList.toggle('hidden', usePair);
+      singleSignature.style.setProperty('display', usePair ? 'none' : 'block', 'important');
+    }
+    if (signaturePair) {
+      signaturePair.classList.toggle('hidden', !usePair);
+      signaturePair.style.setProperty('display', usePair ? 'grid' : 'none', 'important');
+    }
 
     if (usePair) {
       document.querySelector('#certificatePreviewEmployeeName').textContent = employee;
@@ -536,7 +537,7 @@ if (certificateForm) {
       document.querySelector('#certificatePreviewPairedSignature').textContent = signature;
       document.querySelector('#certificatePreviewPairedSignatureTitle').textContent = signatureTitle;
       document.querySelector('#certificatePreviewPairedCompany').textContent = company;
-    } else if (employeeOnlyTypes.has(type)) {
+    } else if (employeeOnly) {
       document.querySelector('#certificatePreviewSignature').textContent = employee;
       document.querySelector('#certificatePreviewSignatureTitle').textContent = 'Firma del trabajador/a';
       document.querySelector('#certificatePreviewCompany').textContent = `C.I. N.º ${employeeDocument}`;
@@ -550,6 +551,19 @@ if (certificateForm) {
       document.querySelector('#certificatePreviewSignature').textContent = signature;
       document.querySelector('#certificatePreviewSignatureTitle').textContent = signatureTitle;
       document.querySelector('#certificatePreviewCompany').textContent = company;
+    }
+
+    const previewReceipt = document.querySelector('#certificatePreviewReceipt');
+    if (previewReceipt) {
+      const receiptTexts = {
+        employee_authorization: 'RECIBIDO / AUTORIZACIÓN: ____________________    FECHA: ____/____/________',
+        receipt_date: 'Fecha de recepción: ____/____/________',
+        receipt_disclaimer: 'Fecha de recepción: ____/____/________. La firma acredita recepción y no necesariamente conformidad con el contenido.'
+      };
+      const receiptText = receiptTexts[receiptMode] || '';
+      previewReceipt.textContent = receiptText;
+      previewReceipt.classList.toggle('hidden', !receiptText);
+      previewReceipt.style.setProperty('display', receiptText ? 'block' : 'none', 'important');
     }
     typeTitle.textContent = title;
     scheduleCanonicalCertificatePreview(type);
