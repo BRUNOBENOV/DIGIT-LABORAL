@@ -1,4 +1,5 @@
 import re
+import uuid
 from datetime import date, datetime
 from types import SimpleNamespace
 from urllib.parse import parse_qs, urlparse
@@ -6,6 +7,8 @@ from urllib.parse import parse_qs, urlparse
 from fastapi.testclient import TestClient
 
 from app.config import settings
+from app.database import SessionLocal
+from app.models import Company, Employee, Vacation
 
 from app.document_export import (
     DOCUMENT_LABELS,
@@ -73,6 +76,7 @@ def test_certificate_a_preview_uses_model_text_and_uncached_static_asset():
         assert "certificado_trabajo_b: 'Certificado de Trabajo B'" in script.text
         assert "if (!['certificado_trabajo_a', 'certificado_trabajo_b', 'constancia'].includes(type)) return;" in script.text
         assert 'data-address="' in page.text
+        assert 'data-vacation-days=' not in page.text
         assert 'id="certificatePreviewPhone"' in page.text
         assert 'data-legal-representative=' in page.text
         assert 'id="certificatePreviewAddress"' in page.text
@@ -730,3 +734,68 @@ def test_work_constancia_uses_last_pay_period_for_termination():
     assert "Salario devengado durante el último período de pago" in body
     assert "3.550.000" in body
     assert "3.800.000" not in body
+
+
+
+def test_vacation_request_requires_current_period_and_explicit_days_not_historical_usage():
+    with SessionLocal() as db:
+        company = db.get(Company, 1)
+        assert company is not None
+        employee = Employee(
+            company_id=company.id,
+            full_name=f"Funcionario vacaciones {uuid.uuid4().hex[:8]}",
+            document_number=f"VAC-TEST-{uuid.uuid4().hex[:10]}",
+            position="Auxiliar",
+        )
+        db.add(employee)
+        db.flush()
+        db.add(Vacation(
+            employee_id=employee.id,
+            period_year=2025,
+            entitled_days=12,
+            used_days=5,
+            start_date=date(2025, 8, 1),
+            end_date=date(2025, 8, 5),
+            status="Usufructuado",
+            notes="Registro histórico para prueba",
+        ))
+        db.commit()
+        employee_id = employee.id
+        company_id = company.id
+
+    with TestClient(app) as client:
+        csrf = login(client)
+        form_data = {
+            "csrf_token": csrf,
+            "company_id": str(company_id),
+            "employee_id": str(employee_id),
+            "document_type": "solicitud_vacacion",
+            "city": "Ciudad del Este",
+            "issue_date": "2026-10-29",
+            "position": "Auxiliar",
+            "admission_date": "2024-02-01",
+            "salary": "3044000",
+            "leave_start": "2026-11-02",
+            "leave_end": "2026-11-07",
+            "vacation_period_year": "2026",
+            "vacation_days": "",
+            "vacation_request_date": "2026-10-29",
+            "intent": "save",
+        }
+        missing_days = client.post("/app/certificates", data=form_data, follow_redirects=False)
+        assert missing_days.status_code == 400
+        assert "cantidad entera de días" in missing_days.text.lower()
+
+        form_data["vacation_days"] = "0"
+        zero_days = client.post("/app/certificates", data=form_data, follow_redirects=False)
+        assert zero_days.status_code == 400
+        assert "cantidad entera de días" in zero_days.text.lower()
+
+        form_data["vacation_days"] = "6"
+        created = client.post("/app/certificates", data=form_data, follow_redirects=False)
+        assert created.status_code == 303
+        certificate_id = int(parse_qs(urlparse(created.headers["location"]).query)["created"][0])
+        printed = client.get(f"/app/certificates/{certificate_id}/print")
+        assert printed.status_code == 200
+        assert "Días solicitados: 6" in printed.text
+        assert "desde el 02/11/2026 hasta el 07/11/2026" in printed.text

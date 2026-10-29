@@ -1,6 +1,14 @@
-# Digit Laboral 2.6.41
+# Digit Laboral 2.6.42
 
 Plataforma de gestión y cumplimiento laboral para estudios contables paraguayos.
+
+## Novedades de la versión 2.6.42
+
+- Evita copiar días ya usados de registros históricos a una nueva solicitud de vacaciones.
+- Solicita fechas, período anual y cantidad explícita de días antes de guardar documentos de vacaciones; valida la información en el servidor.
+- No calcula automáticamente saldos ni días legales: utiliza los datos revisados por el profesional.
+
+
 
 ## Novedades de la versión 2.6.41
 

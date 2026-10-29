@@ -5545,18 +5545,29 @@ def create_certificate(
             select(Vacation).where(Vacation.employee_id == employee.id).order_by(Vacation.created_at.desc())
         )
         if latest_vacation:
-            leave_start = leave_start or latest_vacation.start_date
-            leave_end = leave_end or latest_vacation.end_date
-            vacation_period_year = vacation_period_year or str(latest_vacation.period_year)
-            if not vacation_days and latest_vacation.used_days:
-                vacation_days = str(latest_vacation.used_days)
-            if not observations:
-                observations = f"Periodo {latest_vacation.period_year}: {latest_vacation.used_days} de {latest_vacation.entitled_days} días registrados, estado {latest_vacation.status}."
+            # A new vacation request must not inherit dates/year/days from a prior record.
+            # For documents tied to an existing vacation period, reuse dates and year only;
+            # used_days is historical consumption, not the number being requested or notified.
+            if document_type != "solicitud_vacacion":
+                leave_start = leave_start or latest_vacation.start_date
+                leave_end = leave_end or latest_vacation.end_date
+                vacation_period_year = vacation_period_year or str(latest_vacation.period_year)
+                if not observations:
+                    observations = f"Periodo {latest_vacation.period_year}: {latest_vacation.used_days} de {latest_vacation.entitled_days} días registrados, estado {latest_vacation.status}."
     if document_type in {"solicitud_vacacion", "notificacion_vacaciones", "usufructo_vacaciones", "recibo_vacaciones"}:
         if not leave_start or not leave_end:
             raise HTTPException(400, "Completá las fechas de inicio y término del período de vacaciones.")
         if leave_end < leave_start:
             raise HTTPException(400, "La fecha final de vacaciones no puede ser anterior a la fecha inicial.")
+        if intent != "preview":
+            year_text = str(vacation_period_year or "").strip()
+            if not year_text.isdigit() or len(year_text) != 4 or not 1900 <= int(year_text) <= 9999:
+                raise HTTPException(400, "Indicá un año válido para el período de vacaciones.")
+            days_text = str(vacation_days or "").strip()
+            if not days_text.isdigit() or not 1 <= int(days_text) <= 366:
+                raise HTTPException(400, "Indicá una cantidad entera de días de vacaciones entre 1 y 366.")
+            vacation_period_year = str(int(year_text))
+            vacation_days = str(int(days_text))
     if document_type in {"aguinaldo_anual", "aguinaldo_proporcional"} and amount <= 0:
         raise HTTPException(400, "El recibo de aguinaldo requiere un cálculo o importe registrado.")
     # Evitar confundir un recibo con una cifra única: calcular subtotales a partir

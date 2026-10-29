@@ -161,6 +161,16 @@ if (certificateForm) {
     if (company?.dataset.city) cityInput.value = company.dataset.city;
     loadEmployee();
   };
+  const clearNewVacationRequestFields = () => {
+    if (typeInput.value !== 'solicitud_vacacion') return;
+    ['#certificateLeaveStart', '#certificateLeaveEnd', '#certificateVacationDays'].forEach(selector => {
+      const field = document.querySelector(selector);
+      if (field) field.value = '';
+    });
+    const yearField = document.querySelector('#certificateVacationYear');
+    const issueDate = document.querySelector('#certificateIssueDate')?.value || '';
+    if (yearField) yearField.value = issueDate.length >= 4 ? issueDate.slice(0, 4) : String(new Date().getFullYear());
+  };
   const loadEmployee = () => {
     const employee = selectedOption(employeeSelect);
     if (!employee) return;
@@ -175,8 +185,7 @@ if (certificateForm) {
     const vacationFields = [
       ['#certificateLeaveStart', 'vacationStart'],
       ['#certificateLeaveEnd', 'vacationEnd'],
-      ['#certificateVacationYear', 'vacationYear'],
-      ['#certificateVacationDays', 'vacationDays']
+      ['#certificateVacationYear', 'vacationYear']
     ];
     vacationFields.forEach(([selector, key]) => {
       const field = document.querySelector(selector);
@@ -184,6 +193,7 @@ if (certificateForm) {
         field.value = employee.dataset[key] || '';
       }
     });
+    clearNewVacationRequestFields();
     updatePreview();
   };
   const updateSpecificFields = () => {
@@ -194,6 +204,7 @@ if (certificateForm) {
       field.classList.toggle('hidden', !visible);
       field.querySelectorAll('input,select,textarea').forEach(input => { input.disabled = !visible; });
     });
+    clearNewVacationRequestFields();
   };
   const buildBody = () => {
     const type = typeInput.value;
