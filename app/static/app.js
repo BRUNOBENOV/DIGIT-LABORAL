@@ -311,7 +311,7 @@ if (certificateForm) {
           : 'Que ' + identity + ', pertenece a la dotación de personal de esta firma ' + company +
             ', habiendo ingresado a nuestro servicio el día ' + admission + ', desempeñándose como ' + role + '.') +
         '\n\nEste certificado lo expido a su solicitud y para su eventual uso ante terceros.',
-      constancia: 'C E R T I F I C O:\\n\\n' + 'Que ' + identity + ', de nacionalidad ' + (nationalityInput?.value || 'paraguaya').toUpperCase() +
+      constancia: 'C E R T I F I C O:\n\n' + 'Que ' + identity + ', de nacionalidad ' + (nationalityInput?.value || 'paraguaya').toUpperCase() +
         (civilStatusInput?.value ? ', de estado civil ' + civilStatusInput.value.toUpperCase() : '') +
         ', domiciliado/a en ' + employeeAddress + ', ' +
         (value('effective_date')
