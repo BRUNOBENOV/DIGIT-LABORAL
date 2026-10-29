@@ -72,6 +72,8 @@ def test_certificate_a_preview_uses_model_text_and_uncached_static_asset():
         assert "if (!['certificado_trabajo_a', 'certificado_trabajo_b', 'constancia'].includes(type)) return;" in script.text
         assert 'data-address="' in page.text
         assert 'id="certificatePreviewPhone"' in page.text
+        assert "C E R T I F I C O:" in script.text
+        assert "previewDate.style.display = type === 'constancia' ? 'none' : '';" in script.text
         assert ".certificate-preview-signature-pair b,.certificate-preview-signature-pair small{display:block" in page.text
         assert 'id="certificatePreviewSignaturePair" style="display:none!important;"' in page.text
         assert 'id="certificatePreviewReceipt"' in page.text
@@ -270,11 +272,12 @@ def test_constancia_matches_requested_model_and_signature_in_word_pdf():
         employee_address="Barrio La Blanca, Ciudad del Este",
     )
     assert title == "Constancia de Trabajo"
-    assert "Que BLANCA ARAUJO, con C.I. N.º 1.234.567, de nacionalidad paraguaya" in body
-    assert "de estado civil soltera" in body
+    assert body.startswith("C E R T I F I C O:\\n\\n")
+    assert "Que BLANCA ARAUJO, con C.I. N.º 1.234.567, de nacionalidad PARAGUAYA" in body
+    assert "de estado civil SOLTERA" in body
     assert "domiciliado/a en Barrio La Blanca, Ciudad del Este" in body
     assert "es empleado/a de la firma comercial TALLER LUKY - JAVIER MIR" in body
-    assert "ubicada en KM 5,5 - LA BLANCA" in body
+    assert "ubicada sobre la calle KM 5,5 - LA BLANCA" in body
     assert "desempeñándose como Auxiliar administrativa" in body
     assert "remuneración mensual de Gs. 3.044.000" in body
     assert "a los veintinueve días del mes de octubre del año dos mil veintiséis" in body
@@ -304,12 +307,18 @@ def test_constancia_matches_requested_model_and_signature_in_word_pdf():
     assert "domiciliado/a en Barrio La Blanca, Ciudad del Este" in word_text
     assert "JAVIER MIRANDA" in word_text and "Responsable" in word_text
     assert "Tel. 573-327" in word_text
+    assert "C E R T I F I C O:" in word_text
+    assert "Sr(a). JAVIER MIRANDA" in word_text
+    assert word_text.count("a los veintinueve días del mes de octubre del año dos mil veintiséis") == 1
 
     pdf = PdfReader(io.BytesIO(build_pdf_bytes(data)))
     pdf_text = " ".join(" ".join((page.extract_text() or "").split()) for page in pdf.pages)
-    assert "ubicada en KM 5,5 - LA BLANCA" in pdf_text
+    assert "ubicada sobre la calle KM 5,5 - LA BLANCA" in pdf_text
     assert "remuneración mensual de Gs. 3.044.000" in pdf_text
     assert "JAVIER MIRANDA" in pdf_text and "Responsable" in pdf_text
+    assert "Sr(a). JAVIER MIRANDA" in pdf_text
+    assert "C E R T I F I C O:" in pdf_text
+    assert pdf_text.count("a los veintinueve días del mes de octubre del año dos mil veintiséis") == 1
     assert "Tel. 573-327" in pdf_text
 
     _, ended_body = build_document_body(
