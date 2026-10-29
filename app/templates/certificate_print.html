@@ -115,7 +115,17 @@ body{margin:0;background:#edf1f6;color:#202a39;font-family:"Aptos","Segoe UI","H
 <div class="signature"><b>{{ certificate.employee_name_snapshot }}</b><small>Firma del trabajador/a</small><small>C.I. N.º {{ certificate.employee_document_snapshot }}</small></div>
 <p class="signature-note">RECIBIDO / AUTORIZACIÓN: ____________________ FECHA: ____/____/________</p>
 {% elif certificate.document_type == 'certificado_trabajo_b' %}
-<div class="signature certificate-b-signature"><b>{{ certificate.company_name_snapshot }}</b>{% if certificate.company.address %}<small>{{ certificate.company.address }}</small>{% endif %}{% if certificate.company.phone %}<small>TEL. {{ certificate.company.phone }}</small>{% endif %}</div>
+<div class="signature certificate-b-signature">
+  {% if certificate.company.legal_representative %}
+  <b>{{ certificate.company.legal_representative }}</b>
+  <small>Representante legal</small>
+  <small>{{ certificate.company_name_snapshot }}</small>
+  {% else %}
+  <b>{{ certificate.company_name_snapshot }}</b>
+  {% endif %}
+  {% if certificate.company.address %}<small>{{ certificate.company.address }}</small>{% endif %}
+  {% if certificate.company.phone %}<small>TEL. {{ certificate.company.phone }}</small>{% endif %}
+</div>
 {% elif certificate.document_type == 'constancia' %}
 <div class="signature constancia-signature">
   {% set constancia_signatory = certificate.company.legal_representative or (certificate.company.branding.signature_name if certificate.company.branding else '') or certificate.company.responsible_name or 'Firma autorizada' %}
