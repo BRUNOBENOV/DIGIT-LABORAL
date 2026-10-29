@@ -201,6 +201,8 @@ if (certificateForm) {
     const employeeOption = selectedOption(employeeSelect);
     const employee = employeeOption?.dataset.name || '[NOMBRE COMPLETO DEL FUNCIONARIO]';
     const documentNumber = employeeOption?.dataset.document || '[N.º DE C.I.]';
+    const employeeAddress = employeeOption?.dataset.address || '[DOMICILIO DEL FUNCIONARIO]';
+    const companyAddress = companySelect.value ? (selectedOption(companySelect)?.dataset.address || '[DOMICILIO DE LA EMPRESA]') : '[DOMICILIO DE LA EMPRESA]';
     const identity = documentNumber ? employee + ', con C.I. N.º ' + documentNumber : employee;
     const role = positionInput.value || '[CARGO]';
     const admission = admissionInput.value ? longDate(admissionInput.value) : '[FECHA DE INGRESO]';
@@ -309,14 +311,20 @@ if (certificateForm) {
           : 'Que ' + identity + ', pertenece a la dotación de personal de esta firma ' + company +
             ', habiendo ingresado a nuestro servicio el día ' + admission + ', desempeñándose como ' + role + '.') +
         '\n\nEste certificado lo expido a su solicitud y para su eventual uso ante terceros.',
-      constancia: company + ' hace constar que ' + identity + ', de nacionalidad ' + (nationalityInput?.value || 'paraguaya') +
+      constancia: 'Que ' + identity + ', de nacionalidad ' + (nationalityInput?.value || 'paraguaya') +
         (civilStatusInput?.value ? ', de estado civil ' + civilStatusInput.value : '') +
+        ', domiciliado/a en ' + employeeAddress + ', ' +
         (value('effective_date')
-          ? ', prestó servicios en el cargo de ' + role + ' desde el ' + admission + ' hasta el ' + longDate(value('effective_date')) +
-            '. Salario devengado durante el último período de pago: ' + lastPeriodSalaryDisplay + '.'
-          : ', presta servicios en el cargo de ' + role + ' desde el ' + admission + '.' +
-            (includeSalary ? '\nRemuneración mensual registrada: ' + money(salaryRaw) + '.' : '')) +
-        '\n\nSe expide en ' + (cityInput.value || 'Ciudad del Este') + ', a los ' + longDate(issueDateInput.value) + ', para los fines indicados por la persona interesada.',
+          ? 'fue empleado/a de la firma comercial ' + company + ', ubicada en ' + companyAddress +
+            ', desde el ' + admission + ' hasta el ' + longDate(value('effective_date')) + ', desempeñándose como ' + role + '.'
+          : 'es empleado/a de la firma comercial ' + company + ', ubicada en ' + companyAddress +
+            ', desde el ' + admission + ', desempeñándose como ' + role + '.') +
+        (value('effective_date')
+          ? ' Salario devengado durante el último período de pago: ' + lastPeriodSalaryDisplay + '.'
+          : (includeSalary ? ' Percibe una remuneración mensual de ' + money(salaryRaw) + '.' : '')) +
+        '\n\nSe expide la presente constancia en ' + (cityInput.value || 'Ciudad del Este').toUpperCase() +
+        ', a los ' + (issueDateInput.value ? longDate(issueDateInput.value) : '[FECHA EN LETRAS]') +
+        ', para los fines y efectos que hubiere lugar.',
       aguinaldo_anual: 'RECIBO DE PAGO DE AGUINALDO\n\nEmpleador: ' + company + '\nTrabajador/a: ' + identity +
         '\nPeríodo considerado: ' + startPeriod + ' al ' + endPeriod + '\nFecha de pago: ' + shortDate(value('payment_date')) +
         '\n\nImporte abonado: ' + money(amount) + '.\n\nVerificar que el importe coincida con las remuneraciones computables y con el registro de pago comunicado al REOP. La firma acredita recepción del importe consignado.',
@@ -422,7 +430,7 @@ if (certificateForm) {
   function scheduleCanonicalCertificatePreview(type) {
     const sequence = ++canonicalCertificatePreviewSequence;
     if (canonicalCertificatePreviewTimer !== null) window.clearTimeout(canonicalCertificatePreviewTimer);
-    if (!['certificado_trabajo_a', 'certificado_trabajo_b'].includes(type)) return;
+    if (!['certificado_trabajo_a', 'certificado_trabajo_b', 'constancia'].includes(type)) return;
     // Sin empresa y funcionario no existe un documento canónico; mantener el modelo local con marcadores claros.
     if (!companySelect.value || !employeeSelect.value) return;
     canonicalCertificatePreviewTimer = window.setTimeout(async () => {
@@ -513,7 +521,7 @@ if (certificateForm) {
     if (letterhead) letterhead.style.borderColor = companyColor;
 
     const signature = companyOption?.dataset.signature || 'Firma autorizada';
-    const signatureTitle = companyOption?.dataset.signatureTitle || 'Representante legal';
+    const signatureTitle = companyOption?.dataset.signatureTitle || (type === 'constancia' ? 'Responsable' : 'Representante legal');
     const selectedTypeButton = [...document.querySelectorAll('[data-certificate-type]')]
       .find(button => button.dataset.certificateType === type);
     const signatureMode = selectedTypeButton?.dataset.signatureMode || 'employer';
@@ -547,10 +555,19 @@ if (certificateForm) {
       document.querySelector('#certificatePreviewCompany').textContent = companyOption?.dataset.phone
         ? 'TEL. ' + companyOption.dataset.phone
         : '';
+      document.querySelector('#certificatePreviewPhone').textContent = '';
+    } else if (type === 'constancia') {
+      document.querySelector('#certificatePreviewSignature').textContent = signature;
+      document.querySelector('#certificatePreviewSignatureTitle').textContent = signatureTitle;
+      document.querySelector('#certificatePreviewCompany').textContent = company;
+      document.querySelector('#certificatePreviewPhone').textContent = companyOption?.dataset.phone
+        ? 'Tel. ' + companyOption.dataset.phone
+        : '';
     } else {
       document.querySelector('#certificatePreviewSignature').textContent = signature;
       document.querySelector('#certificatePreviewSignatureTitle').textContent = signatureTitle;
       document.querySelector('#certificatePreviewCompany').textContent = company;
+      document.querySelector('#certificatePreviewPhone').textContent = '';
     }
 
     const previewReceipt = document.querySelector('#certificatePreviewReceipt');
