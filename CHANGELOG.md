@@ -1,3 +1,11 @@
+## 2.6.35 — Modelo B y sincronización real de vista previa
+
+- Adapta el Certificado de Trabajo B al texto solicitado, con fechas/cargo automatizados y el encabezado «C E R T I F I C O:».
+- Hace que la vista previa de los certificados A y B consulte el mismo generador del servidor utilizado para emitir, evitando dos plantillas divergentes.
+- La previsualización se procesa sin crear borradores ni consumir numeración; permite visualizar el certificado aunque el salario del último período todavía esté pendiente de completar.
+- Desactiva la caché del HTML del generador y mantiene la versión del recurso JavaScript para reducir la posibilidad de mostrar la plantilla anterior.
+- Añade pruebas de regresión para el modelo B, el endpoint de vista previa y las cabeceras anti-caché.
+
 ## 2.6.34 — Sincronización de vista previa del Certificado A
 
 - Actualiza el texto generado por el navegador para que coincida con el modelo automatizado del Certificado A en Word y PDF.
