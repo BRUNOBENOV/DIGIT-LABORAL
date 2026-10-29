@@ -1,3 +1,10 @@
+## 2.6.39 — Ajuste fiel del formato de Constancia
+
+- Incluye «C E R T I F I C O:» como encabezado del cuerpo de la Constancia en vista previa, impresión, Word y PDF.
+- Evita duplicar la fecha de expedición: queda al cierre en letras, conforme al modelo suministrado.
+- Ajusta la firma al ejemplo: «Sr(a). [responsable]», «Responsable» y teléfono, sin repetir el nombre de la empresa debajo de la firma.
+- Presenta nacionalidad y estado civil en mayúsculas y conserva la dirección como «ubicada sobre la calle ...».
+
 ## 2.6.38 — Modelo de Constancia de Trabajo
 
 - Adapta la Constancia al modelo entregado: identificación, nacionalidad, estado civil, domicilio, empresa y dirección, cargo, ingreso, remuneración y fecha de expedición.
