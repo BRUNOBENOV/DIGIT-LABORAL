@@ -115,6 +115,7 @@ def test_certificate_preview_endpoint_uses_same_body_as_export_model():
         assert "ha trabajado en esta firma comercial" in payload["body"]
 
         base_data["document_type"] = "certificado_trabajo_b"
+        base_data["position"] = "DEPOSITERO"
         b_response = client.post("/app/certificates", data=base_data, follow_redirects=False)
         assert b_response.status_code == 200
         b_payload = b_response.json()
@@ -122,6 +123,7 @@ def test_certificate_preview_endpoint_uses_same_body_as_export_model():
         assert b_payload["title"] == "Certificado de Trabajo B"
         assert "perteneció a la dotación de personal" in b_payload["body"]
         assert "habiendo ingresado a nuestro servicio" in b_payload["body"]
+        assert "desempeñándose como DEPOSITERO." in b_payload["body"]
 
 
 def test_amount_in_words_and_legal_basis():
