@@ -30,6 +30,7 @@
   {% if user.role == 'administrador' %}
     {{ tab_nav('Subsecciones de informes', [
       {'label':'Informes laborales', 'href':'/app/reports', 'active':p.startswith('/app/reports')},
+       {'label':'Liquidación de Salarios', 'href':'/app/reports/liquidaciones-salarios', 'active':p.startswith('/app/reports/liquidaciones-salarios')},
       {'label':'Cumplimiento REI / REOP', 'href':'/app/compliance', 'active':p.startswith('/app/compliance')},
       {'label':'Auditoría', 'href':'/app/audit', 'active':p.startswith('/app/audit')}
     ]) }}
