@@ -52,7 +52,8 @@ COMPLIANCE_STATUS_TRANSITIONS: dict[str, set[str]] = {
 # Los lotes anuales no tienen eventos individuales, por eso su estado propio
 # debe mantener la misma trazabilidad que los lotes de comunicaciones.
 INTEGRATION_BATCH_STATUS_TRANSITIONS: dict[str, set[str]] = {
-    "Generado": {"Presentado"},
+    "Generado": {"Validado", "Presentado"},
+    "Validado": {"Validado", "Presentado"},
     "Presentado": {"Presentado", "Aceptado", "Observado", "Rechazado"},
     "Aceptado": {"Aceptado"},
     "Observado": {"Observado"},
