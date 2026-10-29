@@ -392,7 +392,7 @@ def test_constancia_matches_requested_model_and_signature_in_word_pdf():
         company_address="KM 5,5 - LA BLANCA",
         employee_address="Barrio La Blanca, Ciudad del Este",
     )
-    assert "fue empleado/a de la firma comercial" in ended_body
+    assert "prestó servicios en la firma comercial TALLER LUKY - JAVIER MIR" in ended_body
     assert "hasta el 24 de octubre de 2026" in ended_body
     assert "Gs. 2.800.000" in ended_body
     assert "remuneración mensual de Gs. 3.044.000" not in ended_body
