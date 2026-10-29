@@ -11,7 +11,10 @@ from app.auth import hash_password
 from app.config import settings
 from app.database import SessionLocal
 from app.main import app
-from app.models import (\n    AuditLog, BranchComplianceProfile, CalculationRecord, Company, CompanyComplianceProfile,\n    Employee, EmployeeComplianceProfile, IntegrationBatch, Studio, User, UserSecurity,\n)
+from app.models import (
+    AuditLog, BranchComplianceProfile, CalculationRecord, Company, CompanyComplianceProfile,
+    Employee, EmployeeComplianceProfile, IntegrationBatch, Studio, User, UserSecurity,
+)
 
 
 def _login(client: TestClient, email: str = "admin@digitlaboral.com.py", password: str | None = None) -> None:
