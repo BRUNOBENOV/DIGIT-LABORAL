@@ -278,7 +278,7 @@ def test_notification_preaviso_uses_formal_text_dates_and_article_89_rights():
     assert "un día a la semana" in body
     assert "artículo 89 de la Ley N.º 213/93" in body
     assert "NO DEBE MOSTRARSE COMO CAUSA AUTOMÁTICA" not in body
-    assert "no implica necesariamente conformidad" in body
+    assert "no implica necesariamente conformidad" not in body
 
 
 def test_work_certificates_have_no_employee_signature_in_print_word_or_pdf():
