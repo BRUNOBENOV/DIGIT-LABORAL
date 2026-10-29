@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from calendar import monthrange
-from datetime import date
+from datetime import date, datetime
 from io import BytesIO
 from html import escape
 from typing import Any
@@ -191,7 +191,7 @@ def salary_report_history(db: Session, item: CalculationRecord) -> list[dict[str
     records = list(db.scalars(query.limit(100)))
     if item.id not in {record.id for record in records}:
         records.append(item)
-        records.sort(key=lambda record: (record.created_at or date.min, record.id))
+        records.sort(key=lambda record: (record.created_at or datetime.min, record.id))
     return [
         {
             "id": record.id,
@@ -223,6 +223,7 @@ def build_salary_report_pdf(model: dict[str, Any]) -> bytes:
     subheading = ParagraphStyle("ReceiptSubheading", parent=styles["Heading2"], fontName="Helvetica-Bold", fontSize=9.5, leading=12, textColor=navy, spaceBefore=7, spaceAfter=5)
     centered = ParagraphStyle("ReceiptCenter", parent=body, alignment=TA_CENTER)
     amount_style = ParagraphStyle("ReceiptAmount", parent=body, alignment=TA_RIGHT, fontName="Helvetica-Bold")
+    header_style = ParagraphStyle("ReceiptTableHeader", parent=small, textColor=colors.white, fontName="Helvetica-Bold")
 
     def p(value: Any, style=body):
         return Paragraph(escape(str(value or "")).replace("\n", "<br/>"), style)
@@ -265,7 +266,7 @@ def build_salary_report_pdf(model: dict[str, Any]) -> bytes:
     ]))
     story.extend([p("DATOS DEL FUNCIONARIO Y PERÍODO", subheading), employee_table, Spacer(1, 2*mm)])
 
-    lines = [[p("CONCEPTO", small), p("IMPORTE", small)]]
+    lines = [[p("CONCEPTO", header_style), p("IMPORTE", header_style)]]
     for row in model["earnings"]:
         lines.append([p(row["label"]), p(gs(row["amount"]), amount_style)])
     lines.append([p("TOTAL HABERES", subheading), p(gs(model["gross"]), amount_style)])
