@@ -1,3 +1,9 @@
+## 2.6.42 — Validación explícita de documentos de vacaciones
+
+- Evita reutilizar días ya usados de un registro anterior como si fueran los días de una nueva solicitud o notificación.
+- Las solicitudes de vacaciones comienzan sin copiar automáticamente fechas ni período anual histórico.
+- Exige un año válido y una cantidad entera de días entre 1 y 366 al guardar documentos de vacaciones; conserva las fechas y los importes ingresados sin inventar cálculos legales.
+
 ## 2.6.41 — Representante Legal también en Certificado B
 
 - Aplica la prioridad del campo Representante Legal a Certificado de Trabajo B cuando la empresa lo tiene registrado.
