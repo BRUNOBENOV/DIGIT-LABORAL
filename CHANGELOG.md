@@ -7,6 +7,11 @@
 - Añade migración para asociar el lote a su cálculo y pruebas de preparación, validación y archivo de comprobantes.
 - El envío automático directo sigue deshabilitado: no se activará sin especificación técnica y autorización oficial de interoperabilidad del MTESS. El Excel generado es un documento de apoyo y no sustituye la plantilla oficial de importación de REOP.
 
+## 2.6.32 — Catálogo lateral de certificados ajustado
+
+- Actualiza el listado lateral con los diez documentos solicitados, en el orden y con las etiquetas especificadas.
+- Mantiene intactos el catálogo general, las reglas de generación, las automatizaciones, el formulario dinámico y la vista previa.
+
 ## 2.6.30 — Liquidación salarial integrada en Centro de Informes
 
 - Reutiliza la entrada existente de Liquidación de Salarios dentro del catálogo Centro de Informes para abrir el recibo detallado.
