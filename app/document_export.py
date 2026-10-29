@@ -664,7 +664,7 @@ def build_document_body(
             "Durante este período y sin disminución de su salario, podrá disponer, a su elección, de una licencia diaria de dos horas dentro de la jornada legal "
             "o de un día a la semana para buscar otra ocupación. A su opción, podrá utilizar en forma continuada todo el tiempo de licencia que le corresponda, "
             "conforme al artículo 89 de la Ley N.º 213/93, Código del Trabajo.\n\n"
-            "Sírvase firmar al pie de la presente como constancia de recepción. La firma acredita recepción y no implica necesariamente conformidad con su contenido.\n\n"
+            "Sírvase firmar al pie de la presente como constancia de recepción.\n\n"
             "Atentamente."
         ),
         "renuncia": (
