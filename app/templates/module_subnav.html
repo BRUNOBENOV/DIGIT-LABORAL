@@ -29,15 +29,13 @@
 {% elif p.startswith('/app/reports') or p.startswith('/app/compliance') or p.startswith('/app/audit') %}
   {% if user.role == 'administrador' %}
     {{ tab_nav('Subsecciones de informes', [
-      {'label':'Informes laborales', 'href':'/app/reports', 'active':p.startswith('/app/reports') and not p.startswith('/app/reports/liquidaciones-salarios')},
-       {'label':'Liquidación de Salarios', 'href':'/app/reports/liquidaciones-salarios', 'active':p.startswith('/app/reports/liquidaciones-salarios')},
+      {'label':'Informes laborales', 'href':'/app/reports', 'active':p.startswith('/app/reports')},
       {'label':'Cumplimiento REI / REOP', 'href':'/app/compliance', 'active':p.startswith('/app/compliance')},
       {'label':'Auditoría', 'href':'/app/audit', 'active':p.startswith('/app/audit')}
     ]) }}
   {% else %}
     {{ tab_nav('Subsecciones de informes', [
-      {'label':'Informes laborales', 'href':'/app/reports', 'active':p.startswith('/app/reports') and not p.startswith('/app/reports/liquidaciones-salarios')},
-      {'label':'Liquidación de Salarios', 'href':'/app/reports/liquidaciones-salarios', 'active':p.startswith('/app/reports/liquidaciones-salarios')},
+      {'label':'Informes laborales', 'href':'/app/reports', 'active':p.startswith('/app/reports')},
       {'label':'Cumplimiento REI / REOP', 'href':'/app/compliance', 'active':p.startswith('/app/compliance')}
     ]) }}
   {% endif %}
