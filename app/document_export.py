@@ -469,7 +469,8 @@ def build_document_body(
     disciplinary_action = str(metadata.get("disciplinary_action") or "Amonestación escrita").strip()
     sanction_start = format_date_short(optional_date(metadata.get("sanction_start_date"))) or "No aplica / completar"
     sanction_end = format_date_short(optional_date(metadata.get("sanction_end_date"))) or "No aplica / completar"
-    employee_address_text = employee_address or "domicilio no consignado en el legajo"
+    employee_address_text = employee_address or "un domicilio no consignado en el legajo"
+    company_address_text = company_address or "un domicilio no consignado en el legajo"
     employer_id = company_name
     if company_ruc:
         employer_id += f", RUC {company_ruc}"
@@ -522,19 +523,23 @@ def build_document_body(
             "Este certificado lo expido a su solicitud y para su eventual uso ante terceros."
         ),
         "constancia": (
-            f"{company_name} hace constar que {identity}, de nacionalidad {nationality}"
+            f"Que {identity}, de nacionalidad {nationality}"
             + (f", de estado civil {civil_status}" if civil_status else "")
+            + f", domiciliado/a en {employee_address_text}, "
             + (
-                f", prestó servicios en el cargo de {role} desde el {admission} hasta el {employment_end}."
+                f"fue empleado/a de la firma comercial {company_name}, ubicada en {company_address_text}, "
+                f"desde el {admission} hasta el {employment_end}, desempeñándose como {role}."
                 if effective_date else
-                f", presta servicios en el cargo de {role} desde el {admission}."
+                f"es empleado/a de la firma comercial {company_name}, ubicada en {company_address_text}, "
+                f"desde el {admission}, desempeñándose como {role}."
             )
             + (
                 f" Salario devengado durante el último período de pago: {last_period_salary_display}."
                 if effective_date else
-                (f" Remuneración mensual registrada es de {salary_display}." if str(metadata.get("include_salary", "on") or "").lower() in {"on", "true", "1"} else "")
+                (f" Percibe una remuneración mensual de Gs. {format_gs(salary)}."
+                 if str(metadata.get("include_salary", "on") or "").lower() in {"on", "true", "1"} else "")
             )
-            + f"\n\nSe expide la presente en {city}, a los {format_date_long_es(issue_date)}, para los fines indicados por la persona interesada."
+            + f"\n\nSe expide la presente constancia en {city.upper()}, a los {number_to_words_es(issue_date.day)} días del mes de {MONTHS_ES[issue_date.month - 1]} del año {number_to_words_es(issue_date.year)}, para los fines y efectos que hubiere lugar."
         ),
         "aguinaldo_anual": (
             f"El empleador {company_name} deja constancia de haber abonado a {identity} la suma de Gs. {format_gs(amount)} "
@@ -767,7 +772,7 @@ def export_data_from_certificate(certificate: Any) -> ExportData:
         company_phone=getattr(company, "phone", "") or "",
         company_email=getattr(company, "email", "") or "",
         legal_representative=(getattr(branding, "signature_name", "") if branding else "") or getattr(company, "legal_representative", "") or getattr(company, "responsible_name", "") or "",
-        signature_title=(getattr(branding, "signature_title", "") if branding else "") or "Representante legal",
+        signature_title=(getattr(branding, "signature_title", "") if branding else "") or ("Responsable" if certificate.document_type == "constancia" else "Representante legal"),
         logo_bytes=prepare_company_logo(
             getattr(branding, "logo_bytes", None) if branding else None,
             fit=getattr(branding, "logo_fit", "contain") if branding else "contain",
@@ -1078,9 +1083,11 @@ def _add_signature_table_docx(document: Document, data: ExportData) -> None:
         else:
             r = p.add_run(data.legal_representative or "Firma autorizada")
             r.bold = True
-            if data.signature_title:
-                p.add_run(f"\n{data.signature_title}")
+            title_text = data.signature_title or ("Responsable" if document_type == "constancia" else "Representante legal")
+            p.add_run(f"\n{title_text}")
             p.add_run(f"\n{data.company_name}")
+            if document_type == "constancia" and data.company_phone:
+                p.add_run(f"\nTel. {data.company_phone}")
 
 
 
@@ -1419,9 +1426,11 @@ def build_pdf_bytes(data: ExportData) -> bytes:
                 sig += f"<br/>TEL. {escape(data.company_phone)}"
         else:
             sig += f"<b>{escape(data.legal_representative or 'Firma autorizada')}</b>"
-            if data.signature_title:
-                sig += f"<br/>{escape(data.signature_title)}"
+            title_text = data.signature_title or ("Responsable" if data.document_type == "constancia" else "Representante legal")
+            sig += f"<br/>{escape(title_text)}"
             sig += f"<br/>{escape(data.company_name)}"
+            if data.document_type == "constancia" and data.company_phone:
+                sig += f"<br/>Tel. {escape(data.company_phone)}"
         story.append(Paragraph(sig, ParagraphStyle("EmployerSig", parent=small_style, alignment=TA_CENTER)))
 
     if data.status.lower() == "borrador":

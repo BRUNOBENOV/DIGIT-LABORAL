@@ -69,6 +69,9 @@ def test_certificate_a_preview_uses_model_text_and_uncached_static_asset():
         assert "[NOMBRE DE LA EMPRESA]" in script.text
         assert "[NOMBRE COMPLETO DEL FUNCIONARIO]" in script.text
         assert "certificado_trabajo_b: 'Certificado de Trabajo B'" in script.text
+        assert "if (!['certificado_trabajo_a', 'certificado_trabajo_b', 'constancia'].includes(type)) return;" in script.text
+        assert 'data-address="' in page.text
+        assert 'id="certificatePreviewPhone"' in page.text
         assert ".certificate-preview-signature-pair b,.certificate-preview-signature-pair small{display:block" in page.text
         assert 'id="certificatePreviewSignaturePair" style="display:none!important;"' in page.text
         assert 'id="certificatePreviewReceipt"' in page.text
@@ -118,7 +121,7 @@ def test_certificate_b_matches_requested_model():
     signature_text = "\n".join(paragraph.text for paragraph in word.paragraphs)
     assert "KAMNIZ SRL\nPIRIBEBUY E/MNHOR RODRIGUEZ\nTEL. (061)518-452" in signature_text
     pdf = PdfReader(io.BytesIO(build_pdf_bytes(data)))
-    pdf_text = "\n".join(page.extract_text() or "" for page in pdf.pages)
+    pdf_text = " ".join(" ".join((page.extract_text() or "").split()) for page in pdf.pages)
     assert "PIRIBEBUY E/MNHOR RODRIGUEZ" in pdf_text
     assert "TEL. (061)518-452" in pdf_text
 
@@ -158,6 +161,22 @@ def test_certificate_preview_endpoint_uses_same_body_as_export_model():
         assert "perteneció a la dotación de personal" in b_payload["body"]
         assert "habiendo ingresado a nuestro servicio" in b_payload["body"]
         assert "desempeñándose como DEPOSITERO." in b_payload["body"]
+
+        base_data["document_type"] = "constancia"
+        base_data["effective_date"] = ""
+        base_data["last_period_salary_amount"] = ""
+        base_data["nationality"] = "paraguaya"
+        base_data["civil_status"] = "soltera"
+        base_data["include_salary"] = "on"
+        constancia_response = client.post("/app/certificates", data=base_data, follow_redirects=False)
+        assert constancia_response.status_code == 200
+        constancia_body = constancia_response.json()["body"]
+        assert "es empleado/a de la firma comercial" in constancia_body
+        assert "de nacionalidad paraguaya" in constancia_body
+        assert "domiciliado/a en" in constancia_body
+        assert "ubicada en" in constancia_body
+        assert "remuneración mensual de Gs." in constancia_body
+        assert "para los fines y efectos que hubiere lugar" in constancia_body
 
 
 
@@ -225,6 +244,92 @@ def test_work_certificates_have_no_employee_signature_in_print_word_or_pdf():
             assert "Firma / recepción del trabajador/a" not in pdf_text
             assert "Firma del trabajador/a" not in pdf_text
             assert "Firma del empleador/a" not in pdf_text
+
+
+
+def test_constancia_matches_requested_model_and_signature_in_word_pdf():
+    metadata = {
+        "nationality": "paraguaya",
+        "civil_status": "soltera",
+        "include_salary": True,
+    }
+    title, body = build_document_body(
+        "constancia",
+        company_name="TALLER LUKY - JAVIER MIR",
+        employee_name="BLANCA ARAUJO",
+        employee_document="1.234.567",
+        position="Auxiliar administrativa",
+        admission_date=date(2024, 2, 1),
+        salary=3_044_000,
+        issue_date=date(2026, 10, 29),
+        city="Ciudad del Este",
+        metadata=metadata,
+        company_address="KM 5,5 - LA BLANCA",
+        company_phone="573-327",
+        legal_representative="JAVIER MIRANDA",
+        employee_address="Barrio La Blanca, Ciudad del Este",
+    )
+    assert title == "Constancia de Trabajo"
+    assert "Que BLANCA ARAUJO, con C.I. N.º 1.234.567, de nacionalidad paraguaya" in body
+    assert "de estado civil soltera" in body
+    assert "domiciliado/a en Barrio La Blanca, Ciudad del Este" in body
+    assert "es empleado/a de la firma comercial TALLER LUKY - JAVIER MIR" in body
+    assert "ubicada en KM 5,5 - LA BLANCA" in body
+    assert "desempeñándose como Auxiliar administrativa" in body
+    assert "remuneración mensual de Gs. 3.044.000" in body
+    assert "a los veintinueve días del mes de octubre del año dos mil veintiséis" in body
+    assert "para los fines y efectos que hubiere lugar" in body
+
+    data = ExportData(
+        document_type="constancia",
+        title=title,
+        city="Ciudad del Este",
+        issue_date=date(2026, 10, 29),
+        company_name="TALLER LUKY - JAVIER MIR",
+        company_address="KM 5,5 - LA BLANCA",
+        company_phone="573-327",
+        legal_representative="JAVIER MIRANDA",
+        signature_title="Responsable",
+        employee_name="BLANCA ARAUJO",
+        employee_document="1.234.567",
+        position="Auxiliar administrativa",
+        admission_date=date(2024, 2, 1),
+        salary=3_044_000,
+        body=body,
+        status="Emitido",
+        metadata=metadata,
+    )
+    word = WordDocument(io.BytesIO(build_docx_bytes(data)))
+    word_text = "\n".join(paragraph.text for paragraph in word.paragraphs)
+    assert "domiciliado/a en Barrio La Blanca, Ciudad del Este" in word_text
+    assert "JAVIER MIRANDA" in word_text and "Responsable" in word_text
+    assert "Tel. 573-327" in word_text
+
+    pdf = PdfReader(io.BytesIO(build_pdf_bytes(data)))
+    pdf_text = " ".join(" ".join((page.extract_text() or "").split()) for page in pdf.pages)
+    assert "ubicada en KM 5,5 - LA BLANCA" in pdf_text
+    assert "remuneración mensual de Gs. 3.044.000" in pdf_text
+    assert "JAVIER MIRANDA" in pdf_text and "Responsable" in pdf_text
+    assert "Tel. 573-327" in pdf_text
+
+    _, ended_body = build_document_body(
+        "constancia",
+        company_name="TALLER LUKY - JAVIER MIR",
+        employee_name="BLANCA ARAUJO",
+        employee_document="1.234.567",
+        position="Auxiliar administrativa",
+        admission_date=date(2024, 2, 1),
+        salary=3_044_000,
+        issue_date=date(2026, 10, 29),
+        city="Ciudad del Este",
+        metadata={"effective_date": "2026-10-24", "last_period_salary_amount": 2_800_000, **metadata},
+        company_address="KM 5,5 - LA BLANCA",
+        employee_address="Barrio La Blanca, Ciudad del Este",
+    )
+    assert "fue empleado/a de la firma comercial" in ended_body
+    assert "hasta el 24 de octubre de 2026" in ended_body
+    assert "Gs. 2.800.000" in ended_body
+    assert "remuneración mensual de Gs. 3.044.000" not in ended_body
 
 
 def test_amount_in_words_and_legal_basis():
@@ -496,7 +601,7 @@ def test_payroll_detail_table_appears_in_generated_word_and_pdf():
     assert "NETO A PERCIBIR" in word_text
 
     pdf = PdfReader(io.BytesIO(build_pdf_bytes(data)))
-    pdf_text = "\n".join(page.extract_text() or "" for page in pdf.pages)
+    pdf_text = " ".join(" ".join((page.extract_text() or "").split()) for page in pdf.pages)
     assert "TOTAL INGRESOS" in pdf_text
     assert "NETO A PERCIBIR" in pdf_text
 

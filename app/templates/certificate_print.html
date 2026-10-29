@@ -116,7 +116,14 @@ body{margin:0;background:#edf1f6;color:#202a39;font-family:"Aptos","Segoe UI","H
 <p class="signature-note">RECIBIDO / AUTORIZACIÓN: ____________________ FECHA: ____/____/________</p>
 {% elif certificate.document_type == 'certificado_trabajo_b' %}
 <div class="signature certificate-b-signature"><b>{{ certificate.company_name_snapshot }}</b>{% if certificate.company.address %}<small>{{ certificate.company.address }}</small>{% endif %}{% if certificate.company.phone %}<small>TEL. {{ certificate.company.phone }}</small>{% endif %}</div>
+{% elif certificate.document_type == 'constancia' %}
+<div class="signature constancia-signature">
+  <b>{{ certificate.company.branding.signature_name if certificate.company.branding and certificate.company.branding.signature_name else certificate.company.legal_representative or 'Firma autorizada' }}</b>
+  <small>{{ certificate.company.branding.signature_title if certificate.company.branding and certificate.company.branding.signature_title else 'Responsable' }}</small>
+  <span>{{ certificate.company_name_snapshot }}</span>
+  {% if certificate.company.phone %}<small>Tel. {{ certificate.company.phone }}</small>{% endif %}
+</div>
 {% else %}
-<div class="signature"><b>{{ certificate.company.branding.signature_name if certificate.company.branding and certificate.company.branding.signature_name else certificate.company.legal_representative or 'Firma autorizada' }}</b><small>{{ certificate.company.branding.signature_title if certificate.company.branding else 'Representante legal' }}</small><span>{{ certificate.company_name_snapshot }}</span></div>
+<div class="signature"><b>{{ certificate.company.branding.signature_name if certificate.company.branding and certificate.company.branding.signature_name else certificate.company.legal_representative or 'Firma autorizada' }}</b><small>{{ certificate.company.branding.signature_title if certificate.company.branding and certificate.company.branding.signature_title else 'Representante legal' }}</small><span>{{ certificate.company_name_snapshot }}</span></div>
 {% endif %}
 <p class="meta">{{ certificate.company.branding.document_footer if certificate.company.branding else 'Generado por Digit Laboral' }} · {{ certificate.created_by }} · {{ certificate.created_at|fecha }} · Estado: {{ certificate.status }}.</p>{% if certificate.status == 'Borrador' %}<p class="draft">BORRADOR · REVISAR ANTES DE FIRMAR</p>{% endif %}</main></body></html>
