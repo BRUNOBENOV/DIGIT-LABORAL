@@ -1,3 +1,10 @@
+## 2.6.30 — Liquidación salarial integrada en Centro de Informes
+
+- Reutiliza la entrada existente de Liquidación de Salarios dentro del catálogo Centro de Informes para abrir el recibo detallado.
+- Elimina la tarjeta destacada y los enlaces laterales/secundarios que duplicaban el mismo submódulo.
+- Conserva filtros, historial, PDF A4, impresión, auditoría y controles de acceso de la implementación existente.
+- Mantiene la API del catálogo y la consulta de datos históricos; la ruta de acceso anterior redirige al recibo detallado y conserva los filtros compatibles.
+
 ## 2.6.29 — Liquidación de Salarios dentro de Informes
 
 - Añade un submódulo dedicado en `/app/reports/liquidaciones-salarios`, enlazado desde la navegación de Informes.
