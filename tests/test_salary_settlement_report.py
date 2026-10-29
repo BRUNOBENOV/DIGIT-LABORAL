@@ -30,16 +30,14 @@ def _login(client: TestClient, email: str = "admin@digitlaboral.com.py", passwor
     assert response.status_code == 303
 
 
-def _create_salary_record(*, company: Company | None = None, employee: Employee | None = None):
+def _create_salary_record(*, company_id: int | None = None, employee_id: int | None = None):
     marker = f"salary-report-{uuid.uuid4().hex[:12]}"
     with SessionLocal() as db:
-        if company is None:
-            company = db.scalar(select(Company).order_by(Company.id))
+        company = db.get(Company, company_id) if company_id else db.scalar(select(Company).order_by(Company.id))
         assert company is not None
-        if employee is None:
-            employee = db.scalar(
-                select(Employee).where(Employee.company_id == company.id).order_by(Employee.id)
-            )
+        employee = db.get(Employee, employee_id) if employee_id else db.scalar(
+            select(Employee).where(Employee.company_id == company.id).order_by(Employee.id)
+        )
         assert employee is not None and employee.company_id == company.id
         result = {
             "kind": "salary",
@@ -182,12 +180,11 @@ def test_company_user_cannot_open_another_company_salary_receipt():
         db.add(UserSecurity(user_id=user.id))
         db.commit()
         other_company_id, other_employee_id = other_company.id, other_employee.id
-        other_company_obj = other_company
-        other_employee_obj = other_employee
+        user_email = user.email
 
-    record_id, _, _, _ = _create_salary_record(company=other_company_obj, employee=other_employee_obj)
+    record_id, _, _, _ = _create_salary_record(company_id=other_company_id, employee_id=other_employee_id)
     with TestClient(app) as client:
-        _login(client, user.email, "Company-Salary-2026!")
+        _login(client, user_email, "Company-Salary-2026!")
         response = client.get(f"/app/reports/liquidaciones-salarios/{record_id}")
         assert response.status_code == 404
         listing = client.get(
