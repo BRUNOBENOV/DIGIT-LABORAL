@@ -82,6 +82,28 @@ def test_word_and_pdf_downloads():
         assert "Certificado de Trabajo" in generator_page.text
         assert "Referencias oficiales utilizadas" not in generator_page.text
         assert "notificacion_vacaciones" in generator_page.text
+        certificate_menu = re.search(
+            r'<aside class="certificate-type-menu"[^>]*>(.*?)</aside>',
+            generator_page.text,
+            re.DOTALL,
+        )
+        assert certificate_menu
+        assert re.findall(
+            r'data-certificate-type="([^"]+)">([^<]+)</button>',
+            certificate_menu.group(1),
+        ) == [
+            ("certificado_trabajo_a", "Certificado de Trabajo A"),
+            ("certificado_trabajo_b", "Certificado de Trabajo B"),
+            ("constancia", "Constancia de Trabajo"),
+            ("notificacion_preaviso", "Notificación de Preaviso"),
+            ("renuncia", "Notificación de Renuncia"),
+            ("despido", "Notificación de Despidos"),
+            ("solicitud_vacacion", "Solicitud de Vacación"),
+            ("notificacion_vacaciones", "Notificación de Vacación"),
+            ("usufructo_vacaciones", "Usufructo de Vacaciones"),
+            ("contrato_trabajo", "Contrato de Trabajo"),
+        ]
+        assert 'id="certificatePreview"' in generator_page.text
         certificate_form = re.search(
             r'<form\b(?=[^>]*id="certificateForm")[^>]*>(.*?)</form>',
             generator_page.text,
