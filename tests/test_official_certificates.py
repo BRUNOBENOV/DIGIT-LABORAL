@@ -5,6 +5,7 @@ from urllib.parse import parse_qs, urlparse
 from fastapi.testclient import TestClient
 
 from app.config import settings
+from app.document_export import DOCUMENT_LABELS
 from app.database import SessionLocal
 from app.main import app
 from app.models import Document, OfficialCertificateRecord
@@ -57,7 +58,9 @@ def test_primary_certificates_page_remains_the_internal_document_generator():
         assert "Certificados y documentos laborales" in page.text
         assert "MODELO SELECCIONADO" in page.text
         assert "certificateLastPeriodSalary" in page.text
-        assert "Recibo de Salario" in page.text
+        # This model remains supported by the generator, but is intentionally not in the ten-item sidebar.
+        assert DOCUMENT_LABELS["recibo_salario"] == "Recibo de Salario"
+        assert 'data-specific="recibo_salario"' in page.text
         assert "CENTRO DE CERTIFICADOS" not in page.text
         assert "Trámites más utilizados" not in page.text
 
