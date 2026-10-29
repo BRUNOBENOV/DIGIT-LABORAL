@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Liquidación de Salarios | Informes | DIGIT-LABORAL{% endblock %}
+{% block page_name %}Informes{% endblock %}
+{% block content %}
+<style>
+.salary-reports-hero{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;padding:24px 26px;border-radius:16px;background:linear-gradient(125deg,#061735,#05256d 66%,#174b9b);color:#fff;margin-bottom:18px}
+.salary-reports-hero .eyebrow{font-size:.66rem;font-weight:850;letter-spacing:.14em;color:#c7d8ff}
+.salary-reports-hero h1{margin:7px 0 6px;color:#fff;font-size:clamp(1.4rem,2.5vw,1.95rem);letter-spacing:-.035em}
+.salary-reports-hero p{margin:0;max-width:760px;color:#dce7ff;font-size:.85rem;line-height:1.55}
+.salary-reports-count{flex:0 0 auto;min-width:100px;text-align:center;padding:12px;border:1px solid #ffffff38;border-radius:12px;background:#ffffff0d}
+.salary-reports-count b{display:block;font-size:1.7rem;line-height:1.1}.salary-reports-count span{font-size:.68rem;color:#dce7ff}
+.salary-report-notice{margin:12px 0 17px;padding:11px 14px;border:1px solid #e5d7ad;border-left:4px solid #b17d2f;border-radius:9px;background:#fffaf0;color:#6b541f;font-size:.77rem}
+.salary-report-filters{display:grid;grid-template-columns:minmax(180px,1.5fr) repeat(4,minmax(130px,1fr)) auto;gap:10px;align-items:end;padding:15px;background:#fff;border:1px solid #dce5f1;border-radius:13px;margin-bottom:15px}
+.salary-report-filters label{display:grid;gap:5px;color:#63728a;font-size:.7rem;font-weight:800}
+.salary-report-filters input,.salary-report-filters select{width:100%;min-width:0;padding:9px 10px;border:1px solid #d4dfed;border-radius:8px;background:#fff;color:#172b4b;font:inherit}
+.salary-report-summary{display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px;margin:13px 0;color:#6a7890;font-size:.76rem}.salary-report-summary strong{color:#142d55}
+.salary-report-table-shell{overflow:hidden;border:1px solid #dce5f1;border-radius:13px;background:#fff}
+.salary-report-scroll{overflow:auto;max-width:100%}
+.salary-report-table{width:100%;min-width:840px;border-collapse:separate;border-spacing:0;font-size:.76rem}
+.salary-report-table th{padding:11px 12px;background:#edf3fb;text-align:left;border-bottom:1px solid #d8e2f0;color:#243b60;white-space:nowrap}
+.salary-report-table td{padding:11px 12px;border-bottom:1px solid #edf1f6;color:#3f506a;vertical-align:middle}
+.salary-report-table tbody tr:nth-child(even){background:#fafcff}
+.salary-report-table tbody tr:hover{background:#f0f5ff}
+.salary-report-table a{color:#174b9b;font-weight:800;text-decoration:none}.salary-report-table a:hover{text-decoration:underline}
+.salary-report-name{display:block;font-weight:800;color:#172b4b}.salary-report-sub{display:block;margin-top:3px;color:#718099;font-size:.68rem}
+.salary-report-money{font-variant-numeric:tabular-nums;font-weight:850;color:#102b54;white-space:nowrap}
+.salary-report-state{display:inline-flex;padding:5px 8px;border-radius:7px;background:#eef3fb;color:#334766;font-size:.67rem;font-weight:850}
+.salary-report-empty{padding:32px 18px;text-align:center;color:#748198}
+.salary-report-pagination{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 14px;border-top:1px solid #dce5f1;color:#64738a;font-size:.75rem}
+.salary-report-pagination nav{display:flex;gap:6px}.salary-report-pagination a,.salary-report-pagination span{display:inline-flex;padding:7px 10px;border:1px solid #d8e2f0;border-radius:8px;color:#244a83;background:#fff;text-decoration:none;font-weight:750}
+.salary-report-pagination .disabled{color:#a8b2c2;background:#f7f9fc}.salary-report-pagination .current{background:#05256d;color:#fff;border-color:#05256d}
+.salary-report-help{margin:12px 2px;color:#6e7c91;font-size:.72rem}
+@media(max-width:1050px){.salary-report-filters{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:650px){.salary-reports-hero{flex-direction:column;padding:20px}.salary-reports-count{display:flex;align-items:center;gap:8px;padding:9px 12px}.salary-reports-count b{font-size:1.2rem}.salary-report-filters{grid-template-columns:1fr 1fr}.salary-report-filters label:first-child{grid-column:1/-1}}
+@media print{.salary-reports-hero,.salary-report-filters,.salary-report-pagination,.salary-report-help,.workspace-sidebar,.modern-topbar{display:none!important}.salary-report-table-shell{border:none}.salary-report-scroll{overflow:visible}.salary-report-table{min-width:0;font-size:8pt}.salary-report-table th,.salary-report-table td{padding:5px;color:#000!important}}
+</style>
+<section class="salary-reports-hero">
+  <div><span class="eyebrow">INFORMES · REMUNERACIONES</span><h1>Liquidación de Salarios</h1><p>Consultá cálculos salariales guardados, revisá versiones, imprimí el recibo interno o descargá un PDF con haberes, descuentos, neto y espacio para firmas.</p></div>
+  <div class="salary-reports-count"><b>{{ total }}</b><span>registros encontrados</span></div>
+</section>
+<div class="salary-report-notice"><strong>Documento interno de trabajo.</strong> Se presentan los importes guardados por Cálculo sin volver a calcularlos. La plantilla imprimible no es un formulario oficial emitido por MTESS o IPS y no acredita por sí sola el pago realizado.</div>
+<form method="get" action="/app/reports/liquidaciones-salarios" class="salary-report-filters">
+  <label>Buscar<input type="search" name="q" value="{{ filters.q }}" placeholder="Empresa, RUC o funcionario"></label>
+  <label>Empresa<select name="company_id"><option value="">Todas las autorizadas</option>{% for company in companies %}<option value="{{ company.id }}" {{ 'selected' if selected_company == company.id }}>{{ company.legal_name }}</option>{% endfor %}</select></label>
+  <label>Funcionario<select name="employee_id"><option value="">Todos</option>{% for employee in employees %}<option value="{{ employee.id }}" {{ 'selected' if selected_employee == employee.id }}>{{ employee.full_name }} · {{ employee.company.legal_name }}</option>{% endfor %}</select></label>
+  <label>Período<input type="month" name="period" value="{{ filters.period }}"></label>
+  <label>Estado<select name="status"><option value="">Todos</option>{% for value in ['Borrador','Revisar','Aprobado','Anulado'] %}<option value="{{ value }}" {{ 'selected' if filters.status == value }}>{{ value }}</option>{% endfor %}</select></label>
+  <button class="btn primary" type="submit">Aplicar filtros</button>
+</form>
+<div class="salary-report-summary"><span><strong>{{ total }}</strong> cálculos salariales · página {{ page }} de {{ pages }}</span><span>Origen: módulo Cálculo · registros persistidos</span></div>
+<section class="salary-report-table-shell"><div class="salary-report-scroll"><table class="salary-report-table">
+<thead><tr><th>Registro / fecha</th><th>Empresa</th><th>Funcionario</th><th>Período</th><th>Estado</th><th>Neto guardado</th><th>Acciones</th></tr></thead>
+<tbody>
+{% for item in items %}
+<tr>
+  <td><a href="/app/reports/liquidaciones-salarios/{{ item.id }}">DL-LS-{{ "%06d"|format(item.id) }}</a><span class="salary-report-sub">{{ item.created_at|fecha if item.created_at else 'Fecha no registrada' }} · #{{ item.id }}</span></td>
+  <td>{{ item.company.legal_name }}<span class="salary-report-sub">RUC {{ item.company.ruc }}</span></td>
+  <td><span class="salary-report-name">{{ item.employee.full_name }}</span><span class="salary-report-sub">{{ item.employee.position or 'Cargo no registrado' }} · CI {{ item.employee.document_number }}</span></td>
+  <td>{{ item.reference_period or 'Sin período' }}</td>
+  <td><span class="salary-report-state">{{ item.status }}</span></td>
+  <td class="salary-report-money">Gs. {{ item.amount|gs }}</td>
+  <td><a href="/app/reports/liquidaciones-salarios/{{ item.id }}">Ver recibo</a><span class="salary-report-sub"><a href="/app/reports/liquidaciones-salarios/{{ item.id }}/pdf">PDF</a></span></td>
+</tr>
+{% else %}<tr><td colspan="7" class="salary-report-empty">No se encontraron cálculos de salario guardados con estos filtros. Realizá y guardá un cálculo en el módulo Cálculo; este informe no inventa importes ni genera registros de prueba.</td></tr>{% endfor %}
+</tbody></table></div>
+<div class="salary-report-pagination"><span>Mostrando {{ items|length }} de {{ total }} registros</span><nav aria-label="Paginación de liquidaciones">
+{% if page > 1 %}<a href="/app/reports/liquidaciones-salarios?page=1{% if selected_company %}&company_id={{ selected_company }}{% endif %}{% if selected_employee %}&employee_id={{ selected_employee }}{% endif %}{% if filters.period %}&period={{ filters.period }}{% endif %}{% if filters.status %}&status={{ filters.status|urlencode }}{% endif %}{% if filters.q %}&q={{ filters.q|urlencode }}{% endif %}">« Primera</a><a href="/app/reports/liquidaciones-salarios?page={{ page-1 }}{% if selected_company %}&company_id={{ selected_company }}{% endif %}{% if selected_employee %}&employee_id={{ selected_employee }}{% endif %}{% if filters.period %}&period={{ filters.period }}{% endif %}{% if filters.status %}&status={{ filters.status|urlencode }}{% endif %}{% if filters.q %}&q={{ filters.q|urlencode }}{% endif %}">‹ Anterior</a>{% else %}<span class="disabled">« Primera</span><span class="disabled">‹ Anterior</span>{% endif %}
+<span class="current">{{ page }}</span>
+{% if page < pages %}<a href="/app/reports/liquidaciones-salarios?page={{ page+1 }}{% if selected_company %}&company_id={{ selected_company }}{% endif %}{% if selected_employee %}&employee_id={{ selected_employee }}{% endif %}{% if filters.period %}&period={{ filters.period }}{% endif %}{% if filters.status %}&status={{ filters.status|urlencode }}{% endif %}{% if filters.q %}&q={{ filters.q|urlencode }}{% endif %}">Siguiente ›</a><a href="/app/reports/liquidaciones-salarios?page={{ pages }}{% if selected_company %}&company_id={{ selected_company }}{% endif %}{% if selected_employee %}&employee_id={{ selected_employee }}{% endif %}{% if filters.period %}&period={{ filters.period }}{% endif %}{% if filters.status %}&status={{ filters.status|urlencode }}{% endif %}{% if filters.q %}&q={{ filters.q|urlencode }}{% endif %}">Última »</a>{% else %}<span class="disabled">Siguiente ›</span><span class="disabled">Última »</span>{% endif %}
+</nav></div></section>
+<p class="salary-report-help">La lista está paginada por base de datos. Las versiones anteriores se conservan; una nueva revisión genera otro registro, no sobrescribe el cálculo que se emitió previamente.</p>
+{% endblock %}
