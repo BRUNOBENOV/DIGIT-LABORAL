@@ -74,6 +74,8 @@ def test_certificate_a_preview_uses_model_text_and_uncached_static_asset():
         assert "if (!['certificado_trabajo_a', 'certificado_trabajo_b', 'constancia'].includes(type)) return;" in script.text
         assert 'data-address="' in page.text
         assert 'id="certificatePreviewPhone"' in page.text
+        assert 'data-legal-representative=' in page.text
+        assert 'id="certificatePreviewAddress"' in page.text
         assert "C E R T I F I C O:" in script.text
         assert "previewDate.style.display = type === 'constancia' ? 'none' : '';" in script.text
         assert ".certificate-preview-signature-pair b,.certificate-preview-signature-pair small{display:block" in page.text
@@ -406,6 +408,29 @@ def test_company_legal_representative_has_priority_over_branding_signatory_in_ex
     assert "Representante legal" in pdf_text
     assert "Nombre configurado en branding" not in pdf_text
     assert "Responsable alternativo" not in pdf_text
+
+    certificate.document_type = "certificado_trabajo_b"
+    certificate.title = "Certificado de Trabajo B"
+    data_b = export_data_from_certificate(certificate)
+    assert data_b.legal_representative == "JAVIER MIRANDA"
+    assert data_b.signature_title == "Representante legal"
+    docx_b = WordDocument(io.BytesIO(build_docx_bytes(data_b)))
+    docx_b_text = "\n".join([paragraph.text for paragraph in docx_b.paragraphs] + [
+        cell.text for table in docx_b.tables for row in table.rows for cell in row.cells
+    ])
+    assert "JAVIER MIRANDA" in docx_b_text
+    assert "EMPRESA DE PRUEBA S.R.L." in docx_b_text
+    assert "KM 5,5 - LA BLANCA" in docx_b_text
+    assert "TEL. 573-327" in docx_b_text
+    assert "Nombre configurado en branding" not in docx_b_text
+
+    pdf_b = PdfReader(io.BytesIO(build_pdf_bytes(data_b)))
+    pdf_b_text = " ".join(" ".join((page.extract_text() or "").split()) for page in pdf_b.pages)
+    assert "JAVIER MIRANDA" in pdf_b_text
+    assert "EMPRESA DE PRUEBA S.R.L." in pdf_b_text
+    assert "KM 5,5 - LA BLANCA" in pdf_b_text
+    assert "TEL. 573-327" in pdf_b_text
+    assert "Nombre configurado en branding" not in pdf_b_text
 
 
 def test_amount_in_words_and_legal_basis():
