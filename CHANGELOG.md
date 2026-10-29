@@ -1,3 +1,11 @@
+## 2.6.37 — Criterio de firmas unificado
+
+- Unifica la política de firmas para los modelos, sin pedir firma o recepción del trabajador en certificados de trabajo A/B ni en constancias.
+- Utiliza el mismo criterio en vista previa, impresión HTML, Word y PDF.
+- Fuerza la visibilidad correcta de la firma simple o doble en la vista previa, aunque las hojas de estilo compartidas cambien.
+- Sincroniza en la vista previa los renglones de recepción/autorización de solicitudes y notificaciones que sí los requieren.
+- Agrega pruebas de regresión para el esquema de firmas y los cuatro formatos.
+
 ## 2.6.36 — Vista previa con datos pendientes
 
 - Evita frases incompletas cuando todavía no se seleccionó una empresa o un funcionario; muestra marcadores claros en los modelos A y B.
