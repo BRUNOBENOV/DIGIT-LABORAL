@@ -5287,6 +5287,8 @@ def preaviso_calculations_api(
             daily_value = int(float(results.get("daily_value", 0) or 0))
         except (TypeError, ValueError):
             daily_value = 0
+        if salary_value <= 0 and days_value > 0 and int(item.amount or 0) > 0:
+            salary_value = max(0, round((int(item.amount or 0) * 30) / days_value))
         items.append({
             "id": item.id,
             "reference_period": period,
@@ -5647,8 +5649,6 @@ def create_certificate(
             year = int(calculation.reference_period[:4]) if calculation.reference_period[:4].isdigit() else issue_date.year
             period_start, period_end = date(year, 1, 1), date(year, 12, 31)
         if document_type in {"solicitud_vacacion", "usufructo_vacaciones"} and not observations:
-            observations = f"Cálculo vinculado N.º {calculation.id}: {calc_results.get('days', calc_inputs.get('days', 0))} días, total estimado Gs. {format_gs(calculation.amount)}."
-        if document_type == "notificacion_preaviso" and not observations:
             observations = f"Cálculo vinculado N.º {calculation.id}: {calc_results.get('days', calc_inputs.get('days', 0))} días, total estimado Gs. {format_gs(calculation.amount)}."
     if not calculation and document_type in {"aguinaldo_anual", "aguinaldo_proporcional"}:
         latest_aguinaldo = db.scalar(
