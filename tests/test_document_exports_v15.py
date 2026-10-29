@@ -784,12 +784,12 @@ def test_vacation_request_requires_current_period_and_explicit_days_not_historic
         }
         missing_days = client.post("/app/certificates", data=form_data, follow_redirects=False)
         assert missing_days.status_code == 400
-        assert "cantidad entera de días" in missing_days.json()["detail"].lower()
+        assert "cantidad entera de días" in missing_days.text.lower()
 
         form_data["vacation_days"] = "0"
         zero_days = client.post("/app/certificates", data=form_data, follow_redirects=False)
         assert zero_days.status_code == 400
-        assert "cantidad entera de días" in zero_days.json()["detail"].lower()
+        assert "cantidad entera de días" in zero_days.text.lower()
 
         form_data["vacation_days"] = "6"
         created = client.post("/app/certificates", data=form_data, follow_redirects=False)
