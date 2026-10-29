@@ -289,13 +289,18 @@ if (certificateForm) {
     const settlementDiscounts = settlementDeductions.reduce((sum, item) => sum + item[1], 0);
 
     const bodies = {
-      certificado_trabajo_a: 'CERTIFICADO DE TRABAJO\n\n' + company + ' certifica que ' + identity +
+      certificado_trabajo_a: 'C E R T I F I C O:\n\n' +
         (value('effective_date')
-          ? ' prestó servicios como ' + role + ' desde el ' + admission + ' hasta el ' + longDate(value('effective_date')) +
-            '. Salario devengado en el último período de pago: ' + lastPeriodSalaryDisplay + '.'
-          : ' presta servicios como ' + role + ' desde el ' + admission + '.' +
-            (includeSalary ? '\nRemuneración mensual registrada: ' + money(salaryRaw) + '.' : '\nNo se incluye remuneración en esta constancia de relación vigente.')) +
-        '\n\nLa constancia al término de la relación refleja inicio y conclusión, clase de trabajo y salario devengado en el último período de pago conforme al artículo 93 del Código del Trabajo.',
+          ? 'Que ' + identity + ', ha trabajado en esta firma comercial durante el lapso comprendido entre el ' + admission +
+            ' y el ' + longDate(value('effective_date')) + ', habiendo ejercido el cargo de ' + role + '.\n' +
+            'Salario devengado durante el último período de pago: ' + lastPeriodSalaryDisplay + '.\n\n' +
+            'Hago constar que el/la nombrado/a se retira por su propia voluntad y se ha desempeñado a nuestra entera satisfacción, ' +
+            'además de haber observado en todo momento buena conducta.\n\n' +
+            'Este certificado lo expido a su solicitud y para su eventual uso ante terceros.'
+          : 'Que ' + identity + ' presta servicios en la firma comercial ' + company + ' desde el ' + admission +
+            ', habiendo ejercido el cargo de ' + role + '.' +
+            (includeSalary ? '\nSalario mensual registrado: ' + money(salaryRaw) + '.' : '') +
+            '\n\nEste certificado lo expido a su solicitud y para su eventual uso ante terceros.'),
       certificado_trabajo_b: 'CONSTANCIA LABORAL\n\nSe deja constancia de que ' + identity +
         (value('effective_date')
           ? ' prestó servicios en ' + company + ' desde el ' + admission + ' hasta el ' + longDate(value('effective_date')) +
@@ -408,8 +413,24 @@ if (certificateForm) {
     const companyColor = companyOption?.dataset.primary || '#0B2D78';
 
     document.querySelector('#certificatePreviewTitle').textContent = title.toUpperCase();
-    document.querySelector('#certificatePreviewDate').textContent = `${cityInput.value || 'Ciudad del Este'}, ${longDate(issueDateInput.value)}`;
-    document.querySelector('#certificatePreviewBody').textContent = buildBody();
+    const previewDate = document.querySelector('#certificatePreviewDate');
+    const issueCity = cityInput.value || 'Ciudad del Este';
+    const issueDate = longDate(issueDateInput.value);
+    previewDate.textContent = type === 'certificado_trabajo_a'
+      ? issueCity.toUpperCase() + ', ' + issueDate
+      : issueCity + ', ' + issueDate;
+    previewDate.style.textAlign = type === 'certificado_trabajo_a' ? 'center' : '';
+    const previewBody = document.querySelector('#certificatePreviewBody');
+    const bodyText = buildBody();
+    const certifyHeading = 'C E R T I F I C O:\n\n';
+    if (type === 'certificado_trabajo_a' && bodyText.startsWith(certifyHeading)) {
+      const heading = document.createElement('div');
+      heading.className = 'certificate-a-certify';
+      heading.textContent = 'C E R T I F I C O:';
+      previewBody.replaceChildren(heading, document.createTextNode('\n\n' + bodyText.slice(certifyHeading.length)));
+    } else {
+      previewBody.textContent = bodyText;
+    }
     document.querySelector('#certificatePreviewHeaderCompany').textContent = company;
     document.querySelector('#certificatePreviewHeaderDetails').textContent = [
       companyOption?.dataset.ruc ? `RUC ${companyOption.dataset.ruc}` : '',
