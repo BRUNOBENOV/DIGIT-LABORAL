@@ -1,5 +1,6 @@
 import re
-from datetime import date
+from datetime import date, datetime
+from types import SimpleNamespace
 from urllib.parse import parse_qs, urlparse
 
 from fastapi.testclient import TestClient
@@ -13,6 +14,7 @@ from app.document_export import (
     build_docx_bytes,
     build_pdf_bytes,
     document_detail_table_data,
+    export_data_from_certificate,
     document_signature_mode,
     document_receipt_mode,
     guaranies_in_words,
@@ -339,6 +341,71 @@ def test_constancia_matches_requested_model_and_signature_in_word_pdf():
     assert "hasta el 24 de octubre de 2026" in ended_body
     assert "Gs. 2.800.000" in ended_body
     assert "remuneración mensual de Gs. 3.044.000" not in ended_body
+
+
+
+def test_company_legal_representative_has_priority_over_branding_signatory_in_exports():
+    branding = SimpleNamespace(
+        signature_name="Nombre configurado en branding",
+        signature_title="Gerencia",
+        logo_bytes=None,
+        logo_content_type="",
+        logo_fit="contain",
+        logo_scale=100,
+        logo_alignment="center",
+        logo_background="white",
+        primary_color="#173B86",
+        secondary_color="#0B1F48",
+        document_footer="Digit Laboral",
+    )
+    company = SimpleNamespace(
+        legal_name="EMPRESA DE PRUEBA S.R.L.",
+        legal_representative="JAVIER MIRANDA",
+        responsible_name="Responsable alternativo",
+        branding=branding,
+        ruc="80000000-1",
+        address="KM 5,5 - LA BLANCA",
+        phone="573-327",
+        email="",
+    )
+    certificate = SimpleNamespace(
+        company=company,
+        observations="",
+        document_type="constancia",
+        title="Constancia de Trabajo",
+        city="Ciudad del Este",
+        issue_date=date(2026, 10, 29),
+        company_name_snapshot="EMPRESA DE PRUEBA S.R.L.",
+        employee_name_snapshot="BLANCA ARAUJO",
+        employee_document_snapshot="1.234.567",
+        position_snapshot="Auxiliar administrativa",
+        admission_date_snapshot=date(2024, 2, 1),
+        salary_snapshot=3_044_000,
+        body="C E R T I F I C O:\n\nConstancia de prueba.",
+        status="Emitido",
+        created_by="Prueba automatizada",
+        created_at=datetime(2026, 10, 29, 10, 0, 0),
+    )
+
+    data = export_data_from_certificate(certificate)
+    assert data.legal_representative == "JAVIER MIRANDA"
+    assert data.signature_title == "Representante legal"
+
+    docx = WordDocument(io.BytesIO(build_docx_bytes(data)))
+    docx_text = "\n".join([paragraph.text for paragraph in docx.paragraphs] + [
+        cell.text for table in docx.tables for row in table.rows for cell in row.cells
+    ])
+    assert "JAVIER MIRANDA" in docx_text
+    assert "Representante legal" in docx_text
+    assert "Nombre configurado en branding" not in docx_text
+    assert "Responsable alternativo" not in docx_text
+
+    pdf = PdfReader(io.BytesIO(build_pdf_bytes(data)))
+    pdf_text = " ".join(" ".join((page.extract_text() or "").split()) for page in pdf.pages)
+    assert "JAVIER MIRANDA" in pdf_text
+    assert "Representante legal" in pdf_text
+    assert "Nombre configurado en branding" not in pdf_text
+    assert "Responsable alternativo" not in pdf_text
 
 
 def test_amount_in_words_and_legal_basis():
