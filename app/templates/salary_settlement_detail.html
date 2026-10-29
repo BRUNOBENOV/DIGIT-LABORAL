@@ -22,7 +22,20 @@
 .salary-slip-disclaimer{border-top:1px solid #e1e7f0;margin-top:25px;padding-top:10px;color:#78859a;font-size:.67rem;line-height:1.5}
 .salary-slip-history{margin-top:20px;border:1px solid #dce5f1;border-radius:12px;background:#fff;overflow:hidden}.salary-slip-history h2{padding:15px 18px;margin:0;font-size:.95rem;color:#17335e;background:#f4f7fc;border-bottom:1px solid #dce5f1}.salary-slip-history table{width:100%;border-collapse:collapse;font-size:.74rem}.salary-slip-history th,.salary-slip-history td{text-align:left;padding:9px 12px;border-bottom:1px solid #edf1f6}.salary-slip-history th{color:#526580}.salary-slip-history a{color:#174b9b;font-weight:800;text-decoration:none}.salary-slip-history .current-version{font-weight:850;color:#0a7c5a}.salary-slip-audit{margin-top:14px;color:#6b7890;font-size:.72rem}.salary-slip-audit details{margin-top:8px;padding:10px 12px;border:1px solid #dce5f1;border-radius:9px;background:#fff}.salary-slip-audit li{margin:5px 0}
 @media(max-width:700px){.salary-slip-hero{flex-direction:column;padding:18px}.salary-slip-actions{justify-content:flex-start}.salary-slip-paper{padding:14px}.salary-slip-document-head{flex-direction:column}.salary-slip-meta{text-align:left}.salary-slip-info-grid{grid-template-columns:1fr}.salary-slip-signatures{gap:20px}.salary-slip-data{font-size:.7rem}.salary-slip-data td,.salary-slip-data th{padding:8px 7px}}
-@media print{@page{size:A4;margin:12mm}.salary-slip-hero,.salary-slip-actions,.workspace-sidebar,.modern-topbar,.salary-slip-history,.salary-slip-audit,.salary-slip-online-note{display:none!important}.salary-slip-page{max-width:none;margin:0}.salary-slip-paper{padding:0;border:none;border-radius:0;box-shadow:none}.salary-slip-document-head h2{font-size:16pt}.salary-slip-section{break-inside:avoid}.salary-slip-data{font-size:9pt}.salary-slip-info-grid{background:white}.salary-slip-alert,.salary-slip-warning{print-color-adjust:exact;-webkit-print-color-adjust:exact}.salary-slip-signatures{break-inside:avoid;margin-top:35mm}}
+.salary-slip-reop-panel{margin:18px 0;border:1px solid #d7e1ef;border-radius:12px;background:#fff;overflow:hidden}
+.salary-slip-reop-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;padding:16px 18px;background:#f5f8fd;border-bottom:1px solid #dce5f1}
+.salary-slip-reop-head h2{margin:5px 0;color:#17335e;font-size:1rem}.salary-slip-reop-head p{margin:0;color:#6b7890;font-size:.75rem;line-height:1.5}
+.salary-slip-reop-badge{display:inline-flex;border:1px solid #ddcda5;border-radius:7px;background:#fff8e8;color:#73591d;padding:6px 9px;font-size:.66rem;font-weight:850;white-space:nowrap}
+.salary-slip-reop-body{padding:16px 18px}.salary-slip-reop-note{padding:11px 13px;border-left:3px solid #b17d2f;background:#fffaf0;color:#6d5420;font-size:.76rem;line-height:1.55;margin:0 0 13px}
+.salary-slip-reop-links{display:flex;gap:14px;flex-wrap:wrap;margin:10px 0 16px;font-size:.75rem;font-weight:800}.salary-slip-reop-links a{color:#174b9b}
+.salary-slip-reop-form{border:1px solid #e0e7f1;border-radius:10px;padding:13px;margin:12px 0;background:#fbfcff}.salary-slip-reop-form summary{cursor:pointer;font-weight:850;color:#203b64;font-size:.8rem}
+.salary-slip-reop-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:13px}.salary-slip-reop-fields label{display:grid;gap:5px;font-size:.69rem;font-weight:800;color:#5c6d87}.salary-slip-reop-fields input{width:100%;min-width:0;border:1px solid #d4dfed;border-radius:7px;padding:9px;background:#fff;color:#172b4b;font:inherit}
+.salary-slip-reop-help{color:#75839a;font-size:.68rem;line-height:1.45;margin:10px 0}
+.salary-slip-reop-batch{border-top:1px solid #e1e8f2;padding:14px 0}.salary-slip-reop-batch:first-child{border-top:none}.salary-slip-reop-batch-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}.salary-slip-reop-batch-head strong{font-size:.82rem;color:#1d3558}.salary-slip-reop-meta{font-size:.7rem;color:#718099;margin:7px 0;overflow-wrap:anywhere}.salary-slip-reop-message{white-space:pre-wrap;border:1px solid #ead9ad;background:#fffaf0;color:#6d5420;border-radius:8px;padding:9px 11px;font-size:.72rem;line-height:1.5;margin:9px 0}
+.salary-slip-reop-batch-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:9px 0}.salary-slip-reop-batch-actions a{color:#174b9b;font-size:.74rem;font-weight:850;text-decoration:none}
+.salary-slip-reop-result-form{display:grid;grid-template-columns:minmax(140px,1fr) minmax(160px,1fr);gap:9px;margin-top:10px;padding:11px;border:1px solid #e0e7f1;border-radius:8px;background:#fbfcff}.salary-slip-reop-result-form label{display:grid;gap:5px;font-size:.68rem;font-weight:800;color:#5c6d87}.salary-slip-reop-result-form input,.salary-slip-reop-result-form select,.salary-slip-reop-result-form textarea{min-width:0;width:100%;padding:8px;border:1px solid #d4dfed;border-radius:7px;background:white;color:#172b4b;font:inherit}.salary-slip-reop-result-form textarea{min-height:56px;grid-column:1/-1}.salary-slip-reop-result-form .form-actions{grid-column:1/-1}
+@media(max-width:720px){.salary-slip-reop-head{flex-direction:column}.salary-slip-reop-fields{grid-template-columns:1fr 1fr}.salary-slip-reop-result-form{grid-template-columns:1fr}}
+@media print{@page{size:A4;margin:12mm}.salary-slip-hero,.salary-slip-actions,.workspace-sidebar,.modern-topbar,.salary-slip-history,.salary-slip-audit,.salary-slip-online-note,.salary-slip-reop-panel{display:none!important}.salary-slip-page{max-width:none;margin:0}.salary-slip-paper{padding:0;border:none;border-radius:0;box-shadow:none}.salary-slip-document-head h2{font-size:16pt}.salary-slip-section{break-inside:avoid}.salary-slip-data{font-size:9pt}.salary-slip-info-grid{background:white}.salary-slip-alert,.salary-slip-warning{print-color-adjust:exact;-webkit-print-color-adjust:exact}.salary-slip-signatures{break-inside:avoid;margin-top:35mm}}
 </style>
 <div class="salary-slip-page">
   <section class="salary-slip-hero"><div><span class="eyebrow">INFORME LABORAL · RECIBO INTERNO</span><h1>Liquidación de Salarios</h1><p>Documento generado a partir del cálculo guardado. Los importes se conservan tal como fueron calculados; las validaciones pendientes se muestran para revisión.</p><span class="salary-slip-state">{{ model.status }}</span></div><div class="salary-slip-meta"><b>{{ model.code }}</b>Empresa: {{ model.employer_name }}<br>Funcionario: {{ model.employee_name }}<br>Período: {{ model.period_display }}</div></section>
@@ -35,6 +48,96 @@
     {% endif %}
   </div>
   <div class="salary-slip-alert"><strong>Importante:</strong> este recibo es un documento interno de DIGIT-LABORAL. No es un formulario oficial emitido por MTESS o IPS y no acredita por sí solo que el salario haya sido efectivamente pagado.</div>
+
+  <section class="salary-slip-reop-panel" aria-labelledby="salary-slip-reop-title">
+    <header class="salary-slip-reop-head">
+      <div><span class="eyebrow" style="font-size:.64rem;font-weight:900;letter-spacing:.13em;color:#557096">MTESS · REOP</span><h2 id="salary-slip-reop-title">Presentación oficial de la liquidación</h2><p>Preparación, control de envío y archivo del comprobante oficial vinculado a este cálculo.</p></div>
+      <span class="salary-slip-reop-badge">Conexión automática no habilitada</span>
+    </header>
+    <div class="salary-slip-reop-body">
+      <p class="salary-slip-reop-note"><strong>Importante:</strong> la documentación pública consultada permite comunicar salarios de forma individual o mediante planillas Excel, y generar los recibos electrónicos dentro de REOP. No encontramos una especificación pública autorizada de API para transmisión directa desde aplicaciones de terceros. DIGIT-LABORAL no enviará credenciales al portal ni marcará una liquidación como aceptada sin una respuesta oficial. El archivo de apoyo no es una plantilla de importación del MTESS.</p>
+      <nav class="salary-slip-reop-links" aria-label="Fuentes oficiales REOP">
+        <a href="{{ reop_communications_url }}" target="_blank" rel="noopener noreferrer">Instrucciones oficiales de comunicaciones REOP ↗</a>
+        <a href="{{ reop_forms_url }}" target="_blank" rel="noopener noreferrer">Modelos y estructura de planillas MTESS ↗</a>
+      </nav>
+
+      {% if reop_batches %}
+        <h3 style="margin:15px 0 3px;color:#203b64;font-size:.82rem">Intentos y comprobantes</h3>
+        {% for batch in reop_batches %}
+        <article class="salary-slip-reop-batch">
+          <div class="salary-slip-reop-batch-head"><strong>Intento {{ loop.index }} · Lote #{{ batch.id }}</strong><span class="salary-slip-state">{{ batch.status }}</span></div>
+          <p class="salary-slip-reop-meta">Período: {{ batch.period or 'No registrado' }} · Preparado: {{ batch.created_at.strftime('%d/%m/%Y %H:%M') if batch.created_at else '—' }} · Responsable: {{ batch.created_by or '—' }}</p>
+          <p class="salary-slip-reop-meta">SHA-256: {{ batch.file_sha256 }}</p>
+          {% if batch.approved_by %}<p class="salary-slip-reop-meta">Validado por: {{ batch.approved_by }}</p>{% endif %}
+          {% if batch.external_reference %}<p class="salary-slip-reop-meta">Referencia externa REOP: <strong>{{ batch.external_reference }}</strong></p>{% endif %}
+          {% if batch.error_message %}<div class="salary-slip-reop-message">{{ batch.error_message }}</div>{% endif %}
+          <div class="salary-slip-reop-batch-actions">
+            <a href="/app/compliance/batches/{{ batch.id }}/download">Descargar archivo de apoyo</a>
+            {% if reop_receipt_available.get(batch.id) %}<a href="/app/compliance/batches/{{ batch.id }}/receipt">Descargar comprobante cargado ↗</a>{% endif %}
+          </div>
+          {% if batch.status == 'Generado' and reop_can_manage %}
+          <form method="post" action="/app/reports/liquidaciones-salarios/{{ item.id }}/reop/{{ batch.id }}/validate">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button class="btn primary" type="submit">Validar datos y aprobar para presentación</button>
+          </form>
+          <p class="salary-slip-reop-help">La validación es local. Después de aprobar, ingresá al portal oficial, cargá la información en REOP y registrá acá el resultado.</p>
+          {% elif batch.status in ['Validado','Presentado','Observado','Rechazado','Aceptado'] and reop_can_manage %}
+          <form method="post" action="/app/compliance/batches/{{ batch.id }}/receipt" enctype="multipart/form-data" class="salary-slip-reop-result-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <label>Estado informado por REOP
+              <select name="status">
+                {% for option in integration_batch_transitions.get(batch.status, [batch.status]) %}
+                  {% if option in ['Presentado','Aceptado','Observado','Rechazado'] %}
+                  <option value="{{ option }}" {{ 'selected' if option == batch.status }}>{{ option }}</option>
+                  {% endif %}
+                {% endfor %}
+              </select>
+            </label>
+            <label>Referencia / N.º de comprobante
+              <input name="external_reference" value="{{ batch.external_reference }}" maxlength="160" placeholder="Referencia que muestra REOP">
+            </label>
+            <label style="grid-column:1/-1">Recibo o comprobante emitido por REOP (PDF, PNG o JPG)
+              <input type="file" name="receipt" accept=".pdf,.png,.jpg,.jpeg">
+            </label>
+            <label style="grid-column:1/-1">Observación o motivo de rechazo
+              <textarea name="result_detail" maxlength="3000" placeholder="Registrar el motivo indicado por REOP si está observado o rechazado">{{ batch.error_message if batch.status in ['Observado','Rechazado'] else '' }}</textarea>
+            </label>
+            <div class="form-actions"><button class="btn primary" type="submit">Guardar estado y comprobante</button></div>
+          </form>
+          {% endif %}
+          {% if batch.status == 'Aceptado' %}
+          <p class="salary-slip-reop-help">REOP figura como aceptado según el estado registrado por el usuario. El comprobante adjunto es el documento archivado en DIGIT-LABORAL; su autenticidad no se verifica automáticamente.</p>
+          {% elif batch.status in ['Observado','Rechazado'] %}
+          <p class="salary-slip-reop-help">Para reprocesar, corregí los datos del formulario de preparación y generá un nuevo intento. El historial anterior permanece conservado.</p>
+          {% endif %}
+        </article>
+        {% endfor %}
+      {% else %}
+        <p class="salary-slip-reop-help">Todavía no hay un intento REOP vinculado a este cálculo guardado.</p>
+      {% endif %}
+
+      {% if reop_can_manage and model.can_reprint %}
+      <details class="salary-slip-reop-form" {% if not reop_batches or (reop_batches[0].status == 'Generado' and reop_batches[0].error_message) or reop_batches[0].status in ['Observado','Rechazado'] %}open{% endif %}>
+        <summary>{% if reop_batches and reop_batches[0].status in ['Observado','Rechazado'] %}Preparar un nuevo intento / reprocesar{% else %}Preparar comunicación para presentar en REOP{% endif %}</summary>
+        <form method="post" action="/app/reports/liquidaciones-salarios/{{ item.id }}/reop/prepare">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <div class="salary-slip-reop-fields">
+            <label>Fecha de pago<input type="date" name="payment_date" value="{{ reop_default_payload.payment_date if reop_default_payload.payment_date|length == 10 else '' }}" required></label>
+            <label>Forma de pago<input type="text" name="payment_method" value="{{ '' if reop_default_payload.payment_method == 'No registrado' else reop_default_payload.payment_method }}" maxlength="100" placeholder="Efectivo, transferencia..." required></label>
+            <label>Días trabajados<input type="number" name="days_worked" min="0" max="31" step="0.5" value="{{ reop_default_payload.days_worked }}" required></label>
+            <label>Horas trabajadas<input type="number" name="hours_worked" min="0" max="744" step="0.25" value="{{ reop_default_payload.hours_worked }}" required></label>
+            <label style="grid-column:1/-1">Piezas / tareas o “No aplica”<input type="text" name="pieces_or_tasks" value="{{ reop_default_payload.pieces_or_tasks }}" maxlength="120" placeholder="Cantidad o No aplica" required></label>
+          </div>
+          <p class="salary-slip-reop-help">Se conserva el cálculo original sin recalcular importes. Los campos de fecha, forma de pago, días, horas y piezas/tareas complementan la información que REOP solicita. Confirmá que los valores estén respaldados por los registros de la empresa.</p>
+          <button class="btn primary" type="submit">Generar archivo de apoyo y registrar intento</button>
+        </form>
+      </details>
+      {% elif not reop_can_manage %}
+      <p class="salary-slip-reop-help">La preparación, validación y registro de presentaciones oficiales están restringidos a administradores y contadores.</p>
+      {% endif %}
+      <p class="salary-slip-reop-help">Cada intento mantiene su propio archivo, hash SHA-256, estado y comprobante. Un intento observado o rechazado no se sobrescribe: se crea otro y se conserva la trazabilidad anterior.</p>
+    </div>
+  </section>
 
   <article class="salary-slip-paper" id="salary-slip-document">
     <header class="salary-slip-document-head"><div><div class="salary-slip-brand">DIGIT-LABORAL · DOCUMENTO INTERNO</div><h2>LIQUIDACIÓN DE SALARIOS</h2><div style="font-size:.75rem;color:#63738c">Referencia {{ model.code }} · Cálculo guardado #{{ item.id }}</div></div><div class="salary-slip-meta"><b>{{ model.period_display }}</b>Fecha de emisión: {{ model.issued_date }}<br>Forma de pago: {{ model.payment_method }}</div></header>
