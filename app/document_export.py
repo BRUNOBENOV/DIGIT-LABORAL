@@ -470,6 +470,7 @@ def build_document_body(
     disciplinary_action = str(metadata.get("disciplinary_action") or "Amonestación escrita").strip()
     sanction_start = format_date_short(optional_date(metadata.get("sanction_start_date"))) or "No aplica / completar"
     sanction_end = format_date_short(optional_date(metadata.get("sanction_end_date"))) or "No aplica / completar"
+    employee_address_text = employee_address or "un domicilio no consignado en el legajo"
     company_address_clause = f", ubicada sobre la calle {company_address}" if company_address else ""
     employer_id = company_name
     if company_ruc:
