@@ -1,3 +1,13 @@
+## 2.6.29 — Liquidación de Salarios dentro de Informes
+
+- Añade un submódulo dedicado en `/app/reports/liquidaciones-salarios`, enlazado desde la navegación de Informes.
+- Consulta los cálculos salariales persistidos del módulo Cálculo (clásico y motor profesional), con filtros de empresa, funcionario, período, estado y búsqueda.
+- Emite una vista de recibo interno con datos patronales y del funcionario, haberes, descuentos, neto, observaciones, validaciones pendientes y espacio de firmas.
+- Agrega exportación a PDF A4, impresión desde navegador y registro de cada reimpresión en Auditoría.
+- Muestra cálculos anteriores para el mismo funcionario y período como versiones históricas; conserva los importes del registro de origen sin volver a calcularlos.
+- Refuerza el aislamiento por empresa y evita la emisión o reimpresión desde registros anulados. El recibo se identifica expresamente como documento interno, no como formulario oficial MTESS/IPS.
+- No agrega tablas ni migraciones; utiliza los registros de cálculo ya existentes.
+
 ## 2.6.28 — Visibilidad del Centro de Informes
 
 - Hace visible el Centro de Informes en el menú lateral para el perfil empresa, que antes no veía el grupo Informes.
