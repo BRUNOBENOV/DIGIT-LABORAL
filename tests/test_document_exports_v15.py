@@ -278,8 +278,10 @@ def test_work_certificates_have_no_employee_signature_in_print_word_or_pdf():
 
             printed = client.get(f"/app/certificates/{certificate_id}/print")
             assert printed.status_code == 200
-            assert 'class="date" style="text-align:right;"' in printed.text
+            assert printed.text.count('class="date" style="text-align:right;"') == 1
+            assert "CIUDAD DEL ESTE, 29 de octubre de 2026" in printed.text
             assert 'class="signature work-certificate-signature"' in printed.text
+            assert 'Se expide la presente constancia en' not in printed.text
             assert "Firma / recepción del trabajador/a" not in printed.text
             assert "Firma del trabajador/a" not in printed.text
             assert "Firma del empleador/a" not in printed.text
