@@ -2,7 +2,7 @@
 
 ## Funcionalidad
 
-- Acceso dedicado desde Informes: \`/app/reports/liquidaciones-salarios\`.
+- Acceso dedicado desde Informes: `/app/reports/liquidaciones-salarios`.
 - Busca los cálculos de salario ya guardados en Cálculo, tanto del motor clásico como del motor profesional.
 - Filtra por empresa, funcionario, período, estado y texto.
 - Presenta empleador, número patronal, datos del funcionario, período, conceptos de haberes, descuentos, total bruto, total descontado y neto guardado.
