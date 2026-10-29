@@ -6470,6 +6470,12 @@ def report_detail_page(
     user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ):
+    if report_key == "liquidacion-salario":
+        target = "/app/reports/liquidaciones-salarios"
+        if request.url.query:
+            target += f"?{request.url.query}"
+        return RedirectResponse(target, status_code=303)
+
     spec, allowed_company_ids = _validate_report_scope(report_key, company_id, employee_id, user, db)
     if year is not None and (year < 1900 or year > 2100):
         raise HTTPException(400, "El año debe estar entre 1900 y 2100.")
