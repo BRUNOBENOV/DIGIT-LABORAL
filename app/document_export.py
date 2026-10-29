@@ -487,13 +487,13 @@ def build_document_body(
 
     bodies: dict[str, str] = {
                 "certificado_trabajo_a": (
-            "C E R T I F I C O:\\n\\n"
+            "C E R T I F I C O:\n\n"
             + (
                 f"Que {identity} ha trabajado en esta firma comercial durante el lapso comprendido "
-                f"entre el {admission} y el {employment_end}, habiendo ejercido el cargo de {role}.\\n"
-                f"Salario devengado durante el último período de pago: {last_period_salary_display}.\\n\\n"
+                f"entre el {admission} y el {employment_end}, habiendo ejercido el cargo de {role}.\n"
+                f"Salario devengado durante el último período de pago: {last_period_salary_display}.\n\n"
                 "Hago constar que el/la nombrado/a se retira por su propia voluntad y se ha desempeñado "
-                "a nuestra entera satisfacción, además de haber observado en todo momento buena conducta.\\n\\n"
+                "a nuestra entera satisfacción, además de haber observado en todo momento buena conducta.\n\n"
                 "Este certificado lo expido a su solicitud y para su eventual uso ante terceros."
                 if effective_date else
                 f"Que {identity} presta servicios en esta firma comercial desde el {admission}, "
@@ -503,7 +503,7 @@ def build_document_body(
                     if str(metadata.get("include_salary", "on") or "").lower() in {"on", "true", "1"}
                     else ""
                 )
-                + "\\n\\n"
+                + "\n\n"
                 "Este certificado lo expido a su solicitud y para su eventual uso ante terceros."
             )
         ),
