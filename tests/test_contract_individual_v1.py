@@ -190,4 +190,4 @@ def test_contract_signed_state_requires_explicit_signature_receipt_confirmation(
 
 
 def test_contract_generator_version_is_bumped():
-    assert APP_VERSION == "2.6.46"
+    assert APP_VERSION == "2.6.47"
