@@ -196,7 +196,7 @@ def test_certificate_preview_endpoint_uses_same_body_as_export_model():
 
 
 def test_work_certificate_dates_are_visible_and_right_aligned_in_word_and_pdf():
-    date_text = "CIUDAD DEL ESTE, a los veintinueve días del mes de octubre del año dos mil veintiséis"
+    date_text = "CIUDAD DEL ESTE, 29 de octubre de 2026"
     for document_type, title in (
         ("certificado_trabajo_a", "Certificado de Trabajo"),
         ("certificado_trabajo_b", "Certificado de Trabajo B"),
