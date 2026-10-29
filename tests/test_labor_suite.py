@@ -837,6 +837,45 @@ def test_legacy_calculator_rejects_negative_net_and_unknown_employee(web_case):
     assert client.post("/app/calculations",data=data).status_code == 422
 
 
+def test_legacy_calculation_cannot_be_approved_after_amount_is_tampered(web_case):
+    client, db, _, company, employee, _ = web_case
+    from app.models import CalculationRecord
+
+    response = client.post(
+        "/app/calculations",
+        data={
+            "csrf_token": token(client),
+            "calculation_type": "salary",
+            "company_id": str(company.id),
+            "employee_id": str(employee.id),
+            "gross": "3500000",
+            "other_discount": "0",
+            "ips_base": "3500000",
+            "apply_ips": "on",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303, response.text
+    item = (
+        db.query(CalculationRecord)
+        .filter_by(company_id=company.id, employee_id=employee.id, source="Cálculo automático")
+        .order_by(CalculationRecord.id.desc())
+        .first()
+    )
+    assert item is not None and item.status == "Revisar"
+
+    item.amount += 1
+    db.commit()
+    approval = client.post(
+        f"/app/calculations/{item.id}/status",
+        data={"csrf_token": token(client), "status": "Aprobado"},
+        follow_redirects=False,
+    )
+    assert approval.status_code == 409, approval.text
+    db.refresh(item)
+    assert item.status == "Revisar"
+
+
 def test_company_logo_upload_succeeds_end_to_end(web_case):
     from io import BytesIO
 
