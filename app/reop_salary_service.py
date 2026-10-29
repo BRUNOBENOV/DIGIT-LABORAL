@@ -171,8 +171,10 @@ def validate_reop_salary_payload(payload: dict[str, Any]) -> list[str]:
         "hours_worked": "Cantidad de horas trabajadas",
         "pieces_or_tasks": "Cantidad de piezas/tareas o indicación «No aplica»",
     }
+    placeholders = {"no registrado", "no registrada", "sin registrar", "pendiente", "—", "-"}
     for key, label in required_labels.items():
-        if not str(payload.get(key) or "").strip():
+        value = str(payload.get(key) or "").strip()
+        if not value or value.casefold() in placeholders:
             errors.append(f"Falta completar: {label}.")
 
     payment_date = str(payload.get("payment_date") or "").strip()
