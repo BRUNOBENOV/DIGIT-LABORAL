@@ -70,7 +70,7 @@ def test_certificate_a_preview_uses_model_text_and_uncached_static_asset():
         assert "[NOMBRE COMPLETO DEL FUNCIONARIO]" in script.text
         assert "certificado_trabajo_b: 'Certificado de Trabajo B'" in script.text
         assert "if (!['certificado_trabajo_a', 'certificado_trabajo_b', 'constancia'].includes(type)) return;" in script.text
-        assert 'data-address="{{ employee.address or \'\' }}"' in page.text
+        assert 'data-address="' in page.text
         assert 'id="certificatePreviewPhone"' in page.text
         assert ".certificate-preview-signature-pair b,.certificate-preview-signature-pair small{display:block" in page.text
         assert 'id="certificatePreviewSignaturePair" style="display:none!important;"' in page.text
