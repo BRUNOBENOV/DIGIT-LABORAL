@@ -41,8 +41,12 @@
     const days = vacationCalculator.querySelector('[name="days"]');
     const dailyResult = document.getElementById('calcVacationDailyResult');
     const totalResult = document.getElementById('calcVacationResult');
+    const period = vacationCalculator.querySelector('[name="reference_period"]');
     const calculate = () => {
-      const minimum = Number(workbench?.dataset.minimumSalary || 0);
+      const month = String(period?.value || '');
+      let minimum = 0;
+      if (month >= '2026-07') minimum = 3044000;
+      else if (month >= '2025-07') minimum = 2899048;
       const monthlyBase = Math.max(intValue(salary), minimum);
       const daily = monthlyBase / 30;
       const quantity = Math.max(0, Number(days?.value || 0));
@@ -51,6 +55,7 @@
     };
     salary?.addEventListener('input', calculate);
     days?.addEventListener('input', calculate);
+    period?.addEventListener('input', calculate);
     calculate();
   }
 
