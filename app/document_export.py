@@ -421,6 +421,7 @@ def build_document_body(
     identity = employee_name
     if employee_document:
         identity += f", con C.I. N.º {employee_document}"
+    certificate_subject = f"{employee_name}, con C.I. N.º {employee_document}," if employee_document else employee_name
     role = position or "el cargo registrado en su legajo"
     admission = format_date_long_es(admission_date) or "la fecha registrada en su legajo"
     salary_display = f"Gs. {format_gs(salary)} ({guaranies_in_words(salary)})" if salary else "la remuneración registrada en su legajo"
@@ -489,7 +490,7 @@ def build_document_body(
                 "certificado_trabajo_a": (
             "C E R T I F I C O:\n\n"
             + (
-                f"Que {identity} ha trabajado en esta firma comercial durante el lapso comprendido "
+                f"Que {certificate_subject} ha trabajado en esta firma comercial durante el lapso comprendido "
                 f"entre el {admission} y el {employment_end}, habiendo ejercido el cargo de {role}.\n"
                 f"Salario devengado durante el último período de pago: {last_period_salary_display}.\n\n"
                 "Hago constar que el/la nombrado/a se retira por su propia voluntad y se ha desempeñado "
