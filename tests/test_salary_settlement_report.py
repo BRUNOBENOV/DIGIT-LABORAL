@@ -326,7 +326,7 @@ def test_reop_salary_handoff_blocks_validation_when_required_data_is_missing():
             batch = db.get(IntegrationBatch, batch_id)
             assert batch is not None and batch.status == "Generado"
             assert "Fecha de pago" in batch.error_message
-            assert "Horas trabajadas" in batch.error_message
+            assert "Cantidad de horas trabajadas" in batch.error_message
         validation = client.post(
             f"/app/reports/liquidaciones-salarios/{record_id}/reop/{batch_id}/validate",
             data={"csrf_token": token.group(1)},
