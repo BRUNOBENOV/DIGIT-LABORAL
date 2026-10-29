@@ -1,6 +1,18 @@
-# Digit Laboral 2.6.29
+# Digit Laboral 2.6.41
 
 Plataforma de gestión y cumplimiento laboral para estudios contables paraguayos.
+
+## Novedades de la versión 2.6.41
+
+- Prioriza el campo **Representante Legal** registrado en la ficha de la empresa para la firma del Certificado de Trabajo B.
+- Conserva debajo del firmante la razón social, el domicilio y el teléfono; mantiene el formato anterior como respaldo si el representante legal no está informado.
+- Sincroniza la vista previa, la impresión, Word y PDF, con pruebas de regresión.
+
+## Novedades de la versión 2.6.40
+
+- Unifica la prioridad del Representante Legal frente a los datos de firma de Branding o del responsable alternativo en los documentos laborales compatibles.
+- Presenta el cargo «Representante legal» cuando el dato consta en la ficha de la empresa.
+
 
 ## Novedades de la versión 2.6.29
 
