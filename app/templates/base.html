@@ -17,7 +17,7 @@
   <link rel="stylesheet" href="{{ url_for('static', path='labor-suite.css') }}?v=20260929b">
   <link rel="stylesheet" href="{{ url_for('static', path='experience.css') }}?v=20261027a">
   <link rel="stylesheet" href="{{ url_for('static', path='brand-identity.css') }}?v=20261024c">
-  <link rel="stylesheet" href="{{ url_for('static', path='certificate-premium.css') }}?v=20261024a">
+  <link rel="stylesheet" href="{{ url_for('static', path='certificate-premium.css') }}?v=20261029b">
   <link rel="stylesheet" href="{{ url_for('static', path='theme-261.css') }}?v=20261027a">
   <link rel="stylesheet" href="{{ url_for('static', path='maintenance-workspace-263.css') }}?v=20261027c">
   <link rel="stylesheet" href="{{ url_for('static', path='ui-system-264.css') }}?v=20261027d">
@@ -170,7 +170,7 @@
 {% else %}
   {% block public_content %}{% endblock %}
 {% endif %}
-<script src="{{ url_for('static', path='app.js') }}"></script>
+<script src="{{ url_for('static', path='app.js') }}?v={{ app_version }}"></script>
 <script src="{{ url_for('static', path='v17.js') }}"></script>
 <script src="{{ url_for('static', path='v20.js') }}"></script>
 <script src="{{ url_for('static', path='v22-dashboard.js') }}"></script>
