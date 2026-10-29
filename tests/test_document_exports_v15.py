@@ -265,7 +265,7 @@ def test_notification_preaviso_uses_formal_text_dates_and_article_89_rights():
             "effective_date": "2026-08-31",
             "notice_start_date": "2026-07-17",
             "notice_days": "45",
-            "termination_reason": "NO DEBE MOSTRARSE COMO CAUSA AUTOMÁTICA",
+            "termination_reason": "Reorganización operativa",
         },
     )
     assert title == "Notificación de Preaviso"
@@ -277,8 +277,56 @@ def test_notification_preaviso_uses_formal_text_dates_and_article_89_rights():
     assert "dos horas dentro de la jornada legal" in body
     assert "un día a la semana" in body
     assert "artículo 89 de la Ley N.º 213/93" in body
-    assert "NO DEBE MOSTRARSE COMO CAUSA AUTOMÁTICA" not in body
+    assert "Motivo comunicado: Reorganización operativa." in body
     assert "no implica necesariamente conformidad" not in body
+
+
+def test_preaviso_calculation_api_exposes_employee_period_amount_and_empty_state():
+    with TestClient(app) as client:
+        csrf = login(client)
+        period = "PREAVISO-API-45"
+        saved = client.post(
+            "/app/calculations",
+            data={
+                "csrf_token": csrf,
+                "calculation_type": "notice",
+                "company_id": "1",
+                "employee_id": "1",
+                "reference_period": period,
+                "salary": "3600000",
+                "days": "45",
+                "notes": "Promedio revisado para prueba de integración",
+            },
+            follow_redirects=False,
+        )
+        assert saved.status_code == 303
+
+        response = client.get("/api/certificates/preaviso-calculations?company_id=1&employee_id=1")
+        assert response.status_code == 200
+        payload = response.json()
+        matched = next(item for item in payload["calculations"] if item["reference_period"] == period)
+        assert matched["salary"] == 3_600_000
+        assert matched["days"] == 45
+        assert matched["amount"] == 5_400_000
+        assert matched["status"] == "Revisar"
+
+        empty = client.get(
+            "/api/certificates/preaviso-calculations",
+            params={"company_id": 1, "employee_id": 1, "reference_period": "PERIODO-SIN-REGISTRO"},
+        )
+        assert empty.status_code == 200
+        assert empty.json()["calculations"] == []
+
+        page = client.get(
+            "/app/certificates",
+            params={"company_id": 1, "employee_id": 1, "document_type": "notificacion_preaviso"},
+        )
+        assert page.status_code == 200
+        assert 'id="certificateNoticeReferencePeriod"' in page.text
+        assert 'id="preavisoCalculationStatus"' in page.text
+        script = client.get("/static/app.js")
+        assert script.status_code == 200
+        assert "No hay registro para imprimir" in script.text
 
 
 def test_work_certificates_have_no_employee_signature_in_print_word_or_pdf():
