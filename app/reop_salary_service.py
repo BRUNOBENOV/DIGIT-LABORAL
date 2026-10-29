@@ -102,8 +102,8 @@ def build_reop_salary_payload(
         "employee_ci": _first_text(model.get("employee_ci"), employee.document_number, limit=60),
         "employee_position": _first_text(model.get("employee_position"), employee.position, limit=160),
         "payment_method": _first_text(
-            payment_method, model.get("payment_method"),
-            identity.get("payment_method"), inputs.get("payment_method"), limit=100,
+            payment_method, identity.get("payment_method"), inputs.get("payment_method"),
+            model.get("payment_method"), limit=100,
         ),
         "payment_date": _first_text(
             payment_date, result.get("payment_date"), result.get("paid_on"),
