@@ -6440,6 +6440,156 @@ def salary_settlement_report_detail(
     )
 
 
+@app.post("/app/reports/liquidaciones-salarios/{calculation_id}/reop/prepare")
+def prepare_reop_salary_submission(
+    calculation_id: int,
+    payment_date: Annotated[str, Form()] = "",
+    payment_method: Annotated[str, Form()] = "",
+    days_worked: Annotated[str, Form()] = "",
+    hours_worked: Annotated[str, Form()] = "",
+    pieces_or_tasks: Annotated[str, Form()] = "",
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    """Prepare a traceable handoff packet; this route does not transmit data to MTESS."""
+    import hashlib
+    from .salary_report_service import build_salary_report_model
+    from .reop_salary_service import (
+        XLSX_MIME,
+        build_reop_salary_handoff_workbook,
+        build_reop_salary_payload,
+        validate_reop_salary_payload,
+    )
+
+    item, company, employee = _salary_report_record(db, user, calculation_id)
+    if (item.status or "").strip() not in {"Aprobado", "Validado"}:
+        raise HTTPException(409, "Solo se puede preparar una comunicación REOP a partir de un cálculo aprobado o validado.")
+    model = build_salary_report_model(db, item, company, employee)
+    if not model.get("can_reprint"):
+        raise HTTPException(409, "No se puede preparar una comunicación a partir de un cálculo anulado.")
+
+    latest = db.scalar(
+        select(IntegrationBatch)
+        .where(
+            IntegrationBatch.company_id == company.id,
+            IntegrationBatch.calculation_record_id == item.id,
+            IntegrationBatch.authority == "REOP",
+        )
+        .order_by(IntegrationBatch.created_at.desc(), IntegrationBatch.id.desc())
+        .limit(1)
+    )
+    if latest and latest.status in {"Validado", "Presentado", "Aceptado"}:
+        raise HTTPException(409, f"El intento REOP #{latest.id} está en estado {latest.status}. Continuá ese flujo antes de crear otro.")
+    if latest and latest.status == "Generado" and not (latest.error_message or "").strip():
+        raise HTTPException(409, f"Ya existe un intento REOP #{latest.id} listo para validar.")
+
+    payload = build_reop_salary_payload(
+        db, item, company, employee, model,
+        payment_date=payment_date,
+        payment_method=payment_method,
+        days_worked=days_worked,
+        hours_worked=hours_worked,
+        pieces_or_tasks=pieces_or_tasks,
+    )
+    errors = validate_reop_salary_payload(payload)
+    content = build_reop_salary_handoff_workbook(payload)
+    batch = IntegrationBatch(
+        studio_id=company.studio_id,
+        company_id=company.id,
+        calculation_record_id=item.id,
+        payload_json=json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+        authority="REOP",
+        batch_type="Liquidación salarial individual",
+        period=str(payload.get("period") or item.reference_period or ""),
+        status="Generado",
+        file_sha256=hashlib.sha256(content).hexdigest(),
+        item_count=1,
+        error_message="\n".join(errors),
+        created_by=user.email,
+    )
+    db.add(batch)
+    db.flush()
+    safe_ruc = re.sub(r"[^A-Za-z0-9_-]+", "-", company.ruc or str(company.id)).strip("-") or str(company.id)
+    period_tag = re.sub(r"[^0-9-]", "", str(payload.get("period") or "sin-periodo")) or "sin-periodo"
+    batch.file_name = safe_filename(
+        f"reop_preparacion_salario_{safe_ruc}_{period_tag}_calc-{item.id}_lote-{batch.id}.xlsx"
+    )
+    if settings.storage_backend == "s3":
+        key = f"integrations/{company.id}/reop-salary/batch-{batch.id}.xlsx"
+        storage.put(key, content, XLSX_MIME)
+        batch.storage_key = key
+        batch.file_bytes = None
+    else:
+        # The database copy survives ephemeral local disks in hosted environments.
+        batch.file_bytes = content
+        batch.storage_key = ""
+    write_audit(
+        db, user, "preparar", "lote_integracion", str(batch.id),
+        f"REOP · cálculo #{item.id} · período {payload.get('period') or ''} · SHA-256 {batch.file_sha256}",
+    )
+    db.commit()
+    flag = "&reop_validation_error=1" if errors else ""
+    return RedirectResponse(
+        f"/app/reports/liquidaciones-salarios/{item.id}?reop_batch={batch.id}{flag}",
+        status_code=303,
+    )
+
+
+@app.post("/app/reports/liquidaciones-salarios/{calculation_id}/reop/{batch_id}/validate")
+def validate_reop_salary_submission(
+    calculation_id: int,
+    batch_id: int,
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    """Apply local preflight validation and approval; never claims MTESS acceptance."""
+    from .reop_salary_service import validate_reop_salary_payload
+
+    item, company, _employee = _salary_report_record(db, user, calculation_id)
+    batch = db.get(IntegrationBatch, batch_id)
+    if (
+        not batch
+        or batch.company_id != company.id
+        or batch.calculation_record_id != item.id
+        or batch.authority != "REOP"
+    ):
+        raise HTTPException(404, "No se encontró el intento REOP para este cálculo.")
+    if batch.status != "Generado":
+        raise HTTPException(409, f"Solo se puede validar un intento en estado Generado; estado actual: {batch.status}.")
+    try:
+        payload = json.loads(batch.payload_json or "{}")
+    except (json.JSONDecodeError, TypeError):
+        payload = {}
+    if not isinstance(payload, dict):
+        payload = {}
+    errors = validate_reop_salary_payload(payload)
+    if errors:
+        batch.error_message = "\n".join(errors)
+        write_audit(
+            db, user, "validacion_bloqueada", "lote_integracion", str(batch.id),
+            f"REOP · cálculo #{item.id} · {len(errors)} validaciones pendientes",
+        )
+        db.commit()
+        return RedirectResponse(
+            f"/app/reports/liquidaciones-salarios/{item.id}?reop_batch={batch.id}&reop_validation_error=1",
+            status_code=303,
+        )
+    if settings.compliance_dual_approval and batch.created_by == user.email:
+        raise HTTPException(409, "La política de doble aprobación exige que valide otro usuario autorizado.")
+    batch.status = "Validado"
+    batch.approved_by = user.email
+    batch.error_message = ""
+    write_audit(
+        db, user, "validar", "lote_integracion", str(batch.id),
+        f"REOP · validación local aprobada para cálculo #{item.id}; pendiente de presentación en el portal oficial.",
+    )
+    db.commit()
+    return RedirectResponse(
+        f"/app/reports/liquidaciones-salarios/{item.id}?reop_batch={batch.id}",
+        status_code=303,
+    )
+
+
 @app.post("/app/reports/liquidaciones-salarios/{calculation_id}/reimprimir")
 def salary_settlement_reprint(
     calculation_id: int,
