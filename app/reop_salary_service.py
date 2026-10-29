@@ -13,7 +13,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .form_utils import clean_text
-from .models import Branch, BranchComplianceProfile, CalculationRecord, Company, Employee
+from .models import (
+    Branch, BranchComplianceProfile, CalculationRecord, Company, CompanyComplianceProfile,
+    Employee, EmployeeComplianceProfile,
+)
 
 
 REOP_COMMUNICATIONS_URL = "https://www.mtess.gov.py/?page_id=31365"
@@ -52,6 +55,71 @@ def _branch_patronal(db: Session, company: Company, employee: Employee) -> tuple
         or ""
     )
     return patronal, branch.name if branch and branch.company_id == company.id else "Casa matriz"
+
+
+def validate_reop_profile_readiness(db: Session, company: Company, employee: Employee) -> list[str]:
+    """Require verified employer, employee and branch profiles before REOP preparation."""
+    errors: list[str] = []
+    company_profile = db.scalar(
+        select(CompanyComplianceProfile).where(CompanyComplianceProfile.company_id == company.id)
+    )
+    if not company_profile:
+        errors.append("Falta crear el perfil oficial de la empresa en Cumplimiento.")
+    else:
+        if company_profile.reop_status != "Verificado":
+            errors.append("El perfil de la empresa no está marcado como Verificado para REOP.")
+        for label, value in (
+            ("departamento", company_profile.department),
+            ("distrito", company_profile.district),
+            ("actividad económica", company_profile.economic_activity),
+        ):
+            if not str(value or "").strip():
+                errors.append(f"El perfil oficial de la empresa debe completar {label}.")
+
+    employee_profile = db.scalar(
+        select(EmployeeComplianceProfile).where(EmployeeComplianceProfile.employee_id == employee.id)
+    )
+    if not employee_profile:
+        errors.append("Falta crear el perfil oficial del funcionario en Cumplimiento.")
+    else:
+        if employee_profile.reop_status != "Verificado":
+            errors.append("El perfil del funcionario no está marcado como Verificado para REOP.")
+        for label, value in (
+            ("sexo", employee_profile.sex),
+            ("nacionalidad", employee_profile.nationality),
+            ("estado civil", employee_profile.marital_status),
+            ("código de ocupación", employee_profile.occupation_code),
+        ):
+            if not str(value or "").strip():
+                errors.append(f"El perfil oficial del funcionario debe completar {label}.")
+
+    if employee.branch_id:
+        branch = db.get(Branch, employee.branch_id)
+        if not branch or branch.company_id != company.id:
+            errors.append("El establecimiento asociado al funcionario no pertenece a esta empresa.")
+        else:
+            branch_profile = db.scalar(
+                select(BranchComplianceProfile).where(BranchComplianceProfile.branch_id == branch.id)
+            )
+            if not branch_profile:
+                errors.append(f"Falta el perfil oficial REOP de la sucursal {branch.name}.")
+            else:
+                if branch_profile.reop_status != "Verificado":
+                    errors.append(f"La sucursal {branch.name} no está marcada como Verificada para REOP.")
+                patronal = branch_profile.mtess_employer_number or company.mtess_employer_number
+                if not str(patronal or "").strip():
+                    errors.append(f"Falta el número patronal MTESS para la sucursal {branch.name}.")
+
+    if not str(company.mtess_employer_number or "").strip():
+        branch_patronal = ""
+        if employee.branch_id:
+            branch_profile = db.scalar(
+                select(BranchComplianceProfile).where(BranchComplianceProfile.branch_id == employee.branch_id)
+            )
+            branch_patronal = branch_profile.mtess_employer_number if branch_profile else ""
+        if not str(branch_patronal or "").strip():
+            errors.append("Falta el número patronal MTESS de la casa matriz o del establecimiento.")
+    return list(dict.fromkeys(errors))
 
 
 def build_reop_salary_payload(
@@ -157,6 +225,12 @@ def build_reop_salary_payload(
 def validate_reop_salary_payload(payload: dict[str, Any]) -> list[str]:
     """Validate the data currently available; this is not a legal certification by MTESS."""
     errors: list[str] = []
+    profile_errors = payload.get("profile_validation_errors", [])
+    if isinstance(profile_errors, list):
+        errors.extend(
+            clean_text(str(value), max_length=350)
+            for value in profile_errors if str(value).strip()
+        )
     required_labels = {
         "employer_name": "Razón social del empleador",
         "employer_ruc": "RUC del empleador",
