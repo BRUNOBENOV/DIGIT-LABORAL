@@ -1,3 +1,12 @@
+## 2.6.31 — Flujo asistido de liquidación salarial REOP
+
+- Incorpora en el recibo de Liquidación de Salarios un panel REOP vinculado al cálculo de origen.
+- Genera un snapshot de los importes guardados con hash SHA-256, validaciones locales y un Excel de apoyo claramente identificado como no oficial.
+- Permite aprobación interna, seguimiento de los estados Presentado/Aceptado/Observado/Rechazado, registro de referencia externa y archivo del comprobante PDF/PNG/JPG que el usuario obtiene de REOP.
+- Conserva intentos separados, errores, responsable y auditoría; limita acciones de presentación a administrador/contador y aplica doble aprobación cuando está activada.
+- Añade migración para asociar el lote a su cálculo y pruebas de preparación, validación y archivo de comprobantes.
+- El envío automático directo sigue deshabilitado: no se activará sin especificación técnica y autorización oficial de interoperabilidad del MTESS. El Excel generado es un documento de apoyo y no sustituye la plantilla oficial de importación de REOP.
+
 ## 2.6.30 — Liquidación salarial integrada en Centro de Informes
 
 - Reutiliza la entrada existente de Liquidación de Salarios dentro del catálogo Centro de Informes para abrir el recibo detallado.

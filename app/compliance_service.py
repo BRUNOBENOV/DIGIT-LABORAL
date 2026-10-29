@@ -53,6 +53,7 @@ COMPLIANCE_STATUS_TRANSITIONS: dict[str, set[str]] = {
 # debe mantener la misma trazabilidad que los lotes de comunicaciones.
 INTEGRATION_BATCH_STATUS_TRANSITIONS: dict[str, set[str]] = {
     "Generado": {"Presentado"},
+    "Validado": {"Validado", "Presentado"},
     "Presentado": {"Presentado", "Aceptado", "Observado", "Rechazado"},
     "Aceptado": {"Aceptado"},
     "Observado": {"Observado"},

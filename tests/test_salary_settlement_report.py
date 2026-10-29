@@ -11,7 +11,10 @@ from app.auth import hash_password
 from app.config import settings
 from app.database import SessionLocal
 from app.main import app
-from app.models import AuditLog, CalculationRecord, Company, Employee, Studio, User, UserSecurity
+from app.models import (
+    AuditLog, BranchComplianceProfile, CalculationRecord, Company, CompanyComplianceProfile,
+    Employee, EmployeeComplianceProfile, IntegrationBatch, Studio, User, UserSecurity,
+)
 
 
 def _login(client: TestClient, email: str = "admin@digitlaboral.com.py", password: str | None = None) -> None:
@@ -87,6 +90,53 @@ def _create_salary_record(*, company_id: int | None = None, employee_id: int | N
         return item.id, company.id, employee.id, marker
 
 
+def _verify_reop_profiles(company_id: int, employee_id: int, patronal_number: str) -> None:
+    with SessionLocal() as db:
+        company = db.get(Company, company_id)
+        employee = db.get(Employee, employee_id)
+        assert company is not None and employee is not None
+        company.mtess_employer_number = patronal_number
+
+        company_profile = db.scalar(
+            select(CompanyComplianceProfile).where(CompanyComplianceProfile.company_id == company_id)
+        )
+        if not company_profile:
+            company_profile = CompanyComplianceProfile(company_id=company_id)
+            db.add(company_profile)
+        company_profile.department = "Alto Paraná"
+        company_profile.district = "Ciudad del Este"
+        company_profile.locality = "Ciudad del Este"
+        company_profile.economic_activity = "Servicios profesionales"
+        company_profile.reop_status = "Verificado"
+
+        employee_profile = db.scalar(
+            select(EmployeeComplianceProfile).where(EmployeeComplianceProfile.employee_id == employee_id)
+        )
+        if not employee_profile:
+            employee_profile = EmployeeComplianceProfile(employee_id=employee_id)
+            db.add(employee_profile)
+        employee_profile.sex = "Masculino"
+        employee_profile.nationality = "Paraguaya"
+        employee_profile.marital_status = "Soltero"
+        employee_profile.occupation_code = "OCUP-TEST"
+        employee_profile.reop_status = "Verificado"
+
+        if employee.branch_id:
+            branch_profile = db.scalar(
+                select(BranchComplianceProfile).where(BranchComplianceProfile.branch_id == employee.branch_id)
+            )
+            if not branch_profile:
+                branch_profile = BranchComplianceProfile(branch_id=employee.branch_id)
+                db.add(branch_profile)
+            branch_profile.mtess_employer_number = patronal_number
+            branch_profile.department = "Alto Paraná"
+            branch_profile.district = "Ciudad del Este"
+            branch_profile.locality = "Ciudad del Este"
+            branch_profile.economic_activity = "Servicios profesionales"
+            branch_profile.reop_status = "Verificado"
+        db.commit()
+
+
 def test_existing_report_center_entry_opens_enhanced_salary_report_without_duplicate_navigation():
     with TestClient(app) as client:
         _login(client)
@@ -157,6 +207,137 @@ def test_salary_liquidation_detail_pdf_history_and_reprint_audit():
                 AuditLog.action.in_(("reimpresion_pdf_liquidacion_salario", "reimpresion_liquidacion_salario")),
             )))
             assert len(events) >= 2
+
+
+def test_reop_salary_handoff_validation_submission_and_official_receipt_archive():
+    with TestClient(app) as client:
+        _login(client)
+        record_id, company_id, employee_id, _marker = _create_salary_record()
+        _verify_reop_profiles(company_id, employee_id, "MTESS-TEST-01")
+
+        detail = client.get(f"/app/reports/liquidaciones-salarios/{record_id}")
+        assert detail.status_code == 200, detail.text[:300]
+        token = re.search(r'name="csrf_token" value="([^"]+)"', detail.text)
+        assert token
+
+        prepared = client.post(
+            f"/app/reports/liquidaciones-salarios/{record_id}/reop/prepare",
+            data={
+                "csrf_token": token.group(1),
+                "payment_date": "2026-10-31",
+                "payment_method": "Transferencia",
+                "days_worked": "30",
+                "hours_worked": "240",
+                "pieces_or_tasks": "No aplica",
+            },
+            follow_redirects=False,
+        )
+        assert prepared.status_code == 303, prepared.text[:300]
+        assert "reop_batch=" in prepared.headers["location"]
+        batch_match = re.search(r"reop_batch=(\d+)", prepared.headers["location"])
+        assert batch_match
+        batch_id = int(batch_match.group(1))
+
+        with SessionLocal() as db:
+            batch = db.get(IntegrationBatch, batch_id)
+            assert batch is not None
+            assert batch.authority == "REOP"
+            assert batch.calculation_record_id == record_id
+            assert batch.status == "Generado"
+            assert batch.file_sha256 and len(batch.file_sha256) == 64
+            assert batch.file_bytes and batch.file_bytes.startswith(b"PK")
+            assert '"integration_mode":"manual_assisted"' in batch.payload_json
+            assert batch.error_message == ""
+
+        validated = client.post(
+            f"/app/reports/liquidaciones-salarios/{record_id}/reop/{batch_id}/validate",
+            data={"csrf_token": token.group(1)},
+            follow_redirects=False,
+        )
+        assert validated.status_code == 303
+        with SessionLocal() as db:
+            batch = db.get(IntegrationBatch, batch_id)
+            assert batch is not None and batch.status == "Validado"
+            assert batch.approved_by == "admin@digitlaboral.com.py"
+
+        submitted = client.post(
+            f"/app/compliance/batches/{batch_id}/receipt",
+            data={
+                "csrf_token": token.group(1),
+                "status": "Presentado",
+                "external_reference": "REOP-TEST-123",
+            },
+            follow_redirects=False,
+        )
+        assert submitted.status_code == 303
+        assert f"/app/reports/liquidaciones-salarios/{record_id}" in submitted.headers["location"]
+
+        fake_pdf = b"%PDF-1.4\nSynthetic test receipt fixture\n%%EOF"
+        accepted = client.post(
+            f"/app/compliance/batches/{batch_id}/receipt",
+            data={
+                "csrf_token": token.group(1),
+                "status": "Aceptado",
+                "external_reference": "REOP-TEST-123",
+            },
+            files={"receipt": ("reop-test.pdf", fake_pdf, "application/pdf")},
+            follow_redirects=False,
+        )
+        assert accepted.status_code == 303
+        with SessionLocal() as db:
+            batch = db.get(IntegrationBatch, batch_id)
+            assert batch is not None and batch.status == "Aceptado"
+            assert bytes(batch.receipt_bytes or b"") == fake_pdf
+            assert batch.external_reference == "REOP-TEST-123"
+        final_detail = client.get(f"/app/reports/liquidaciones-salarios/{record_id}")
+        assert final_detail.status_code == 200
+        assert "Intentos y comprobantes" in final_detail.text
+        assert "REOP-TEST-123" in final_detail.text
+        assert "no se verifica automáticamente" in final_detail.text.lower()
+        assert f"/app/compliance/batches/{batch_id}/receipt" in final_detail.text
+
+
+def test_reop_salary_handoff_blocks_validation_when_required_data_is_missing():
+    with TestClient(app) as client:
+        _login(client)
+        record_id, company_id, _employee_id, _marker = _create_salary_record()
+        _verify_reop_profiles(company_id, _employee_id, "MTESS-TEST-02")
+
+        detail = client.get(f"/app/reports/liquidaciones-salarios/{record_id}")
+        token = re.search(r'name="csrf_token" value="([^"]+)"', detail.text)
+        assert token
+        prepared = client.post(
+            f"/app/reports/liquidaciones-salarios/{record_id}/reop/prepare",
+            data={
+                "csrf_token": token.group(1),
+                "payment_date": "",
+                "payment_method": "",
+                "days_worked": "",
+                "hours_worked": "",
+                "pieces_or_tasks": "",
+            },
+            follow_redirects=False,
+        )
+        assert prepared.status_code == 303
+        match = re.search(r"reop_batch=(\d+)", prepared.headers["location"])
+        assert match
+        batch_id = int(match.group(1))
+        with SessionLocal() as db:
+            batch = db.get(IntegrationBatch, batch_id)
+            assert batch is not None and batch.status == "Generado"
+            assert "Fecha de pago" in batch.error_message
+            assert "Cantidad de horas trabajadas" in batch.error_message
+        validation = client.post(
+            f"/app/reports/liquidaciones-salarios/{record_id}/reop/{batch_id}/validate",
+            data={"csrf_token": token.group(1)},
+            follow_redirects=False,
+        )
+        assert validation.status_code == 303
+        assert "reop_validation_error=1" in validation.headers["location"]
+        with SessionLocal() as db:
+            batch = db.get(IntegrationBatch, batch_id)
+            assert batch is not None and batch.status == "Generado"
+            assert "Cantidad de días trabajados" in batch.error_message
 
 
 def test_company_user_cannot_open_another_company_salary_receipt():
