@@ -1,3 +1,10 @@
+## 2.6.41 — Representante Legal también en Certificado B
+
+- Aplica la prioridad del campo Representante Legal a Certificado de Trabajo B cuando la empresa lo tiene registrado.
+- Mantiene nombre de empresa, domicilio y teléfono debajo del representante legal.
+- Conserva el bloque anterior de empresa, domicilio y teléfono si no hay representante legal cargado.
+- Sincroniza vista previa, impresión, Word y PDF y añade pruebas de regresión para ambos formatos exportados.
+
 ## 2.6.40 — Prioridad al Representante Legal de la empresa
 
 - Prioriza el campo Representante Legal registrado en la empresa sobre el nombre de firma configurado en Branding.
