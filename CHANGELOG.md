@@ -1,3 +1,11 @@
+## 2.6.43 — Coherencia de certificados de trabajo
+
+- Alinea a la derecha la fecha de emisión de Certificado A, Certificado B y Constancia en vista previa, impresión, Word y PDF.
+- Unifica el bloque de firma con prioridad al Representante Legal de la ficha; si no está informado, identifica correctamente al firmante alternativo como responsable autorizado.
+- Homologa, para constancias al término de la relación, las fechas de ingreso y salida, el trabajo desempeñado y el salario devengado en el último período pagado.
+- Evita presumir renuncia voluntaria, buena conducta o causa de salida en los certificados; esos datos no se añaden automáticamente.
+- Exige el salario del último período pagado también para el Certificado B al terminar la relación laboral y no lo sustituye por el salario mensual del legajo.
+
 ## 2.6.42 — Validación explícita de documentos de vacaciones
 
 - Evita reutilizar días ya usados de un registro anterior como si fueran los días de una nueva solicitud o notificación.

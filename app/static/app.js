@@ -304,38 +304,33 @@ if (certificateForm) {
     const bodies = {
       certificado_trabajo_a: 'C E R T I F I C O:\n\n' +
         (value('effective_date')
-          ? 'Que ' + identity + ', ha trabajado en esta firma comercial durante el lapso comprendido entre el ' + admission +
-            ' y el ' + longDate(value('effective_date')) + ', habiendo ejercido el cargo de ' + role + '.\n' +
-            'Salario devengado durante el último período de pago: ' + lastPeriodSalaryDisplay + '.\n\n' +
-            'Hago constar que el/la nombrado/a se retira por su propia voluntad y se ha desempeñado a nuestra entera satisfacción, ' +
-            'además de haber observado en todo momento buena conducta.\n\n' +
-            'Este certificado lo expido a su solicitud y para su eventual uso ante terceros.'
+          ? 'Que ' + identity + ' prestó servicios en la firma comercial ' + company + ', desde el ' + admission +
+            ' hasta el ' + longDate(value('effective_date')) + ', desempeñándose como ' + role + '.\n' +
+            'Salario devengado durante el último período de pago: ' + lastPeriodSalaryDisplay + '.'
           : 'Que ' + identity + ' presta servicios en la firma comercial ' + company + ' desde el ' + admission +
-            ', habiendo ejercido el cargo de ' + role + '.' +
-            (includeSalary ? '\nSalario mensual registrado: ' + money(salaryRaw) + '.' : '') +
-            '\n\nEste certificado lo expido a su solicitud y para su eventual uso ante terceros.'),
+            ', desempeñándose como ' + role + '.' +
+            (includeSalary ? ' Percibe una remuneración mensual registrada de ' + money(salaryRaw) + '.' : '')),
       certificado_trabajo_b: 'C E R T I F I C O:\n\n' +
         (value('effective_date')
-          ? 'Que ' + identity + ', perteneció a la dotación de personal de esta firma ' + company +
-            ', habiendo ingresado a nuestro servicio el día ' + admission + ' y prestado servicios hasta el día ' + longDate(value('effective_date')) +
-            ', desempeñándose como ' + role + '.'
-          : 'Que ' + identity + ', pertenece a la dotación de personal de esta firma ' + company +
-            ', habiendo ingresado a nuestro servicio el día ' + admission + ', desempeñándose como ' + role + '.') +
-        '\n\nEste certificado lo expido a su solicitud y para su eventual uso ante terceros.',
-      constancia: 'C E R T I F I C O:\n\n' + 'Que ' + identity + ', de nacionalidad ' + (nationalityInput?.value || 'paraguaya').toUpperCase() +
-        (civilStatusInput?.value ? ', de estado civil ' + civilStatusInput.value.toUpperCase() : '') +
-        ', domiciliado/a en ' + employeeAddress + ', ' +
+          ? 'Que ' + identity + ' prestó servicios en la firma comercial ' + company + ', desde el ' + admission +
+            ' hasta el ' + longDate(value('effective_date')) + ', desempeñándose como ' + role + '.\n' +
+            'Salario devengado durante el último período de pago: ' + lastPeriodSalaryDisplay + '.'
+          : 'Que ' + identity + ' presta servicios en la firma comercial ' + company + ' desde el ' + admission +
+            ', desempeñándose como ' + role + '.' +
+            (includeSalary ? ' Percibe una remuneración mensual registrada de ' + money(salaryRaw) + '.' : '')),
+      constancia: 'C E R T I F I C O:\n\n' +
         (value('effective_date')
-          ? 'fue empleado/a de la firma comercial ' + company + ', ubicada en ' + companyAddress +
-            ', desde el ' + admission + ' hasta el ' + longDate(value('effective_date')) + ', desempeñándose como ' + role + '.'
-          : 'es empleado/a de la firma comercial ' + company + ', ubicada en ' + companyAddress +
-            ', desde el ' + admission + ', desempeñándose como ' + role + '.') +
-        (value('effective_date')
-          ? ' Salario devengado durante el último período de pago: ' + lastPeriodSalaryDisplay + '.'
-          : (includeSalary ? ' Percibe una remuneración mensual de ' + money(salaryRaw) + '.' : '')) +
-        '\n\nSe expide la presente constancia en ' + (cityInput.value || 'Ciudad del Este').toUpperCase() +
-        ', a los ' + (issueDateInput.value ? longDate(issueDateInput.value) : '[FECHA EN LETRAS]') +
-        ', para los fines y efectos que hubiere lugar.',
+          ? 'Que ' + identity + ' prestó servicios en la firma comercial ' + company + ', desde el ' + admission +
+            ' hasta el ' + longDate(value('effective_date')) + ', desempeñándose como ' + role + '.\n' +
+            'Salario devengado durante el último período de pago: ' + lastPeriodSalaryDisplay + '.'
+          : 'Que ' + identity + ', de nacionalidad ' + (nationalityInput?.value || 'paraguaya').toUpperCase() +
+            (civilStatusInput?.value ? ', de estado civil ' + civilStatusInput.value.toUpperCase() : '') +
+            (employeeOption?.dataset.address ? ', domiciliado/a en ' + employeeOption.dataset.address : '') +
+            ', es empleado/a de la firma comercial ' + company +
+            (selectedOption(companySelect)?.dataset.address ? ', ubicada sobre la calle ' + selectedOption(companySelect).dataset.address : '') +
+            ', desde el ' + admission + ', desempeñándose como ' + role + '.' +
+            (includeSalary ? ' Percibe una remuneración mensual registrada de ' + money(salaryRaw) + '.' : '') +
+            '\n\nSe expide la presente constancia para los fines y efectos a que hubiere lugar.'),
       aguinaldo_anual: 'RECIBO DE PAGO DE AGUINALDO\n\nEmpleador: ' + company + '\nTrabajador/a: ' + identity +
         '\nPeríodo considerado: ' + startPeriod + ' al ' + endPeriod + '\nFecha de pago: ' + shortDate(value('payment_date')) +
         '\n\nImporte abonado: ' + money(amount) + '.\n\nVerificar que el importe coincida con las remuneraciones computables y con el registro de pago comunicado al REOP. La firma acredita recepción del importe consignado.',
@@ -487,8 +482,8 @@ if (certificateForm) {
     previewDate.textContent = certificateModelTypes.has(type)
       ? issueCity.toUpperCase() + ', ' + issueDate
       : issueCity + ', ' + issueDate;
-    previewDate.style.textAlign = type === 'certificado_trabajo_a' ? 'center' : type === 'certificado_trabajo_b' ? 'left' : '';
-    previewDate.style.display = type === 'constancia' ? 'none' : '';
+    previewDate.style.textAlign = certificateModelTypes.has(type) ? 'right' : '';
+    previewDate.style.display = '';
     const bodyText = buildBody();
     renderCertificatePreviewBody(type, bodyText);
     document.querySelector('#certificatePreviewHeaderCompany').textContent = company;
@@ -533,7 +528,7 @@ if (certificateForm) {
     if (letterhead) letterhead.style.borderColor = companyColor;
 
     const signature = companyOption?.dataset.signature || 'Firma autorizada';
-    const signatureTitle = companyOption?.dataset.signatureTitle || (type === 'constancia' ? 'Responsable' : 'Representante legal');
+    const signatureTitle = companyOption?.dataset.signatureTitle || (certificateModelTypes.has(type) ? 'Responsable autorizado' : 'Representante legal');
     const selectedTypeButton = [...document.querySelectorAll('[data-certificate-type]')]
       .find(button => button.dataset.certificateType === type);
     const signatureMode = selectedTypeButton?.dataset.signatureMode || 'employer';
@@ -564,38 +559,16 @@ if (certificateForm) {
       document.querySelector('#certificatePreviewSignature').textContent = employee;
       document.querySelector('#certificatePreviewSignatureTitle').textContent = 'Firma del trabajador/a';
       document.querySelector('#certificatePreviewCompany').textContent = `C.I. N.º ${employeeDocument}`;
-    } else if (type === 'certificado_trabajo_b') {
-      if (companyOption?.dataset.legalRepresentative) {
-        document.querySelector('#certificatePreviewSignature').textContent = companyOption.dataset.legalRepresentative;
-        document.querySelector('#certificatePreviewSignatureTitle').textContent = 'Representante legal';
-        document.querySelector('#certificatePreviewCompany').textContent = company;
-        if (previewAddress) previewAddress.textContent = companyOption.dataset.address || '';
-        document.querySelector('#certificatePreviewPhone').textContent = companyOption.dataset.phone
-          ? 'TEL. ' + companyOption.dataset.phone
-          : '';
-      } else {
-        document.querySelector('#certificatePreviewSignature').textContent = company;
-        document.querySelector('#certificatePreviewSignatureTitle').textContent = companyOption?.dataset.address || '';
-        document.querySelector('#certificatePreviewCompany').textContent = companyOption?.dataset.phone
-          ? 'TEL. ' + companyOption.dataset.phone
-          : '';
-        document.querySelector('#certificatePreviewPhone').textContent = '';
-      }
-    } else if (type === 'constancia') {
-      const signerLabel = signature && signature !== 'Firma autorizada' && !/^sr/i.test(signature)
-        ? 'Sr(a). ' + signature
-        : signature;
-      document.querySelector('#certificatePreviewSignature').textContent = signerLabel;
-      document.querySelector('#certificatePreviewSignatureTitle').textContent = signatureTitle;
-      document.querySelector('#certificatePreviewCompany').textContent = '';
-      document.querySelector('#certificatePreviewPhone').textContent = companyOption?.dataset.phone
-        ? 'Tel. ' + companyOption.dataset.phone
-        : '';
     } else {
       document.querySelector('#certificatePreviewSignature').textContent = signature;
-      document.querySelector('#certificatePreviewSignatureTitle').textContent = signatureTitle;
+      document.querySelector('#certificatePreviewSignatureTitle').textContent = certificateModelTypes.has(type)
+        ? (signatureTitle || 'Responsable autorizado')
+        : signatureTitle;
       document.querySelector('#certificatePreviewCompany').textContent = company;
-      document.querySelector('#certificatePreviewPhone').textContent = '';
+      if (previewAddress && certificateModelTypes.has(type)) previewAddress.textContent = companyOption?.dataset.address || '';
+      document.querySelector('#certificatePreviewPhone').textContent = certificateModelTypes.has(type) && companyOption?.dataset.phone
+        ? 'TEL. ' + companyOption.dataset.phone
+        : '';
     }
 
     const previewReceipt = document.querySelector('#certificatePreviewReceipt');
