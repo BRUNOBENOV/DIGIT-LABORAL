@@ -497,7 +497,7 @@ def build_document_body(
                 "a nuestra entera satisfacción, además de haber observado en todo momento buena conducta.\n\n"
                 "Este certificado lo expido a su solicitud y para su eventual uso ante terceros."
                 if effective_date else
-                f"Que {identity} presta servicios en esta firma comercial desde el {admission}, "
+                f"Que {identity} presta servicios en la firma comercial {company_name} desde el {admission}, "
                 f"desempeñándose en el cargo de {role}."
                 + (
                     f" Percibe una remuneración mensual registrada de {salary_display}."
