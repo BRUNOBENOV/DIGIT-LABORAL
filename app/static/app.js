@@ -213,6 +213,9 @@ if (certificateForm) {
     const isPreaviso = typeInput.value === 'notificacion_preaviso';
     noticeDaysInput.readOnly = isPreaviso;
     if (!isPreaviso) return;
+    if (noticeStartInput && !noticeStartInput.value && issueDateInput.value) {
+      noticeStartInput.value = issueDateInput.value;
+    }
     const startRaw = noticeStartInput?.value || issueDateInput.value;
     const endRaw = effectiveDateInput?.value;
     if (!startRaw || !endRaw) {
@@ -388,13 +391,13 @@ if (certificateForm) {
         '\nDías consignados: ' + (value('vacation_days') || 'A completar') + '\nFecha de pago: ' + shortDate(value('vacation_payment_date')) +
         '\nImporte realmente abonado: ' + money(num('vacation_amount')) +
         '\n\nLa firma acredita recepción del importe efectivamente pagado; conservar original firmado y entregar duplicado al trabajador/a.',
-      notificacion_preaviso: 'NOTIFICACIÓN DE PREAVISO\n\nSeñor/a\n' + identity +
+      notificacion_preaviso: 'Señor/a\n' + identity +
         '\n\nRef.: Notificación de preaviso\n\n' + company +
         ' comunica formalmente que ha resuelto prescindir de sus servicios, con fecha efectiva de terminación el ' + longDate(effectiveDateInput?.value) + '.' +
         '\n\nEl preaviso se computa desde el ' + longDate(noticeStartInput?.value || issueDateInput.value) +
         ' hasta el ' + longDate(effectiveDateInput?.value) + ', por un período de ' + (value('notice_days') || 'A completar') + ' días calendario.' +
         '\n\nDurante este período y sin disminución de su salario, podrá disponer, a su elección, de una licencia diaria de dos horas dentro de la jornada legal o de un día a la semana para buscar otra ocupación. A su opción, podrá utilizar en forma continuada todo el tiempo de licencia que le corresponda, conforme al artículo 89 de la Ley N.º 213/93, Código del Trabajo.' +
-        '\n\nSírvase firmar al pie de la presente como constancia de recepción. La firma acredita recepción y no implica necesariamente conformidad con su contenido.\n\nAtentamente.',
+        '\n\nSírvase firmar al pie de la presente como constancia de recepción.\n\nAtentamente.',
       renuncia: 'NOTA DE RENUNCIA\n\nA: ' + recipient + '\nEmpresa: ' + company + '\n\nYo, ' + identity +
         ', comunico mi decisión de renunciar al cargo de ' + role + ', con fecha efectiva ' + longDate(effectiveDateInput?.value) +
         '. Solicito que se practique la liquidación y se entreguen los documentos de cierre. Dejar constancia de la fecha de recepción.',
