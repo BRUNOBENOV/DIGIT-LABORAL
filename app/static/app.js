@@ -120,7 +120,7 @@ if (certificateForm) {
   const selectedOption = select => select?.options[select.selectedIndex];
   const labels = {
     certificado_trabajo_a: 'Certificado de Trabajo',
-    certificado_trabajo_b: 'Constancia Laboral',
+    certificado_trabajo_b: 'Certificado de Trabajo B',
     constancia: 'Constancia de Trabajo',
     aguinaldo_anual: 'Recibo de Pago de Aguinaldo',
     aguinaldo_proporcional: 'Liquidación de Aguinaldo Proporcional',
@@ -301,13 +301,14 @@ if (certificateForm) {
             ', habiendo ejercido el cargo de ' + role + '.' +
             (includeSalary ? '\nSalario mensual registrado: ' + money(salaryRaw) + '.' : '') +
             '\n\nEste certificado lo expido a su solicitud y para su eventual uso ante terceros.'),
-      certificado_trabajo_b: 'CONSTANCIA LABORAL\n\nSe deja constancia de que ' + identity +
+      certificado_trabajo_b: 'C E R T I F I C O:\n\n' +
         (value('effective_date')
-          ? ' prestó servicios en ' + company + ' desde el ' + admission + ' hasta el ' + longDate(value('effective_date')) +
-            ', desempeñándose como ' + role + '. Salario devengado en el último período de pago: ' + lastPeriodSalaryDisplay + '.'
-          : ' forma parte del plantel de ' + company + ', desempeñándose como ' + role + ' desde el ' + admission + '.' +
-            (includeSalary ? '\nRemuneración mensual registrada: ' + money(salaryRaw) + '.' : '\nNo se incluye información salarial en esta constancia.')) +
-        '\n\nSe expide a solicitud de la persona interesada y no sustituye certificados institucionales exigidos por una autoridad.',
+          ? 'Que ' + identity + ', perteneció a la dotación de personal de esta firma ' + company +
+            ', habiendo ingresado a nuestro servicio el día ' + admission + ' y prestado servicios hasta el día ' + longDate(value('effective_date')) +
+            ', desempeñándose como ' + role + '.'
+          : 'Que ' + identity + ', pertenece a la dotación de personal de esta firma ' + company +
+            ', habiendo ingresado a nuestro servicio el día ' + admission + ', desempeñándose como ' + role + '.') +
+        '\n\nEste certificado lo expido a su solicitud y para su eventual uso ante terceros.',
       constancia: company + ' hace constar que ' + identity + ', de nacionalidad ' + (nationalityInput?.value || 'paraguaya') +
         (civilStatusInput?.value ? ', de estado civil ' + civilStatusInput.value : '') +
         (value('effective_date')
@@ -402,6 +403,51 @@ if (certificateForm) {
     return (bodies[type] || '') + notes;
   };
 
+  function renderCertificatePreviewBody(type, bodyText) {
+    const previewBody = document.querySelector('#certificatePreviewBody');
+    const certifyHeading = 'C E R T I F I C O:\n\n';
+    const certificateModelTypes = new Set(['certificado_trabajo_a', 'certificado_trabajo_b']);
+    if (certificateModelTypes.has(type) && bodyText.startsWith(certifyHeading)) {
+      const heading = document.createElement('div');
+      heading.className = 'certificate-a-certify';
+      heading.textContent = 'C E R T I F I C O:';
+      previewBody.replaceChildren(heading, document.createTextNode('\n\n' + bodyText.slice(certifyHeading.length)));
+    } else {
+      previewBody.textContent = bodyText;
+    }
+  }
+
+  let canonicalCertificatePreviewTimer = null;
+  let canonicalCertificatePreviewSequence = 0;
+  function scheduleCanonicalCertificatePreview(type) {
+    const sequence = ++canonicalCertificatePreviewSequence;
+    if (canonicalCertificatePreviewTimer !== null) window.clearTimeout(canonicalCertificatePreviewTimer);
+    if (!['certificado_trabajo_a', 'certificado_trabajo_b'].includes(type)) return;
+    canonicalCertificatePreviewTimer = window.setTimeout(async () => {
+      const formData = new FormData(certificateForm);
+      formData.set('intent', 'preview');
+      try {
+        const response = await fetch(certificateForm.action || '/app/certificates', {
+          method: 'POST',
+          body: formData,
+          credentials: 'same-origin',
+          headers: { 'Accept': 'application/json' }
+        });
+        if (!response.ok) return;
+        const result = await response.json();
+        if (
+          sequence !== canonicalCertificatePreviewSequence ||
+          typeInput.value !== type ||
+          typeof result.body !== 'string'
+        ) return;
+        renderCertificatePreviewBody(type, result.body);
+        if (result.title) document.querySelector('#certificatePreviewTitle').textContent = result.title.toUpperCase();
+      } catch (error) {
+        // La vista local sigue disponible si falla la sincronización con el servidor.
+      }
+    }, 300);
+  }
+
   function updatePreview() {
     const type = typeInput.value;
     const title = labels[type] || 'Documento laboral';
@@ -416,25 +462,18 @@ if (certificateForm) {
     const previewDate = document.querySelector('#certificatePreviewDate');
     const issueCity = cityInput.value || 'Ciudad del Este';
     const issueDate = longDate(issueDateInput.value);
-    previewDate.textContent = type === 'certificado_trabajo_a'
+    const certificateModelTypes = new Set(['certificado_trabajo_a', 'certificado_trabajo_b']);
+    previewDate.textContent = certificateModelTypes.has(type)
       ? issueCity.toUpperCase() + ', ' + issueDate
       : issueCity + ', ' + issueDate;
-    previewDate.style.textAlign = type === 'certificado_trabajo_a' ? 'center' : '';
-    const previewBody = document.querySelector('#certificatePreviewBody');
+    previewDate.style.textAlign = type === 'certificado_trabajo_a' ? 'center' : type === 'certificado_trabajo_b' ? 'left' : '';
     const bodyText = buildBody();
-    const certifyHeading = 'C E R T I F I C O:\n\n';
-    if (type === 'certificado_trabajo_a' && bodyText.startsWith(certifyHeading)) {
-      const heading = document.createElement('div');
-      heading.className = 'certificate-a-certify';
-      heading.textContent = 'C E R T I F I C O:';
-      previewBody.replaceChildren(heading, document.createTextNode('\n\n' + bodyText.slice(certifyHeading.length)));
-    } else {
-      previewBody.textContent = bodyText;
-    }
+    renderCertificatePreviewBody(type, bodyText);
     document.querySelector('#certificatePreviewHeaderCompany').textContent = company;
     document.querySelector('#certificatePreviewHeaderDetails').textContent = [
       companyOption?.dataset.ruc ? `RUC ${companyOption.dataset.ruc}` : '',
-      companyOption?.dataset.address || ''
+      companyOption?.dataset.address || '',
+      companyOption?.dataset.phone ? 'Tel. ' + companyOption.dataset.phone : ''
     ].filter(Boolean).join(' · ');
     document.querySelector('#certificatePreviewNumber').textContent = documentNumberInput?.value
       ? `Documento N.º ${documentNumberInput.value}`
@@ -499,12 +538,19 @@ if (certificateForm) {
       document.querySelector('#certificatePreviewSignature').textContent = employee;
       document.querySelector('#certificatePreviewSignatureTitle').textContent = 'Firma del trabajador/a';
       document.querySelector('#certificatePreviewCompany').textContent = `C.I. N.º ${employeeDocument}`;
+    } else if (type === 'certificado_trabajo_b') {
+      document.querySelector('#certificatePreviewSignature').textContent = company;
+      document.querySelector('#certificatePreviewSignatureTitle').textContent = companyOption?.dataset.address || '';
+      document.querySelector('#certificatePreviewCompany').textContent = companyOption?.dataset.phone
+        ? 'TEL. ' + companyOption.dataset.phone
+        : '';
     } else {
       document.querySelector('#certificatePreviewSignature').textContent = signature;
       document.querySelector('#certificatePreviewSignatureTitle').textContent = signatureTitle;
       document.querySelector('#certificatePreviewCompany').textContent = company;
     }
     typeTitle.textContent = title;
+    scheduleCanonicalCertificatePreview(type);
   }
 
   document.querySelectorAll('[data-certificate-type]').forEach(button => button.addEventListener('click', () => {

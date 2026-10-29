@@ -49,20 +49,104 @@ def test_app_version_and_build_are_visible_in_the_global_header():
 
 
 
-def test_certificate_a_preview_uses_model_text_and_versioned_static_asset():
+def test_certificate_a_preview_uses_model_text_and_uncached_static_asset():
     with TestClient(app) as client:
         login(client)
         page = client.get("/app/certificates")
         assert page.status_code == 200
+        assert "no-store" in page.headers.get("cache-control", "")
         assert f"app.js?v={APP_VERSION}" in page.text
         script = client.get(f"/static/app.js?v={APP_VERSION}")
         assert script.status_code == 200
-        assert "C E R T I F I C O:" in script.text
         assert "ha trabajado en esta firma comercial durante el lapso comprendido entre el " in script.text
         assert "se retira por su propia voluntad" in script.text
         assert "a nuestra entera satisfacción" in script.text
-        assert "certificate-a-certify" in script.text
-        assert "previewDate.style.textAlign = type === 'certificado_trabajo_a' ? 'center' : ''" in script.text
+        assert "scheduleCanonicalCertificatePreview(type)" in script.text
+        assert "formData.set('intent', 'preview')" in script.text
+        assert "certificado_trabajo_b: 'Certificado de Trabajo B'" in script.text
+
+
+def test_certificate_b_matches_requested_model():
+    title, body = build_document_body(
+        "certificado_trabajo_b",
+        company_name="KAMNIZ SRL",
+        employee_name="DIEGO DAMIAN, FRANCO TABOADA",
+        employee_document="6.638.398",
+        position="DEPOSITERO",
+        admission_date=date(2026, 7, 1),
+        salary=0,
+        issue_date=date(2026, 10, 29),
+        city="Ciudad del Este",
+        metadata={"effective_date": "2026-10-24", "last_period_salary_amount": 0},
+    )
+    assert title == "Certificado de Trabajo B"
+    assert body.startswith("C E R T I F I C O:")
+    assert "perteneció a la dotación de personal de esta firma KAMNIZ SRL" in body
+    assert "habiendo ingresado a nuestro servicio el día 1 de julio de 2026" in body
+    assert "prestado servicios hasta el día 24 de octubre de 2026" in body
+    assert "desempeñándose como DEPOSITERO." in body
+    assert "Este certificado lo expido a su solicitud y para su eventual uso ante terceros." in body
+    assert "Salario devengado" not in body
+
+    data = ExportData(
+        document_type="certificado_trabajo_b",
+        title=title,
+        city="Ciudad del Este",
+        issue_date=date(2026, 10, 29),
+        company_name="KAMNIZ SRL",
+        company_address="PIRIBEBUY E/MNHOR RODRIGUEZ",
+        company_phone="(061)518-452",
+        employee_name="DIEGO DAMIAN, FRANCO TABOADA",
+        employee_document="6.638.398",
+        position="DEPOSITERO",
+        admission_date=date(2026, 7, 1),
+        body=body,
+        status="Emitido",
+    )
+    word = WordDocument(io.BytesIO(build_docx_bytes(data)))
+    signature_text = "\n".join(paragraph.text for paragraph in word.paragraphs)
+    assert "KAMNIZ SRL\nPIRIBEBUY E/MNHOR RODRIGUEZ\nTEL. (061)518-452" in signature_text
+    pdf = PdfReader(io.BytesIO(build_pdf_bytes(data)))
+    pdf_text = "\n".join(page.extract_text() or "" for page in pdf.pages)
+    assert "PIRIBEBUY E/MNHOR RODRIGUEZ" in pdf_text
+    assert "TEL. (061)518-452" in pdf_text
+
+
+def test_certificate_preview_endpoint_uses_same_body_as_export_model():
+    with TestClient(app) as client:
+        csrf = login(client)
+        base_data = {
+            "csrf_token": csrf,
+            "company_id": 1,
+            "employee_id": 1,
+            "document_type": "certificado_trabajo_a",
+            "city": "Ciudad del Este",
+            "issue_date": "2026-10-29",
+            "position": "Auxiliar",
+            "admission_date": "2026-07-01",
+            "salary": "3044000",
+            "effective_date": "2026-10-24",
+            "last_period_salary_amount": "",
+            "intent": "preview",
+        }
+        response = client.post("/app/certificates", data=base_data, follow_redirects=False)
+        assert response.status_code == 200
+        assert "no-store" in response.headers.get("cache-control", "")
+        payload = response.json()
+        assert payload["document_type"] == "certificado_trabajo_a"
+        assert payload["body"].startswith("C E R T I F I C O:")
+        assert "ha trabajado en esta firma comercial" in payload["body"]
+
+        base_data["document_type"] = "certificado_trabajo_b"
+        base_data["position"] = "DEPOSITERO"
+        b_response = client.post("/app/certificates", data=base_data, follow_redirects=False)
+        assert b_response.status_code == 200
+        b_payload = b_response.json()
+        assert b_payload["document_type"] == "certificado_trabajo_b"
+        assert b_payload["title"] == "Certificado de Trabajo B"
+        assert "perteneció a la dotación de personal" in b_payload["body"]
+        assert "habiendo ingresado a nuestro servicio" in b_payload["body"]
+        assert "desempeñándose como DEPOSITERO." in b_payload["body"]
 
 
 def test_amount_in_words_and_legal_basis():
