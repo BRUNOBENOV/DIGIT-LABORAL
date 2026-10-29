@@ -489,10 +489,10 @@ def build_document_body(
 
     bodies: dict[str, str] = {
                 "certificado_trabajo_a": (
-            "C E R T I F I C O:\\n\\n"
+            "C E R T I F I C O:\n\n"
             + (
                 f"Que {certificate_subject} prestó servicios en la firma comercial {company_name}, "
-                f"desde el {admission} hasta el {employment_end}, desempeñándose como {role}.\\n"
+                f"desde el {admission} hasta el {employment_end}, desempeñándose como {role}.\n"
                 f"Salario devengado durante el último período de pago: {last_period_salary_display}."
                 if effective_date else
                 f"Que {identity} presta servicios en la firma comercial {company_name} desde el {admission}, "
@@ -501,10 +501,10 @@ def build_document_body(
             )
         ),
         "certificado_trabajo_b": (
-            "C E R T I F I C O:\\n\\n"
+            "C E R T I F I C O:\n\n"
             + (
                 f"Que {certificate_subject} prestó servicios en la firma comercial {company_name}, "
-                f"desde el {admission} hasta el {employment_end}, desempeñándose como {role}.\\n"
+                f"desde el {admission} hasta el {employment_end}, desempeñándose como {role}.\n"
                 f"Salario devengado durante el último período de pago: {last_period_salary_display}."
                 if effective_date else
                 f"Que {identity} presta servicios en la firma comercial {company_name} desde el {admission}, "
@@ -513,10 +513,10 @@ def build_document_body(
             )
         ),
         "constancia": (
-            "C E R T I F I C O:\\n\\n"
+            "C E R T I F I C O:\n\n"
             + (
                 f"Que {certificate_subject} prestó servicios en la firma comercial {company_name}, "
-                f"desde el {admission} hasta el {employment_end}, desempeñándose como {role}.\\n"
+                f"desde el {admission} hasta el {employment_end}, desempeñándose como {role}.\n"
                 f"Salario devengado durante el último período de pago: {last_period_salary_display}."
                 if effective_date else
                 f"Que {identity}, de nacionalidad {nationality.upper()}"
@@ -525,7 +525,7 @@ def build_document_body(
                 + f", es empleado/a de la firma comercial {company_name}{company_address_clause}, "
                 + f"desde el {admission}, desempeñándose como {role}."
                 + (f" Percibe una remuneración mensual registrada de {salary_display}." if include_current_salary else "")
-                + "\\n\\nSe expide la presente constancia para los fines y efectos a que hubiere lugar."
+                + "\n\nSe expide la presente constancia para los fines y efectos a que hubiere lugar."
             )
         ),
         "aguinaldo_anual": (
@@ -1077,26 +1077,29 @@ def _add_signature_table_docx(document: Document, data: ExportData) -> None:
         p = document.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         p.paragraph_format.space_before = Pt(22)
-        p.add_run("_______________________________\\n")
+        p.add_run("_______________________________\n")
         if data.document_type in {"certificado_trabajo_a", "certificado_trabajo_b", "constancia"}:
             signatory = (data.legal_representative or "Firma autorizada").strip()
             r = p.add_run(signatory)
             r.bold = True
-            p.add_run(f"\\n{data.signature_title or 'Responsable autorizado'}")
-            p.add_run(f"\\n{data.company_name}")
+            p.add_run(f"\n{data.signature_title or 'Responsable autorizado'}")
+            p.add_run(f"\n{data.company_name}")
             if data.company_address:
-                p.add_run(f"\\n{data.company_address}")
+                p.add_run(f"\n{data.company_address}")
             if data.company_phone:
-                p.add_run(f"\\nTEL. {data.company_phone}")
+                p.add_run(f"\nTEL. {data.company_phone}")
         else:
             signatory = (data.legal_representative or "Firma autorizada").strip()
             r = p.add_run(signatory)
             r.bold = True
             title_text = data.signature_title or "Representante legal"
-            p.add_run(f"\\n{title_text}")
+            p.add_run(f"\n{title_text}")
             if data.company_name:
-                p.add_run(f"\\n{data.company_name}")
-\n\n\ndef build_docx_bytes(data: ExportData) -> bytes:
+                p.add_run(f"\n{data.company_name}")
+
+
+
+def build_docx_bytes(data: ExportData) -> bytes:
     document = Document()
     section = document.sections[0]
     section.page_width = Cm(21)
