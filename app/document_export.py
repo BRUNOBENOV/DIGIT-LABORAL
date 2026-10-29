@@ -523,7 +523,7 @@ def build_document_body(
             "Este certificado lo expido a su solicitud y para su eventual uso ante terceros."
         ),
         "constancia": (
-            "C E R T I F I C O:\\n\\n"
+            "C E R T I F I C O:\n\n"
             + f"Que {identity}, de nacionalidad {nationality.upper()}"
             + (f", de estado civil {civil_status.upper()}" if civil_status else "")
             + f", domiciliado/a en {employee_address_text}, "
@@ -540,7 +540,7 @@ def build_document_body(
                 (f" Percibe una remuneración mensual de Gs. {format_gs(salary)}."
                  if str(metadata.get("include_salary", "on") or "").lower() in {"on", "true", "1"} else "")
             )
-            + f"\\n\\nSe expide la presente constancia en {city.upper()}, a los {number_to_words_es(issue_date.day)} días del mes de {MONTHS_ES[issue_date.month - 1]} del año {number_to_words_es(issue_date.year)}, para los fines y efectos que hubiere lugar."
+            + f"\n\nSe expide la presente constancia en {city.upper()}, a los {number_to_words_es(issue_date.day)} días del mes de {MONTHS_ES[issue_date.month - 1]} del año {number_to_words_es(issue_date.year)}, para los fines y efectos que hubiere lugar."
         ),
         "aguinaldo_anual": (
             f"El empleador {company_name} deja constancia de haber abonado a {identity} la suma de Gs. {format_gs(amount)} "
