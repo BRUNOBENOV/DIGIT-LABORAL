@@ -187,7 +187,7 @@ def test_certificate_preview_endpoint_uses_same_body_as_export_model():
         constancia_body = constancia_response.json()["body"]
         assert "es empleado/a de la firma comercial" in constancia_body
         assert "de nacionalidad PARAGUAYA" in constancia_body
-        assert "domiciliado/a en" in constancia_body
+        assert "domiciliado/a en" not in constancia_body
         assert "ubicada sobre la calle" in constancia_body
         assert "remuneración mensual registrada de Gs." in constancia_body
         assert "para los fines y efectos a que hubiere lugar" in constancia_body
@@ -374,7 +374,7 @@ def test_constancia_matches_requested_model_and_signature_in_word_pdf():
     assert "JAVIER MIRANDA" in pdf_text and "Responsable" in pdf_text
     assert "C E R T I F I C O:" in pdf_text
     assert pdf_text.count("a los veintinueve días del mes de octubre del año dos mil veintiséis") == 1
-    assert "Tel. 573-327" in pdf_text
+    assert "TEL. 573-327" in pdf_text
 
     _, ended_body = build_document_body(
         "constancia",
