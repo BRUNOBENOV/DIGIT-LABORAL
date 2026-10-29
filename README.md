@@ -1,6 +1,13 @@
-# Digit Laboral 2.6.42
+# Digit Laboral 2.6.43
 
 Plataforma de gestión y cumplimiento laboral para estudios contables paraguayos.
+
+## Novedades de la versión 2.6.43
+
+- Alinea la fecha a la derecha y la muestra una sola vez en los tres primeros certificados.
+- Unifica la firma y la información de contacto; prioriza el Representante Legal registrado.
+- Unifica los datos esenciales de la constancia al término de la relación y no presume renuncia voluntaria ni buena conducta.
+- Solicita el salario realmente devengado en el último período también para el Certificado B.
 
 ## Novedades de la versión 2.6.42
 
