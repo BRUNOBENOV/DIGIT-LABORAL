@@ -762,6 +762,18 @@ def export_data_from_certificate(certificate: Any) -> ExportData:
     company = certificate.company
     branding = getattr(company, "branding", None)
     metadata = decode_metadata(certificate.observations)
+    company_legal_representative = (getattr(company, "legal_representative", "") or "").strip()
+    signatory_name = (
+        company_legal_representative
+        or ((getattr(branding, "signature_name", "") or "").strip() if branding else "")
+        or (getattr(company, "responsible_name", "") or "").strip()
+    )
+    signatory_title = (
+        "Representante legal"
+        if company_legal_representative
+        else ((getattr(branding, "signature_title", "") or "").strip() if branding else "")
+        or ("Responsable" if certificate.document_type == "constancia" else "Representante legal")
+    )
     return ExportData(
         document_type=certificate.document_type,
         title=certificate.title,
@@ -772,8 +784,8 @@ def export_data_from_certificate(certificate: Any) -> ExportData:
         company_address=getattr(company, "address", "") or "",
         company_phone=getattr(company, "phone", "") or "",
         company_email=getattr(company, "email", "") or "",
-        legal_representative=(getattr(branding, "signature_name", "") if branding else "") or getattr(company, "legal_representative", "") or getattr(company, "responsible_name", "") or "",
-        signature_title=(getattr(branding, "signature_title", "") if branding else "") or ("Responsable" if certificate.document_type == "constancia" else "Representante legal"),
+        legal_representative=signatory_name,
+        signature_title=signatory_title,
         logo_bytes=prepare_company_logo(
             getattr(branding, "logo_bytes", None) if branding else None,
             fit=getattr(branding, "logo_fit", "contain") if branding else "contain",

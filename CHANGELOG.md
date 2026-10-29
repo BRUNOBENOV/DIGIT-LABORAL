@@ -1,3 +1,10 @@
+## 2.6.40 — Prioridad al Representante Legal de la empresa
+
+- Prioriza el campo Representante Legal registrado en la empresa sobre el nombre de firma configurado en Branding.
+- Aplica el mismo nombre y el cargo «Representante legal» a la vista previa, impresión, Word y PDF.
+- Conserva los datos de Branding o responsable alternativo solo como respaldo cuando el campo legal está vacío.
+- Agrega una prueba de regresión que verifica la prioridad del representante ante datos de firma alternativos.
+
 ## 2.6.39 — Ajuste fiel del formato de Constancia
 
 - Incluye «C E R T I F I C O:» como encabezado del cuerpo de la Constancia en vista previa, impresión, Word y PDF.
