@@ -274,6 +274,13 @@
   text-align:right;
   overflow-wrap:anywhere;
 }
+.certificate-a-certify{
+  margin:0 0 14px;
+  color:#172744;
+  font:800 .92rem/1.5 "Aptos Display","Aptos","Segoe UI",Arial,sans-serif;
+  letter-spacing:.12em;
+  text-align:center;
+}
 .certificate-body{
   white-space:pre-line;
   color:#28364B;
