@@ -1,3 +1,11 @@
+## 2.6.45 — Integración de Preaviso con Cálculo
+
+- Conecta la Notificación de Preaviso con los cálculos guardados del funcionario y período, usando consulta autenticada y aislada por empresa.
+- Ofrece períodos con cálculo vigente, muestra la base, los días, el importe estimado y el estado, y bloquea Guardar/Imprimir/PDF/Word si no existe un registro utilizable.
+- Completa fechas iniciales a partir del plazo seleccionado, permite editarlas y registra en metadatos la trazabilidad del cálculo vinculado.
+- Añade mensaje de ausencia de registro, botón Cancelar y validación de servidor para impedir vínculos cruzados, períodos incorrectos o cálculos anulados.
+- Permite añadir opcionalmente el motivo comunicado y refleja el cargo del funcionario en la vista previa y en las exportaciones.
+
 ## 2.6.44 — Notificación de Preaviso
 
 - Reescribe la Notificación de Preaviso como comunicación formal dirigida al trabajador, con fecha de emisión, período y fecha efectiva claramente expresados.
