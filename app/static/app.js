@@ -223,6 +223,7 @@ if (certificateForm) {
     if (!isPreaviso) return;
     if (noticeStartInput && !noticeStartInput.value && issueDateInput.value) {
       noticeStartInput.value = issueDateInput.value;
+      if (typeInput.value === 'notificacion_preaviso') noticeStartInput.dataset.preavisoAuto = 'true';
     }
     const startRaw = noticeStartInput?.value || issueDateInput.value;
     const endRaw = effectiveDateInput?.value;
