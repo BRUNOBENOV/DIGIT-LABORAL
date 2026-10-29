@@ -13,6 +13,8 @@ from app.document_export import (
     build_docx_bytes,
     build_pdf_bytes,
     document_detail_table_data,
+    document_signature_mode,
+    document_receipt_mode,
     guaranies_in_words,
 )
 from docx import Document as WordDocument
@@ -68,6 +70,11 @@ def test_certificate_a_preview_uses_model_text_and_uncached_static_asset():
         assert "[NOMBRE COMPLETO DEL FUNCIONARIO]" in script.text
         assert "certificado_trabajo_b: 'Certificado de Trabajo B'" in script.text
         assert ".certificate-preview-signature-pair b,.certificate-preview-signature-pair small{display:block" in page.text
+        assert 'id="certificatePreviewSignaturePair" style="display:none!important;"' in page.text
+        assert 'id="certificatePreviewReceipt"' in page.text
+        assert 'data-signature-mode="employer"' in page.text
+        assert "signatureMode === 'both'" in script.text
+        assert "style.setProperty('display', usePair ? 'grid' : 'none', 'important')" in script.text
 
 
 def test_certificate_b_matches_requested_model():
@@ -151,6 +158,73 @@ def test_certificate_preview_endpoint_uses_same_body_as_export_model():
         assert "perteneció a la dotación de personal" in b_payload["body"]
         assert "habiendo ingresado a nuestro servicio" in b_payload["body"]
         assert "desempeñándose como DEPOSITERO." in b_payload["body"]
+
+
+
+def test_signature_policy_is_consistent_for_certificates_and_employee_requests():
+    for document_type in ("certificado_trabajo_a", "certificado_trabajo_b", "constancia"):
+        assert document_signature_mode(document_type) == "employer"
+        assert document_receipt_mode(document_type) == ""
+    for document_type in ("contrato_trabajo", "recibo_salario", "notificacion_preaviso"):
+        assert document_signature_mode(document_type) == "both"
+    for document_type in ("renuncia", "solicitud_vacacion", "permiso_laboral", "permiso_paternidad"):
+        assert document_signature_mode(document_type) == "employee"
+        assert document_receipt_mode(document_type) == "employee_authorization"
+    assert document_receipt_mode("notificacion_preaviso") == "receipt_disclaimer"
+    assert document_receipt_mode("notificacion_vacaciones") == "receipt_date"
+
+
+def test_work_certificates_have_no_employee_signature_in_print_word_or_pdf():
+    with TestClient(app) as client:
+        csrf = login(client)
+        for document_type in ("certificado_trabajo_a", "certificado_trabajo_b", "constancia"):
+            response = client.post(
+                "/app/certificates",
+                data={
+                    "csrf_token": csrf,
+                    "company_id": 1,
+                    "employee_id": 1,
+                    "document_type": document_type,
+                    "city": "Ciudad del Este",
+                    "issue_date": "2026-10-29",
+                    "position": "Auxiliar",
+                    "admission_date": "2024-02-01",
+                    "salary": "3044000",
+                    "effective_date": "",
+                    "last_period_salary_amount": "",
+                    "calculation_id": "",
+                    "intent": "save",
+                },
+                follow_redirects=False,
+            )
+            assert response.status_code == 303
+            certificate_id = int(parse_qs(urlparse(response.headers["location"]).query)["created"][0])
+
+            printed = client.get(f"/app/certificates/{certificate_id}/print")
+            assert printed.status_code == 200
+            assert "Firma / recepción del trabajador/a" not in printed.text
+            assert "Firma del trabajador/a" not in printed.text
+            assert "Firma del empleador/a" not in printed.text
+
+            word_response = client.get(f"/app/certificates/{certificate_id}/download.docx")
+            assert word_response.status_code == 200
+            word_document = WordDocument(io.BytesIO(word_response.content))
+            word_text = "\n".join([paragraph.text for paragraph in word_document.paragraphs] + [
+                cell.text
+                for table in word_document.tables
+                for row in table.rows
+                for cell in row.cells
+            ])
+            assert "Firma / recepción del trabajador/a" not in word_text
+            assert "Firma del trabajador/a" not in word_text
+            assert "Firma del empleador/a" not in word_text
+
+            pdf_response = client.get(f"/app/certificates/{certificate_id}/download.pdf")
+            assert pdf_response.status_code == 200
+            pdf_text = "\n".join(page.extract_text() or "" for page in PdfReader(io.BytesIO(pdf_response.content)).pages)
+            assert "Firma / recepción del trabajador/a" not in pdf_text
+            assert "Firma del trabajador/a" not in pdf_text
+            assert "Firma del empleador/a" not in pdf_text
 
 
 def test_amount_in_words_and_legal_basis():
