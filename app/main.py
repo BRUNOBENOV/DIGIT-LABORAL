@@ -6193,7 +6193,7 @@ def reports_catalog_api(user: User = Depends(require_user), db: Session = Depend
         ]
         if visible:
             groups.append({"title": group["title"], "reports": visible})
-    return {"version": "2.6.28", "total": sum(len(group["reports"]) for group in groups), "groups": groups}
+    return {"version": APP_VERSION, "total": sum(len(group["reports"]) for group in groups), "groups": groups}
 
 
 @app.get("/api/reports/{report_key}")
@@ -6263,6 +6263,195 @@ def report_page_export(
     return _report_export_response(
         report_key, format, company_id, employee_id, q, status, year, period, sort, user, db
     )
+
+
+
+
+# Submódulo dedicado de recibos internos de liquidación salarial.
+_SALARY_REPORT_TYPES = ("salary", "suite_salary")
+
+
+def _salary_report_record(db: Session, user: User, calculation_id: int):
+    from .salary_report_service import SALARY_CALCULATION_TYPES
+
+    item = db.get(CalculationRecord, calculation_id)
+    if (
+        not item
+        or item.company_id not in company_ids_for_user(db, user)
+        or item.calculation_type not in SALARY_CALCULATION_TYPES
+        or not item.employee_id
+    ):
+        raise HTTPException(404, "Liquidación de salario no encontrada.")
+    employee = db.get(Employee, item.employee_id)
+    company = db.get(Company, item.company_id)
+    if not employee or not company or employee.company_id != company.id:
+        raise HTTPException(404, "La liquidación no tiene un funcionario válido asociado.")
+    return item, company, employee
+
+
+@app.get("/app/reports/liquidaciones-salarios", response_class=HTMLResponse)
+def salary_settlements_report_page(
+    request: Request,
+    company_id: OptionalQueryId = None,
+    employee_id: OptionalQueryId = None,
+    period: str = "",
+    status: str = "",
+    q: str = "",
+    page: int = 1,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    from .salary_report_service import SALARY_CALCULATION_TYPES
+
+    allowed_ids = company_ids_for_user(db, user)
+    company_id, employee_id = default_labor_context(request, db, user, allowed_ids, company_id, employee_id)
+    period = clean_text(period, max_length=7)
+    if period:
+        if not re.fullmatch(r"\d{4}-\d{2}", period):
+            raise HTTPException(422, "El período debe tener formato AAAA-MM.")
+        try:
+            date.fromisoformat(period + "-01")
+        except ValueError as exc:
+            raise HTTPException(422, "Seleccioná un mes válido.") from exc
+    status = clean_text(status, max_length=30)
+    q = clean_text(q, max_length=120)
+    page_size = 30
+    page = max(1, min(int(page or 1), 100000))
+
+    companies = list(
+        db.scalars(select(Company).where(Company.id.in_(allowed_ids)).order_by(Company.legal_name))
+    ) if allowed_ids else []
+    employees_query = (
+        select(Employee).where(Employee.company_id.in_(allowed_ids)).order_by(Employee.full_name)
+        if allowed_ids else select(Employee).where(False)
+    )
+    if company_id:
+        employees_query = employees_query.where(Employee.company_id == company_id)
+    employees = list(db.scalars(employees_query.limit(1500)))
+
+    conditions = [
+        CalculationRecord.company_id.in_(allowed_ids),
+        CalculationRecord.calculation_type.in_(SALARY_CALCULATION_TYPES),
+        CalculationRecord.employee_id.is_not(None),
+    ]
+    if company_id:
+        conditions.append(CalculationRecord.company_id == company_id)
+    if employee_id:
+        conditions.append(CalculationRecord.employee_id == employee_id)
+    if period:
+        conditions.append(CalculationRecord.reference_period == period)
+    if status:
+        conditions.append(CalculationRecord.status == status)
+    if q:
+        term = f"%{q}%"
+        conditions.append(or_(
+            Company.legal_name.ilike(term), Company.ruc.ilike(term),
+            Employee.full_name.ilike(term), Employee.document_number.ilike(term),
+            CalculationRecord.notes.ilike(term), CalculationRecord.reference_period.ilike(term),
+        ))
+
+    query = (
+        select(CalculationRecord)
+        .join(Company, Company.id == CalculationRecord.company_id)
+        .join(Employee, Employee.id == CalculationRecord.employee_id)
+        .where(*conditions)
+        .options(selectinload(CalculationRecord.company), selectinload(CalculationRecord.employee))
+    )
+    count_query = (
+        select(func.count(CalculationRecord.id))
+        .join(Company, Company.id == CalculationRecord.company_id)
+        .join(Employee, Employee.id == CalculationRecord.employee_id)
+        .where(*conditions)
+    )
+    total = int(db.scalar(count_query) or 0)
+    pages = max(1, (total + page_size - 1) // page_size)
+    page = min(page, pages)
+    items = list(db.scalars(
+        query.order_by(
+            CalculationRecord.reference_period.desc(),
+            CalculationRecord.created_at.desc(),
+            CalculationRecord.id.desc(),
+        ).limit(page_size).offset((page - 1) * page_size)
+    ))
+    return render(
+        request, "salary_settlement_index.html", db, user,
+        companies=companies, employees=employees, items=items, total=total, page=page, pages=pages,
+        page_size=page_size, selected_company=company_id, selected_employee=employee_id,
+        filters={"period": period, "status": status, "q": q},
+    )
+
+
+@app.get("/app/reports/liquidaciones-salarios/{calculation_id}", response_class=HTMLResponse)
+def salary_settlement_report_detail(
+    request: Request,
+    calculation_id: int,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    from .salary_report_service import build_salary_report_model, salary_report_history
+
+    item, company, employee = _salary_report_record(db, user, calculation_id)
+    model = build_salary_report_model(db, item, company, employee)
+    history = salary_report_history(db, item)
+    audit_events = list(db.scalars(
+        select(AuditLog).where(
+            AuditLog.studio_id == user.studio_id,
+            AuditLog.entity == "liquidacion_salario",
+            AuditLog.entity_id == str(item.id),
+        ).order_by(AuditLog.created_at.desc(), AuditLog.id.desc()).limit(20)
+    )) if user.studio_id else []
+    return render(
+        request, "salary_settlement_detail.html", db, user,
+        item=item, model=model, history=history, audit_events=audit_events,
+        auto_print=request.query_params.get("imprimir") == "1",
+    )
+
+
+@app.post("/app/reports/liquidaciones-salarios/{calculation_id}/reimprimir")
+def salary_settlement_reprint(
+    calculation_id: int,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    from .salary_report_service import build_salary_report_model
+
+    item, company, employee = _salary_report_record(db, user, calculation_id)
+    model = build_salary_report_model(db, item, company, employee)
+    if not model["can_reprint"]:
+        raise HTTPException(409, "No se puede reimprimir un cálculo anulado.")
+    write_audit(
+        db, user, "reimpresion_liquidacion_salario", "liquidacion_salario", str(item.id),
+        f"Impresión HTML · período {model['period']} · neto Gs. {format_gs(model['net'])}",
+    )
+    db.commit()
+    return RedirectResponse(f"/app/reports/liquidaciones-salarios/{item.id}?imprimir=1", status_code=303)
+
+
+@app.get("/app/reports/liquidaciones-salarios/{calculation_id}/pdf")
+def salary_settlement_report_pdf(
+    calculation_id: int,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    from .salary_report_service import build_salary_report_model, build_salary_report_pdf
+
+    item, company, employee = _salary_report_record(db, user, calculation_id)
+    model = build_salary_report_model(db, item, company, employee)
+    if not model["can_reprint"]:
+        raise HTTPException(409, "No se puede reimprimir un cálculo anulado.")
+    write_audit(
+        db, user, "reimpresion_pdf_liquidacion_salario", "liquidacion_salario", str(item.id),
+        f"PDF · período {model['period']} · neto Gs. {format_gs(model['net'])}",
+    )
+    db.commit()
+    payload = build_salary_report_pdf(model)
+    filename = f"digit-laboral-liquidacion-salario-{item.id:06d}.pdf"
+    return Response(
+        content=payload, media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"', "Cache-Control": "no-store"},
+    )
+
+
 
 
 @app.get("/app/reports/{report_key}", response_class=HTMLResponse)

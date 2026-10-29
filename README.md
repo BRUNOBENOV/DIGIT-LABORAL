@@ -1,6 +1,12 @@
-# Digit Laboral 2.6.25
+# Digit Laboral 2.6.29
 
 Plataforma de gestión y cumplimiento laboral para estudios contables paraguayos.
+
+## Novedades de la versión 2.6.29
+
+- Informes incorpora una vista dedicada de liquidación salarial vinculada con los cálculos guardados, con historial, impresión y PDF.
+- Las reimpresiones registran usuario, fecha y operación en Auditoría.
+- El documento es un recibo interno de DIGIT-LABORAL; no simula un formulario oficial de MTESS o IPS.
 
 ## Novedades de la versión 2.6.25
 

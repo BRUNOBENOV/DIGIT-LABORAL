@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Liquidación {{ model.code }} | Informes | DIGIT-LABORAL{% endblock %}
+{% block page_name %}Informes{% endblock %}
+{% block content %}
+<style>
+.salary-slip-page{max-width:1120px;margin:0 auto;color:#182b48}
+.salary-slip-hero{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;padding:22px 24px;border-radius:15px;background:linear-gradient(125deg,#071b43,#05256d 70%,#174b9b);color:#fff;margin-bottom:15px}
+.salary-slip-hero .eyebrow{font-size:.65rem;font-weight:850;letter-spacing:.14em;color:#c7d8ff}
+.salary-slip-hero h1{margin:6px 0;color:#fff;font-size:clamp(1.4rem,2.6vw,1.9rem)}.salary-slip-hero p{margin:0;color:#dce7ff;font-size:.8rem;line-height:1.55}
+.salary-slip-actions{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:8px;margin-bottom:15px}.salary-slip-actions .btn{white-space:nowrap}
+.salary-slip-state{display:inline-flex;border:1px solid #ffffff47;background:#ffffff12;border-radius:7px;padding:5px 8px;font-weight:850;font-size:.68rem;color:white;margin-top:8px}
+.salary-slip-alert{margin:12px 0;padding:11px 14px;border:1px solid #e8d8ac;border-left:4px solid #b17d2f;border-radius:9px;background:#fffaf0;color:#6b541f;font-size:.77rem}
+.salary-slip-paper{border:1px solid #d9e2ef;border-radius:12px;background:#fff;padding:26px;box-shadow:0 8px 28px #0929590d}
+.salary-slip-document-head{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;border-bottom:2px solid #05256d;padding-bottom:17px;margin-bottom:16px}
+.salary-slip-brand{font-weight:900;font-size:.7rem;color:#05256d;letter-spacing:.11em}.salary-slip-document-head h2{margin:6px 0;color:#112b55;font-size:1.4rem;letter-spacing:-.025em}.salary-slip-meta{text-align:right;font-size:.72rem;color:#66758d;line-height:1.6}.salary-slip-meta b{display:block;color:#183766;font-size:.82rem}
+.salary-slip-section{margin:16px 0}.salary-slip-section h3{margin:0 0 8px;color:#173c7e;font-size:.73rem;font-weight:900;letter-spacing:.07em;text-transform:uppercase}
+.salary-slip-info-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;border:1px solid #dfe6f0;border-radius:9px;padding:12px;background:#f9fbfe}
+.salary-slip-field small{display:block;color:#728099;text-transform:uppercase;font-size:.61rem;font-weight:850;letter-spacing:.05em;margin-bottom:3px}.salary-slip-field b{display:block;color:#1d3354;font-size:.8rem;overflow-wrap:anywhere}
+.salary-slip-data{width:100%;border-collapse:collapse;font-size:.76rem}.salary-slip-data th{background:#05256d;color:white;text-align:left;padding:10px 12px}.salary-slip-data th:last-child,.salary-slip-data td:last-child{text-align:right;white-space:nowrap}.salary-slip-data td{padding:9px 12px;border-bottom:1px solid #e7edf5;color:#3e506c}.salary-slip-data tbody tr:nth-child(even){background:#fbfcfe}.salary-slip-data tfoot td{background:#edf3fb;font-weight:850;color:#15335e}.salary-slip-data .total-net td{font-size:.9rem;background:#e3edff;color:#05256d;border-top:2px solid #05256d}
+.salary-slip-amount{font-variant-numeric:tabular-nums;font-weight:800}.salary-slip-warning{border:1px solid #ead9ad;background:#fffaf0;border-radius:8px;padding:10px 12px;margin:8px 0;color:#6d5420;font-size:.74rem}.salary-slip-note{white-space:pre-wrap;color:#4e5f78;font-size:.78rem;line-height:1.6}
+.salary-slip-signatures{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:28px;margin-top:44px}.salary-slip-signature{text-align:center;padding-top:9px;border-top:1px solid #5d6d83;color:#243b60;font-size:.76rem}.salary-slip-signature strong{display:block;font-size:.8rem}.salary-slip-signature small{display:block;margin-top:6px;color:#75839a}
+.salary-slip-disclaimer{border-top:1px solid #e1e7f0;margin-top:25px;padding-top:10px;color:#78859a;font-size:.67rem;line-height:1.5}
+.salary-slip-history{margin-top:20px;border:1px solid #dce5f1;border-radius:12px;background:#fff;overflow:hidden}.salary-slip-history h2{padding:15px 18px;margin:0;font-size:.95rem;color:#17335e;background:#f4f7fc;border-bottom:1px solid #dce5f1}.salary-slip-history table{width:100%;border-collapse:collapse;font-size:.74rem}.salary-slip-history th,.salary-slip-history td{text-align:left;padding:9px 12px;border-bottom:1px solid #edf1f6}.salary-slip-history th{color:#526580}.salary-slip-history a{color:#174b9b;font-weight:800;text-decoration:none}.salary-slip-history .current-version{font-weight:850;color:#0a7c5a}.salary-slip-audit{margin-top:14px;color:#6b7890;font-size:.72rem}.salary-slip-audit details{margin-top:8px;padding:10px 12px;border:1px solid #dce5f1;border-radius:9px;background:#fff}.salary-slip-audit li{margin:5px 0}
+@media(max-width:700px){.salary-slip-hero{flex-direction:column;padding:18px}.salary-slip-actions{justify-content:flex-start}.salary-slip-paper{padding:14px}.salary-slip-document-head{flex-direction:column}.salary-slip-meta{text-align:left}.salary-slip-info-grid{grid-template-columns:1fr}.salary-slip-signatures{gap:20px}.salary-slip-data{font-size:.7rem}.salary-slip-data td,.salary-slip-data th{padding:8px 7px}}
+@media print{@page{size:A4;margin:12mm}.salary-slip-hero,.salary-slip-actions,.workspace-sidebar,.modern-topbar,.salary-slip-history,.salary-slip-audit,.salary-slip-online-note{display:none!important}.salary-slip-page{max-width:none;margin:0}.salary-slip-paper{padding:0;border:none;border-radius:0;box-shadow:none}.salary-slip-document-head h2{font-size:16pt}.salary-slip-section{break-inside:avoid}.salary-slip-data{font-size:9pt}.salary-slip-info-grid{background:white}.salary-slip-alert,.salary-slip-warning{print-color-adjust:exact;-webkit-print-color-adjust:exact}.salary-slip-signatures{break-inside:avoid;margin-top:35mm}}
+</style>
+<div class="salary-slip-page">
+  <section class="salary-slip-hero"><div><span class="eyebrow">INFORME LABORAL · RECIBO INTERNO</span><h1>Liquidación de Salarios</h1><p>Documento generado a partir del cálculo guardado. Los importes se conservan tal como fueron calculados; las validaciones pendientes se muestran para revisión.</p><span class="salary-slip-state">{{ model.status }}</span></div><div class="salary-slip-meta"><b>{{ model.code }}</b>Empresa: {{ model.employer_name }}<br>Funcionario: {{ model.employee_name }}<br>Período: {{ model.period_display }}</div></section>
+
+  <div class="salary-slip-actions">
+    <a class="btn ghost" href="/app/reports/liquidaciones-salarios">← Historial de liquidaciones</a>
+    <a class="btn ghost" href="/app/reports/liquidaciones-salarios/{{ item.id }}/pdf">Descargar PDF</a>
+    {% if model.can_reprint %}
+    <form method="post" action="/app/reports/liquidaciones-salarios/{{ item.id }}/reimprimir"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn primary" type="submit">Imprimir con registro</button></form>
+    {% endif %}
+  </div>
+  <div class="salary-slip-alert"><strong>Importante:</strong> este recibo es un documento interno de DIGIT-LABORAL. No es un formulario oficial emitido por MTESS o IPS y no acredita por sí solo que el salario haya sido efectivamente pagado.</div>
+
+  <article class="salary-slip-paper" id="salary-slip-document">
+    <header class="salary-slip-document-head"><div><div class="salary-slip-brand">DIGIT-LABORAL · DOCUMENTO INTERNO</div><h2>LIQUIDACIÓN DE SALARIOS</h2><div style="font-size:.75rem;color:#63738c">Referencia {{ model.code }} · Cálculo guardado #{{ item.id }}</div></div><div class="salary-slip-meta"><b>{{ model.period_display }}</b>Fecha de emisión: {{ model.issued_date }}<br>Forma de pago: {{ model.payment_method }}</div></header>
+
+    <section class="salary-slip-section"><h3>Datos del empleador</h3><div class="salary-slip-info-grid">
+      <div class="salary-slip-field"><small>Razón social</small><b>{{ model.employer_name }}</b></div><div class="salary-slip-field"><small>RUC</small><b>{{ model.employer_ruc }}</b></div>
+      <div class="salary-slip-field"><small>N.º patronal IPS</small><b>{{ model.ips_employer_number or 'No registrado' }}</b></div><div class="salary-slip-field"><small>Registro MTESS</small><b>{{ model.mtess_employer_number or 'No registrado' }}</b></div>
+      <div class="salary-slip-field"><small>Dirección</small><b>{{ model.employer_address or 'No registrada' }}</b></div><div class="salary-slip-field"><small>Ciudad</small><b>{{ model.employer_city or 'No registrada' }}</b></div>
+      <div class="salary-slip-field"><small>Teléfono</small><b>{{ model.employer_phone or 'No registrado' }}</b></div><div class="salary-slip-field"><small>Representante legal</small><b>{{ model.representative or 'No registrado' }}</b></div>
+    </div></section>
+
+    <section class="salary-slip-section"><h3>Datos del funcionario y período</h3><div class="salary-slip-info-grid">
+      <div class="salary-slip-field"><small>Nombre completo</small><b>{{ model.employee_name }}</b></div><div class="salary-slip-field"><small>Cédula de identidad</small><b>{{ model.employee_ci }}</b></div>
+      <div class="salary-slip-field"><small>Código</small><b>{{ model.employee_code or 'No registrado' }}</b></div><div class="salary-slip-field"><small>Cargo</small><b>{{ model.employee_position or 'No registrado' }}</b></div>
+      <div class="salary-slip-field"><small>Fecha de ingreso</small><b>{{ model.admission_date.strftime('%d/%m/%Y') if model.admission_date else 'No registrada' }}</b></div><div class="salary-slip-field"><small>Período liquidado</small><b>{% if model.period_start and model.period_end %}{{ model.period_start.strftime('%d/%m/%Y') }} al {{ model.period_end.strftime('%d/%m/%Y') }}{% else %}{{ model.period_display }}{% endif %}</b></div>
+    </div></section>
+
+    <section class="salary-slip-section"><h3>Detalle de haberes y descuentos</h3><table class="salary-slip-data"><thead><tr><th>Concepto</th><th>Importe (Gs.)</th></tr></thead><tbody>
+      <tr><td colspan="2" style="background:#f4f7fc;font-weight:850;color:#17335e">HABERES</td></tr>
+      {% for concept in model.earnings %}<tr><td>{{ concept.label }}{% if concept.formula %}<div style="font-size:.66rem;color:#7a879b;margin-top:3px">{{ concept.formula }}{% if concept.legal %} · {{ concept.legal }}{% endif %}</div>{% endif %}</td><td class="salary-slip-amount">{{ concept.amount|gs }}</td></tr>{% endfor %}
+      <tr><td>Total haberes</td><td class="salary-slip-amount">{{ model.gross|gs }}</td></tr>
+      <tr><td colspan="2" style="background:#f4f7fc;font-weight:850;color:#17335e">DESCUENTOS</td></tr>
+      {% for concept in model.deductions %}<tr><td>{{ concept.label }}{% if concept.formula %}<div style="font-size:.66rem;color:#7a879b;margin-top:3px">{{ concept.formula }}{% if concept.legal %} · {{ concept.legal }}{% endif %}</div>{% endif %}</td><td class="salary-slip-amount">{{ concept.amount|gs }}</td></tr>{% endfor %}
+      <tr><td>Total descuentos</td><td class="salary-slip-amount">{{ model.discounts|gs }}</td></tr>
+      <tr class="total-net"><td>NETO A COBRAR</td><td class="salary-slip-amount">Gs. {{ model.net|gs }}</td></tr>
+    </tbody></table></section>
+
+    {% if model.notes %}<section class="salary-slip-section"><h3>Observaciones del cálculo</h3><p class="salary-slip-note">{{ model.notes }}</p></section>{% endif %}
+    {% if model.warnings %}<section class="salary-slip-section"><h3>Validaciones pendientes</h3>{% for warning in model.warnings %}<div class="salary-slip-warning">{{ warning }}</div>{% endfor %}</section>{% endif %}
+
+    <div class="salary-slip-signatures"><div class="salary-slip-signature"><strong>{{ model.representative or 'Empleador / representante legal' }}</strong>Firma del empleador<small>Fecha: ____ / ____ / ______</small></div><div class="salary-slip-signature"><strong>{{ model.employee_name }}</strong>Firma del funcionario<small>Fecha: ____ / ____ / ______</small></div></div>
+    <footer class="salary-slip-disclaimer">DIGIT-LABORAL · Registro de cálculo #{{ item.id }} · Período {{ model.period_display }} · Registrado por {{ model.created_by or 'No registrado' }} el {{ item.created_at.strftime('%d/%m/%Y %H:%M') if item.created_at else 'fecha no disponible' }}. Este documento refleja un cálculo guardado, no certifica el pago ni reemplaza los formularios oficiales de las instituciones.</footer>
+  </article>
+
+  <section class="salary-slip-history"><h2>Historial y versiones anteriores del período</h2><table><thead><tr><th>Versión</th><th>Fecha</th><th>Origen</th><th>Estado</th><th>Neto (Gs.)</th><th></th></tr></thead><tbody>
+  {% for version in history %}<tr><td>V{{ version.version }}{% if version.current %} <span class="current-version">· actual</span>{% endif %}</td><td>{{ version.created_at.strftime('%d/%m/%Y %H:%M') if version.created_at else '—' }}</td><td>{{ version.calculation_type }}</td><td>{{ version.status }}</td><td>{{ version.amount|gs }}</td><td>{% if not version.current %}<a href="/app/reports/liquidaciones-salarios/{{ version.id }}">Abrir versión</a>{% else %}En pantalla{% endif %}</td></tr>{% endfor %}
+  </tbody></table></section>
+
+  <section class="salary-slip-audit"><details><summary>Historial de reimpresiones y auditoría ({{ audit_events|length }})</summary>{% if audit_events %}<ul>{% for event in audit_events %}<li>{{ event.created_at.strftime('%d/%m/%Y %H:%M') if event.created_at else 'Fecha no disponible' }} · <strong>{{ event.action }}</strong> · {{ event.user_email }} · {{ event.detail }}</li>{% endfor %}</ul>{% else %}<p>Aún no hay eventos de auditoría registrados para este documento.</p>{% endif %}</details></section>
+  <p class="salary-slip-online-note" style="font-size:.72rem;color:#748198;margin-top:12px">Las reimpresiones realizadas desde este botón o mediante descarga PDF quedan registradas en Auditoría. Usá una nueva versión de cálculo para corregir importes; no se modifica la versión ya guardada.</p>
+</div>
+{% if auto_print %}<script>window.addEventListener("load",()=>window.print());</script>{% endif %}
+{% endblock %}
