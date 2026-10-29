@@ -1,5 +1,7 @@
 # Integración REI y REOP — Diseño operativo v2.0
 
+> **Actualización 2.6.31:** el submódulo Liquidación de Salarios dispone de un flujo de preparación y seguimiento REOP vinculado a cada cálculo. Consultar [REOP_SALARY_CONNECTOR.md](REOP_SALARY_CONNECTOR.md) para estados, validaciones, almacenamiento de comprobantes y requisitos pendientes para habilitar una API autorizada. El envío directo permanece deshabilitado.
+
 ## Principio de integración
 
 Digit Laboral separa cuatro acciones que no deben confundirse:
