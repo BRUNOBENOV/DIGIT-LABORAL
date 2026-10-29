@@ -77,7 +77,7 @@ def report_sort_options(spec: ReportSpec) -> list[tuple[str, str]]:
 
 
 _REPORT_LIST = [
-    ("liquidacion-salario", "Liquidación Salario", "Liquidaciones y remuneraciones", "Resultados guardados del cálculo de salario neto.", "calculation", "salary", ""),
+    ("liquidacion-salario", "Liquidación de Salarios", "Liquidaciones y remuneraciones", "Recibos detallados de cálculos salariales guardados, con historial, impresión y PDF.", "calculation", "salary", ""),
     ("liq-bonificacion-flia", "Liq. Bonificación Familiar", "Liquidaciones y remuneraciones", "Detalle de bonificación familiar cuando se encuentre registrado en la nómina.", "family_allowance", "", "Solo refleja importes registrados; no determina por sí solo el derecho legal a la bonificación."),
     ("liquidacion-haberes", "Liquidación Haberes", "Liquidaciones y remuneraciones", "Liquidaciones de haberes generadas y guardadas para revisión.", "calculation", "settlement", "El reporte histórico no sustituye la revisión profesional de una liquidación final."),
     ("listado-pre-aviso", "Listado Pre-Aviso", "Liquidaciones y remuneraciones", "Cálculos de preaviso registrados.", "calculation", "notice", "La procedencia y el plazo deben verificarse según el caso concreto."),

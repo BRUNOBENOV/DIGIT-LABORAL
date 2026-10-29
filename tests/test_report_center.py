@@ -46,7 +46,11 @@ def test_reports_catalog_lists_every_requested_submodule():
         assert page.status_code == 200
         assert "Informes laborales" in page.text
         assert "Listado Examen Médico" in page.text
-        assert "Liquidación Salario" in page.text
+        assert "Liquidación de Salarios" in page.text
+        assert page.text.count("Liquidación de Salarios") == 1
+        assert "INFORME DEDICADO" not in page.text
+        assert 'href="/app/reports/liquidacion-salario"' in page.text
+        assert 'href="/app/reports/liquidaciones-salarios"' not in page.text
 
 
 def test_all_report_data_endpoints_return_paginated_schema():
