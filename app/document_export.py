@@ -1086,7 +1086,16 @@ def _add_signature_table_docx(document: Document, data: ExportData) -> None:
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         p.paragraph_format.space_before = Pt(22)
         p.add_run("_______________________________\n")
-        if document_type == "certificado_trabajo_b":
+        if document_type == "certificado_trabajo_b" and data.legal_representative:
+            r = p.add_run(data.legal_representative.strip())
+            r.bold = True
+            p.add_run(f"\n{data.signature_title or 'Representante legal'}")
+            p.add_run(f"\n{data.company_name}")
+            if data.company_address:
+                p.add_run(f"\n{data.company_address}")
+            if data.company_phone:
+                p.add_run(f"\nTEL. {data.company_phone}")
+        elif document_type == "certificado_trabajo_b":
             r = p.add_run(data.company_name)
             r.bold = True
             if data.company_address:
@@ -1437,7 +1446,15 @@ def build_pdf_bytes(data: ExportData) -> bytes:
         story.append(Paragraph("RECIBIDO / AUTORIZACIÓN: ____________________    FECHA: ____/____/________", small_style))
     else:
         sig = "______________________________<br/>"
-        if data.document_type == "certificado_trabajo_b":
+        if data.document_type == "certificado_trabajo_b" and data.legal_representative:
+            sig += f"<b>{escape(data.legal_representative.strip())}</b>"
+            sig += f"<br/>{escape(data.signature_title or 'Representante legal')}"
+            sig += f"<br/>{escape(data.company_name)}"
+            if data.company_address:
+                sig += f"<br/>{escape(data.company_address)}"
+            if data.company_phone:
+                sig += f"<br/>TEL. {escape(data.company_phone)}"
+        elif data.document_type == "certificado_trabajo_b":
             sig += f"<b>{escape(data.company_name)}</b>"
             if data.company_address:
                 sig += f"<br/>{escape(data.company_address)}"

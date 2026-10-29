@@ -540,6 +540,9 @@ if (certificateForm) {
       signaturePair.style.setProperty('display', usePair ? 'grid' : 'none', 'important');
     }
 
+    const previewAddress = document.querySelector('#certificatePreviewAddress');
+    if (previewAddress) previewAddress.textContent = '';
+
     if (usePair) {
       document.querySelector('#certificatePreviewEmployeeName').textContent = employee;
       document.querySelector('#certificatePreviewEmployeeDocument').textContent = `C.I. N.º ${employeeDocument}`;
@@ -551,12 +554,22 @@ if (certificateForm) {
       document.querySelector('#certificatePreviewSignatureTitle').textContent = 'Firma del trabajador/a';
       document.querySelector('#certificatePreviewCompany').textContent = `C.I. N.º ${employeeDocument}`;
     } else if (type === 'certificado_trabajo_b') {
-      document.querySelector('#certificatePreviewSignature').textContent = company;
-      document.querySelector('#certificatePreviewSignatureTitle').textContent = companyOption?.dataset.address || '';
-      document.querySelector('#certificatePreviewCompany').textContent = companyOption?.dataset.phone
-        ? 'TEL. ' + companyOption.dataset.phone
-        : '';
-      document.querySelector('#certificatePreviewPhone').textContent = '';
+      if (companyOption?.dataset.legalRepresentative) {
+        document.querySelector('#certificatePreviewSignature').textContent = companyOption.dataset.legalRepresentative;
+        document.querySelector('#certificatePreviewSignatureTitle').textContent = 'Representante legal';
+        document.querySelector('#certificatePreviewCompany').textContent = company;
+        if (previewAddress) previewAddress.textContent = companyOption.dataset.address || '';
+        document.querySelector('#certificatePreviewPhone').textContent = companyOption.dataset.phone
+          ? 'TEL. ' + companyOption.dataset.phone
+          : '';
+      } else {
+        document.querySelector('#certificatePreviewSignature').textContent = company;
+        document.querySelector('#certificatePreviewSignatureTitle').textContent = companyOption?.dataset.address || '';
+        document.querySelector('#certificatePreviewCompany').textContent = companyOption?.dataset.phone
+          ? 'TEL. ' + companyOption.dataset.phone
+          : '';
+        document.querySelector('#certificatePreviewPhone').textContent = '';
+      }
     } else if (type === 'constancia') {
       const signerLabel = signature && signature !== 'Firma autorizada' && !/^sr/i.test(signature)
         ? 'Sr(a). ' + signature
