@@ -470,6 +470,7 @@ def build_document_body(
     vacation_start = format_date_short(leave_start) or "A completar"
     vacation_end = format_date_short(leave_end) or "A completar"
     termination_reason = str(metadata.get("termination_reason") or "").strip() or "COMPLETAR: indicar el motivo específico y la documentación de respaldo"
+    notice_reason = str(metadata.get("termination_reason") or "").strip()
     incident_details = str(metadata.get("incident_details") or "").strip() or notes or "COMPLETAR: describir los hechos concretos, fecha, lugar y antecedentes"
     disciplinary_action = str(metadata.get("disciplinary_action") or "Amonestación escrita").strip()
     sanction_start = format_date_short(optional_date(metadata.get("sanction_start_date"))) or "No aplica / completar"
@@ -659,9 +660,11 @@ def build_document_body(
             "Ref.: Notificación de preaviso\n\n"
             f"La firma {company_name} le comunica formalmente que ha resuelto prescindir de sus servicios, con fecha efectiva de terminación el "
             f"{format_date_long_es(effective_date) or 'A completar'}.\n\n"
+            f"Cargo registrado: {role}.\n\n"
             f"El preaviso se computa desde el {format_date_long_es(notice_start) or 'A completar'} "
-            f"hasta el {format_date_long_es(effective_date) or 'A completar'}, por un período de {notice_days_display} días calendario.\n\n"
-            "Durante este período y sin disminución de su salario, podrá disponer, a su elección, de una licencia diaria de dos horas dentro de la jornada legal "
+            f"hasta el {format_date_long_es(effective_date) or 'A completar'}, por un período de {notice_days_display} días calendario."
+            + (f"\n\nMotivo comunicado: {notice_reason}." if notice_reason else "")
+            + "\n\nDurante este período y sin disminución de su salario, podrá disponer, a su elección, de una licencia diaria de dos horas dentro de la jornada legal "
             "o de un día a la semana para buscar otra ocupación. A su opción, podrá utilizar en forma continuada todo el tiempo de licencia que le corresponda, "
             "conforme al artículo 89 de la Ley N.º 213/93, Código del Trabajo.\n\n"
             "Sírvase firmar al pie de la presente como constancia de recepción.\n\n"
