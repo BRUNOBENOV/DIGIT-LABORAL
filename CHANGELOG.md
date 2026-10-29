@@ -1,3 +1,10 @@
+## 2.6.36 — Vista previa con datos pendientes
+
+- Evita frases incompletas cuando todavía no se seleccionó una empresa o un funcionario; muestra marcadores claros en los modelos A y B.
+- Solo consulta la vista previa canónica del servidor cuando ambos registros están seleccionados.
+- Mejora el espaciado y la lectura de los nombres, cargos y datos debajo de las firmas.
+- Incorpora comprobaciones de regresión para marcadores y estructura visual.
+
 ## 2.6.35 — Modelo B y sincronización real de vista previa
 
 - Adapta el Certificado de Trabajo B al texto solicitado, con fechas/cargo automatizados y el encabezado «C E R T I F I C O:».
