@@ -1,3 +1,11 @@
+## 2.6.38 — Modelo de Constancia de Trabajo
+
+- Adapta la Constancia al modelo entregado: identificación, nacionalidad, estado civil, domicilio, empresa y dirección, cargo, ingreso, remuneración y fecha de expedición.
+- Genera una fecha formal en letras en el texto de la constancia y conserva una variante de relación laboral finalizada con el último período de pago.
+- Añade los datos de quien suscribe y el teléfono en impresión, Word y PDF, con la firma visible en la vista previa.
+- Sincroniza la vista previa de Constancia con el generador canónico del servidor y agrega el domicilio al legajo visible en el formulario.
+- Incorpora pruebas de regresión del texto y de los formatos descargables.
+
 ## 2.6.37 — Criterio de firmas unificado
 
 - Unifica la política de firmas para los modelos, sin pedir firma o recepción del trabajador en certificados de trabajo A/B ni en constancias.
