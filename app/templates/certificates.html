@@ -2,6 +2,12 @@
 {% block title %}Documentos laborales | Digit Laboral{% endblock %}
 {% block content %}
 <style>
+.contract-full-editor textarea{min-height:460px;font-family:Georgia,'Times New Roman',serif;font-size:.92rem;line-height:1.55;white-space:pre-wrap}
+.contract-generation-status{font-size:.8rem;line-height:1.45;color:#526078;margin:7px 0 10px}
+.contract-state-actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid #d7deea}
+.contract-state-actions .signature-ack{grid-column:1/-1;display:flex;align-items:flex-start;gap:8px}
+.contract-state-actions .signature-ack input{margin-top:3px}
+.contract-legal-note{font-size:.78rem;line-height:1.55;color:#64748b}
 .document-field-section{grid-column:1/-1;display:grid;gap:4px;margin:10px 0 0;padding:10px 12px;border-left:3px solid #173b86;border-radius:0 8px 8px 0;background:#f3f6fb}
 .document-field-section b{font-size:.82rem;letter-spacing:.02em;color:#102b63}
 .document-field-section span,.field-hint{font-size:.77rem;color:#64748b;line-height:1.45}
@@ -53,6 +59,8 @@
 {% set initial_type = selected_document_type or certificate_types.keys()|list|first %}
 <form method="post" action="/app/certificates" class="certificate-workspace" id="certificateForm" data-module-selection><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <input type="hidden" name="calculation_id" id="certificateCalculationId" value="{{ selected_calculation.id if selected_calculation else '' }}">
+  <input type="hidden" name="contract_parent_id" id="certificateContractParentId" value="{{ editing_contract.id if editing_contract else '' }}">
+  {% if editing_contract %}<div class="document-field-section contract-version-banner"><b>Nueva versión del contrato #{{ editing_contract.id }}</b><span>El documento anterior se conservará en el historial; los cambios se guardarán como una nueva versión.</span></div>{% endif %}
   <aside class="certificate-type-menu" aria-label="Tipos de documentos">
     {% for key, label in certificate_menu_types %}<button type="button" class="certificate-type-button {{ 'active' if key == initial_type }}" data-certificate-type="{{ key }}" data-signature-mode="{{ signature_modes.get(key, 'employer') }}" data-receipt-mode="{{ receipt_modes.get(key, '') }}">{{ label }}</button>{% endfor %}
     <input type="hidden" name="document_type" id="certificateType" value="{{ initial_type }}">
@@ -62,9 +70,9 @@
     <div class="document-form-heading"><div><span class="eyebrow">MODELO SELECCIONADO</span><h2 id="certificateFormTitle">{{ certificate_types[initial_type] }}</h2></div><span class="document-format-badge">WORD + PDF</span></div>
     <label>Empresa<select name="company_id" id="certificateCompany" data-module-company required><option value="" disabled {{ 'selected' if not selected_company }}>Seleccioná una empresa</option>{% for company in companies %}<option value="{{ company.id }}" {{ 'selected' if selected_company and selected_company.id == company.id }} data-name="{{ company.legal_name }}" data-city="{{ company.city }}" data-ruc="{{ company.ruc }}" data-address="{{ company.address }}" data-phone="{{ company.phone }}" data-representative="{{ company.legal_representative }}" data-logo-url="{{ '/app/companies/' ~ company.id ~ '/logo/print' if company.branding and company.branding.logo_bytes else '' }}" data-primary="{{ company.branding.primary_color if company.branding else '#173B86' }}" data-signature="{{ company.legal_representative or (company.branding.signature_name if company.branding else '') or company.responsible_name or '' }}" data-signature-title="{{ 'Representante legal' if company.legal_representative else ((company.branding.signature_title if company.branding and company.branding.signature_title and company.branding.signature_title|replace('.', '')|lower != 'representante legal' else 'Responsable autorizado')) }}" data-legal-representative="{{ company.legal_representative or '' }}">{{ company.legal_name }}</option>{% endfor %}</select></label>
     <label>Funcionario<select name="employee_id" id="certificateEmployee" data-module-employee required><option value="" disabled {{ 'selected' if not selected_employee }}>Seleccioná un funcionario</option>{% for employee in employees %}<option value="{{ employee.id }}" {{ 'selected' if selected_employee and selected_employee.id == employee.id }} data-company="{{ employee.company_id }}" data-name="{{ employee.full_name }}" data-document="{{ employee.document_number }}" data-address="{{ employee.address or '' }}" data-position="{{ employee.position }}" data-admission="{{ employee.admission_date.isoformat() }}" data-admission-text="{{ employee.admission_date|fecha_larga }}" data-salary="{{ employee.base_salary }}" data-vacation-start="{{ vacation_by_employee.get(employee.id).start_date.isoformat() if vacation_by_employee.get(employee.id) and vacation_by_employee.get(employee.id).start_date else '' }}" data-vacation-end="{{ vacation_by_employee.get(employee.id).end_date.isoformat() if vacation_by_employee.get(employee.id) and vacation_by_employee.get(employee.id).end_date else '' }}" data-vacation-year="{{ vacation_by_employee.get(employee.id).period_year if vacation_by_employee.get(employee.id) else '' }}">{{ employee.full_name }} · {{ employee.company.legal_name }}</option>{% endfor %}</select></label>
-    <div class="document-form-grid"><label>Ciudad<input name="city" id="certificateCity" value="{{ selected_company.city if selected_company else 'Ciudad del Este' }}" required></label><label>Fecha de emisión<input name="issue_date" id="certificateIssueDate" type="date" value="{{ today.isoformat() }}" required></label></div>
-    <div class="document-form-grid"><label>Cargo<input name="position" id="certificatePosition" value="{{ selected_employee.position if selected_employee else '' }}" required></label><label>Fecha de ingreso<input name="admission_date" id="certificateAdmission" type="date" value="{{ selected_employee.admission_date.isoformat() if selected_employee else '' }}" required></label></div>
-    <label>Salario mensual (Gs.)<input name="salary" id="certificateSalary" type="number" min="0" value="{{ selected_employee.base_salary if selected_employee else 0 }}" required></label>
+    <div class="document-form-grid"><label>Ciudad<input name="city" id="certificateCity" value="{{ editing_contract.city if editing_contract else (selected_company.city if selected_company else 'Ciudad del Este') }}" required></label><label>Fecha de emisión<input name="issue_date" id="certificateIssueDate" type="date" value="{{ editing_contract.issue_date.isoformat() if editing_contract else today.isoformat() }}" required></label></div>
+    <div class="document-form-grid"><label>Cargo<input name="position" id="certificatePosition" value="{{ editing_contract.position_snapshot if editing_contract else (selected_employee.position if selected_employee else '') }}" required></label><label>Fecha de ingreso<input name="admission_date" id="certificateAdmission" type="date" value="{{ editing_contract.admission_date_snapshot.isoformat() if editing_contract and editing_contract.admission_date_snapshot else (selected_employee.admission_date.isoformat() if selected_employee else '') }}" required></label></div>
+    <label>Salario mensual (Gs.)<input name="salary" id="certificateSalary" type="number" min="0" value="{{ editing_contract.salary_snapshot if editing_contract else (selected_employee.base_salary if selected_employee else 0) }}" required></label>
 
     <fieldset class="document-specific-fields" id="documentSpecificFields"><legend>Datos específicos del documento</legend>
       <label class="specific-field" data-specific="all">Número interno<input name="document_number" id="certificateDocumentNumber" placeholder="Se asignará automáticamente"></label>
@@ -78,43 +86,78 @@
       <div class="document-form-grid specific-field" data-specific="constancia"><label>Nacionalidad<input name="nationality" id="certificateNationality" value="paraguaya"></label><label>Estado civil (opcional)<input name="civil_status" id="certificateCivilStatus"></label></div>
       <label class="specific-field" data-specific="permiso_paternidad permiso_laboral renuncia solicitud_vacacion amonestacion">Destinatario<input name="recipient" id="certificateRecipient" value="Encargado/a de Recursos Humanos"></label>
 
+      <div class="document-field-section specific-field" data-specific="contrato_trabajo"><b>Plantilla breve — datos esenciales del contrato</b><span>Completá los datos clave de las partes, funciones, duración, horario, remuneración y condiciones particulares. Después pulsá «Generar contrato completo» para revisar y editar el documento extendido.</span></div>
       <div class="document-field-section specific-field" data-specific="contrato_trabajo contrato_tiempo_parcial contrato_mipymes_plazo_determinado contrato_mipymes_80 adenda_prorroga_contrato"><b>Condiciones del contrato</b><span>Completá estos campos para que el instrumento no salga con cláusulas genéricas.</span></div>
       <div class="document-form-grid specific-field" data-specific="contrato_trabajo contrato_tiempo_parcial contrato_mipymes_plazo_determinado contrato_mipymes_80 adenda_prorroga_contrato">
         <label>Modalidad contractual
           <select name="contract_modality" id="certificateContractModality">
             <option value="">Según el modelo seleccionado</option>
-            <option value="indefinido">Tiempo indefinido</option>
-            <option value="plazo_fijo">Plazo determinado general</option>
-            <option value="tiempo_parcial">Tiempo parcial</option>
-            <option value="mipyme_plazo_fijo">MIE / PE — plazo determinado</option>
-            <option value="mipyme_80">MIE — régimen salarial especial (verificar elegibilidad)</option>
-            <option value="prorroga">Adenda / prórroga</option>
+            <option value="indefinido" {{ 'selected' if editing_contract and editing_metadata.get('contract_modality') == 'indefinido' }}>Tiempo indefinido</option>
+            <option value="plazo_fijo" {{ 'selected' if editing_contract and editing_metadata.get('contract_modality') == 'plazo_fijo' }}>Plazo determinado general</option>
+            <option value="tiempo_parcial" {{ 'selected' if editing_contract and editing_metadata.get('contract_modality') == 'tiempo_parcial' }}>Tiempo parcial</option>
+            <option value="mipyme_plazo_fijo" {{ 'selected' if editing_contract and editing_metadata.get('contract_modality') == 'mipyme_plazo_fijo' }}>MIE / PE — plazo determinado</option>
+            <option value="mipyme_80" {{ 'selected' if editing_contract and editing_metadata.get('contract_modality') == 'mipyme_80' }}>MIE — régimen salarial especial (verificar elegibilidad)</option>
+            <option value="prorroga" {{ 'selected' if editing_contract and editing_metadata.get('contract_modality') == 'prorroga' }}>Adenda / prórroga</option>
           </select>
         </label>
-        <label>Fecha de finalización (si aplica)<input name="contract_end_date" id="certificateContractEnd" type="date"></label>
+        <label>Fecha de finalización (si aplica)<input name="contract_end_date" id="certificateContractEnd" type="date" value="{{ editing_metadata.get('contract_end_date', '') if editing_contract else '' }}"></label>
       </div>
       <div class="document-form-grid specific-field" data-specific="contrato_trabajo contrato_tiempo_parcial contrato_mipymes_plazo_determinado contrato_mipymes_80 adenda_prorroga_contrato">
-        <label>Lugar o establecimiento de trabajo<input name="workplace" id="certificateWorkplace" placeholder="Dirección o lugar de prestación"></label>
-        <label>Descanso semanal<input name="weekly_rest" id="certificateWeeklyRest" placeholder="Ej.: domingo, según jornada pactada"></label>
+        <label>Lugar o establecimiento de trabajo<input name="workplace" id="certificateWorkplace" value="{{ editing_metadata.get('workplace', '') if editing_contract else '' }}" placeholder="Dirección o lugar de prestación"></label>
+        <label>Descanso semanal<input name="weekly_rest" id="certificateWeeklyRest" value="{{ editing_metadata.get('weekly_rest', '') if editing_contract else '' }}" placeholder="Ej.: domingo, según jornada pactada"></label>
       </div>
       <label class="specific-field" data-specific="contrato_trabajo contrato_tiempo_parcial contrato_mipymes_plazo_determinado contrato_mipymes_80 adenda_prorroga_contrato">Funciones y tareas principales
-        <textarea name="job_functions" id="certificateJobFunctions" rows="3" placeholder="Detallá funciones concretas del cargo."></textarea>
+        <textarea name="job_functions" id="certificateJobFunctions" rows="3" placeholder="Detallá funciones concretas del cargo.">{{ editing_metadata.get('job_functions', '') if editing_contract else '' }}</textarea>
       </label>
       <label class="specific-field" data-specific="contrato_trabajo contrato_tiempo_parcial contrato_mipymes_plazo_determinado contrato_mipymes_80 adenda_prorroga_contrato">Jornada y horario
-        <textarea name="work_schedule" id="certificateWorkSchedule" rows="2" placeholder="Días, horario de entrada/salida, descansos y jornada acordada."></textarea>
+        <textarea name="work_schedule" id="certificateWorkSchedule" rows="2" placeholder="Días, horario de entrada/salida, descansos y jornada acordada.">{{ editing_metadata.get('work_schedule', '') if editing_contract else '' }}</textarea>
       </label>
       <div class="document-form-grid specific-field" data-specific="contrato_trabajo contrato_tiempo_parcial contrato_mipymes_plazo_determinado contrato_mipymes_80 adenda_prorroga_contrato">
-        <label>Período de prueba, si procede<input name="probation_period" id="certificateProbationPeriod" placeholder="Conforme a modalidad y ley aplicable"></label>
+        <label>Período de prueba, si procede<input name="probation_period" id="certificateProbationPeriod" value="{{ editing_metadata.get('probation_period', '') if editing_contract else '' }}" placeholder="Art. 58: 30 días para no calificados/domésticos; 60 para calificados/aprendices"></label>
         <label>Frecuencia de pago
           <select name="payment_frequency" id="certificatePaymentFrequency">
-            <option value="">Usar la del legajo</option><option>Mensual</option><option>Quincenal</option><option>Semanal</option><option>Por jornal</option><option>Por hora</option>
+            <option value="">Usar la del legajo</option>
+            <option {{ 'selected' if editing_contract and editing_metadata.get('payment_frequency') == 'Mensual' }}>Mensual</option>
+            <option {{ 'selected' if editing_contract and editing_metadata.get('payment_frequency') == 'Quincenal' }}>Quincenal</option>
+            <option {{ 'selected' if editing_contract and editing_metadata.get('payment_frequency') == 'Semanal' }}>Semanal</option>
+            <option {{ 'selected' if editing_contract and editing_metadata.get('payment_frequency') == 'Por jornal' }}>Por jornal</option>
+            <option {{ 'selected' if editing_contract and editing_metadata.get('payment_frequency') == 'Por hora' }}>Por hora</option>
           </select>
         </label>
       </div>
       <label class="specific-field" data-specific="contrato_trabajo contrato_tiempo_parcial contrato_mipymes_plazo_determinado contrato_mipymes_80 adenda_prorroga_contrato">Causa objetiva / condición especial del plazo
-        <textarea name="contract_cause" id="certificateContractCause" rows="2" placeholder="Requerida para contratos a plazo y modalidades especiales."></textarea>
+        <textarea name="contract_cause" id="certificateContractCause" rows="2" placeholder="Requerida para contratos a plazo y modalidades especiales.">{{ editing_metadata.get('contract_cause', '') if editing_contract else '' }}</textarea>
       </label>
-      <label class="specific-field" data-specific="adenda_prorroga_contrato">Número o identificación del contrato anterior<input name="previous_contract_number" id="certificatePreviousContractNumber" placeholder="Contrato base que se modifica o prorroga"></label>
+      <div class="document-form-grid specific-field" data-specific="contrato_trabajo">
+        <label>Edad del trabajador/a (si no se obtiene de la fecha de nacimiento)<input type="number" min="0" max="120" name="contract_worker_age" value="{{ editing_metadata.get('contract_worker_age', '') if editing_contract else '' }}" placeholder="Se calcula desde el legajo si hay fecha de nacimiento"></label>
+        <label>Sexo (dato a consignar)<input name="contract_worker_gender" value="{{ editing_metadata.get('contract_worker_gender', '') if editing_contract else '' }}" placeholder="Completar"></label>
+        <label>Estado civil<input name="contract_worker_civil_status" value="{{ editing_metadata.get('contract_worker_civil_status', '') if editing_contract else '' }}" placeholder="Completar"></label>
+        <label>Nacionalidad<input name="contract_worker_nationality" value="{{ editing_metadata.get('contract_worker_nationality', '') if editing_contract else '' }}" placeholder="Completar"></label>
+        <label>Forma o medio de pago del salario<input name="contract_payment_method" value="{{ editing_metadata.get('contract_payment_method', '') if editing_contract else '' }}" placeholder="Ej.: transferencia bancaria"></label>
+      </div>
+      <label class="specific-field" data-specific="contrato_trabajo">Beneficios adicionales, si los hay
+        <textarea name="contract_benefits" rows="2" placeholder="Habitación, alimentos, uniformes u otros beneficios y valoración cuando corresponda.">{{ editing_metadata.get('contract_benefits', '') if editing_contract else '' }}</textarea>
+      </label>
+      <label class="specific-field" data-specific="contrato_trabajo">Estipulaciones especiales acordadas
+        <textarea name="contract_additional_terms" rows="2" placeholder="Condiciones específicas compatibles con la legislación laboral.">{{ editing_metadata.get('contract_additional_terms', '') if editing_contract else '' }}</textarea>
+      </label>
+      <label class="specific-field" data-specific="adenda_prorroga_contrato">Número o identificación del contrato anterior<input name="previous_contract_number" id="certificatePreviousContractNumber" value="{{ editing_metadata.get('previous_contract_number', '') if editing_contract else '' }}" placeholder="Contrato base que se modifica o prorroga"></label>
+      <div class="contract-editor-control specific-field" data-specific="contrato_trabajo">
+        <div class="document-field-section"><b>Contrato completo editable</b><span>Generá el texto extendido con los datos de la plantilla y corregilo antes de guardar.</span></div>
+        <button class="btn ghost full" type="button" id="generateFullContract">Generar contrato completo</button>
+        <p class="contract-generation-status" id="contractGenerationStatus" role="status" aria-live="polite">{% if editing_contract %}Versión {{ editing_metadata.get('contract_version', 1) }} cargada. Guardar creará una nueva versión.{% else %}Primero completá los datos y generá el contrato completo.{% endif %}</p>
+        <div class="contract-full-editor {{ '' if editing_contract else 'hidden' }}" id="contractFullEditorWrap">
+          <label>Texto extendido del contrato (editable)
+            <textarea name="contract_text" id="certificateContractFullText" rows="24" placeholder="Presioná «Generar contrato completo» para producir el documento formal.">{{ editing_contract.body if editing_contract else '' }}</textarea>
+          </label>
+        </div>
+        <div class="contract-state-actions">
+          <button class="btn ghost" type="submit" name="intent" value="approve">Aprobar contrato</button>
+          <button class="btn ghost" type="submit" name="intent" value="signed">Registrar firma recibida</button>
+          <label class="signature-ack inline-check"><input type="checkbox" name="contract_signature_acknowledged" id="contractSignatureAcknowledged" value="on"> Confirmo que la firma fue recibida y corresponde a este documento.</label>
+          <p class="contract-legal-note">«Firmado» solo registra una firma recibida; esta función no ejecuta firma electrónica ni verifica identidad. Para una firma electrónica válida, se requiere el procedimiento o prestador legalmente habilitado.</p>
+        </div>
+      </div>
 
       <div class="document-field-section specific-field" data-specific="recibo_salario"><b>Detalle de liquidación salarial — modelo REOP / art. 235</b><span>Los importes se detallan por concepto; el neto se calcula sobre las cifras ingresadas.</span></div>
       <div class="document-form-grid specific-field" data-specific="recibo_salario">
@@ -265,5 +308,5 @@
 </form>
 {% else %}<section class="panel empty-certificate-state"><h2>Primero registrá una empresa y un funcionario</h2><p>Los modelos necesitan datos del legajo.</p><a class="btn primary" href="/app/companies">Ir a Mantenimientos</a></section>{% endif %}
 
-<section class="panel generated-documents-panel"><div class="panel-head"><div><span>HISTORIAL</span><h2>Documentos generados recientemente</h2></div><a href="/app/reports">Ver informe documental</a></div><div class="table-wrap"><table><thead><tr><th>Documento</th><th>Empresa</th><th>Funcionario</th><th>Fecha</th><th>Cálculo</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>{% for item in generated %}{% set meta = item.observations %}<tr><td><b>{{ item.title }}</b><small class="table-sub">{{ item.created_by }}</small></td><td>{{ item.company_name_snapshot }}</td><td>{{ item.employee_name_snapshot or '—' }}</td><td>{{ item.issue_date|fecha }}</td><td>{{ 'Vinculado' if 'calculation_id' in item.observations else '—' }}</td><td><span class="status-pill {{ item.status|lower }}">{{ item.status }}</span></td><td><div class="document-row-actions"><a href="/app/certificates/{{ item.id }}/print">Imprimir</a><a href="/app/certificates/{{ item.id }}/download.docx">Word</a><a href="/app/certificates/{{ item.id }}/download.pdf">PDF</a></div></td></tr>{% else %}<tr><td colspan="7" class="empty-state">Todavía no se generaron documentos.</td></tr>{% endfor %}</tbody></table></div></section>
+<section class="panel generated-documents-panel"><div class="panel-head"><div><span>HISTORIAL</span><h2>Historial de documentos y versiones</h2></div><a href="/app/reports">Ver informe documental</a></div><div class="table-wrap"><table><thead><tr><th>Documento</th><th>Empresa</th><th>Funcionario</th><th>Fecha</th><th>Cálculo</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>{% for item in generated %}{% set item_meta = generated_metadata.get(item.id, {}) %}<tr><td><b>{{ item.title }}</b><small class="table-sub">{{ item.created_by }}</small>{% if item.document_type == 'contrato_trabajo' %}<small class="table-sub">Versión {{ item_meta.get('contract_version', 1) }}{% if item_meta.get('contract_parent_id') %} · Anterior #{{ item_meta.get('contract_parent_id') }}{% endif %}</small>{% endif %}</td><td>{{ item.company_name_snapshot }}</td><td>{{ item.employee_name_snapshot or '—' }}</td><td>{{ item.issue_date|fecha }}</td><td>{{ 'Vinculado' if 'calculation_id' in item.observations else '—' }}</td><td><span class="status-pill {{ item.status|lower }}">{{ item.status }}</span></td><td><div class="document-row-actions"><a href="/app/certificates/{{ item.id }}/print">Imprimir</a><a href="/app/certificates/{{ item.id }}/download.docx">Word</a><a href="/app/certificates/{{ item.id }}/download.pdf">PDF</a>{% if item.document_type == 'contrato_trabajo' %}<a href="/app/certificates?edit_id={{ item.id }}">Nueva versión</a>{% endif %}</div></td></tr>{% else %}<tr><td colspan="7" class="empty-state">Todavía no se generaron documentos.</td></tr>{% endfor %}</tbody></table></div></section>
 {% endblock %}
