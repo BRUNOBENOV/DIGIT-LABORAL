@@ -65,7 +65,7 @@
         <h3 style="margin:15px 0 3px;color:#203b64;font-size:.82rem">Intentos y comprobantes</h3>
         {% for batch in reop_batches %}
         <article class="salary-slip-reop-batch">
-          <div class="salary-slip-reop-batch-head"><strong>Intento {{ loop.index }} · Lote #{{ batch.id }}</strong><span class="salary-slip-state">{{ batch.status }}</span></div>
+          <div class="salary-slip-reop-batch-head"><strong>Intento {{ loop.revindex }} · Lote #{{ batch.id }}</strong><span class="salary-slip-state">{{ batch.status }}</span></div>
           <p class="salary-slip-reop-meta">Período: {{ batch.period or 'No registrado' }} · Preparado: {{ batch.created_at.strftime('%d/%m/%Y %H:%M') if batch.created_at else '—' }} · Responsable: {{ batch.created_by or '—' }}</p>
           <p class="salary-slip-reop-meta">SHA-256: {{ batch.file_sha256 }}</p>
           {% if batch.approved_by %}<p class="salary-slip-reop-meta">Validado por: {{ batch.approved_by }}</p>{% endif %}
