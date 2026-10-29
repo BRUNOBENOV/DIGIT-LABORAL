@@ -197,13 +197,13 @@ if (certificateForm) {
   };
   const buildBody = () => {
     const type = typeInput.value;
-    const company = selectedOption(companySelect)?.dataset.name || '';
+    const company = selectedOption(companySelect)?.dataset.name || '[NOMBRE DE LA EMPRESA]';
     const employeeOption = selectedOption(employeeSelect);
-    const employee = employeeOption?.dataset.name || '';
-    const documentNumber = employeeOption?.dataset.document || '';
+    const employee = employeeOption?.dataset.name || '[NOMBRE COMPLETO DEL FUNCIONARIO]';
+    const documentNumber = employeeOption?.dataset.document || '[N.º DE C.I.]';
     const identity = documentNumber ? employee + ', con C.I. N.º ' + documentNumber : employee;
-    const role = positionInput.value || 'cargo registrado en el legajo';
-    const admission = longDate(admissionInput.value);
+    const role = positionInput.value || '[CARGO]';
+    const admission = admissionInput.value ? longDate(admissionInput.value) : '[FECHA DE INGRESO]';
     const salaryRaw = Math.max(0, Number(salaryInput.value || 0));
     const salary = salaryRaw ? 'Gs. ' + formatGs(salaryRaw) : 'remuneración registrada en el legajo';
     const recipient = recipientInput?.value || 'Encargado/a de Recursos Humanos';
@@ -423,6 +423,8 @@ if (certificateForm) {
     const sequence = ++canonicalCertificatePreviewSequence;
     if (canonicalCertificatePreviewTimer !== null) window.clearTimeout(canonicalCertificatePreviewTimer);
     if (!['certificado_trabajo_a', 'certificado_trabajo_b'].includes(type)) return;
+    // Sin empresa y funcionario no existe un documento canónico; mantener el modelo local con marcadores claros.
+    if (!companySelect.value || !employeeSelect.value) return;
     canonicalCertificatePreviewTimer = window.setTimeout(async () => {
       const formData = new FormData(certificateForm);
       formData.set('intent', 'preview');
@@ -453,9 +455,9 @@ if (certificateForm) {
     const title = labels[type] || 'Documento laboral';
     const companyOption = selectedOption(companySelect);
     const employeeOption = selectedOption(employeeSelect);
-    const company = companyOption?.dataset.name || '';
-    const employee = employeeOption?.dataset.name || 'Funcionario/a';
-    const employeeDocument = employeeOption?.dataset.document || '—';
+    const company = companyOption?.dataset.name || '[NOMBRE DE LA EMPRESA]';
+    const employee = employeeOption?.dataset.name || '[NOMBRE COMPLETO DEL FUNCIONARIO]';
+    const employeeDocument = employeeOption?.dataset.document || '[N.º DE C.I.]';
     const companyColor = companyOption?.dataset.primary || '#0B2D78';
 
     document.querySelector('#certificatePreviewTitle').textContent = title.toUpperCase();
@@ -474,7 +476,7 @@ if (certificateForm) {
       companyOption?.dataset.ruc ? `RUC ${companyOption.dataset.ruc}` : '',
       companyOption?.dataset.address || '',
       companyOption?.dataset.phone ? 'Tel. ' + companyOption.dataset.phone : ''
-    ].filter(Boolean).join(' · ');
+    ].filter(Boolean).join(' · ') || 'Datos de la empresa pendientes de selección';
     document.querySelector('#certificatePreviewNumber').textContent = documentNumberInput?.value
       ? `Documento N.º ${documentNumberInput.value}`
       : 'Numeración automática';

@@ -63,7 +63,11 @@ def test_certificate_a_preview_uses_model_text_and_uncached_static_asset():
         assert "a nuestra entera satisfacción" in script.text
         assert "scheduleCanonicalCertificatePreview(type)" in script.text
         assert "formData.set('intent', 'preview')" in script.text
+        assert "if (!companySelect.value || !employeeSelect.value) return;" in script.text
+        assert "[NOMBRE DE LA EMPRESA]" in script.text
+        assert "[NOMBRE COMPLETO DEL FUNCIONARIO]" in script.text
         assert "certificado_trabajo_b: 'Certificado de Trabajo B'" in script.text
+        assert ".certificate-preview-signature-pair b,.certificate-preview-signature-pair small{display:block" in page.text
 
 
 def test_certificate_b_matches_requested_model():
