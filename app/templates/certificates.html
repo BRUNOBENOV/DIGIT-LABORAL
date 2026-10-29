@@ -24,11 +24,23 @@
 {% if user.role == 'empresa' %}
 <section class="panel empty-certificate-state"><h2>Consulta de documentos</h2><p>Tu acceso permite consultar documentos generados por el estudio. Para solicitar uno nuevo, utilizá Trámites.</p><a class="btn primary" href="/app/requests">Enviar solicitud</a></section>
 {% elif companies and employees %}
+{% set certificate_menu_types = [
+  ('certificado_trabajo_a', 'Certificado de Trabajo A'),
+  ('certificado_trabajo_b', 'Certificado de Trabajo B'),
+  ('constancia', 'Constancia de Trabajo'),
+  ('notificacion_preaviso', 'Notificación de Preaviso'),
+  ('renuncia', 'Notificación de Renuncia'),
+  ('despido', 'Notificación de Despidos'),
+  ('solicitud_vacacion', 'Solicitud de Vacación'),
+  ('notificacion_vacaciones', 'Notificación de Vacación'),
+  ('usufructo_vacaciones', 'Usufructo de Vacaciones'),
+  ('contrato_trabajo', 'Contrato de Trabajo')
+] %}
 {% set initial_type = selected_document_type or certificate_types.keys()|list|first %}
 <form method="post" action="/app/certificates" class="certificate-workspace" id="certificateForm" data-module-selection><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <input type="hidden" name="calculation_id" value="{{ selected_calculation.id if selected_calculation else '' }}">
   <aside class="certificate-type-menu" aria-label="Tipos de documentos">
-    {% for key, label in certificate_types.items() %}<button type="button" class="certificate-type-button {{ 'active' if key == initial_type }}" data-certificate-type="{{ key }}">{{ label }}</button>{% endfor %}
+    {% for key, label in certificate_menu_types %}<button type="button" class="certificate-type-button {{ 'active' if key == initial_type }}" data-certificate-type="{{ key }}">{{ label }}</button>{% endfor %}
     <input type="hidden" name="document_type" id="certificateType" value="{{ initial_type }}">
   </aside>
 
