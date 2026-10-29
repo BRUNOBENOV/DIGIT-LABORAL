@@ -295,7 +295,7 @@ def test_reop_salary_handoff_blocks_validation_when_required_data_is_missing():
         with SessionLocal() as db:
             batch = db.get(IntegrationBatch, batch_id)
             assert batch is not None and batch.status == "Generado"
-            assert "Días trabajados" in batch.error_message
+            assert "Cantidad de días trabajados" in batch.error_message
 
 
 def test_company_user_cannot_open_another_company_salary_receipt():
