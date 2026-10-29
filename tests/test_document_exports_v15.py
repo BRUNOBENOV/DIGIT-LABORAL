@@ -121,7 +121,7 @@ def test_certificate_b_matches_requested_model():
     signature_text = "\n".join(paragraph.text for paragraph in word.paragraphs)
     assert "KAMNIZ SRL\nPIRIBEBUY E/MNHOR RODRIGUEZ\nTEL. (061)518-452" in signature_text
     pdf = PdfReader(io.BytesIO(build_pdf_bytes(data)))
-    pdf_text = "\n".join(page.extract_text() or "" for page in pdf.pages)
+    pdf_text = " ".join(" ".join((page.extract_text() or "").split()) for page in pdf.pages)
     assert "PIRIBEBUY E/MNHOR RODRIGUEZ" in pdf_text
     assert "TEL. (061)518-452" in pdf_text
 
@@ -306,7 +306,7 @@ def test_constancia_matches_requested_model_and_signature_in_word_pdf():
     assert "Tel. 573-327" in word_text
 
     pdf = PdfReader(io.BytesIO(build_pdf_bytes(data)))
-    pdf_text = "\n".join(page.extract_text() or "" for page in pdf.pages)
+    pdf_text = " ".join(" ".join((page.extract_text() or "").split()) for page in pdf.pages)
     assert "ubicada en KM 5,5 - LA BLANCA" in pdf_text
     assert "remuneración mensual de Gs. 3.044.000" in pdf_text
     assert "JAVIER MIRANDA" in pdf_text and "Responsable" in pdf_text
@@ -601,7 +601,7 @@ def test_payroll_detail_table_appears_in_generated_word_and_pdf():
     assert "NETO A PERCIBIR" in word_text
 
     pdf = PdfReader(io.BytesIO(build_pdf_bytes(data)))
-    pdf_text = "\n".join(page.extract_text() or "" for page in pdf.pages)
+    pdf_text = " ".join(" ".join((page.extract_text() or "").split()) for page in pdf.pages)
     assert "TOTAL INGRESOS" in pdf_text
     assert "NETO A PERCIBIR" in pdf_text
 
