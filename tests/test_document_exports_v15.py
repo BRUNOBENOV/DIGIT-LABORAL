@@ -278,6 +278,8 @@ def test_work_certificates_have_no_employee_signature_in_print_word_or_pdf():
 
             printed = client.get(f"/app/certificates/{certificate_id}/print")
             assert printed.status_code == 200
+            assert 'class="date" style="text-align:right;"' in printed.text
+            assert 'class="signature work-certificate-signature"' in printed.text
             assert "Firma / recepción del trabajador/a" not in printed.text
             assert "Firma del trabajador/a" not in printed.text
             assert "Firma del empleador/a" not in printed.text
