@@ -11,7 +11,7 @@ from app.auth import hash_password
 from app.config import settings
 from app.database import SessionLocal
 from app.main import app
-from app.models import AuditLog, CalculationRecord, Company, Employee, IntegrationBatch, Studio, User, UserSecurity
+from app.models import (\n    AuditLog, BranchComplianceProfile, CalculationRecord, Company, CompanyComplianceProfile,\n    Employee, EmployeeComplianceProfile, IntegrationBatch, Studio, User, UserSecurity,\n)
 
 
 def _login(client: TestClient, email: str = "admin@digitlaboral.com.py", password: str | None = None) -> None:
@@ -85,6 +85,53 @@ def _create_salary_record(*, company_id: int | None = None, employee_id: int | N
         db.commit()
         db.refresh(item)
         return item.id, company.id, employee.id, marker
+
+
+def _verify_reop_profiles(company_id: int, employee_id: int, patronal_number: str) -> None:
+    with SessionLocal() as db:
+        company = db.get(Company, company_id)
+        employee = db.get(Employee, employee_id)
+        assert company is not None and employee is not None
+        company.mtess_employer_number = patronal_number
+
+        company_profile = db.scalar(
+            select(CompanyComplianceProfile).where(CompanyComplianceProfile.company_id == company_id)
+        )
+        if not company_profile:
+            company_profile = CompanyComplianceProfile(company_id=company_id)
+            db.add(company_profile)
+        company_profile.department = "Alto Paraná"
+        company_profile.district = "Ciudad del Este"
+        company_profile.locality = "Ciudad del Este"
+        company_profile.economic_activity = "Servicios profesionales"
+        company_profile.reop_status = "Verificado"
+
+        employee_profile = db.scalar(
+            select(EmployeeComplianceProfile).where(EmployeeComplianceProfile.employee_id == employee_id)
+        )
+        if not employee_profile:
+            employee_profile = EmployeeComplianceProfile(employee_id=employee_id)
+            db.add(employee_profile)
+        employee_profile.sex = "Masculino"
+        employee_profile.nationality = "Paraguaya"
+        employee_profile.marital_status = "Soltero"
+        employee_profile.occupation_code = "OCUP-TEST"
+        employee_profile.reop_status = "Verificado"
+
+        if employee.branch_id:
+            branch_profile = db.scalar(
+                select(BranchComplianceProfile).where(BranchComplianceProfile.branch_id == employee.branch_id)
+            )
+            if not branch_profile:
+                branch_profile = BranchComplianceProfile(branch_id=employee.branch_id)
+                db.add(branch_profile)
+            branch_profile.mtess_employer_number = patronal_number
+            branch_profile.department = "Alto Paraná"
+            branch_profile.district = "Ciudad del Este"
+            branch_profile.locality = "Ciudad del Este"
+            branch_profile.economic_activity = "Servicios profesionales"
+            branch_profile.reop_status = "Verificado"
+        db.commit()
 
 
 def test_existing_report_center_entry_opens_enhanced_salary_report_without_duplicate_navigation():
@@ -163,11 +210,7 @@ def test_reop_salary_handoff_validation_submission_and_official_receipt_archive(
     with TestClient(app) as client:
         _login(client)
         record_id, company_id, employee_id, _marker = _create_salary_record()
-        with SessionLocal() as db:
-            company = db.get(Company, company_id)
-            assert company is not None
-            company.mtess_employer_number = "MTESS-TEST-01"
-            db.commit()
+        _verify_reop_profiles(company_id, employee_id, "MTESS-TEST-01")
 
         detail = client.get(f"/app/reports/liquidaciones-salarios/{record_id}")
         assert detail.status_code == 200, detail.text[:300]
@@ -255,11 +298,7 @@ def test_reop_salary_handoff_blocks_validation_when_required_data_is_missing():
     with TestClient(app) as client:
         _login(client)
         record_id, company_id, _employee_id, _marker = _create_salary_record()
-        with SessionLocal() as db:
-            company = db.get(Company, company_id)
-            assert company is not None
-            company.mtess_employer_number = "MTESS-TEST-02"
-            db.commit()
+        _verify_reop_profiles(company_id, _employee_id, "MTESS-TEST-02")
 
         detail = client.get(f"/app/reports/liquidaciones-salarios/{record_id}")
         token = re.search(r'name="csrf_token" value="([^"]+)"', detail.text)
