@@ -37,6 +37,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from .ai_service import generate_assistance
 from .auth import hash_password, verify_password
 from .labor_calculator import amount as round_gs, anniversary as labor_anniversary
+from .labor_wage_rules import minimum_wage_for_period
 from .salary_history import salary_for_period
 from .config import settings
 from .database import Base, SessionLocal, apply_session_tenant_context, engine, postgres_rls_role_issues
@@ -1297,42 +1298,118 @@ def calculate_values(
     multiplier: float = 1,
     total_remunerations: int = 0,
     days: float = 0,
+    reference_period: str = "",
+    minimum_salary: int | None = None,
 ) -> tuple[dict, dict, int]:
+    """Calculate legacy-module results without silently normalizing invalid input.
+
+    Vacation uses a date-specific official monthly minimum resolved by the
+    caller. Unknown or uncovered historical wage scales fail closed.
+    """
+    def whole_amount(name, value, *, nullable=False):
+        if value is None and nullable:
+            return None
+        try:
+            parsed = Decimal(str(0 if value is None else value))
+        except (ValueError, TypeError, ArithmeticError):
+            raise HTTPException(422, f"Revisá {name}: ingresá un importe entero válido.")
+        if (
+            not parsed.is_finite()
+            or parsed < 0
+            or parsed > Decimal("100000000000")
+            or parsed != parsed.to_integral_value()
+        ):
+            raise HTTPException(422, f"Revisá {name}: el importe debe ser un entero entre 0 y 100.000.000.000.")
+        return int(parsed)
+
+    def finite_number(name, value, *, strictly_positive=False):
+        try:
+            parsed = Decimal(str(value))
+        except (ValueError, TypeError, ArithmeticError):
+            raise HTTPException(422, f"Revisá {name}: ingresá un número válido.")
+        if not parsed.is_finite() or parsed < 0 or parsed > Decimal("100000000000"):
+            raise HTTPException(422, f"Revisá {name}: el valor debe ser finito y no negativo.")
+        if strictly_positive and parsed <= 0:
+            raise HTTPException(422, f"{name} debe ser mayor que cero.")
+        return parsed
+
+    amounts = {
+        "gross": whole_amount("haberes", gross),
+        "other_income": whole_amount("otros ingresos", other_income),
+        "other_discount": whole_amount("otros descuentos", other_discount),
+        "ips_base": whole_amount("base IPS", ips_base, nullable=True),
+        "salary": whole_amount("salario", salary),
+        "total_remunerations": whole_amount("remuneraciones computables", total_remunerations),
+        "minimum_salary": whole_amount("salario mínimo aplicable", minimum_salary, nullable=True),
+    }
+    monthly_hours_value = finite_number("horas mensuales", monthly_hours, strictly_positive=True)
+    hours_quantity_value = finite_number("cantidad de horas", hours_quantity)
+    multiplier_value = finite_number("multiplicador", multiplier, strictly_positive=True)
+    days_value = finite_number("días", days)
+
+    try:
+        rate = Decimal(str(ips_rate))
+    except (ValueError, TypeError, ArithmeticError):
+        raise HTTPException(422, "La tasa IPS debe ser un número válido.")
+    if not rate.is_finite() or rate < 0 or rate > 100:
+        raise HTTPException(422, "La tasa IPS debe estar entre 0 y 100.")
+
     inputs = {
-        "gross": max(0, int(gross or 0)),
-        "other_income": max(0, int(other_income or 0)),
-        "other_discount": max(0, int(other_discount or 0)),
-        "ips_base": max(0, int(ips_base)) if ips_base is not None else None,
+        **amounts,
+        "monthly_hours": float(monthly_hours_value),
+        "hours_quantity": float(hours_quantity_value),
+        "multiplier": float(multiplier_value),
+        "days": float(days_value),
         "apply_ips": bool(apply_ips),
-        "salary": max(0, int(salary or 0)),
-        "monthly_hours": max(1, float(monthly_hours or 240)),
-        "hours_quantity": max(0, float(hours_quantity or 0)),
-        "multiplier": max(0, float(multiplier or 1)),
-        "total_remunerations": max(0, int(total_remunerations or 0)),
-        "days": max(0, float(days or 0)),
+        "ips_rate": float(rate),
+        "reference_period": str(reference_period or "").strip()[:20],
     }
     if calculation_type == "salary":
-        computable = inputs["gross"] + inputs["other_income"]
-        effective_ips_base = inputs["ips_base"] if inputs["ips_base"] is not None else computable
-        ips = round_gs(effective_ips_base * ips_rate / 100) if inputs["apply_ips"] else 0
-        discounts = ips + inputs["other_discount"]
-        amount = max(0, computable - discounts)
-        results = {"gross_computable": computable, "ips_base": effective_ips_base, "ips_employee": ips, "discounts": discounts, "net": amount}
+        computable = amounts["gross"] + amounts["other_income"]
+        effective_ips_base = amounts["ips_base"] if amounts["ips_base"] is not None else computable
+        ips = round_gs(Decimal(effective_ips_base) * rate / Decimal("100")) if inputs["apply_ips"] else 0
+        discounts = ips + amounts["other_discount"]
+        if discounts > computable:
+            raise HTTPException(422, "Los descuentos superan los haberes computables; corregí los conceptos antes de guardar.")
+        amount = computable - discounts
+        results = {
+            "gross_computable": computable,
+            "ips_base": effective_ips_base,
+            "ips_rate": float(rate),
+            "ips_employee": ips,
+            "discounts": discounts,
+            "net": amount,
+        }
     elif calculation_type == "hours":
-        base = inputs["salary"] / inputs["monthly_hours"]
-        amount = round_gs(base * inputs["hours_quantity"] * inputs["multiplier"])
+        base = Decimal(amounts["salary"]) / monthly_hours_value
+        amount = round_gs(base * hours_quantity_value * multiplier_value)
         results = {"hour_value": round_gs(base), "total": amount}
     elif calculation_type == "aguinaldo":
-        amount = round_gs(inputs["total_remunerations"] / 12)
-        results = {"total_remunerations": inputs["total_remunerations"], "aguinaldo": amount}
+        amount = round_gs(Decimal(amounts["total_remunerations"]) / Decimal("12"))
+        results = {"total_remunerations": amounts["total_remunerations"], "aguinaldo": amount}
     elif calculation_type in {"vacation", "notice"}:
-        daily = inputs["salary"] / 30
-        amount = round_gs(daily * inputs["days"])
-        results = {"daily_value": round_gs(daily), "days": inputs["days"], "total": amount}
+        if calculation_type == "vacation":
+            if amounts["minimum_salary"] is None or amounts["minimum_salary"] <= 0:
+                raise HTTPException(
+                    422,
+                    "No se pudo determinar el salario mínimo oficial del período. Seleccioná un mes con escala publicada y volvé a calcular.",
+                )
+            salary_base = max(amounts["salary"], amounts["minimum_salary"])
+        else:
+            salary_base = amounts["salary"]
+        daily = Decimal(salary_base) / Decimal("30")
+        amount = round_gs(daily * days_value)
+        results = {"daily_value": round_gs(daily), "days": float(days_value), "total": amount}
+        if calculation_type == "vacation":
+            results.update({
+                "salary_entered": amounts["salary"],
+                "minimum_salary": amounts["minimum_salary"],
+                "salary_base_used": salary_base,
+                "reference_period": inputs["reference_period"],
+            })
     else:
         raise HTTPException(400, "Tipo de cálculo inválido.")
     return inputs, results, amount
-
 
 def calculation_label(value: str) -> str:
     if value.startswith("suite_"):
@@ -1350,6 +1427,10 @@ def calculation_label(value: str) -> str:
 def next_document_number(db: Session, company: Company, document_type: str, branding: CompanyBranding | None) -> str:
     year = date.today().year
     prefix = (branding.document_prefix if branding else "DL") or "DL"
+    # Serialize automatic number allocation per company in PostgreSQL. The row
+    # lock is held by this request's transaction through certificate insertion
+    # and commit, so concurrent requests cannot observe the same count.
+    db.scalar(select(Company.id).where(Company.id == company.id).with_for_update())
     count = db.scalar(
         select(func.count(GeneratedCertificate.id)).where(
             GeneratedCertificate.company_id == company.id,
@@ -5152,6 +5233,16 @@ def save_calculation(
     if employee:
         salary = salary or employee.base_salary
         gross = gross or employee.base_salary
+    minimum_scale = None
+    minimum_salary_for_calc = None
+    if calculation_type == "vacation":
+        minimum_scale = minimum_wage_for_period(reference_period.strip(), "general_day")
+        if minimum_scale.get("amount") is None:
+            raise HTTPException(
+                422,
+                "No hay una escala general histórica disponible para ese mes. Seleccioná un período con mínimo publicado; si corresponde una escala especial, usá el motor profesional y documentá la base.",
+            )
+        minimum_salary_for_calc = int(minimum_scale["amount"])
     inputs, results, amount = calculate_values(
         calculation_type=calculation_type,
         ips_rate=get_parameter(db, "ips_employee_rate_general", 9),
@@ -5166,7 +5257,20 @@ def save_calculation(
         multiplier=multiplier,
         total_remunerations=total_remunerations,
         days=days,
+        reference_period=reference_period,
+        minimum_salary=minimum_salary_for_calc,
     )
+    if minimum_scale is not None:
+        inputs.update({
+            "minimum_wage_category": "general_day",
+            "minimum_wage_label": minimum_scale.get("label"),
+            "minimum_wage_rule": minimum_scale.get("rule_label"),
+            "minimum_wage_source": minimum_scale.get("source"),
+            "minimum_wage_effective_from": (
+                minimum_scale["effective_from"].isoformat()
+                if minimum_scale.get("effective_from") else None
+            ),
+        })
     item = CalculationRecord(
         company_id=company.id,
         employee_id=employee.id if employee else None,
@@ -5187,6 +5291,73 @@ def save_calculation(
     return RedirectResponse(f"/app/calculations?tipo={quote(calculation_type)}&saved={item.id}&company_id={company.id}" + (f"&employee_id={employee.id}" if employee else ""), status_code=303)
 
 
+def _revalidate_calculation_before_approval(item: CalculationRecord, db: Session) -> None:
+    """Recompute persisted inputs before an accounting calculation is approved."""
+    try:
+        saved_inputs = json.loads(item.input_json or "{}")
+        saved_results = json.loads(item.result_json or "{}")
+        if not isinstance(saved_inputs, dict) or not isinstance(saved_results, dict):
+            raise ValueError("Entradas y resultados deben ser objetos")
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise HTTPException(409, "El cálculo guardado no contiene entradas y resultados válidos. Volvé a calcularlo.") from exc
+
+    if item.source == "Cálculo automático":
+        # Historical general calculations did not persist their IPS rate. Replay
+        # them with the current configured rate, but only approve if every stored
+        # component and the main amount still reproduce exactly.
+        legacy_inputs = "ips_rate" not in saved_inputs
+        if legacy_inputs:
+            saved_inputs["ips_rate"] = get_parameter(db, "ips_employee_rate_general", 9)
+        try:
+            _inputs, current_results, current_amount = calculate_values(
+                calculation_type=item.calculation_type,
+                ips_rate=saved_inputs["ips_rate"],
+                gross=saved_inputs.get("gross", 0),
+                other_income=saved_inputs.get("other_income", 0),
+                other_discount=saved_inputs.get("other_discount", 0),
+                ips_base=saved_inputs.get("ips_base"),
+                apply_ips=saved_inputs.get("apply_ips", True),
+                salary=saved_inputs.get("salary", 0),
+                monthly_hours=saved_inputs.get("monthly_hours", 240),
+                hours_quantity=saved_inputs.get("hours_quantity", 0),
+                multiplier=saved_inputs.get("multiplier", 1),
+                total_remunerations=saved_inputs.get("total_remunerations", 0),
+                days=saved_inputs.get("days", 0),
+                reference_period=saved_inputs.get("reference_period", ""),
+                minimum_salary=saved_inputs.get("minimum_salary"),
+            )
+        except HTTPException as exc:
+            raise HTTPException(409, "Las entradas del cálculo guardado ya no superan las validaciones actuales. Recalculá antes de aprobar.") from exc
+        results_match = (
+            all(current_results.get(key) == value for key, value in saved_results.items())
+            if legacy_inputs else current_results == saved_results
+        )
+        if not results_match or current_amount != item.amount:
+            raise HTTPException(
+                409,
+                "El importe guardado no coincide con la fórmula reproducida. No se aprobó; revisá o recreá el cálculo.",
+            )
+        return
+
+    if item.source == "Centro laboral":
+        from .labor_calculator import CalculationError as ProfessionalCalculationError, calculate as professional_calculate
+        try:
+            current = professional_calculate(saved_inputs)
+        except (ProfessionalCalculationError, ValueError, TypeError) as exc:
+            raise HTTPException(409, "No se pudo volver a validar la liquidación con sus entradas guardadas.") from exc
+        keys = ("gross", "discounts", "net", "employer_contribution", "employer_cost", "earnings", "deductions")
+        if any(current.get(key) != saved_results.get(key) for key in keys if key in current):
+            raise HTTPException(
+                409,
+                "La liquidación guardada difiere del resultado reproducido por el motor profesional. Revisala y guardala nuevamente antes de aprobar.",
+            )
+        if current.get("net") != item.amount:
+            raise HTTPException(409, "El monto principal no coincide con el neto reproducido. Volvé a calcular antes de aprobar.")
+        return
+
+    raise HTTPException(409, "No se puede validar el motor que generó este registro. Recreá el cálculo antes de aprobar.")
+
+
 @app.post("/app/calculations/{calculation_id}/status")
 def calculation_status(
     calculation_id: int,
@@ -5199,6 +5370,8 @@ def calculation_status(
         raise HTTPException(404)
     if status_value not in {"Revisar", "Aprobado", "Anulado"}:
         raise HTTPException(400, "Estado inválido.")
+    if status_value == "Aprobado":
+        _revalidate_calculation_before_approval(item, db)
     item.status = status_value
     write_audit(db, user, "actualizar_estado", "calculo", str(item.id), status_value)
     db.commit()
@@ -7154,6 +7327,11 @@ def update_payroll_line(
     absences_discount: Annotated[int, Form()] = 0,
     advances: Annotated[int, Form()] = 0,
     other_discount: Annotated[int, Form()] = 0,
+    ips_base: Annotated[str, Form()] = "",
+    ips_rate: Annotated[str, Form()] = "",
+    ips_basis_note: Annotated[str, Form()] = "",
+    other_discount_note: Annotated[str, Form()] = "",
+    days_worked: Annotated[str, Form()] = "",
     user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
     db: Session = Depends(get_db),
 ):
@@ -7163,7 +7341,8 @@ def update_payroll_line(
         raise HTTPException(404)
     if payroll.status == "Cerrada":
         raise HTTPException(409, "La liquidación está cerrada.")
-    for attr, value in {
+
+    earning_values = {
         "base_salary": base_salary,
         "overtime": overtime,
         "commissions": commissions,
@@ -7172,13 +7351,91 @@ def update_payroll_line(
         "absences_discount": absences_discount,
         "advances": advances,
         "other_discount": other_discount,
-    }.items():
-        setattr(line, attr, max(0, value))
-    line.gross = line.base_salary + line.overtime + line.commissions + line.bonuses + line.other_income
-    rate = get_parameter(db, "ips_employee_rate_general", 9) / 100
-    line.ips_employee = round_gs(line.gross * rate) if line.employee.ips_contributor else 0
-    line.total_discounts = line.ips_employee + line.absences_discount + line.advances + line.other_discount
-    line.net = max(0, line.gross - line.total_discounts)
+    }
+    if any(not isinstance(value, int) or value < 0 or value > 2147483647 for value in earning_values.values()):
+        raise HTTPException(422, "Los haberes y descuentos deben ser enteros no negativos dentro del límite admitido.")
+    days_value = None
+    if str(days_worked).strip():
+        try:
+            days_value = int(str(days_worked).strip())
+        except ValueError as exc:
+            raise HTTPException(422, "Las jornadas trabajadas deben ser un entero entre 0 y 31.") from exc
+        if not 0 <= days_value <= 31:
+            raise HTTPException(422, "Las jornadas trabajadas deben estar entre 0 y 31.")
+
+    gross = base_salary + overtime + commissions + bonuses + other_income
+    employee_is_ips = bool(line.employee.ips_contributor)
+    try:
+        rate = Decimal(str(ips_rate).strip()) if str(ips_rate).strip() else (
+            Decimal(str(line.ips_rate)) if line.ips_rate is not None
+            else Decimal(str(get_parameter(db, "ips_employee_rate_general", 9)))
+        )
+    except (ValueError, TypeError, ArithmeticError) as exc:
+        raise HTTPException(422, "La tasa IPS ingresada no es válida.") from exc
+    if not rate.is_finite() or rate < 0 or rate > 100:
+        raise HTTPException(422, "La tasa IPS debe estar entre 0 y 100.")
+
+    if employee_is_ips:
+        if str(ips_base).strip():
+            try:
+                base = Decimal(str(ips_base).strip())
+            except (ValueError, TypeError, ArithmeticError) as exc:
+                raise HTTPException(422, "La base IPS debe ser un importe entero válido.") from exc
+            if not base.is_finite() or base < 0 or base > Decimal("2147483647") or base != base.to_integral_value():
+                raise HTTPException(422, "La base IPS debe ser un entero entre 0 y 2.147.483.647.")
+            submitted_base = int(base)
+            # If the field still carries the old gross, it was not changed.
+            if line.ips_base is None or (line.ips_base == line.gross and submitted_base == line.ips_base):
+                ips_base_value = gross
+            else:
+                ips_base_value = submitted_base
+        elif line.ips_base is None or line.ips_base == line.gross:
+            ips_base_value = gross
+        else:
+            ips_base_value = line.ips_base
+        basis_note = (ips_basis_note or "").strip()[:300] or line.ips_basis_note or ""
+        if ips_base_value != gross and not basis_note:
+            raise HTTPException(422, "Indicá el criterio de la base IPS cuando difiere de los haberes.")
+        ips_rate_value = rate
+        ips_employee_value = round_gs(Decimal(ips_base_value) * ips_rate_value / Decimal("100"))
+    else:
+        ips_base_value = 0
+        ips_rate_value = Decimal("0")
+        ips_employee_value = 0
+        basis_note = (ips_basis_note or "").strip()[:300] or "Sin aporte IPS: el funcionario no figura como aportante."
+
+    total_discounts = ips_employee_value + absences_discount + advances + other_discount
+    if total_discounts > gross:
+        raise HTTPException(422, "Los descuentos superan los haberes brutos; corregí los importes antes de guardar.")
+    net = gross - total_discounts
+    discount_note = (other_discount_note or "").strip()[:300]
+    if other_discount and not discount_note:
+        discount_note = line.other_discount_note or ""
+    if other_discount and not discount_note:
+        raise HTTPException(422, "Indicá el respaldo de otros descuentos antes de guardar.")
+
+    for attr, value in earning_values.items():
+        setattr(line, attr, value)
+    line.gross = gross
+    line.ips_base = ips_base_value
+    line.ips_rate = ips_rate_value
+    line.ips_basis_note = basis_note
+    line.ips_employee = ips_employee_value
+    line.other_discount_note = discount_note
+    line.total_discounts = total_discounts
+    line.net = net
+
+    detail = db.scalar(select(PayrollComplianceDetail).where(PayrollComplianceDetail.payroll_line_id == line.id))
+    if detail is None:
+        detail = PayrollComplianceDetail(payroll_line_id=line.id)
+        db.add(detail)
+    if days_value is not None:
+        detail.days_worked = days_value
+    employer_rate = Decimal(str(get_parameter(db, "ips_employer_rate_general", 16.5)))
+    if not employer_rate.is_finite() or employer_rate < 0 or employer_rate > 100:
+        raise HTTPException(422, "El parámetro de aporte patronal IPS es inválido.")
+    detail.employer_ips = round_gs(Decimal(gross) * employer_rate / Decimal("100")) if employee_is_ips else 0
+
     recalculate_payroll(db, payroll)
     write_audit(db, user, "editar", "linea_liquidacion", str(line.id), line.employee.full_name)
     db.commit()
