@@ -106,6 +106,8 @@ if (certificateForm) {
   const nationalityInput = document.querySelector('#certificateNationality');
   const civilStatusInput = document.querySelector('#certificateCivilStatus');
   const recipientInput = document.querySelector('#certificateRecipient');
+  const noticeStartInput = document.querySelector('#certificateNoticeStartDate');
+  const noticeDaysInput = document.querySelector('#certificateNoticeDays');
 
   const longDate = value => {
     if (!value) return 'fecha a confirmar';
@@ -206,7 +208,27 @@ if (certificateForm) {
     });
     clearNewVacationRequestFields();
   };
+  const updateNoticeDays = () => {
+    if (!noticeDaysInput) return;
+    const isPreaviso = typeInput.value === 'notificacion_preaviso';
+    noticeDaysInput.readOnly = isPreaviso;
+    if (!isPreaviso) return;
+    if (noticeStartInput && !noticeStartInput.value && issueDateInput.value) {
+      noticeStartInput.value = issueDateInput.value;
+    }
+    const startRaw = noticeStartInput?.value || issueDateInput.value;
+    const endRaw = effectiveDateInput?.value;
+    if (!startRaw || !endRaw) {
+      noticeDaysInput.value = '';
+      return;
+    }
+    const start = Date.parse(startRaw + 'T00:00:00Z');
+    const end = Date.parse(endRaw + 'T00:00:00Z');
+    const days = Math.round((end - start) / 86400000);
+    noticeDaysInput.value = days > 0 ? String(days) : '';
+  };
   const buildBody = () => {
+    updateNoticeDays();
     const type = typeInput.value;
     const company = selectedOption(companySelect)?.dataset.name || '[NOMBRE DE LA EMPRESA]';
     const employeeOption = selectedOption(employeeSelect);
@@ -369,11 +391,13 @@ if (certificateForm) {
         '\nDías consignados: ' + (value('vacation_days') || 'A completar') + '\nFecha de pago: ' + shortDate(value('vacation_payment_date')) +
         '\nImporte realmente abonado: ' + money(num('vacation_amount')) +
         '\n\nLa firma acredita recepción del importe efectivamente pagado; conservar original firmado y entregar duplicado al trabajador/a.',
-      notificacion_preaviso: 'NOTIFICACIÓN DE PREAVISO\n\nA: ' + identity + '\nEmpleador: ' + company +
-        '\nInicio del preaviso: ' + shortDate(value('notice_start_date') || issueDateInput.value) +
-        '\nFecha efectiva de terminación: ' + longDate(effectiveDateInput?.value) +
-        '\nPlazo consignado: ' + (value('notice_days') || 'A completar') + ' día(s)\nContexto a revisar: ' + (value('termination_reason') || 'A completar') +
-        '\n\nVerificar plazos y supuestos legales del caso. La firma acredita recepción y no necesariamente conformidad.',
+      notificacion_preaviso: 'Señor/a\n' + identity +
+        '\n\nRef.: Notificación de preaviso\n\n' + company +
+        ' comunica formalmente que ha resuelto prescindir de sus servicios, con fecha efectiva de terminación el ' + longDate(effectiveDateInput?.value) + '.' +
+        '\n\nEl preaviso se computa desde el ' + longDate(noticeStartInput?.value || issueDateInput.value) +
+        ' hasta el ' + longDate(effectiveDateInput?.value) + ', por un período de ' + (value('notice_days') || 'A completar') + ' días calendario.' +
+        '\n\nDurante este período y sin disminución de su salario, podrá disponer, a su elección, de una licencia diaria de dos horas dentro de la jornada legal o de un día a la semana para buscar otra ocupación. A su opción, podrá utilizar en forma continuada todo el tiempo de licencia que le corresponda, conforme al artículo 89 de la Ley N.º 213/93, Código del Trabajo.' +
+        '\n\nSírvase firmar al pie de la presente como constancia de recepción.\n\nAtentamente.',
       renuncia: 'NOTA DE RENUNCIA\n\nA: ' + recipient + '\nEmpresa: ' + company + '\n\nYo, ' + identity +
         ', comunico mi decisión de renunciar al cargo de ' + role + ', con fecha efectiva ' + longDate(effectiveDateInput?.value) +
         '. Solicito que se practique la liquidación y se entreguen los documentos de cierre. Dejar constancia de la fecha de recepción.',
@@ -478,7 +502,7 @@ if (certificateForm) {
     const previewDate = document.querySelector('#certificatePreviewDate');
     const issueCity = cityInput.value || 'Ciudad del Este';
     const issueDate = longDate(issueDateInput.value);
-    const certificateModelTypes = new Set(['certificado_trabajo_a', 'certificado_trabajo_b', 'constancia']);
+    const certificateModelTypes = new Set(['certificado_trabajo_a', 'certificado_trabajo_b', 'constancia', 'notificacion_preaviso']);
     previewDate.textContent = certificateModelTypes.has(type)
       ? issueCity.toUpperCase() + ', ' + issueDate
       : issueCity + ', ' + issueDate;

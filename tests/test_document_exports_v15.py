@@ -250,6 +250,37 @@ def test_signature_policy_is_consistent_for_certificates_and_employee_requests()
     assert document_receipt_mode("notificacion_vacaciones") == "receipt_date"
 
 
+def test_notification_preaviso_uses_formal_text_dates_and_article_89_rights():
+    title, body = build_document_body(
+        "notificacion_preaviso",
+        company_name="OMA GROUP",
+        employee_name="ALBINO HERMES, FRANCO",
+        employee_document="1.234.567",
+        position="Auxiliar",
+        admission_date=date(2024, 1, 1),
+        salary=3_044_000,
+        issue_date=date(2026, 7, 17),
+        city="Ciudad del Este",
+        metadata={
+            "effective_date": "2026-08-31",
+            "notice_start_date": "2026-07-17",
+            "notice_days": "45",
+            "termination_reason": "NO DEBE MOSTRARSE COMO CAUSA AUTOMÁTICA",
+        },
+    )
+    assert title == "Notificación de Preaviso"
+    assert "Señor/a\nALBINO HERMES, FRANCO, con C.I. N.º 1.234.567" in body
+    assert "ha resuelto prescindir de sus servicios" in body
+    assert "desde el 17 de julio de 2026" in body
+    assert "hasta el 31 de agosto de 2026" in body
+    assert "45 días calendario" in body
+    assert "dos horas dentro de la jornada legal" in body
+    assert "un día a la semana" in body
+    assert "artículo 89 de la Ley N.º 213/93" in body
+    assert "NO DEBE MOSTRARSE COMO CAUSA AUTOMÁTICA" not in body
+    assert "no implica necesariamente conformidad" not in body
+
+
 def test_work_certificates_have_no_employee_signature_in_print_word_or_pdf():
     with TestClient(app) as client:
         csrf = login(client)

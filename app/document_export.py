@@ -428,6 +428,10 @@ def build_document_body(
     period_start = optional_date(metadata.get("period_start"))
     period_end = optional_date(metadata.get("period_end"))
     effective_date = optional_date(metadata.get("effective_date"))
+    notice_start = optional_date(metadata.get("notice_start_date")) or issue_date
+    notice_days_raw = str(metadata.get("notice_days") or "").strip()
+    notice_date_span = (effective_date - notice_start).days if effective_date and effective_date >= notice_start else 0
+    notice_days_display = notice_days_raw or (str(notice_date_span) if notice_date_span > 0 else "A completar")
     leave_start = optional_date(metadata.get("leave_start"))
     leave_end = optional_date(metadata.get("leave_end"))
     amount = _metadata_money(metadata, "amount", salary)
@@ -651,14 +655,17 @@ def build_document_body(
             f"Fecha de pago consignada: {payment_date}. El recibo debe reflejar el importe realmente abonado y entregarse en ejemplares para ambas partes."
         ),
         "notificacion_preaviso": (
-            f"NOTIFICACIÓN DE PREAVISO\n\nA: {employee_detail}\nEmpleador: {employer_id}\n\n"
-            f"Por medio de la presente, se notifica el preaviso relacionado con la terminación de la relación laboral, con fecha efectiva consignada para el "
-            f"{format_date_long_es(effective_date) or 'A completar'}. Fecha de inicio del preaviso: "
-            f"{format_date_short(optional_date(metadata.get('notice_start_date'))) or format_date_short(issue_date)}. "
-            f"Plazo informado: {metadata.get('notice_days') or 'A completar'} día(s).\n\n"
-            f"Motivo o contexto que debe ser revisado antes de la entrega: {termination_reason}.\n\n"
-            "El empleador debe comprobar los plazos, supuestos legales, medio de comunicación y efectos aplicables al caso concreto. "
-            "La firma del destinatario acredita únicamente recepción, no conformidad con el contenido."
+            f"Señor/a\n{employee_detail}\n\n"
+            "Ref.: Notificación de preaviso\n\n"
+            f"La firma {company_name} le comunica formalmente que ha resuelto prescindir de sus servicios, con fecha efectiva de terminación el "
+            f"{format_date_long_es(effective_date) or 'A completar'}.\n\n"
+            f"El preaviso se computa desde el {format_date_long_es(notice_start) or 'A completar'} "
+            f"hasta el {format_date_long_es(effective_date) or 'A completar'}, por un período de {notice_days_display} días calendario.\n\n"
+            "Durante este período y sin disminución de su salario, podrá disponer, a su elección, de una licencia diaria de dos horas dentro de la jornada legal "
+            "o de un día a la semana para buscar otra ocupación. A su opción, podrá utilizar en forma continuada todo el tiempo de licencia que le corresponda, "
+            "conforme al artículo 89 de la Ley N.º 213/93, Código del Trabajo.\n\n"
+            "Sírvase firmar al pie de la presente como constancia de recepción.\n\n"
+            "Atentamente."
         ),
         "renuncia": (
             f"Señor/a\n{recipient}\n{company_name}\n\nRef.: Comunicación de renuncia\n\n"
@@ -759,7 +766,7 @@ def export_data_from_certificate(certificate: Any) -> ExportData:
     configured_signature_title = (getattr(branding, "signature_title", "") or "").strip() if branding else ""
     if company_legal_representative:
         signatory_title = "Representante legal"
-    elif work_certificate:
+    elif work_certificate or certificate.document_type == "notificacion_preaviso":
         signatory_title = (
             configured_signature_title
             if configured_signature_title and configured_signature_title.casefold() not in {"representante legal", "representante legal."}
@@ -1117,7 +1124,7 @@ def build_docx_bytes(data: ExportData) -> bytes:
 
     _docx_header(document, data)
 
-    certificate_model = data.document_type in {"certificado_trabajo_a", "certificado_trabajo_b", "constancia"}
+    certificate_model = data.document_type in {"certificado_trabajo_a", "certificado_trabajo_b", "constancia", "notificacion_preaviso"}
     date_text = f"{data.city.upper()}, {format_date_long_es(data.issue_date)}" if certificate_model else f"{data.city}, {format_date_long_es(data.issue_date)}"
     show_issue_date = data.document_type != "constancia" or "Se expide la presente constancia en " not in data.body
     if show_issue_date:
@@ -1246,7 +1253,7 @@ def build_pdf_bytes(data: ExportData) -> bytes:
         leading=10,
         textColor=colors.HexColor("#556174"),
     )
-    certificate_model = data.document_type in {"certificado_trabajo_a", "certificado_trabajo_b", "constancia"}
+    certificate_model = data.document_type in {"certificado_trabajo_a", "certificado_trabajo_b", "constancia", "notificacion_preaviso"}
     date_style = ParagraphStyle("Date", parent=styles["Normal"], fontName="Helvetica", fontSize=10.5, leading=14, textColor=colors.HexColor("#4E5B70"), alignment=TA_RIGHT, spaceAfter=12)
     certify_style = ParagraphStyle("CertificateACertify", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=12, leading=16, alignment=TA_CENTER, spaceAfter=14)
     kicker_style = ParagraphStyle(

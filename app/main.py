@@ -5435,6 +5435,18 @@ def create_certificate(
     sanction_end_date = optional_date(sanction_end_date, field="fin de la medida")
     calculation_id = optional_int(calculation_id, field="identificador de cálculo")
 
+    if document_type == "notificacion_preaviso" and intent != "preview":
+        if not effective_date:
+            raise HTTPException(400, "La Notificación de Preaviso requiere la fecha efectiva de terminación.")
+        notice_start_value = notice_start_date or issue_date
+        if notice_start_value > effective_date:
+            raise HTTPException(400, "El inicio del preaviso no puede ser posterior a la fecha efectiva de terminación.")
+        notice_duration = (effective_date - notice_start_value).days
+        if notice_duration < 1:
+            raise HTTPException(400, "El período de preaviso debe abarcar al menos un día calendario.")
+        # La duración emitida proviene del intervalo entre fechas, no de un dato libre modificable.
+        notice_days = str(notice_duration)
+
     def nonnegative_amount(raw: str | int | None, label: str) -> int:
         value = str(raw if raw is not None else "").strip().replace(" ", "")
         if not value:
