@@ -432,7 +432,7 @@ def build_document_body(
     leave_end = optional_date(metadata.get("leave_end"))
     amount = _metadata_money(metadata, "amount", salary)
     amount_words = guaranies_in_words(amount)
-    last_period_salary = _metadata_money(metadata, "last_period_salary_amount", salary)
+    last_period_salary = _metadata_money(metadata, "last_period_salary_amount", 0)
     last_period_salary_display = (
         f"Gs. {format_gs(last_period_salary)} ({guaranies_in_words(last_period_salary)})"
         if last_period_salary > 0 else "importe a completar según el último período de pago"
@@ -441,6 +441,7 @@ def build_document_body(
     recipient = str(metadata.get("recipient") or "Encargado/a de Recursos Humanos").strip()
     nationality = str(metadata.get("nationality") or "paraguaya").strip()
     civil_status = str(metadata.get("civil_status") or "").strip()
+    include_current_salary = str(metadata.get("include_salary", "on") or "").lower() in {"on", "true", "1"}
     modality = str(metadata.get("contract_modality") or "").strip()
     modality_labels = {
         "indefinido": "por tiempo indefinido",
@@ -469,8 +470,7 @@ def build_document_body(
     disciplinary_action = str(metadata.get("disciplinary_action") or "Amonestación escrita").strip()
     sanction_start = format_date_short(optional_date(metadata.get("sanction_start_date"))) or "No aplica / completar"
     sanction_end = format_date_short(optional_date(metadata.get("sanction_end_date"))) or "No aplica / completar"
-    employee_address_text = employee_address or "un domicilio no consignado en el legajo"
-    company_address_clause = f"ubicada sobre la calle {company_address}" if company_address else "cuyo domicilio no consta en el legajo"
+    company_address_clause = f", ubicada sobre la calle {company_address}" if company_address else ""
     employer_id = company_name
     if company_ruc:
         employer_id += f", RUC {company_ruc}"
@@ -489,58 +489,44 @@ def build_document_body(
 
     bodies: dict[str, str] = {
                 "certificado_trabajo_a": (
-            "C E R T I F I C O:\n\n"
+            "C E R T I F I C O:\\n\\n"
             + (
-                f"Que {certificate_subject} ha trabajado en esta firma comercial durante el lapso comprendido "
-                f"entre el {admission} y el {employment_end}, habiendo ejercido el cargo de {role}.\n"
-                f"Salario devengado durante el último período de pago: {last_period_salary_display}.\n\n"
-                "Hago constar que el/la nombrado/a se retira por su propia voluntad y se ha desempeñado "
-                "a nuestra entera satisfacción, además de haber observado en todo momento buena conducta.\n\n"
-                "Este certificado lo expido a su solicitud y para su eventual uso ante terceros."
+                f"Que {certificate_subject} prestó servicios en la firma comercial {company_name}, "
+                f"desde el {admission} hasta el {employment_end}, desempeñándose como {role}.\\n"
+                f"Salario devengado durante el último período de pago: {last_period_salary_display}."
                 if effective_date else
                 f"Que {identity} presta servicios en la firma comercial {company_name} desde el {admission}, "
-                f"desempeñándose en el cargo de {role}."
-                + (
-                    f" Percibe una remuneración mensual registrada de {salary_display}."
-                    if str(metadata.get("include_salary", "on") or "").lower() in {"on", "true", "1"}
-                    else ""
-                )
-                + "\n\n"
-                "Este certificado lo expido a su solicitud y para su eventual uso ante terceros."
+                f"desempeñándose como {role}."
+                + (f" Percibe una remuneración mensual registrada de {salary_display}." if include_current_salary else "")
             )
         ),
         "certificado_trabajo_b": (
-            "C E R T I F I C O:\n\n"
+            "C E R T I F I C O:\\n\\n"
             + (
-                f"Que {identity}, perteneció a la dotación de personal de esta firma {company_name}, "
-                f"habiendo ingresado a nuestro servicio el día {admission} y prestado servicios hasta el día {employment_end}, "
-                f"desempeñándose como {role}."
+                f"Que {certificate_subject} prestó servicios en la firma comercial {company_name}, "
+                f"desde el {admission} hasta el {employment_end}, desempeñándose como {role}.\\n"
+                f"Salario devengado durante el último período de pago: {last_period_salary_display}."
                 if effective_date else
-                f"Que {identity}, pertenece a la dotación de personal de esta firma {company_name}, "
-                f"habiendo ingresado a nuestro servicio el día {admission}, desempeñándose como {role}."
+                f"Que {identity} presta servicios en la firma comercial {company_name} desde el {admission}, "
+                f"desempeñándose como {role}."
+                + (f" Percibe una remuneración mensual registrada de {salary_display}." if include_current_salary else "")
             )
-            + "\n\n"
-            "Este certificado lo expido a su solicitud y para su eventual uso ante terceros."
         ),
         "constancia": (
-            "C E R T I F I C O:\n\n"
-            + f"Que {identity}, de nacionalidad {nationality.upper()}"
-            + (f", de estado civil {civil_status.upper()}" if civil_status else "")
-            + f", domiciliado/a en {employee_address_text}, "
+            "C E R T I F I C O:\\n\\n"
             + (
-                f"fue empleado/a de la firma comercial {company_name}, {company_address_clause}, "
-                f"desde el {admission} hasta el {employment_end}, desempeñándose como {role}."
+                f"Que {certificate_subject} prestó servicios en la firma comercial {company_name}, "
+                f"desde el {admission} hasta el {employment_end}, desempeñándose como {role}.\\n"
+                f"Salario devengado durante el último período de pago: {last_period_salary_display}."
                 if effective_date else
-                f"es empleado/a de la firma comercial {company_name}, {company_address_clause}, "
-                f"desde el {admission}, desempeñándose como {role}."
+                f"Que {identity}, de nacionalidad {nationality.upper()}"
+                + (f", de estado civil {civil_status.upper()}" if civil_status else "")
+                + (f", domiciliado/a en {employee_address}" if employee_address else "")
+                + f", es empleado/a de la firma comercial {company_name}{company_address_clause}, "
+                + f"desde el {admission}, desempeñándose como {role}."
+                + (f" Percibe una remuneración mensual registrada de {salary_display}." if include_current_salary else "")
+                + "\\n\\nSe expide la presente constancia para los fines y efectos a que hubiere lugar."
             )
-            + (
-                f" Salario devengado durante el último período de pago: {last_period_salary_display}."
-                if effective_date else
-                (f" Percibe una remuneración mensual de Gs. {format_gs(salary)}."
-                 if str(metadata.get("include_salary", "on") or "").lower() in {"on", "true", "1"} else "")
-            )
-            + f"\n\nSe expide la presente constancia en {city.upper()}, a los {number_to_words_es(issue_date.day)} días del mes de {MONTHS_ES[issue_date.month - 1]} del año {number_to_words_es(issue_date.year)}, para los fines y efectos que hubiere lugar."
         ),
         "aguinaldo_anual": (
             f"El empleador {company_name} deja constancia de haber abonado a {identity} la suma de Gs. {format_gs(amount)} "
@@ -768,12 +754,18 @@ def export_data_from_certificate(certificate: Any) -> ExportData:
         or ((getattr(branding, "signature_name", "") or "").strip() if branding else "")
         or (getattr(company, "responsible_name", "") or "").strip()
     )
-    signatory_title = (
-        "Representante legal"
-        if company_legal_representative
-        else ((getattr(branding, "signature_title", "") or "").strip() if branding else "")
-        or ("Responsable" if certificate.document_type == "constancia" else "Representante legal")
-    )
+    work_certificate = certificate.document_type in {"certificado_trabajo_a", "certificado_trabajo_b", "constancia"}
+    configured_signature_title = (getattr(branding, "signature_title", "") or "").strip() if branding else ""
+    if company_legal_representative:
+        signatory_title = "Representante legal"
+    elif work_certificate:
+        signatory_title = (
+            configured_signature_title
+            if configured_signature_title and configured_signature_title.casefold() not in {"representante legal", "representante legal."}
+            else "Responsable autorizado"
+        )
+    else:
+        signatory_title = configured_signature_title or ("Responsable" if certificate.document_type == "constancia" else "Representante legal")
     return ExportData(
         document_type=certificate.document_type,
         title=certificate.title,
@@ -1085,39 +1077,26 @@ def _add_signature_table_docx(document: Document, data: ExportData) -> None:
         p = document.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         p.paragraph_format.space_before = Pt(22)
-        p.add_run("_______________________________\n")
-        if document_type == "certificado_trabajo_b" and data.legal_representative:
-            r = p.add_run(data.legal_representative.strip())
-            r.bold = True
-            p.add_run(f"\n{data.signature_title or 'Representante legal'}")
-            p.add_run(f"\n{data.company_name}")
-            if data.company_address:
-                p.add_run(f"\n{data.company_address}")
-            if data.company_phone:
-                p.add_run(f"\nTEL. {data.company_phone}")
-        elif document_type == "certificado_trabajo_b":
-            r = p.add_run(data.company_name)
-            r.bold = True
-            if data.company_address:
-                p.add_run(f"\n{data.company_address}")
-            if data.company_phone:
-                p.add_run(f"\nTEL. {data.company_phone}")
-        else:
+        p.add_run("_______________________________\\n")
+        if data.document_type in {"certificado_trabajo_a", "certificado_trabajo_b", "constancia"}:
             signatory = (data.legal_representative or "Firma autorizada").strip()
-            if document_type == "constancia" and signatory != "Firma autorizada" and not signatory.lower().startswith(("sr", "sra")):
-                signatory = f"Sr(a). {signatory}"
             r = p.add_run(signatory)
             r.bold = True
-            title_text = data.signature_title or ("Responsable" if document_type == "constancia" else "Representante legal")
-            p.add_run(f"\n{title_text}")
-            if document_type != "constancia":
-                p.add_run(f"\n{data.company_name}")
-            if document_type == "constancia" and data.company_phone:
-                p.add_run(f"\nTel. {data.company_phone}")
-
-
-
-def build_docx_bytes(data: ExportData) -> bytes:
+            p.add_run(f"\\n{data.signature_title or 'Responsable autorizado'}")
+            p.add_run(f"\\n{data.company_name}")
+            if data.company_address:
+                p.add_run(f"\\n{data.company_address}")
+            if data.company_phone:
+                p.add_run(f"\\nTEL. {data.company_phone}")
+        else:
+            signatory = (data.legal_representative or "Firma autorizada").strip()
+            r = p.add_run(signatory)
+            r.bold = True
+            title_text = data.signature_title or "Representante legal"
+            p.add_run(f"\\n{title_text}")
+            if data.company_name:
+                p.add_run(f"\\n{data.company_name}")
+\n\n\ndef build_docx_bytes(data: ExportData) -> bytes:
     document = Document()
     section = document.sections[0]
     section.page_width = Cm(21)
@@ -1134,16 +1113,13 @@ def build_docx_bytes(data: ExportData) -> bytes:
 
     _docx_header(document, data)
 
-    certificate_a = data.document_type == "certificado_trabajo_a"
-    certificate_b = data.document_type == "certificado_trabajo_b"
-    certificate_model = certificate_a or certificate_b or data.document_type == "constancia"
+    certificate_model = data.document_type in {"certificado_trabajo_a", "certificado_trabajo_b", "constancia"}
     date_text = f"{data.city.upper()}, {format_date_long_es(data.issue_date)}" if certificate_model else f"{data.city}, {format_date_long_es(data.issue_date)}"
-    if data.document_type != "constancia":
-        date_p = document.add_paragraph(date_text)
-        date_p.alignment = WD_ALIGN_PARAGRAPH.CENTER if certificate_a else WD_ALIGN_PARAGRAPH.LEFT if certificate_b else WD_ALIGN_PARAGRAPH.RIGHT
-        date_p.paragraph_format.space_after = Pt(18)
-        date_p.runs[0].font.name = "Aptos"
-        date_p.runs[0].font.size = Pt(10.5)
+    date_p = document.add_paragraph(date_text)
+    date_p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    date_p.paragraph_format.space_after = Pt(18)
+    date_p.runs[0].font.name = "Aptos"
+    date_p.runs[0].font.size = Pt(10.5)
 
     kicker = document.add_paragraph()
     kicker.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -1264,11 +1240,8 @@ def build_pdf_bytes(data: ExportData) -> bytes:
         leading=10,
         textColor=colors.HexColor("#556174"),
     )
-    certificate_a = data.document_type == "certificado_trabajo_a"
-    certificate_b = data.document_type == "certificado_trabajo_b"
-    certificate_model = certificate_a or certificate_b or data.document_type == "constancia"
-    date_alignment = TA_CENTER if certificate_a else TA_LEFT if certificate_b else TA_RIGHT
-    date_style = ParagraphStyle("Date", parent=styles["Normal"], fontName="Helvetica", fontSize=10.5, leading=14, textColor=colors.HexColor("#4E5B70"), alignment=date_alignment, spaceAfter=12)
+    certificate_model = data.document_type in {"certificado_trabajo_a", "certificado_trabajo_b", "constancia"}
+    date_style = ParagraphStyle("Date", parent=styles["Normal"], fontName="Helvetica", fontSize=10.5, leading=14, textColor=colors.HexColor("#4E5B70"), alignment=TA_RIGHT, spaceAfter=12)
     certify_style = ParagraphStyle("CertificateACertify", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=12, leading=16, alignment=TA_CENTER, spaceAfter=14)
     kicker_style = ParagraphStyle(
         "DocumentKicker", parent=styles["Normal"], fontName="Helvetica-Bold",
@@ -1346,8 +1319,7 @@ def build_pdf_bytes(data: ExportData) -> bytes:
     )
     story.extend([header, Spacer(1, 10 * mm)])
     date_text = f"{data.city.upper()}, {format_date_long_es(data.issue_date)}" if certificate_model else f"{data.city}, {format_date_long_es(data.issue_date)}"
-    if data.document_type != "constancia":
-        story.append(Paragraph(escape(date_text), date_style))
+    story.append(Paragraph(escape(date_text), date_style))
     story.append(Paragraph("DOCUMENTO LABORAL", kicker_style))
     story.append(Paragraph(escape(data.title.upper()), title_style))
     document_number = str((data.metadata or {}).get("document_number") or "").strip()
@@ -1446,31 +1418,22 @@ def build_pdf_bytes(data: ExportData) -> bytes:
         story.append(Paragraph("RECIBIDO / AUTORIZACIÓN: ____________________    FECHA: ____/____/________", small_style))
     else:
         sig = "______________________________<br/>"
-        if data.document_type == "certificado_trabajo_b" and data.legal_representative:
-            sig += f"<b>{escape(data.legal_representative.strip())}</b>"
-            sig += f"<br/>{escape(data.signature_title or 'Representante legal')}"
+        if data.document_type in {"certificado_trabajo_a", "certificado_trabajo_b", "constancia"}:
+            signatory = (data.legal_representative or "Firma autorizada").strip()
+            sig += f"<b>{escape(signatory)}</b>"
+            sig += f"<br/>{escape(data.signature_title or 'Responsable autorizado')}"
             sig += f"<br/>{escape(data.company_name)}"
-            if data.company_address:
-                sig += f"<br/>{escape(data.company_address)}"
-            if data.company_phone:
-                sig += f"<br/>TEL. {escape(data.company_phone)}"
-        elif data.document_type == "certificado_trabajo_b":
-            sig += f"<b>{escape(data.company_name)}</b>"
             if data.company_address:
                 sig += f"<br/>{escape(data.company_address)}"
             if data.company_phone:
                 sig += f"<br/>TEL. {escape(data.company_phone)}"
         else:
             signatory = (data.legal_representative or "Firma autorizada").strip()
-            if data.document_type == "constancia" and signatory != "Firma autorizada" and not signatory.lower().startswith(("sr", "sra")):
-                signatory = f"Sr(a). {signatory}"
             sig += f"<b>{escape(signatory)}</b>"
-            title_text = data.signature_title or ("Responsable" if data.document_type == "constancia" else "Representante legal")
+            title_text = data.signature_title or "Representante legal"
             sig += f"<br/>{escape(title_text)}"
-            if data.document_type != "constancia":
+            if data.company_name:
                 sig += f"<br/>{escape(data.company_name)}"
-            if data.document_type == "constancia" and data.company_phone:
-                sig += f"<br/>Tel. {escape(data.company_phone)}"
         story.append(Paragraph(sig, ParagraphStyle("EmployerSig", parent=small_style, alignment=TA_CENTER)))
 
     if data.status.lower() == "borrador":
