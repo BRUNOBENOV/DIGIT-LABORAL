@@ -115,6 +115,11 @@ if (certificateForm) {
   const noticeSummaryTitle = document.querySelector('#preavisoCalculationSummaryTitle');
   const noticeSummaryDetails = document.querySelector('#preavisoCalculationSummaryDetails');
   const noticeSummaryNotes = document.querySelector('#preavisoCalculationSummaryNotes');
+  const generateFullContractButton = document.querySelector('#generateFullContract');
+  const contractFullEditor = document.querySelector('#certificateContractFullText');
+  const contractFullEditorWrap = document.querySelector('#contractFullEditorWrap');
+  const contractGenerationStatus = document.querySelector('#contractGenerationStatus');
+  const contractSignatureAcknowledged = document.querySelector('#contractSignatureAcknowledged');
 
   const longDate = value => {
     if (!value) return 'fecha a confirmar';
@@ -519,7 +524,8 @@ if (certificateForm) {
       : issueCity + ', ' + issueDate;
     previewDate.style.textAlign = certificateModelTypes.has(type) ? 'right' : '';
     previewDate.style.display = '';
-    const bodyText = buildBody();
+    const contractTextValue = contractFullEditor?.value?.trim() || '';
+    const bodyText = type === 'contrato_trabajo' && contractTextValue ? contractFullEditor.value : buildBody();
     renderCertificatePreviewBody(type, bodyText);
     document.querySelector('#certificatePreviewHeaderCompany').textContent = company;
     document.querySelector('#certificatePreviewHeaderDetails').textContent = [
@@ -824,6 +830,50 @@ if (certificateForm) {
       updatePreavisoActionAvailability();
     }
   });
+  generateFullContractButton?.addEventListener('click', async () => {
+    if (typeInput.value !== 'contrato_trabajo') return;
+    if (!companySelect.value || !employeeSelect.value) {
+      if (contractGenerationStatus) contractGenerationStatus.textContent = 'Seleccioná una empresa y un funcionario antes de generar el contrato.';
+      return;
+    }
+    if (contractGenerationStatus) contractGenerationStatus.textContent = 'Generando el contrato con los datos ingresados…';
+    generateFullContractButton.disabled = true;
+    try {
+      const formData = new FormData(certificateForm);
+      formData.set('intent', 'preview');
+      formData.delete('contract_text');
+      const response = await fetch(certificateForm.action || '/app/certificates', {
+        method: 'POST',
+        body: formData,
+        credentials: 'same-origin',
+        headers: { 'Accept': 'application/json' }
+      });
+      let payload = {};
+      try { payload = await response.json(); } catch (_) { payload = {}; }
+      if (!response.ok) {
+        if (contractGenerationStatus) contractGenerationStatus.textContent = payload.detail || 'No se pudo generar el contrato. Revisá los campos requeridos.';
+        return;
+      }
+      if (contractFullEditor) {
+        contractFullEditor.value = payload.body || '';
+        contractFullEditor.disabled = false;
+      }
+      contractFullEditorWrap?.classList.remove('hidden');
+      if (contractGenerationStatus) contractGenerationStatus.textContent = 'Contrato completo generado. Revisá las cláusulas y editá el texto antes de guardarlo.';
+      updatePreview();
+    } catch (_) {
+      if (contractGenerationStatus) contractGenerationStatus.textContent = 'No se pudo conectar con el generador. La vista previa actual se mantiene.';
+    } finally {
+      generateFullContractButton.disabled = false;
+    }
+  });
+  certificateForm.addEventListener('submit', event => {
+    if (event.submitter?.value === 'signed' && !contractSignatureAcknowledged?.checked) {
+      event.preventDefault();
+      if (contractGenerationStatus) contractGenerationStatus.textContent = 'Marcá la confirmación de firma recibida antes de registrar el estado Firmado.';
+    }
+  });
+
   document.querySelectorAll('[data-certificate-type]').forEach(button => button.addEventListener('click', () => {
     document.querySelectorAll('[data-certificate-type]').forEach(item => item.classList.toggle('active', item === button));
     typeInput.value = button.dataset.certificateType;
@@ -831,6 +881,9 @@ if (certificateForm) {
     updatePreview();
     if (typeInput.value === 'notificacion_preaviso') refreshPreavisoCalculations();
     else updatePreavisoActionAvailability();
+    if (typeInput.value === 'contrato_trabajo' && contractFullEditor?.value.trim()) {
+      contractFullEditorWrap?.classList.remove('hidden');
+    }
   }));
   companySelect.addEventListener('change', filterEmployees);
   employeeSelect.addEventListener('change', () => {

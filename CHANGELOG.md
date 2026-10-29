@@ -1,3 +1,12 @@
+## 2.6.46 — Contrato Individual de Trabajo editable y versionado
+
+- Amplía el contrato con información de las partes y cláusulas sobre funciones, lugar, duración, jornada, remuneración, beneficios, prueba, seguridad social, derechos, domicilio, condiciones especiales, terminación y firmas.
+- Separa la plantilla breve del documento completo; el contrato extendido se genera con datos dinámicos, queda editable y se puede imprimir o exportar a Word/PDF.
+- Incorpora datos del artículo 46 del Código del Trabajo, incluida la edad calculada desde el legajo cuando existe fecha de nacimiento.
+- Añade versiones enlazadas por contrato y estados Borrador, Aprobado, Firmado y Emitido, sin reemplazar documentos anteriores.
+- Registrar «Firmado» requiere confirmación expresa y solo guarda el estado de la firma recibida; no ejecuta ni certifica una firma electrónica.
+- Evita exclusividad automática y autorización irrestricta de cambios de horario; ajusta la guía de período de prueba a las categorías y máximos del artículo 58 de la Ley N.º 213/93.
+
 ## 2.6.45 — Integración de Preaviso con Cálculo
 
 - Conecta la Notificación de Preaviso con los cálculos guardados del funcionario y período, usando consulta autenticada y aislada por empresa.
