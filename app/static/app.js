@@ -538,6 +538,12 @@ if (certificateForm) {
       document.querySelector('#certificatePreviewSignature').textContent = employee;
       document.querySelector('#certificatePreviewSignatureTitle').textContent = 'Firma del trabajador/a';
       document.querySelector('#certificatePreviewCompany').textContent = `C.I. N.º ${employeeDocument}`;
+    } else if (type === 'certificado_trabajo_b') {
+      document.querySelector('#certificatePreviewSignature').textContent = company;
+      document.querySelector('#certificatePreviewSignatureTitle').textContent = companyOption?.dataset.address || '';
+      document.querySelector('#certificatePreviewCompany').textContent = companyOption?.dataset.phone
+        ? 'TEL. ' + companyOption.dataset.phone
+        : '';
     } else {
       document.querySelector('#certificatePreviewSignature').textContent = signature;
       document.querySelector('#certificatePreviewSignatureTitle').textContent = signatureTitle;
