@@ -268,7 +268,7 @@ def test_word_and_pdf_downloads():
         )
         assert certificate_menu
         assert re.findall(
-            r'data-certificate-type="([^"]+)">([^<]+)</button>',
+            r'data-certificate-type="([^"]+)"[^>]*>([^<]+)</button>',
             certificate_menu.group(1),
         ) == [
             ("certificado_trabajo_a", "Certificado de Trabajo A"),
