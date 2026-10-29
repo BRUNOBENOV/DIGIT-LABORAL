@@ -472,7 +472,8 @@ if (certificateForm) {
     document.querySelector('#certificatePreviewHeaderCompany').textContent = company;
     document.querySelector('#certificatePreviewHeaderDetails').textContent = [
       companyOption?.dataset.ruc ? `RUC ${companyOption.dataset.ruc}` : '',
-      companyOption?.dataset.address || ''
+      companyOption?.dataset.address || '',
+      companyOption?.dataset.phone ? 'Tel. ' + companyOption.dataset.phone : ''
     ].filter(Boolean).join(' · ');
     document.querySelector('#certificatePreviewNumber').textContent = documentNumberInput?.value
       ? `Documento N.º ${documentNumberInput.value}`
