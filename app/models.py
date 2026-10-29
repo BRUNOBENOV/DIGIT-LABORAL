@@ -885,6 +885,8 @@ class IntegrationBatch(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     studio_id: Mapped[int] = mapped_column(ForeignKey("studios.id"), index=True)
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    calculation_record_id: Mapped[Optional[int]] = mapped_column(ForeignKey("calculation_records.id"), nullable=True, index=True)
+    payload_json: Mapped[str] = mapped_column(Text, default="{}")
     authority: Mapped[str] = mapped_column(String(20), index=True)
     batch_type: Mapped[str] = mapped_column(String(80), index=True)
     period: Mapped[str] = mapped_column(String(20), default="", index=True)
@@ -906,6 +908,7 @@ class IntegrationBatch(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC), index=True)
 
     company: Mapped[Company] = relationship()
+    calculation_record: Mapped[Optional["CalculationRecord"]] = relationship()
 
 
 class IntegrationBatchItem(Base):
