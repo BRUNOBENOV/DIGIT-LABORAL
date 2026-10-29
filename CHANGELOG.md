@@ -1,3 +1,11 @@
+## 2.6.44 — Notificación de Preaviso
+
+- Reescribe la Notificación de Preaviso como comunicación formal dirigida al trabajador, con fecha de emisión, período y fecha efectiva claramente expresados.
+- Calcula la duración calendario a partir de las fechas de inicio y terminación, y valida fechas coherentes al guardar.
+- Incorpora el derecho de licencia para buscar otra ocupación conforme al artículo 89 de la Ley N.º 213/93.
+- Añade guía preventiva sobre los plazos del artículo 87 y mantiene la verificación de modalidad contractual, antigüedad y excepciones como control profesional.
+- Alinea la fecha superior a la derecha y corrige la denominación del firmante alternativo cuando no figura Representante Legal en la ficha de la empresa.
+
 ## 2.6.43 — Coherencia de certificados de trabajo
 
 - Alinea a la derecha la fecha de emisión de Certificado A, Certificado B y Constancia en vista previa, impresión, Word y PDF.
