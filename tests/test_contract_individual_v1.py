@@ -69,7 +69,7 @@ def test_contract_individual_contains_article_46_fields_and_full_clauses():
     assert "treinta días" in body and "sesenta días" in body
     assert "Transferencia bancaria" in body
     assert "Uniforme de trabajo" in body
-    assert "no impone exclusividad automática" in body
+    assert "ni impone exclusividad automática" in body
     assert "no autoriza cambios irrestrictos" in body
     assert "26 años" in body
 
