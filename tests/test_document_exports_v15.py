@@ -186,11 +186,35 @@ def test_work_certificate_uses_article_93_end_date_and_last_pay_period():
         },
     )
     assert title == "Certificado de Trabajo"
-    assert "desde el 1 de marzo de 2022 hasta el 15 de octubre de 2026" in body
+    assert "C E R T I F I C O:" in body
+    assert "ha trabajado en esta firma comercial durante el lapso comprendido entre el 1 de marzo de 2022 y el 15 de octubre de 2026" in body
     assert "salario devengado durante el último período de pago" in body.lower()
     assert "Gs. 3.550.000" in body
+    assert "se retira por su propia voluntad" in body
+    assert "a nuestra entera satisfacción" in body
+    assert "para su eventual uso ante terceros" in body
     assert "Remuneración mensual registrada: Gs. 3.800.000" not in body
 
+
+
+def test_work_certificate_for_active_employee_does_not_claim_termination():
+    title, body = build_document_body(
+        "certificado_trabajo_a",
+        company_name="Empresa Demo S.A.",
+        employee_name="María González",
+        employee_document="1.234.567",
+        position="Auxiliar administrativa",
+        admission_date=date(2022, 3, 1),
+        salary=3_800_000,
+        issue_date=date(2026, 10, 23),
+        city="Ciudad del Este",
+        metadata={"include_salary": False},
+    )
+    assert title == "Certificado de Trabajo"
+    assert "C E R T I F I C O:" in body
+    assert "presta servicios en la firma comercial Empresa Demo S.A. desde el 1 de marzo de 2022" in body
+    assert "por su propia voluntad" not in body
+    assert "eventual uso ante terceros" in body
 
 def test_internal_contract_models_have_type_specific_official_model_fields():
     metadata = {

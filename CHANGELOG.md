@@ -1,3 +1,10 @@
+## 2.6.33 — Modelo automatizado de Certificado de Trabajo A
+
+- Adapta el texto del Certificado A al modelo solicitado, integrando automáticamente nombre, documento, fecha de ingreso, fecha de conclusión, cargo y fecha/lugar de emisión.
+- Conserva la indicación del salario devengado durante el último período de pago para certificados por terminación laboral.
+- Centra el encabezado «C E R T I F I C O:» y la fecha en mayúsculas para este modelo, sin alterar el formato de los demás documentos.
+- Mantiene sin cambios los modelos B, constancias, contratos y demás documentos.
+
 ## 2.6.31 — Flujo asistido de liquidación salarial REOP
 
 - Incorpora en el recibo de Liquidación de Salarios un panel REOP vinculado al cálculo de origen.

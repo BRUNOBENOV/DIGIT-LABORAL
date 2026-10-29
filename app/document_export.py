@@ -421,6 +421,7 @@ def build_document_body(
     identity = employee_name
     if employee_document:
         identity += f", con C.I. N.º {employee_document}"
+    certificate_subject = f"{employee_name}, con C.I. N.º {employee_document}," if employee_document else employee_name
     role = position or "el cargo registrado en su legajo"
     admission = format_date_long_es(admission_date) or "la fecha registrada en su legajo"
     salary_display = f"Gs. {format_gs(salary)} ({guaranies_in_words(salary)})" if salary else "la remuneración registrada en su legajo"
@@ -487,22 +488,25 @@ def build_document_body(
 
     bodies: dict[str, str] = {
                 "certificado_trabajo_a": (
-            f"Por medio de la presente, {company_name} certifica que {identity} "
+            "C E R T I F I C O:\n\n"
             + (
-                f"prestó servicios en la empresa desde el {admission} hasta el {employment_end}, "
-                f"desempeñándose en la clase de trabajo/cargo de {role}. "
-                f"Salario devengado durante el último período de pago: {last_period_salary_display}."
+                f"Que {certificate_subject} ha trabajado en esta firma comercial durante el lapso comprendido "
+                f"entre el {admission} y el {employment_end}, habiendo ejercido el cargo de {role}.\n"
+                f"Salario devengado durante el último período de pago: {last_period_salary_display}.\n\n"
+                "Hago constar que el/la nombrado/a se retira por su propia voluntad y se ha desempeñado "
+                "a nuestra entera satisfacción, además de haber observado en todo momento buena conducta.\n\n"
+                "Este certificado lo expido a su solicitud y para su eventual uso ante terceros."
                 if effective_date else
-                f"presta servicios en la empresa desde el {admission}, desempeñándose en el cargo de {role}."
+                f"Que {identity} presta servicios en la firma comercial {company_name} desde el {admission}, "
+                f"desempeñándose en el cargo de {role}."
                 + (
                     f" Percibe una remuneración mensual registrada de {salary_display}."
                     if str(metadata.get("include_salary", "on") or "").lower() in {"on", "true", "1"}
                     else ""
                 )
+                + "\n\n"
+                "Este certificado lo expido a su solicitud y para su eventual uso ante terceros."
             )
-            + "\n\n"
-            f"Se expide el presente certificado en {city}, a los {format_date_long_es(issue_date)}, "
-            "a solicitud de la persona interesada, para los fines que estime pertinentes."
         ),
         "certificado_trabajo_b": (
             f"Se deja constancia de que {identity} "
@@ -1060,8 +1064,10 @@ def build_docx_bytes(data: ExportData) -> bytes:
 
     _docx_header(document, data)
 
-    date_p = document.add_paragraph(f"{data.city}, {format_date_long_es(data.issue_date)}")
-    date_p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    certificate_a = data.document_type == "certificado_trabajo_a"
+    date_text = f"{data.city.upper()}, {format_date_long_es(data.issue_date)}" if certificate_a else f"{data.city}, {format_date_long_es(data.issue_date)}"
+    date_p = document.add_paragraph(date_text)
+    date_p.alignment = WD_ALIGN_PARAGRAPH.CENTER if certificate_a else WD_ALIGN_PARAGRAPH.RIGHT
     date_p.paragraph_format.space_after = Pt(18)
     date_p.runs[0].font.name = "Aptos"
     date_p.runs[0].font.size = Pt(10.5)
@@ -1096,15 +1102,18 @@ def build_docx_bytes(data: ExportData) -> bytes:
 
     for block in data.body.split("\n\n"):
         lines = block.split("\n")
+        is_certify_heading = certificate_a and block.strip() == "C E R T I F I C O:"
         p = document.add_paragraph()
-        p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY if len(lines) == 1 else WD_ALIGN_PARAGRAPH.LEFT
-        p.paragraph_format.space_after = Pt(10)
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER if is_certify_heading else (WD_ALIGN_PARAGRAPH.JUSTIFY if len(lines) == 1 else WD_ALIGN_PARAGRAPH.LEFT)
+        p.paragraph_format.space_after = Pt(10 if not is_certify_heading else 14)
         for index, line in enumerate(lines):
             if index:
                 p.add_run().add_break()
             run = p.add_run(line)
             run.font.name = "Aptos"
-            run.font.size = Pt(11)
+            run.font.size = Pt(12 if is_certify_heading else 11)
+            if is_certify_heading:
+                run.bold = True
             if line.lower().startswith("ref.:") or line.lower().startswith("ref:"):
                 run.bold = True
                 run.italic = True
@@ -1182,7 +1191,9 @@ def build_pdf_bytes(data: ExportData) -> bytes:
         leading=10,
         textColor=colors.HexColor("#556174"),
     )
-    date_style = ParagraphStyle("Date", parent=styles["Normal"], fontName="Helvetica", fontSize=10.5, leading=14, textColor=colors.HexColor("#4E5B70"), alignment=TA_RIGHT, spaceAfter=12)
+    certificate_a = data.document_type == "certificado_trabajo_a"
+    date_style = ParagraphStyle("Date", parent=styles["Normal"], fontName="Helvetica", fontSize=10.5, leading=14, textColor=colors.HexColor("#4E5B70"), alignment=TA_CENTER if certificate_a else TA_RIGHT, spaceAfter=12)
+    certify_style = ParagraphStyle("CertificateACertify", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=12, leading=16, alignment=TA_CENTER, spaceAfter=14)
     kicker_style = ParagraphStyle(
         "DocumentKicker", parent=styles["Normal"], fontName="Helvetica-Bold",
         fontSize=7.5, leading=10, textColor=colors.HexColor(data.primary_color),
@@ -1258,7 +1269,8 @@ def build_pdf_bytes(data: ExportData) -> bytes:
         )
     )
     story.extend([header, Spacer(1, 10 * mm)])
-    story.append(Paragraph(f"{escape(data.city)}, {escape(format_date_long_es(data.issue_date))}", date_style))
+    date_text = f"{data.city.upper()}, {format_date_long_es(data.issue_date)}" if certificate_a else f"{data.city}, {format_date_long_es(data.issue_date)}"
+    story.append(Paragraph(escape(date_text), date_style))
     story.append(Paragraph("DOCUMENTO LABORAL", kicker_style))
     story.append(Paragraph(escape(data.title.upper()), title_style))
     document_number = str((data.metadata or {}).get("document_number") or "").strip()
@@ -1266,6 +1278,9 @@ def build_pdf_bytes(data: ExportData) -> bytes:
         story.append(Paragraph(f"Documento N.º {escape(document_number)}", ParagraphStyle("Number", parent=small_style, alignment=TA_RIGHT, spaceAfter=8)))
 
     for block in data.body.split("\n\n"):
+        if certificate_a and block.strip() == "C E R T I F I C O:":
+            story.append(Paragraph("C E R T I F I C O:", certify_style))
+            continue
         lines = block.split("\n")
         content = "<br/>".join(escape(line) for line in lines)
         story.append(Paragraph(content, left_style if len(lines) > 1 else body_style))
