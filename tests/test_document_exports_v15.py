@@ -48,6 +48,23 @@ def test_app_version_and_build_are_visible_in_the_global_header():
         assert app.version == APP_VERSION
 
 
+
+def test_certificate_a_preview_uses_model_text_and_versioned_static_asset():
+    with TestClient(app) as client:
+        login(client)
+        page = client.get("/app/certificates")
+        assert page.status_code == 200
+        assert f"app.js?v={APP_VERSION}" in page.text
+        script = client.get(f"/static/app.js?v={APP_VERSION}")
+        assert script.status_code == 200
+        assert "C E R T I F I C O:" in script.text
+        assert "ha trabajado en esta firma comercial durante el lapso comprendido entre el " in script.text
+        assert "se retira por su propia voluntad" in script.text
+        assert "a nuestra entera satisfacción" in script.text
+        assert "certificate-a-certify" in script.text
+        assert "previewDate.style.textAlign = type === 'certificado_trabajo_a' ? 'center' : ''" in script.text
+
+
 def test_amount_in_words_and_legal_basis():
     assert guaranies_in_words(2_739_341) == "dos millones setecientos treinta y nueve mil trescientos cuarenta y un guaraníes"
     title, body = build_document_body(
