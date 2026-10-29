@@ -117,7 +117,7 @@ body{margin:0;background:#edf1f6;color:#202a39;font-family:"Aptos","Segoe UI","H
 {% elif certificate.document_type in ['certificado_trabajo_a','certificado_trabajo_b','constancia'] %}
 <div class="signature work-certificate-signature">
   {% set work_signatory = certificate.company.legal_representative or (certificate.company.branding.signature_name if certificate.company.branding else '') or certificate.company.responsible_name or 'Firma autorizada' %}
-  {% set work_signatory_title = 'Representante legal' if certificate.company.legal_representative else (certificate.company.branding.signature_title if certificate.company.branding and certificate.company.branding.signature_title and certificate.company.branding.signature_title|lower != 'representante legal' else 'Responsable autorizado') %}
+  {% set work_signatory_title = 'Representante legal' if certificate.company.legal_representative else (certificate.company.branding.signature_title if certificate.company.branding and certificate.company.branding.signature_title and certificate.company.branding.signature_title|replace('.', '')|lower != 'representante legal' else 'Responsable autorizado') %}
   <b>{{ work_signatory }}</b>
   <small>{{ work_signatory_title }}</small>
   <small>{{ certificate.company_name_snapshot }}</small>
