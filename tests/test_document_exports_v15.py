@@ -174,9 +174,9 @@ def test_certificate_preview_endpoint_uses_same_body_as_export_model():
         assert constancia_response.status_code == 200
         constancia_body = constancia_response.json()["body"]
         assert "es empleado/a de la firma comercial" in constancia_body
-        assert "de nacionalidad paraguaya" in constancia_body
+        assert "de nacionalidad PARAGUAYA" in constancia_body
         assert "domiciliado/a en" in constancia_body
-        assert "ubicada en" in constancia_body
+        assert "ubicada sobre la calle" in constancia_body
         assert "remuneración mensual de Gs." in constancia_body
         assert "para los fines y efectos que hubiere lugar" in constancia_body
 
