@@ -856,13 +856,12 @@ def test_legacy_calculation_cannot_be_approved_after_amount_is_tampered(web_case
         follow_redirects=False,
     )
     assert response.status_code == 303, response.text
-    item = (
-        db.query(CalculationRecord)
-        .filter_by(company_id=company.id, employee_id=employee.id, source="Cálculo automático")
-        .order_by(CalculationRecord.id.desc())
-        .first()
-    )
+    saved_match = re.search(r"saved=(\d+)", response.headers["location"])
+    assert saved_match, response.headers["location"]
+    db.rollback()
+    item = db.get(CalculationRecord, int(saved_match.group(1)))
     assert item is not None and item.status == "Revisar"
+    assert item.company_id == company.id and item.employee_id == employee.id
 
     item.amount += 1
     db.commit()
