@@ -272,7 +272,7 @@ def test_constancia_matches_requested_model_and_signature_in_word_pdf():
         employee_address="Barrio La Blanca, Ciudad del Este",
     )
     assert title == "Constancia de Trabajo"
-    assert body.startswith("C E R T I F I C O:\\n\\n")
+    assert body.startswith("C E R T I F I C O:\n\n")
     assert "Que BLANCA ARAUJO, con C.I. N.º 1.234.567, de nacionalidad PARAGUAYA" in body
     assert "de estado civil SOLTERA" in body
     assert "domiciliado/a en Barrio La Blanca, Ciudad del Este" in body
