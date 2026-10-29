@@ -189,7 +189,7 @@ def test_certificate_preview_endpoint_uses_same_body_as_export_model():
         assert "de nacionalidad PARAGUAYA" in constancia_body
         assert "domiciliado/a en" in constancia_body
         assert "ubicada sobre la calle" in constancia_body
-        assert "remuneración mensual de Gs." in constancia_body
+        assert "remuneración mensual registrada de Gs." in constancia_body
         assert "para los fines y efectos a que hubiere lugar" in constancia_body
         assert "a los veintinueve días" not in constancia_body
 
@@ -334,7 +334,7 @@ def test_constancia_matches_requested_model_and_signature_in_word_pdf():
     assert "es empleado/a de la firma comercial TALLER LUKY - JAVIER MIR" in body
     assert "ubicada sobre la calle KM 5,5 - LA BLANCA" in body
     assert "desempeñándose como Auxiliar administrativa" in body
-    assert "remuneración mensual de Gs. 3.044.000" in body
+    assert "remuneración mensual registrada de Gs. 3.044.000" in body
     assert "a los veintinueve días del mes de octubre del año dos mil veintiséis" not in body
     assert "para los fines y efectos a que hubiere lugar" in body
 
@@ -368,7 +368,7 @@ def test_constancia_matches_requested_model_and_signature_in_word_pdf():
     pdf = PdfReader(io.BytesIO(build_pdf_bytes(data)))
     pdf_text = " ".join(" ".join((page.extract_text() or "").split()) for page in pdf.pages)
     assert "ubicada sobre la calle KM 5,5 - LA BLANCA" in pdf_text
-    assert "remuneración mensual de Gs. 3.044.000" in pdf_text
+    assert "remuneración mensual registrada de Gs. 3.044.000" in pdf_text
     assert "JAVIER MIRANDA" in pdf_text and "Responsable" in pdf_text
     assert "C E R T I F I C O:" in pdf_text
     assert pdf_text.count("a los veintinueve días del mes de octubre del año dos mil veintiséis") == 1
