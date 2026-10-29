@@ -6458,6 +6458,7 @@ def prepare_reop_salary_submission(
         XLSX_MIME,
         build_reop_salary_handoff_workbook,
         build_reop_salary_payload,
+        validate_reop_profile_readiness,
         validate_reop_salary_payload,
     )
 
@@ -6491,6 +6492,7 @@ def prepare_reop_salary_submission(
         hours_worked=hours_worked,
         pieces_or_tasks=pieces_or_tasks,
     )
+    payload["profile_validation_errors"] = validate_reop_profile_readiness(db, company, employee)
     errors = validate_reop_salary_payload(payload)
     content = build_reop_salary_handoff_workbook(payload)
     batch = IntegrationBatch(
@@ -6543,9 +6545,9 @@ def validate_reop_salary_submission(
     db: Session = Depends(get_db),
 ):
     """Apply local preflight validation and approval; never claims MTESS acceptance."""
-    from .reop_salary_service import validate_reop_salary_payload
+    from .reop_salary_service import validate_reop_profile_readiness, validate_reop_salary_payload
 
-    item, company, _employee = _salary_report_record(db, user, calculation_id)
+    item, company, employee = _salary_report_record(db, user, calculation_id)
     batch = db.get(IntegrationBatch, batch_id)
     if (
         not batch
@@ -6562,7 +6564,10 @@ def validate_reop_salary_submission(
         payload = {}
     if not isinstance(payload, dict):
         payload = {}
-    errors = validate_reop_salary_payload(payload)
+    errors = list(dict.fromkeys([
+        *validate_reop_salary_payload(payload),
+        *validate_reop_profile_readiness(db, company, employee),
+    ]))
     if errors:
         batch.error_message = "\n".join(errors)
         write_audit(
