@@ -16,6 +16,15 @@
 .certificate-preview-signature-pair>div{display:flex;flex-direction:column;align-items:center;min-width:0}
 .certificate-preview-signature-pair b,.certificate-preview-signature-pair small{display:block;line-height:1.5;margin-top:3px;text-align:center}
 .certificate-preview-receipt{margin:16px 0 0;color:#68768c;font-size:.68rem;line-height:1.55;text-align:center}
+.preaviso-calculation-status-wrap{grid-column:1/-1;min-width:0}
+.preaviso-calculation-status{font-size:.82rem;line-height:1.5;margin:3px 0;color:#526078}
+.preaviso-calculation-status.error{color:#9a3412}
+.preaviso-calculation-status.success{color:#166534}
+.preaviso-calculation-summary{display:grid;gap:5px;padding:10px 12px;border:1px solid #cbd5e1;border-radius:8px;background:#f8fafc;font-size:.8rem;line-height:1.5}
+.preaviso-calculation-summary b{color:#102b63}
+.preaviso-calculation-summary span,.preaviso-calculation-summary small{color:#475569}
+.preaviso-calculation-actions{grid-column:1/-1;display:flex;justify-content:flex-end}
+.certificate-actions button:disabled{opacity:.45;cursor:not-allowed;filter:saturate(.3)}
 @media(max-width:760px){.certificate-type-menu{max-height:42vh;overflow:auto}}
 </style>
 <div class="page-header certificates-header">
@@ -43,7 +52,7 @@
 ] %}
 {% set initial_type = selected_document_type or certificate_types.keys()|list|first %}
 <form method="post" action="/app/certificates" class="certificate-workspace" id="certificateForm" data-module-selection><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-  <input type="hidden" name="calculation_id" value="{{ selected_calculation.id if selected_calculation else '' }}">
+  <input type="hidden" name="calculation_id" id="certificateCalculationId" value="{{ selected_calculation.id if selected_calculation else '' }}">
   <aside class="certificate-type-menu" aria-label="Tipos de documentos">
     {% for key, label in certificate_menu_types %}<button type="button" class="certificate-type-button {{ 'active' if key == initial_type }}" data-certificate-type="{{ key }}" data-signature-mode="{{ signature_modes.get(key, 'employer') }}" data-receipt-mode="{{ receipt_modes.get(key, '') }}">{{ label }}</button>{% endfor %}
     <input type="hidden" name="document_type" id="certificateType" value="{{ initial_type }}">
@@ -178,9 +187,28 @@
       </div>
       <label class="specific-field" data-specific="permiso_paternidad">Fecha de nacimiento o hecho generador del permiso<input type="date" name="birth_event_date" id="certificateBirthEventDate"></label>
 
-      <div class="document-field-section specific-field" data-specific="notificacion_preaviso"><b>Control del preaviso</b><span>Para contratos por tiempo indefinido, el artículo 87 prevé plazos de 30, 45, 60 o 90 días según la antigüedad, una vez cumplido el período de prueba. Verificá modalidad contractual, antigüedad y excepciones antes de emitir; el sistema calcula el intervalo entre fechas, no certifica por sí solo que el plazo legal sea suficiente.</span></div>
+      <div class="document-field-section specific-field" data-specific="notificacion_preaviso"><b>Vinculación con Cálculo → Preaviso</b><span>Se consultan los cálculos guardados del funcionario seleccionado. El importe y el plazo calculados son datos de referencia; verificá que las fechas y el plazo legal del caso coincidan antes de emitir.</span></div>
+      <div class="document-form-grid specific-field" data-specific="notificacion_preaviso">
+        <label>Período del cálculo
+          <select name="notice_reference_period" id="certificateNoticeReferencePeriod" required disabled>
+            <option value="">Seleccioná un funcionario para buscar registros</option>
+          </select>
+        </label>
+        <div class="preaviso-calculation-status-wrap" aria-live="polite" aria-atomic="true">
+          <p id="preavisoCalculationStatus" class="preaviso-calculation-status">Seleccioná una empresa y un funcionario para consultar Cálculo → Preaviso.</p>
+          <div id="preavisoCalculationSummary" class="preaviso-calculation-summary hidden">
+            <b id="preavisoCalculationSummaryTitle">Cálculo vinculado</b>
+            <span id="preavisoCalculationSummaryDetails"></span>
+            <small id="preavisoCalculationSummaryNotes"></small>
+          </div>
+        </div>
+        <div class="preaviso-calculation-actions">
+          <button class="btn ghost" type="button" id="cancelPreaviso">Cancelar</button>
+        </div>
+      </div>
+      <div class="document-field-section specific-field" data-specific="notificacion_preaviso"><b>Control legal</b><span>Para contratos por tiempo indefinido, el artículo 87 contempla plazos de 30, 45, 60 o 90 días según la antigüedad, una vez cumplido el período de prueba, con las excepciones legales. El sistema no determina automáticamente que el plazo sea suficiente.</span></div>
       <div class="document-field-section specific-field" data-specific="renuncia despido amonestacion cambio_salarial baja_funcionario"><b>Terminación, comunicaciones y medidas disciplinarias</b><span>Las causas y fechas deben registrarse de forma específica y ser revisadas antes de emitir el documento.</span></div>
-      <label class="specific-field" data-specific="renuncia despido baja_funcionario">Motivo / causa a consignar<textarea name="termination_reason" id="certificateTerminationReason" rows="2"></textarea></label>
+      <label class="specific-field" data-specific="notificacion_preaviso renuncia despido baja_funcionario">Motivo / causa a consignar (opcional)<textarea name="termination_reason" id="certificateTerminationReason" rows="2" placeholder="Solo se incorporará si completás el campo."></textarea></label>
       <div class="document-form-grid specific-field" data-specific="notificacion_preaviso despido baja_funcionario">
         <label>Último día trabajado<input type="date" name="last_worked_date" id="certificateLastWorkedDate"></label>
         <label>Inicio del preaviso<input type="date" name="notice_start_date" id="certificateNoticeStartDate"></label>
