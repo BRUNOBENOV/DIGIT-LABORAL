@@ -23,6 +23,7 @@ from app.document_export import (
     guaranies_in_words,
 )
 from docx import Document as WordDocument
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 from pypdf import PdfReader
 import io
 from app.main import APP_BUILD, APP_VERSION, app
@@ -65,9 +66,9 @@ def test_certificate_a_preview_uses_model_text_and_uncached_static_asset():
         assert f"app.js?v={APP_VERSION}" in page.text
         script = client.get(f"/static/app.js?v={APP_VERSION}")
         assert script.status_code == 200
-        assert "ha trabajado en esta firma comercial durante el lapso comprendido entre el " in script.text
-        assert "se retira por su propia voluntad" in script.text
-        assert "a nuestra entera satisfacción" in script.text
+        assert "prestó servicios en la firma comercial" in script.text
+        assert "se retira por su propia voluntad" not in script.text
+        assert "a nuestra entera satisfacción" not in script.text
         assert "scheduleCanonicalCertificatePreview(type)" in script.text
         assert "formData.set('intent', 'preview')" in script.text
         assert "if (!companySelect.value || !employeeSelect.value) return;" in script.text
@@ -81,7 +82,8 @@ def test_certificate_a_preview_uses_model_text_and_uncached_static_asset():
         assert 'data-legal-representative=' in page.text
         assert 'id="certificatePreviewAddress"' in page.text
         assert "C E R T I F I C O:" in script.text
-        assert "previewDate.style.display = type === 'constancia' ? 'none' : '';" in script.text
+        assert "previewDate.style.display = '';" in script.text
+        assert "previewDate.style.textAlign = certificateModelTypes.has(type) ? 'right' : '';" in script.text
         assert ".certificate-preview-signature-pair b,.certificate-preview-signature-pair small{display:block" in page.text
         assert 'id="certificatePreviewSignaturePair" style="display:none!important;"' in page.text
         assert 'id="certificatePreviewReceipt"' in page.text
@@ -101,16 +103,16 @@ def test_certificate_b_matches_requested_model():
         salary=0,
         issue_date=date(2026, 10, 29),
         city="Ciudad del Este",
-        metadata={"effective_date": "2026-10-24", "last_period_salary_amount": 0},
+        metadata={"effective_date": "2026-10-24", "last_period_salary_amount": 2_500_000},
     )
     assert title == "Certificado de Trabajo B"
     assert body.startswith("C E R T I F I C O:")
-    assert "perteneció a la dotación de personal de esta firma KAMNIZ SRL" in body
-    assert "habiendo ingresado a nuestro servicio el día 1 de julio de 2026" in body
-    assert "prestado servicios hasta el día 24 de octubre de 2026" in body
+    assert "prestó servicios en la firma comercial KAMNIZ SRL" in body
+    assert "desde el 1 de julio de 2026 hasta el 24 de octubre de 2026" in body
     assert "desempeñándose como DEPOSITERO." in body
-    assert "Este certificado lo expido a su solicitud y para su eventual uso ante terceros." in body
-    assert "Salario devengado" not in body
+    assert "Salario devengado durante el último período de pago: Gs. 2.500.000" in body
+    assert "por su propia voluntad" not in body
+    assert "a nuestra entera satisfacción" not in body
 
     data = ExportData(
         document_type="certificado_trabajo_b",
@@ -129,7 +131,9 @@ def test_certificate_b_matches_requested_model():
     )
     word = WordDocument(io.BytesIO(build_docx_bytes(data)))
     signature_text = "\n".join(paragraph.text for paragraph in word.paragraphs)
-    assert "KAMNIZ SRL\nPIRIBEBUY E/MNHOR RODRIGUEZ\nTEL. (061)518-452" in signature_text
+    assert "KAMNIZ SRL" in signature_text
+    assert "PIRIBEBUY E/MNHOR RODRIGUEZ" in signature_text
+    assert "TEL. (061)518-452" in signature_text
     pdf = PdfReader(io.BytesIO(build_pdf_bytes(data)))
     pdf_text = " ".join(" ".join((page.extract_text() or "").split()) for page in pdf.pages)
     assert "PIRIBEBUY E/MNHOR RODRIGUEZ" in pdf_text
@@ -159,7 +163,7 @@ def test_certificate_preview_endpoint_uses_same_body_as_export_model():
         payload = response.json()
         assert payload["document_type"] == "certificado_trabajo_a"
         assert payload["body"].startswith("C E R T I F I C O:")
-        assert "ha trabajado en esta firma comercial" in payload["body"]
+        assert "prestó servicios en la firma comercial" in payload["body"]
 
         base_data["document_type"] = "certificado_trabajo_b"
         base_data["position"] = "DEPOSITERO"
@@ -168,8 +172,8 @@ def test_certificate_preview_endpoint_uses_same_body_as_export_model():
         b_payload = b_response.json()
         assert b_payload["document_type"] == "certificado_trabajo_b"
         assert b_payload["title"] == "Certificado de Trabajo B"
-        assert "perteneció a la dotación de personal" in b_payload["body"]
-        assert "habiendo ingresado a nuestro servicio" in b_payload["body"]
+        assert "prestó servicios en la firma comercial" in b_payload["body"]
+        assert "Salario devengado durante el último período de pago" in b_payload["body"] or "importe a completar según el último período de pago" in b_payload["body"]
         assert "desempeñándose como DEPOSITERO." in b_payload["body"]
 
         base_data["document_type"] = "constancia"
@@ -186,8 +190,51 @@ def test_certificate_preview_endpoint_uses_same_body_as_export_model():
         assert "domiciliado/a en" in constancia_body
         assert "ubicada sobre la calle" in constancia_body
         assert "remuneración mensual de Gs." in constancia_body
-        assert "para los fines y efectos que hubiere lugar" in constancia_body
+        assert "para los fines y efectos a que hubiere lugar" in constancia_body
+        assert "a los veintinueve días" not in constancia_body
 
+
+
+def test_work_certificate_dates_are_visible_and_right_aligned_in_word_and_pdf():
+    date_text = "CIUDAD DEL ESTE, a los veintinueve días del mes de octubre del año dos mil veintiséis"
+    for document_type, title in (
+        ("certificado_trabajo_a", "Certificado de Trabajo"),
+        ("certificado_trabajo_b", "Certificado de Trabajo B"),
+        ("constancia", "Constancia de Trabajo"),
+    ):
+        data = ExportData(
+            document_type=document_type,
+            title=title,
+            city="Ciudad del Este",
+            issue_date=date(2026, 10, 29),
+            company_name="Empresa Demo S.A.",
+            company_address="Centro, Ciudad del Este",
+            company_phone="061 500000",
+            legal_representative="María Representante",
+            signature_title="Representante legal",
+            employee_name="Juan Pérez",
+            employee_document="1.234.567",
+            position="Auxiliar",
+            admission_date=date(2022, 3, 1),
+            salary=3_800_000,
+            body="C E R T I F I C O:\\n\\nQue Juan Pérez presta servicios en Empresa Demo S.A.",
+            status="Emitido",
+        )
+        word = WordDocument(io.BytesIO(build_docx_bytes(data)))
+        date_paragraphs = [p for p in word.paragraphs if date_text in p.text]
+        assert len(date_paragraphs) == 1
+        assert date_paragraphs[0].alignment == WD_ALIGN_PARAGRAPH.RIGHT
+        word_text = "\\n".join(p.text for p in word.paragraphs)
+        assert "María Representante" in word_text
+        assert "Representante legal" in word_text
+        assert "Empresa Demo S.A." in word_text
+
+        pdf = PdfReader(io.BytesIO(build_pdf_bytes(data)))
+        pdf_text = " ".join(" ".join((page.extract_text() or "").split()) for page in pdf.pages)
+        assert pdf_text.count(date_text) == 1
+        assert "María Representante" in pdf_text
+        assert "Representante legal" in pdf_text
+        assert "Empresa Demo S.A." in pdf_text
 
 
 def test_signature_policy_is_consistent_for_certificates_and_employee_requests():
@@ -288,8 +335,8 @@ def test_constancia_matches_requested_model_and_signature_in_word_pdf():
     assert "ubicada sobre la calle KM 5,5 - LA BLANCA" in body
     assert "desempeñándose como Auxiliar administrativa" in body
     assert "remuneración mensual de Gs. 3.044.000" in body
-    assert "a los veintinueve días del mes de octubre del año dos mil veintiséis" in body
-    assert "para los fines y efectos que hubiere lugar" in body
+    assert "a los veintinueve días del mes de octubre del año dos mil veintiséis" not in body
+    assert "para los fines y efectos a que hubiere lugar" in body
 
     data = ExportData(
         document_type="constancia",
@@ -316,7 +363,6 @@ def test_constancia_matches_requested_model_and_signature_in_word_pdf():
     assert "JAVIER MIRANDA" in word_text and "Responsable" in word_text
     assert "Tel. 573-327" in word_text
     assert "C E R T I F I C O:" in word_text
-    assert "Sr(a). JAVIER MIRANDA" in word_text
     assert word_text.count("a los veintinueve días del mes de octubre del año dos mil veintiséis") == 1
 
     pdf = PdfReader(io.BytesIO(build_pdf_bytes(data)))
@@ -324,7 +370,6 @@ def test_constancia_matches_requested_model_and_signature_in_word_pdf():
     assert "ubicada sobre la calle KM 5,5 - LA BLANCA" in pdf_text
     assert "remuneración mensual de Gs. 3.044.000" in pdf_text
     assert "JAVIER MIRANDA" in pdf_text and "Responsable" in pdf_text
-    assert "Sr(a). JAVIER MIRANDA" in pdf_text
     assert "C E R T I F I C O:" in pdf_text
     assert pdf_text.count("a los veintinueve días del mes de octubre del año dos mil veintiséis") == 1
     assert "Tel. 573-327" in pdf_text
@@ -576,11 +621,12 @@ def test_work_certificate_uses_article_93_end_date_and_last_pay_period():
     )
     assert title == "Certificado de Trabajo"
     assert "C E R T I F I C O:" in body
-    assert "ha trabajado en esta firma comercial durante el lapso comprendido entre el 1 de marzo de 2022 y el 15 de octubre de 2026" in body
+    assert "prestó servicios en la firma comercial Empresa Demo S.A." in body
+    assert "desde el 1 de marzo de 2022 hasta el 15 de octubre de 2026" in body
     assert "salario devengado durante el último período de pago" in body.lower()
     assert "Gs. 3.550.000" in body
-    assert "se retira por su propia voluntad" in body
-    assert "a nuestra entera satisfacción" in body
+    assert "se retira por su propia voluntad" not in body
+    assert "a nuestra entera satisfacción" not in body
     assert "para su eventual uso ante terceros" in body
     assert "Remuneración mensual registrada: Gs. 3.800.000" not in body
 
@@ -603,7 +649,7 @@ def test_work_certificate_for_active_employee_does_not_claim_termination():
     assert "C E R T I F I C O:" in body
     assert "presta servicios en la firma comercial Empresa Demo S.A. desde el 1 de marzo de 2022" in body
     assert "por su propia voluntad" not in body
-    assert "eventual uso ante terceros" in body
+    assert "eventual uso ante terceros" not in body
 
 def test_internal_contract_models_have_type_specific_official_model_fields():
     metadata = {
