@@ -1,3 +1,10 @@
+## 2.6.34 — Sincronización de vista previa del Certificado A
+
+- Actualiza el texto generado por el navegador para que coincida con el modelo automatizado del Certificado A en Word y PDF.
+- Centra la fecha y el encabezado «C E R T I F I C O:» en la vista previa.
+- Versiona la URL de app.js con la versión del sistema para evitar que el navegador siga usando el JavaScript anterior en caché.
+- Actualiza el identificador de caché del CSS del certificado y agrega prueba de regresión para el modelo y el recurso versionado.
+
 ## 2.6.33 — Modelo automatizado de Certificado de Trabajo A
 
 - Adapta el texto del Certificado A al modelo solicitado, integrando automáticamente nombre, documento, fecha de ingreso, fecha de conclusión, cargo y fecha/lugar de emisión.
