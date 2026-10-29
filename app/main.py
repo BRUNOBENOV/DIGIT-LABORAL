@@ -8342,6 +8342,7 @@ async def upload_integration_receipt(
     batch_id: int,
     status_value: Annotated[str, Form(alias="status")] = "Presentado",
     external_reference: Annotated[str, Form()] = "",
+    result_detail: Annotated[str, Form()] = "",
     receipt: UploadFile | None = File(None),
     user: User = Depends(require_roles("administrador", "contador")),
     db: Session = Depends(get_db),
@@ -8399,6 +8400,11 @@ async def upload_integration_receipt(
     now = datetime.now(UTC)
     batch.status = status_value
     batch.external_reference = reference_value
+    clean_result_detail = clean_text(result_detail, max_length=3000)
+    if status_value in {"Observado", "Rechazado"}:
+        batch.error_message = clean_result_detail or "El resultado de REOP requiere revisión; registrá el detalle y corregí el siguiente intento."
+    elif status_value in {"Presentado", "Aceptado"}:
+        batch.error_message = ""
     if status_value == "Presentado" and previous_batch_status != "Presentado":
         batch.submitted_at = now
     if status_value == "Aceptado" and previous_batch_status != "Aceptado":
@@ -8413,8 +8419,16 @@ async def upload_integration_receipt(
             event.submitted_at = now
         if status_value == "Aceptado" and previous_event_status != "Aceptado":
             event.approved_by = user.email
-    write_audit(db, user, "registrar", "comprobante_integracion", str(batch.id), status_value)
+    audit_detail = status_value
+    if clean_result_detail:
+        audit_detail += f" · {clean_result_detail[:500]}"
+    write_audit(db, user, "registrar", "comprobante_integracion", str(batch.id), audit_detail)
     db.commit()
+    if batch.calculation_record_id:
+        return RedirectResponse(
+            f"/app/reports/liquidaciones-salarios/{batch.calculation_record_id}?reop_batch={batch.id}&receipt=1",
+            status_code=303,
+        )
     return RedirectResponse(f"/app/compliance?company_id={batch.company_id}&receipt=1", status_code=303)
 
 
