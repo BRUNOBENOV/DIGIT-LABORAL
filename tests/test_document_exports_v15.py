@@ -269,7 +269,7 @@ def test_notification_preaviso_uses_formal_text_dates_and_article_89_rights():
         },
     )
     assert title == "Notificación de Preaviso"
-    assert "Señor/a\\nALBINO HERMES, FRANCO, con C.I. N.º 1.234.567" in body
+    assert "Señor/a\nALBINO HERMES, FRANCO, con C.I. N.º 1.234.567" in body
     assert "ha resuelto prescindir de sus servicios" in body
     assert "desde el 17 de julio de 2026" in body
     assert "hasta el 31 de agosto de 2026" in body
