@@ -897,14 +897,50 @@ def _docx_header(document: Document, data: ExportData) -> None:
     p_pr.append(borders)
 
 
+BOTH_SIGNATURE_DOCUMENT_TYPES = frozenset({
+    "contrato_trabajo", "contrato_tiempo_parcial", "contrato_mipymes_plazo_determinado",
+    "contrato_mipymes_80", "adenda_prorroga_contrato", "notificacion_preaviso",
+    "despido", "amonestacion", "cambio_salarial", "alta_funcionario", "baja_funcionario",
+    "aguinaldo_anual", "aguinaldo_proporcional", "recibo_salario", "liquidacion_final",
+    "notificacion_vacaciones", "usufructo_vacaciones", "recibo_vacaciones",
+})
+EMPLOYEE_SIGNATURE_DOCUMENT_TYPES = frozenset({
+    "permiso_paternidad", "renuncia", "solicitud_vacacion", "permiso_laboral",
+})
+RECEIPT_DATE_DOCUMENT_TYPES = frozenset({
+    "notificacion_vacaciones", "baja_funcionario", "alta_funcionario", "cambio_salarial",
+})
+RECEIPT_DISCLAIMER_DOCUMENT_TYPES = frozenset({
+    "notificacion_preaviso", "despido", "amonestacion",
+})
+
+
+def document_signature_mode(document_type: str) -> str:
+    """Return the signature layout used consistently by preview, print, Word and PDF."""
+    if document_type in BOTH_SIGNATURE_DOCUMENT_TYPES:
+        return "both"
+    if document_type in EMPLOYEE_SIGNATURE_DOCUMENT_TYPES:
+        return "employee"
+    return "employer"
+
+
+def document_receipt_mode(document_type: str) -> str:
+    """Return the corresponding receipt/authorization note, if this document requires one."""
+    if document_signature_mode(document_type) == "employee":
+        return "employee_authorization"
+    if document_type in RECEIPT_DISCLAIMER_DOCUMENT_TYPES:
+        return "receipt_disclaimer"
+    if document_type in RECEIPT_DATE_DOCUMENT_TYPES:
+        return "receipt_date"
+    return ""
+
+
 def _requires_both_signatures(document_type: str) -> bool:
-    return document_type in {
-        "contrato_trabajo", "contrato_tiempo_parcial", "contrato_mipymes_plazo_determinado",
-        "contrato_mipymes_80", "adenda_prorroga_contrato", "notificacion_preaviso",
-        "despido", "amonestacion", "cambio_salarial", "alta_funcionario", "baja_funcionario",
-        "aguinaldo_anual", "aguinaldo_proporcional", "recibo_salario", "liquidacion_final",
-        "notificacion_vacaciones", "usufructo_vacaciones", "recibo_vacaciones",
-    }
+    return document_signature_mode(document_type) == "both"
+
+
+def _requires_employee_signature(document_type: str) -> bool:
+    return document_signature_mode(document_type) == "employee"
 
 
 def _add_document_detail_table_docx(document: Document, data: ExportData) -> None:
@@ -1005,20 +1041,18 @@ def _add_signature_table_docx(document: Document, data: ExportData) -> None:
                 if data.signature_title:
                     p.add_run(f"\n{data.signature_title}").font.size = Pt(8)
                 p.add_run(f"\n{data.company_name}").font.size = Pt(8)
-        if document_type in {
-            "notificacion_preaviso", "despido", "amonestacion", "notificacion_vacaciones",
-            "baja_funcionario", "alta_funcionario", "cambio_salarial",
-        }:
+        receipt_mode = document_receipt_mode(document_type)
+        if receipt_mode in {"receipt_date", "receipt_disclaimer"}:
             p = document.add_paragraph("Fecha de recepción: ____/____/________")
             p.paragraph_format.space_before = Pt(10)
             p.runs[0].font.size = Pt(8.5)
-            if document_type in {"notificacion_preaviso", "despido", "amonestacion"}:
+            if receipt_mode == "receipt_disclaimer":
                 p2 = document.add_paragraph("La firma acredita recepción y no necesariamente conformidad con el contenido.")
                 p2.paragraph_format.space_before = Pt(2)
                 for run in p2.runs:
                     run.italic = True
                     run.font.size = Pt(8)
-    elif document_type in {"permiso_paternidad", "renuncia", "solicitud_vacacion", "permiso_laboral"}:
+    elif _requires_employee_signature(document_type):
         p = document.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         p.add_run("\n\n_______________________________\n")
@@ -1342,14 +1376,7 @@ def build_pdf_bytes(data: ExportData) -> bytes:
         story.append(detail_table)
         story.append(Spacer(1, 8 * mm))
 
-    signature_types = {
-        "contrato_trabajo", "contrato_tiempo_parcial", "contrato_mipymes_plazo_determinado",
-        "contrato_mipymes_80", "adenda_prorroga_contrato", "notificacion_preaviso",
-        "despido", "amonestacion", "cambio_salarial", "alta_funcionario", "baja_funcionario",
-        "aguinaldo_anual", "aguinaldo_proporcional", "recibo_salario", "liquidacion_final",
-        "notificacion_vacaciones", "usufructo_vacaciones", "recibo_vacaciones",
-    }
-    if data.document_type in signature_types:
+    if _requires_both_signatures(data.document_type):
         left = "______________________________<br/><b>Firma / recepción del trabajador/a</b>"
         if data.employee_name:
             left += f"<br/>{escape(data.employee_name)}"
@@ -1368,15 +1395,13 @@ def build_pdf_bytes(data: ExportData) -> bytes:
         )
         signatures.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
         story.append(signatures)
-        if data.document_type in {
-            "notificacion_preaviso", "despido", "amonestacion", "notificacion_vacaciones",
-            "baja_funcionario", "alta_funcionario", "cambio_salarial",
-        }:
+        receipt_mode = document_receipt_mode(data.document_type)
+        if receipt_mode in {"receipt_date", "receipt_disclaimer"}:
             story.append(Spacer(1, 5 * mm))
             story.append(Paragraph("Fecha de recepción: ____/____/________", small_style))
-            if data.document_type in {"notificacion_preaviso", "despido", "amonestacion"}:
+            if receipt_mode == "receipt_disclaimer":
                 story.append(Paragraph("La firma acredita recepción y no necesariamente conformidad con el contenido.", small_style))
-    elif data.document_type in {"permiso_paternidad", "renuncia", "solicitud_vacacion", "permiso_laboral"}:
+    elif _requires_employee_signature(data.document_type):
         sig = "______________________________<br/>"
         sig += f"<b>{escape(data.employee_name or 'Firma del trabajador/a')}</b>"
         if data.employee_document:
