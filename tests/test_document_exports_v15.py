@@ -363,7 +363,7 @@ def test_constancia_matches_requested_model_and_signature_in_word_pdf():
     word_text = "\n".join(paragraph.text for paragraph in word.paragraphs)
     assert "domiciliado/a en Barrio La Blanca, Ciudad del Este" in word_text
     assert "JAVIER MIRANDA" in word_text and "Responsable" in word_text
-    assert "Tel. 573-327" in word_text
+    assert "TEL. 573-327" in word_text
     assert "C E R T I F I C O:" in word_text
     assert word_text.count("a los veintinueve días del mes de octubre del año dos mil veintiséis") == 1
 
