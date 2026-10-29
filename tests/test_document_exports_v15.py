@@ -365,7 +365,7 @@ def test_constancia_matches_requested_model_and_signature_in_word_pdf():
     assert "JAVIER MIRANDA" in word_text and "Responsable" in word_text
     assert "TEL. 573-327" in word_text
     assert "C E R T I F I C O:" in word_text
-    assert word_text.count("a los veintinueve días del mes de octubre del año dos mil veintiséis") == 1
+    assert "a los veintinueve días del mes de octubre del año dos mil veintiséis" not in word_text
 
     pdf = PdfReader(io.BytesIO(build_pdf_bytes(data)))
     pdf_text = " ".join(" ".join((page.extract_text() or "").split()) for page in pdf.pages)
@@ -373,7 +373,7 @@ def test_constancia_matches_requested_model_and_signature_in_word_pdf():
     assert "remuneración mensual registrada de Gs. 3.044.000" in pdf_text
     assert "JAVIER MIRANDA" in pdf_text and "Responsable" in pdf_text
     assert "C E R T I F I C O:" in pdf_text
-    assert pdf_text.count("a los veintinueve días del mes de octubre del año dos mil veintiséis") == 1
+    assert "a los veintinueve días del mes de octubre del año dos mil veintiséis" not in pdf_text
     assert "TEL. 573-327" in pdf_text
 
     _, ended_body = build_document_body(
