@@ -1427,6 +1427,10 @@ def calculation_label(value: str) -> str:
 def next_document_number(db: Session, company: Company, document_type: str, branding: CompanyBranding | None) -> str:
     year = date.today().year
     prefix = (branding.document_prefix if branding else "DL") or "DL"
+    # Serialize automatic number allocation per company in PostgreSQL. The row
+    # lock is held by this request's transaction through certificate insertion
+    # and commit, so concurrent requests cannot observe the same count.
+    db.scalar(select(Company.id).where(Company.id == company.id).with_for_update())
     count = db.scalar(
         select(func.count(GeneratedCertificate.id)).where(
             GeneratedCertificate.company_id == company.id,
