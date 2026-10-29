@@ -45,6 +45,8 @@ from .document_export import (
     ExportData,
     build_document_body,
     document_detail_table_data,
+    document_signature_mode,
+    document_receipt_mode,
     build_docx_bytes,
     build_pdf_bytes,
     decode_metadata,
@@ -5294,6 +5296,8 @@ def certificates_page(
         employees=employees,
         generated=generated,
         certificate_types=CERTIFICATE_TYPES,
+        signature_modes={key: document_signature_mode(key) for key in CERTIFICATE_TYPES},
+        receipt_modes={key: document_receipt_mode(key) for key in CERTIFICATE_TYPES},
         selected_calculation=selected_calculation,
         selected_company=selected_company,
         selected_employee=selected_employee,
@@ -5736,6 +5740,8 @@ def print_certificate(certificate_id: int, request: Request, user: User = Depend
     return render(
         request, "certificate_print.html", db, user,
         certificate=item, metadata=metadata, detail_table=detail_table,
+        signature_mode=document_signature_mode(item.document_type),
+        receipt_mode=document_receipt_mode(item.document_type),
     )
 
 
