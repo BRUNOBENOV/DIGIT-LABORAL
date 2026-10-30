@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import re
+from datetime import date
 
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.config import settings
 from app.database import SessionLocal
-from app.main import app
+from app.main import app, _archived_employee_previous_state
 from app.models import Employee
 
 
@@ -44,6 +45,44 @@ def test_employee_maintenance_ui_contains_legajo_lookup_and_section_filters():
             "employeeCodeFeedback",
         ):
             assert expected in response.text
+
+
+def test_employee_dossier_exposes_safe_archive_action_for_authorized_users():
+    with SessionLocal() as db:
+        employee = db.scalar(
+            select(Employee)
+            .where(Employee.status != "Archivado")
+            .order_by(Employee.id)
+        )
+        assert employee is not None
+        employee_id = employee.id
+
+    with TestClient(app) as client:
+        _login(client)
+        response = client.get(f"/app/employees/{employee_id}")
+        assert response.status_code == 200, response.text
+        assert f'action="/app/employees/{employee_id}/archive"' in response.text
+        assert "Archivar legajo" in response.text
+        assert "No se borrará ningún dato" in response.text
+
+
+def test_archived_employee_restore_recovers_previous_status_and_exit_date():
+    exit_date = date(2024, 6, 30)
+    assert _archived_employee_previous_state(
+        "Estado anterior: Desvinculado; Fecha de salida anterior: 2024-06-30. Archivo lógico.",
+        None,
+    ) == ("Desvinculado", exit_date)
+
+    assert _archived_employee_previous_state(
+        "Estado anterior: Activo; Fecha de salida anterior: Sin fecha. Archivo lógico.",
+        exit_date,
+    ) == ("Activo", None)
+
+    # Older archive events did not save the previous state. Keep a known exit date.
+    assert _archived_employee_previous_state(
+        "Registro archivado de forma lógica.",
+        exit_date,
+    ) == ("Desvinculado", exit_date)
 
 
 def test_seeded_employee_can_be_loaded_by_company_and_legajo():
