@@ -129,6 +129,7 @@ def _row_to_record(headers: list[str], values: tuple[Any, ...], excel_row: int, 
         "profession": _text(raw.get("PROFES"))[:160],
         "admission_date": _date(raw.get("FECENT"), epoch),
         "termination_date": _date(raw.get("FECSAL"), epoch),
+        "termination_present": raw.get("FECSAL") not in (None, ""),
         "birth_date": _date(raw.get("FECNAC"), epoch),
         "salary": _money(raw.get("SALACT")),
         "ips_raw": _text(raw.get("IPSXXX")).upper(),
@@ -230,6 +231,7 @@ def parse_legacy_employee_workbook(
         no_ci_groups = 0
         invalid_birth_groups = 0
         missing_salary_groups = 0
+        invalid_termination_groups = 0
         open_groups = 0
         closed_groups = 0
         group_today = today or date.today()
@@ -314,7 +316,12 @@ def parse_legacy_employee_workbook(
             ) for record in records):
                 invalid_birth_groups += 1
 
-            all_termination_dates = [record["termination_date"] for record in records if record["termination_date"]]
+            all_termination_dates = [
+                record["termination_date"] for record in records
+                if record["termination_date"] and (
+                    not record["admission_date"] or record["termination_date"] >= record["admission_date"]
+                )
+            ]
             termination = None if current_employment else (max(all_termination_dates) if all_termination_dates else None)
             company = company_matches[0]
             if current_employment:
@@ -347,11 +354,12 @@ def parse_legacy_employee_workbook(
                 notes.append("Fecha de nacimiento de origen no utilizada por inconsistencia con la fecha de ingreso.")
             if salary_record is None:
                 notes.append("Salario actual no informado en la fuente; se dejó en Gs. 0 para revisión.")
+            if invalid_termination:
+                invalid_termination_groups += 1
+                notes.append("Una o más fechas de egreso de la fuente son inválidas o anteriores al ingreso; no se cargó una fecha de egreso dudosa.")
             if not any(record["admission_date"] for record in open_records) and current_employment:
                 notes.append("El registro abierto no indica ingreso; se usa la última fecha de ingreso disponible del legajo.")
-            if company["status"] == "Archivada":
-                employee_status = "Archivado"
-            elif current_employment:
+            if current_employment:
                 employee_status = "Activo"
             else:
                 employee_status = "Desvinculado"
@@ -373,7 +381,9 @@ def parse_legacy_employee_workbook(
                         "effective_date": record["admission_date"].isoformat(),
                         "amount": record["salary"],
                     })
-                if record["termination_date"]:
+                if record["termination_date"] and (
+                    not record["admission_date"] or record["termination_date"] >= record["admission_date"]
+                ):
                     periods.append({
                         "event_type": "Egreso histórico",
                         "title": f"Egreso histórico · {record['legacy_employee_code'] or 'sin CODTRA'}",
@@ -453,6 +463,7 @@ def parse_legacy_employee_workbook(
             "without_cedula": sum(1 for item in candidates if item["synthetic_document"]),
             "invalid_birth_date": sum(1 for item in candidates if item["warning_invalid_birth"]),
             "without_salary": missing_salary_groups,
+            "invalid_termination_dates": invalid_termination_groups,
             "historical_events": sum(len(item["events"]) for item in candidates),
             "archived_company_employees": sum(1 for item in candidates if item["company_status"] == "Archivada"),
         }
