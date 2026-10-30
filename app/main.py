@@ -5,6 +5,7 @@ import csv
 import calendar
 import hmac
 import io
+import gzip
 import json
 import math
 import logging
@@ -141,6 +142,7 @@ from .labor_code_sync import (
     normalize_search,
     sync_labor_code,
 )
+from .legacy_employee_import import parse_legacy_employee_workbook
 from .import_service import (
     ImportPreview,
     build_employee_template,
@@ -856,7 +858,9 @@ def _validate_employee_payload(
     status_value = clean_text(payload.get("status", existing.status if existing else "Activo"), max_length=30)
     if status_value not in {"Activo", "Inactivo", "Desvinculado"}:
         raise HTTPException(422, "El estado seleccionado no es válido. El archivo de legajos se realiza mediante la acción específica de archivo.")
-    if status_value in {"Inactivo", "Desvinculado"} and not termination_date:
+    if status_value in {"Inactivo", "Desvinculado"} and not termination_date and not (
+        existing and existing.status == status_value and existing.termination_date is None
+    ):
         raise HTTPException(422, "Indicá la fecha de egreso para un funcionario inactivo o desvinculado.")
     if status_value == "Activo":
         termination_date = None
@@ -2734,7 +2738,9 @@ def api_list_employees(
 ):
     company_ids = company_ids_for_user(db, user)
     query = select(Employee).where(Employee.company_id.in_(company_ids)) if company_ids else select(Employee).where(False)
-    query = query.join(Company, Company.id == Employee.company_id).where(Company.status != "Archivada")
+    query = query.join(Company, Company.id == Employee.company_id)
+    if not show_archived:
+        query = query.where(Company.status != "Archivada")
     if company_id is not None:
         if company_id not in company_ids:
             raise HTTPException(404, "Empresa no encontrada.")
@@ -3320,7 +3326,9 @@ def employees_page(
         request, db, user, company_ids, company_id, None
     )
     query = select(Employee).where(Employee.company_id.in_(company_ids)) if company_ids else select(Employee).where(False)
-    query = query.join(Company, Company.id == Employee.company_id).where(Company.status != "Archivada")
+    query = query.join(Company, Company.id == Employee.company_id)
+    if not show_archived:
+        query = query.where(Company.status != "Archivada")
     if company_id and company_id in company_ids:
         query = query.where(Employee.company_id == company_id)
     if active_employee_id:
@@ -3342,7 +3350,9 @@ def employees_page(
             func.cast(Employee.employee_code, String).ilike(term),
         ))
     employees = list(db.scalars(query.order_by(Employee.full_name)))
-    companies_query = select(Company).where(Company.id.in_(company_ids), Company.status != "Archivada")
+    companies_query = select(Company).where(Company.id.in_(company_ids))
+    if not show_archived:
+        companies_query = companies_query.where(Company.status != "Archivada")
     companies = list(db.scalars(companies_query.order_by(Company.legal_name))) if company_ids else []
     branch_query = select(Branch).where(Branch.company_id.in_(company_ids)).order_by(Branch.name) if company_ids else select(Branch).where(False)
     branches = list(db.scalars(branch_query))
@@ -3359,6 +3369,314 @@ def employees_page(
         selected_section=section_id, status_filter=status_filter, show_archived=show_archived,
         selected_employee=active_employee_id, minimum_salary=minimum_salary,
     )
+
+
+
+def _legacy_employee_preview_path(token: str) -> Path:
+    if not re.fullmatch(r"[a-f0-9]{32}", token):
+        raise ValueError("Token de importación inválido.")
+    return IMPORT_DIR / f"legacy_employee_{token}.json.gz"
+
+
+def _save_legacy_employee_preview(token: str, payload: dict) -> None:
+    path = _legacy_employee_preview_path(token)
+    with gzip.open(path, "wt", encoding="utf-8") as handle:
+        json.dump(payload, handle, ensure_ascii=False, separators=(",", ":"))
+
+
+def _load_legacy_employee_preview(token: str, *, max_age_hours: int = 4) -> dict:
+    path = _legacy_employee_preview_path(token)
+    if not path.exists():
+        raise FileNotFoundError("La vista previa ya no está disponible. Volvé a subir el archivo.")
+    with gzip.open(path, "rt", encoding="utf-8") as handle:
+        payload = json.load(handle)
+    created_at = datetime.fromisoformat(payload["created_at"])
+    if created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=UTC)
+    if created_at < datetime.now(UTC) - timedelta(hours=max_age_hours):
+        path.unlink(missing_ok=True)
+        raise ValueError("La vista previa expiró. Volvé a subir el archivo.")
+    return payload
+
+
+@app.get("/app/import/legacy-employees", response_class=HTMLResponse)
+def legacy_employee_import_start(
+    request: Request,
+    user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
+    db: Session = Depends(get_db),
+):
+    return render(request, "legacy_employee_import_start.html", db, user)
+
+
+@app.post("/app/import/legacy-employees/preview")
+async def legacy_employee_import_preview(
+    file: UploadFile = File(),
+    user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
+    db: Session = Depends(get_db),
+):
+    content = await file.read(8 * 1024 * 1024 + 1)
+    if len(content) > 8 * 1024 * 1024:
+        raise HTTPException(413, "El archivo supera el máximo permitido de 8 MB.")
+    if not file.filename or not file.filename.lower().endswith(".xlsx"):
+        raise HTTPException(422, "Subí el archivo Excel histórico en formato .xlsx.")
+
+    company_ids = company_ids_for_user(db, user)
+    companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids)))) if company_ids else []
+    profiles = {
+        item.company_id: item
+        for item in db.scalars(
+            select(CompanyComplianceProfile).where(CompanyComplianceProfile.company_id.in_(company_ids))
+        )
+    } if company_ids else {}
+    branches_by_company: dict[int, Branch] = {}
+    if company_ids:
+        for branch in db.scalars(
+            select(Branch).where(Branch.company_id.in_(company_ids), Branch.active.is_(True)).order_by(Branch.id)
+        ):
+            branches_by_company.setdefault(branch.company_id, branch)
+
+    companies_by_legacy_code: dict[str, list[dict]] = {}
+    for company in companies:
+        if not company.legacy_code:
+            continue
+        profile = profiles.get(company.id)
+        branch = branches_by_company.get(company.id)
+        companies_by_legacy_code.setdefault(str(company.legacy_code).strip(), []).append({
+            "id": company.id,
+            "name": company.legal_name,
+            "status": company.status,
+            "branch_id": branch.id if branch else None,
+            "department": profile.department if profile else "",
+        })
+    try:
+        parsed = parse_legacy_employee_workbook(
+            content,
+            file.filename,
+            companies_by_legacy_code,
+            max_rows=15_000,
+            today=date.today(),
+        )
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+    token = uuid.uuid4().hex
+    payload = {
+        "token": token,
+        "user_id": user.id,
+        "studio_id": user.studio_id or 0,
+        "created_at": datetime.now(UTC).isoformat(),
+        **parsed,
+    }
+    _save_legacy_employee_preview(token, payload)
+    write_audit(
+        db, user, "previsualizar", "importacion_historica_funcionarios", token,
+        f"{file.filename}: {parsed['summary']['source_rows']} filas, "
+        f"{parsed['summary']['importable']} legajos candidatos, {parsed['summary']['excluded']} excluidos.",
+    )
+    db.commit()
+    return RedirectResponse(f"/app/import/legacy-employees/{token}", status_code=303)
+
+
+@app.get("/app/import/legacy-employees/{token}", response_class=HTMLResponse)
+def legacy_employee_import_preview_page(
+    token: str,
+    request: Request,
+    user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
+    db: Session = Depends(get_db),
+):
+    try:
+        preview = _load_legacy_employee_preview(token)
+    except (ValueError, FileNotFoundError) as exc:
+        return RedirectResponse(f"/app/import/legacy-employees?error={quote(str(exc))}", status_code=303)
+    if preview["user_id"] != user.id or preview["studio_id"] != (user.studio_id or 0):
+        raise HTTPException(403, "La vista previa no pertenece a esta sesión o estudio.")
+
+    company_ids = {item["company_id"] for item in preview["candidates"]}
+    visible_company_ids = set(company_ids_for_user(db, user))
+    if not company_ids.issubset(visible_company_ids):
+        raise HTTPException(403, "La vista previa contiene empresas fuera del estudio actual.")
+
+    existing_pairs: set[tuple[int, str]] = set()
+    if company_ids:
+        existing_records = db.scalars(select(Employee).where(Employee.company_id.in_(company_ids)))
+        existing_pairs = {
+            (item.company_id, normalize_document_number(item.document_number))
+            for item in existing_records
+        }
+    already_exists = sum(
+        1 for item in preview["candidates"]
+        if (item["company_id"], normalize_document_number(item["document_number"])) in existing_pairs
+    )
+    summary = dict(preview["summary"])
+    summary["already_exists"] = already_exists
+    summary["will_create"] = max(0, summary["importable"] - already_exists)
+    return render(
+        request, "legacy_employee_import_preview.html", db, user,
+        token=token, filename=preview["filename"], summary=summary,
+        candidates=preview["candidates"][:30], excluded=preview["excluded"],
+    )
+
+
+@app.post("/app/import/legacy-employees/{token}/confirm")
+def legacy_employee_import_confirm(
+    token: str,
+    user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
+    db: Session = Depends(get_db),
+):
+    try:
+        preview = _load_legacy_employee_preview(token)
+    except (ValueError, FileNotFoundError) as exc:
+        return RedirectResponse(f"/app/import/legacy-employees?error={quote(str(exc))}", status_code=303)
+    if preview["user_id"] != user.id or preview["studio_id"] != (user.studio_id or 0):
+        raise HTTPException(403, "La vista previa no pertenece a esta sesión o estudio.")
+
+    company_ids = {item["company_id"] for item in preview["candidates"]}
+    visible_company_ids = set(company_ids_for_user(db, user))
+    if not company_ids.issubset(visible_company_ids):
+        raise HTTPException(403, "La vista previa contiene empresas fuera del estudio actual.")
+
+    existing_by_company: dict[int, set[str]] = {}
+    existing_codes_by_company: dict[int, set[int]] = {}
+    source_codes_by_company: dict[int, set[int]] = {}
+    assigned_codes_by_company: dict[int, set[int]] = {}
+    next_code_by_company: dict[int, int] = {}
+    if company_ids:
+        existing_records = list(db.scalars(select(Employee).where(Employee.company_id.in_(company_ids))))
+        for employee in existing_records:
+            existing_by_company.setdefault(employee.company_id, set()).add(
+                normalize_document_number(employee.document_number)
+            )
+            if employee.employee_code is not None:
+                existing_codes_by_company.setdefault(employee.company_id, set()).add(employee.employee_code)
+        for item in preview["candidates"]:
+            raw_code = str(item.get("legacy_employee_code") or "")
+            if raw_code.isdigit() and int(raw_code) > 0:
+                source_codes_by_company.setdefault(item["company_id"], set()).add(int(raw_code))
+        for company_id in company_ids:
+            existing_codes = existing_codes_by_company.get(company_id, set())
+            source_codes = source_codes_by_company.get(company_id, set())
+            assigned_codes_by_company[company_id] = set(existing_codes)
+            next_code_by_company[company_id] = max(existing_codes | source_codes | {0}) + 1
+
+    new_employees: list[Employee] = []
+    candidate_refs: list[dict] = []
+    skipped_existing = 0
+    for item in preview["candidates"]:
+        company_id = item["company_id"]
+        document_number = normalize_document_number(item["document_number"])
+        if document_number in existing_by_company.get(company_id, set()):
+            skipped_existing += 1
+            continue
+
+        assigned_codes = assigned_codes_by_company.setdefault(
+            company_id, set(existing_codes_by_company.get(company_id, set()))
+        )
+        source_codes = source_codes_by_company.get(company_id, set())
+        raw_code = item.get("legacy_employee_code") or ""
+        requested_code = int(raw_code) if str(raw_code).isdigit() and int(raw_code) > 0 else None
+        if requested_code is not None and requested_code not in assigned_codes:
+            employee_code = requested_code
+        else:
+            employee_code = next_code_by_company.get(company_id, 1)
+            while employee_code in assigned_codes or employee_code in source_codes:
+                employee_code += 1
+        assigned_codes.add(employee_code)
+        next_code_by_company[company_id] = max(next_code_by_company.get(company_id, 1), employee_code + 1)
+
+        employee = Employee(
+            company_id=company_id,
+            branch_id=item.get("branch_id"),
+            employee_code=employee_code,
+            full_name=item["full_name"][:180],
+            document_number=document_number[:40],
+            birth_date=date.fromisoformat(item["birth_date"]) if item.get("birth_date") else None,
+            position=(item.get("position") or "No informado")[:140],
+            admission_date=date.fromisoformat(item["admission_date"]),
+            termination_date=date.fromisoformat(item["termination_date"]) if item.get("termination_date") else None,
+            contract_type="No especificado",
+            payment_frequency="No especificado",
+            base_salary=max(0, int(item.get("base_salary") or 0)),
+            ips_contributor=bool(item.get("ips_contributor")),
+            phone=(item.get("phone") or "")[:60],
+            address=(item.get("address") or "")[:240],
+            notes=(item.get("notes") or "")[:5000],
+            status=item["status"],
+            updated_at=datetime.now(UTC),
+            updated_by=user.email,
+        )
+        new_employees.append(employee)
+        candidate_refs.append(item)
+        existing_by_company.setdefault(company_id, set()).add(document_number)
+
+    try:
+        db.add_all(new_employees)
+        db.flush()
+        profiles_to_add = []
+        events_to_add = []
+        for employee, item in zip(new_employees, candidate_refs):
+            profile_values = item["profile"]
+            profiles_to_add.append(EmployeeComplianceProfile(
+                employee_id=employee.id,
+                document_type=profile_values.get("document_type") or "CI",
+                sex=profile_values.get("sex") or "",
+                nationality=profile_values.get("nationality") or "No informado",
+                marital_status=profile_values.get("marital_status") or "No informado",
+                birth_place=profile_values.get("birth_place") or "",
+                department=profile_values.get("department") or "",
+                district=profile_values.get("district") or "",
+                profession=profile_values.get("profession") or "",
+                occupation_code=profile_values.get("occupation_code") or "",
+                position_category=profile_values.get("position_category") or "",
+                work_schedule=profile_values.get("work_schedule") or "No informado",
+                shift=profile_values.get("shift") or "Diurno",
+                weekly_hours=int(profile_values.get("weekly_hours") or 48),
+                salary_type=profile_values.get("salary_type") or "No especificado",
+                daily_hours=int(profile_values.get("daily_hours") or 8),
+                ips_number=profile_values.get("ips_number") or "",
+                dependent_children=int(profile_values.get("dependent_children") or 0),
+                indigenous=bool(profile_values.get("indigenous")),
+                disability=bool(profile_values.get("disability")),
+                rei_status="Pendiente",
+                reop_status="Pendiente",
+                updated_at=datetime.now(UTC),
+            ))
+            for historical_event in item["events"]:
+                events_to_add.append(EmployeeEvent(
+                    employee_id=employee.id,
+                    event_type=historical_event["event_type"],
+                    title=historical_event["title"][:180],
+                    detail=historical_event["detail"],
+                    effective_date=date.fromisoformat(historical_event["effective_date"]),
+                    amount=historical_event.get("amount"),
+                    created_by=user.email,
+                ))
+        db.add_all(profiles_to_add)
+        db.add_all(events_to_add)
+        created_count = len(new_employees)
+        write_audit(
+            db, user, "confirmar", "importacion_historica_funcionarios", token,
+            f"{preview['filename']}: {created_count} legajos creados; "
+            f"{skipped_existing} existentes omitidos; {len(events_to_add)} eventos históricos.",
+        )
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            409,
+            "La base detectó un código o documento duplicado durante la importación. No se guardó ningún registro; revisá la vista previa y volvé a intentar.",
+        ) from exc
+    except Exception:
+        db.rollback()
+        raise
+
+    _legacy_employee_preview_path(token).unlink(missing_ok=True)
+    return RedirectResponse(
+        f"/app/employees?show_archived=true&legacy_imported={created_count}"
+        f"&legacy_skipped={skipped_existing}&legacy_events={len(events_to_add)}"
+        f"&legacy_excluded={len(preview['excluded'])}",
+        status_code=303,
+    )
+
 
 @app.get("/app/employees/{employee_id}", response_class=HTMLResponse)
 def employee_detail_page(
