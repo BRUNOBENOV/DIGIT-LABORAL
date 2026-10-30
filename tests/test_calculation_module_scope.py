@@ -71,3 +71,14 @@ def test_salary_entry_uses_the_selected_calculation_and_keeps_the_professional_w
     assert "overtime-total-preview" in workbench
     assert "Base IPS revisada" in fields
     assert "Otros descuentos" in fields
+
+
+def test_calculation_operation_template_does_not_include_removed_subnavigation():
+    root = ROOT / "app" / "templates"
+    operation_template = (root / "calculation_operations.html").read_text(encoding="utf-8")
+    assert "module_subnav.html" not in operation_template
+    assert not (root / "module_subnav.html").exists()
+
+    # Catch stale includes even when the referenced template is conditionally rendered.
+    for template in root.rglob("*.html"):
+        assert "module_subnav.html" not in template.read_text(encoding="utf-8"), template.name
