@@ -1,5 +1,25 @@
 {% extends "base.html" %}
-{% block title %}{{ employee.full_name }} | Digit Laboral{% endblock %}
+{% block title %}{{ employee.full_name }} | Digit Laboral
+{% if user.role in ['administrador','contador'] and employee.status == 'Activo' and not employee_exit %}
+<div class="modal" id="dossierExitModal" aria-hidden="true"><div class="modal-backdrop" data-modal-close></div><section class="modal-card">
+  <button class="modal-x" type="button" data-modal-close aria-label="Cerrar">×</button>
+  <span class="eyebrow">PROCEDIMIENTO LABORAL</span><h2>Registrar egreso</h2>
+  <p class="modal-intro">Funcionario: {{ employee.full_name }}. El egreso y el pago final se registran por separado.</p>
+  <form method="post" enctype="multipart/form-data" action="/app/employees/{{ employee.id }}/exit" class="form-grid">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Fecha efectiva de egreso *<input type="date" name="effective_date" min="{{ employee.admission_date.isoformat() }}" value="{{ today.isoformat() }}" required></label>
+    <label>Motivo *<select name="reason" required><option value="">Seleccionar</option><option value="resignation">Renuncia</option><option value="dismissal">Despido sin causa</option><option value="justified">Despido con causa</option><option value="fixed_term_expiration">Vencimiento de contrato</option><option value="mutual_consent">Mutuo consentimiento</option><option value="worker_justified">Retiro justificado</option><option value="death">Fallecimiento</option><option value="other">Otro</option></select></label>
+    <label>Quién inicia *<select name="initiated_by" required><option value="">Seleccionar</option><option>Empleador</option><option>Trabajador</option></select></label>
+    <label>Fecha de comunicación de preaviso<input name="notice_date" type="date"></label>
+    <label class="span-2"><input type="checkbox" name="pre_notice_notified" value="on"> Preaviso/notificación ya comunicada (obligatorio si la fecha es futura)</label>
+    <label class="span-2">Observaciones<textarea name="notes" maxlength="3000"></textarea></label>
+    <label class="span-2">Respaldo PDF/imagen<input type="file" name="supporting_file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"></label>
+    <p class="span-2 modal-intro">Al confirmar se abrirá el cálculo de liquidación final. El estado de pago se conservará aparte.</p>
+    <div class="form-actions span-2"><button class="btn ghost" type="button" data-modal-close>Cancelar</button><button class="btn primary" type="submit">Confirmar egreso</button></div>
+  </form>
+</section></div>
+{% endif %}
+{% endblock %}
 {% block page_name %}Expediente laboral{% endblock %}
 {% block content %}
 {% if user.role in ['administrador','contador','auxiliar'] %}<div class="dl"><a class="dl-button dl-payroll-link" href="/app/liquidaciones?company_id={{ employee.company_id }}&amp;employee_id={{ employee.id }}">Calcular y emitir una liquidación →</a></div>{% endif %}
@@ -64,6 +84,22 @@
       <a href="/app/calendar?employee_id={{ employee.id }}">Crear vencimiento</a>
     </div>
     {% if user.role in ['administrador', 'contador', 'auxiliar'] %}<button class="btn primary full" type="button" data-modal-open="eventModal">+ Registrar evento</button>{% endif %}
+    {% if employee_exit %}<div style="margin-top:14px;padding:12px;border:1px solid var(--border-color,#334155);border-radius:10px">
+      <b>{{ 'Egreso programado' if employee_exit.status == 'Programado' else 'Egreso registrado' }}</b>
+      <p>Fecha efectiva: {{ employee_exit.effective_date|fecha }} · {{ employee_exit.reason }} · Iniciado por {{ employee_exit.initiated_by }}</p>
+      {% if final_settlement %}<p><a class="btn outline" href="/app/final-settlements/{{ final_settlement.id }}">Liquidación final · {{ final_settlement.status }}</a></p>{% endif %}
+      {% if employee_exit.constancia_certificate_id %}<p><a href="/app/certificates/{{ employee_exit.constancia_certificate_id }}/download.pdf">Constancia laboral PDF</a> · <a href="/app/certificates/{{ employee_exit.constancia_certificate_id }}/download.docx">Word</a></p>{% endif %}
+    </div>{% endif %}
+    {% if user.role in ['administrador','contador'] %}
+      {% if employee.status == 'Activo' and not employee_exit %}
+        <button class="btn outline full" type="button" data-modal-open="dossierExitModal" style="margin-top:12px">Registrar egreso</button>
+      {% endif %}
+      {% if employee.status == 'Archivado' %}
+        <form method="post" action="/app/employees/{{ employee.id }}/restore" style="margin-top:12px"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn outline full" type="submit">Restaurar legajo</button></form>
+      {% else %}
+        <form method="post" action="/app/employees/{{ employee.id }}/archive" style="margin-top:12px" onsubmit="return confirm('¿Archivar este legajo? Los antecedentes se conservarán íntegramente.')"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn outline full" type="submit">Archivar legajo</button></form>
+      {% endif %}
+    {% endif %}
   </article>
 </section>
 
@@ -86,6 +122,6 @@
 
 {% if user.role in ['administrador', 'contador', 'auxiliar'] %}
 <div class="modal" id="eventModal" aria-hidden="true"><div class="modal-backdrop" data-modal-close></div><section class="modal-card"><button class="modal-x" type="button" data-modal-close>×</button><span class="eyebrow">NUEVO EVENTO</span><h2>Registrar en la línea de tiempo</h2><form method="post" action="/app/employees/{{ employee.id }}/events" class="form-grid"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label>Tipo<select name="event_type"><option>General</option><option>Contrato</option><option>Cambio salarial</option><option>Permiso</option><option>Amonestación</option><option>Capacitación</option><option>Ausencia</option><option>Reconocimiento</option></select></label><label>Fecha efectiva<input type="date" name="effective_date" value="{{ today.isoformat() }}" required></label><label class="span-2">Título<input name="title" required></label><label>Monto relacionado<input type="number" min="0" name="amount"></label><label class="span-2">Detalle<textarea name="detail" rows="4"></textarea></label><div class="form-actions span-2"><button class="btn ghost" type="button" data-modal-close>Cancelar</button><button class="btn primary" type="submit">Guardar evento</button></div></form></section></div>
-<div class="modal" id="editEmployeeDetail" aria-hidden="true"><div class="modal-backdrop" data-modal-close></div><section class="modal-card"><button class="modal-x" type="button" data-modal-close>×</button><span class="eyebrow">EDITAR FUNCIONARIO</span><h2>{{ employee.full_name }}</h2><form method="post" action="/app/employees/{{ employee.id }}/edit" class="form-grid"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label class="span-2">Nombre completo<input name="full_name" value="{{ employee.full_name }}" required></label><label>Cargo<input name="position" value="{{ employee.position }}" required></label><p class="span-2">El salario vigente solo se modifica mediante una solicitud aprobada. <a href="/app/requests">Abrir solicitudes</a>.</p><label>Correo<input type="email" name="email" value="{{ employee.email }}"></label><label>Teléfono<input name="phone" value="{{ employee.phone }}"></label><label class="span-2">Dirección<input name="address" value="{{ employee.address }}"></label><label class="span-2">Observaciones<textarea name="notes" rows="3">{{ employee.notes }}</textarea></label><div class="form-actions span-2"><button class="btn ghost" type="button" data-modal-close>Cancelar</button><button class="btn primary" type="submit">Guardar cambios</button></div></form><hr class="modal-separator"><form method="post" action="/app/employees/{{ employee.id }}/status" class="form-grid"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label>Estado<select name="status"><option {{ 'selected' if employee.status == 'Activo' }}>Activo</option><option {{ 'selected' if employee.status == 'Inactivo' }}>Inactivo</option><option {{ 'selected' if employee.status == 'Desvinculado' }}>Desvinculado</option></select></label><label>Fecha de salida<input type="date" name="termination_date" value="{{ employee.termination_date.isoformat() if employee.termination_date else '' }}"><small class="v24-inline-help">Obligatoria al pasar a Inactivo o Desvinculado; al reactivar, el sistema la limpia.</small></label><button class="btn outline span-2" type="submit">Actualizar estado</button></form></section></div>
+<div class="modal" id="editEmployeeDetail" aria-hidden="true"><div class="modal-backdrop" data-modal-close></div><section class="modal-card"><button class="modal-x" type="button" data-modal-close>×</button><span class="eyebrow">EDITAR FUNCIONARIO</span><h2>{{ employee.full_name }}</h2><form method="post" action="/app/employees/{{ employee.id }}/edit" class="form-grid"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label class="span-2">Nombre completo<input name="full_name" value="{{ employee.full_name }}" required></label><label>Cargo<input name="position" value="{{ employee.position }}" required></label><p class="span-2">El salario vigente solo se modifica mediante una solicitud aprobada. <a href="/app/requests">Abrir solicitudes</a>.</p><label>Correo<input type="email" name="email" value="{{ employee.email }}"></label><label>Teléfono<input name="phone" value="{{ employee.phone }}"></label><label class="span-2">Dirección<input name="address" value="{{ employee.address }}"></label><label class="span-2">Observaciones<textarea name="notes" rows="3">{{ employee.notes }}</textarea></label><div class="form-actions span-2"><button class="btn ghost" type="button" data-modal-close>Cancelar</button><button class="btn primary" type="submit">Guardar cambios</button></div></form><p class="modal-intro" style="margin-top:15px">La desvinculación y la fecha de egreso se administran únicamente desde «Registrar egreso». Para ocultar el expediente sin borrar datos, utilizá «Archivar legajo».</p></section></div>
 {% endif %}
 {% endblock %}
