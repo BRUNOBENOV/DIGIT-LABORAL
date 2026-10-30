@@ -2922,12 +2922,15 @@ def api_archive_employee(
     if not employee or employee.company_id not in company_ids_for_user(db, user):
         raise HTTPException(404, "Funcionario no encontrado.")
     if employee.status != "Archivado":
+        previous_status = employee.status
+        previous_termination = employee.termination_date.isoformat() if employee.termination_date else "Sin fecha"
         employee.status = "Archivado"
         employee.updated_at = datetime.now(UTC)
         employee.updated_by = user.email
         add_employee_event(
             db, employee, user, "Archivo", "Legajo archivado",
-            "Registro archivado de forma lógica; se conservaron cálculos, nóminas y documentos.",
+            f"Estado anterior: {previous_status}; Fecha de salida anterior: {previous_termination}. "
+            "Archivo lógico realizado por un usuario autorizado; se conservaron cálculos, nóminas, vacaciones, certificados y documentos.",
         )
         write_audit(db, user, "archivar", "funcionario", str(employee.id), f"Legajo {employee.employee_code} · {employee.full_name}")
         db.commit()
@@ -4154,6 +4157,7 @@ def employee_status(
     return RedirectResponse(f"/app/employees/{employee.id}", status_code=303)
 
 
+@app.post("/app/employees/{employee_id}/archive")
 @app.post("/app/employees/{employee_id}/delete")
 def archive_employee_form(
     employee_id: int,
@@ -4163,16 +4167,68 @@ def archive_employee_form(
     employee = db.get(Employee, employee_id)
     if not employee or employee.company_id not in company_ids_for_user(db, user):
         raise HTTPException(404, "Funcionario no encontrado.")
-    employee.status = "Archivado"
+    if employee.status != "Archivado":
+        previous_status = employee.status
+        previous_termination = employee.termination_date.isoformat() if employee.termination_date else "Sin fecha"
+        employee.status = "Archivado"
+        employee.updated_at = datetime.now(UTC)
+        employee.updated_by = user.email
+        add_employee_event(
+            db, employee, user, "Archivo", "Legajo archivado",
+            f"Estado anterior: {previous_status}; Fecha de salida anterior: {previous_termination}. "
+            "Archivo lógico realizado por un usuario autorizado; se conservaron cálculos, nóminas, vacaciones, certificados y documentos.",
+        )
+        write_audit(db, user, "archivar", "funcionario", str(employee.id), f"Legajo {employee.employee_code} · {employee.full_name}")
+        db.commit()
+    return RedirectResponse("/app/employees?show_archived=true&archived=1", status_code=303)
+
+
+@app.post("/app/employees/{employee_id}/restore")
+def restore_employee_form(
+    employee_id: int,
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    employee = db.get(Employee, employee_id)
+    if not employee or employee.company_id not in company_ids_for_user(db, user):
+        raise HTTPException(404, "Funcionario no encontrado.")
+    if employee.status != "Archivado":
+        raise HTTPException(409, "El legajo no está archivado.")
+    archive_event = db.scalar(
+        select(EmployeeEvent)
+        .where(EmployeeEvent.employee_id == employee.id, EmployeeEvent.event_type == "Archivo")
+        .order_by(EmployeeEvent.created_at.desc(), EmployeeEvent.id.desc())
+    )
+    detail = archive_event.detail if archive_event else ""
+    match = re.search(
+        r"Estado anterior:\\s*(Activo|Inactivo|Desvinculado);\\s*Fecha de salida anterior:\\s*(\\d{4}-\\d{2}-\\d{2}|Sin fecha)",
+        detail,
+    )
+    if match:
+        restored_status = match.group(1)
+        restored_termination = date.fromisoformat(match.group(2)) if match.group(2) != "Sin fecha" else None
+    else:
+        # Older archived records did not retain their previous state explicitly.
+        # Preserve the known termination date instead of assuming the person is active.
+        restored_termination = employee.termination_date
+        restored_status = "Desvinculado" if restored_termination else "Activo"
+
+    employee.status = restored_status
+    employee.termination_date = restored_termination
     employee.updated_at = datetime.now(UTC)
     employee.updated_by = user.email
     add_employee_event(
-        db, employee, user, "Archivo", "Legajo archivado",
-        "Registro archivado de forma lógica; se conservaron cálculos, nóminas y documentos.",
+        db, employee, user, "Desarchivo", "Legajo restaurado",
+        f"Se restauró el legajo desde el archivo lógico. Estado restituido: {restored_status}. "
+        "No se modificaron datos personales, períodos laborales, salarios ni documentos.",
+        date.today(),
     )
-    write_audit(db, user, "archivar", "funcionario", str(employee.id), f"Legajo {employee.employee_code} · {employee.full_name}")
+    write_audit(
+        db, user, "restaurar", "funcionario", str(employee.id),
+        f"Legajo {employee.employee_code} · {employee.full_name} · estado {restored_status}",
+    )
     db.commit()
-    return RedirectResponse("/app/employees?show_archived=true&archived=1", status_code=303)
+    return RedirectResponse("/app/employees?show_archived=true&restored=1", status_code=303)
 
 
 @app.get("/app/calendar", response_class=HTMLResponse)
