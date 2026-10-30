@@ -25,6 +25,7 @@
   <div><span class="eyebrow">MANTENIMIENTOS</span><h1>Funcionarios</h1><p>Legajos personales, datos laborales e historial centralizado sin alterar los cálculos ya guardados.</p></div>
   <div class="header-actions">
     <a class="btn outline" href="/app/export/employees.csv">Exportar CSV</a>
+    <a class="btn outline" href="/app/import/legacy-employees">Importar base histórica</a>
     {% if user.role in ['administrador', 'contador', 'auxiliar'] %}
       <button class="btn outline" type="button" data-modal-open="importEmployeesModal">Importar Excel</button>
       {% if user.role in ['administrador','contador'] %}<button class="btn outline" type="button" data-modal-open="sectionsModal">Administrar secciones</button>{% endif %}
@@ -40,6 +41,7 @@
 {% if request.query_params.get('form_error') %}<div class="alert danger v24-form-error" role="alert">{{ request.query_params.get('form_error') }}</div>{% endif %}
 {% if request.query_params.get('duplicate') %}<div class="alert danger" role="alert">Ya existe un funcionario con esa cédula dentro de la empresa.</div>{% endif %}
 {% if request.query_params.get('archived') %}<div class="alert success" role="status">El legajo fue archivado. Se conservan sus cálculos, nóminas, certificados y documentos vinculados.</div>{% endif %}
+{% if request.query_params.get('legacy_imported') is not none %}<div class="alert success" role="status">Importación histórica: {{ request.query_params.get('legacy_imported') }} legajos creados, {{ request.query_params.get('legacy_skipped') or 0 }} existentes omitidos, {{ request.query_params.get('legacy_events') or 0 }} antecedentes incorporados y {{ request.query_params.get('legacy_excluded') or 0 }} grupos pendientes de revisión.</div>{% endif %}
 {% if request.query_params.get('import_error') %}<div class="alert danger" role="alert">{{ request.query_params.get('import_error') }}</div>{% endif %}
 {% if request.query_params.get('imported') is not none %}<div class="alert success" role="status">Importación finalizada: {{ request.query_params.get('imported') }} creados, {{ request.query_params.get('updated') or 0 }} actualizados y {{ request.query_params.get('skipped') or 0 }} omitidos.</div>{% endif %}
 {% if request.query_params.get('salary_changes')|int > 0 %}<div class="alert warning">{{ request.query_params.get('salary_changes') }} {{ 'cambio salarial no se aplicó' if request.query_params.get('salary_changes')|int == 1 else 'cambios salariales no se aplicaron' }}. El salario vigente se conserva y debe tramitarse mediante <a href="/app/requests">una solicitud salarial</a>.</div>{% endif %}
@@ -128,10 +130,10 @@
       <label>Cargo<input name="position" id="employeePosition" required maxlength="140"></label>
       <label>Categoría laboral<input name="position_category" id="employeePositionCategory" maxlength="100" placeholder="Ej.: Administrativo, Operario"></label>
       <label>Fecha de ingreso<input type="date" name="admission_date" id="employeeAdmissionDate" required></label>
-      <label>Tipo de contrato<select name="contract_type" id="employeeContractType"><option>Tiempo indefinido</option><option>Plazo determinado</option><option>Obra o servicio</option><option>Aprendizaje</option><option>Otro</option></select></label>
-      <label>Frecuencia de pago<select name="payment_frequency" id="employeePaymentFrequency"><option>Mensual</option><option>Quincenal</option><option>Semanal</option><option>Jornal</option></select></label>
+      <label>Tipo de contrato<select name="contract_type" id="employeeContractType"><option>Tiempo indefinido</option><option>Plazo determinado</option><option>Obra o servicio</option><option>Aprendizaje</option><option>Otro</option><option>No especificado</option></select></label>
+      <label>Frecuencia de pago<select name="payment_frequency" id="employeePaymentFrequency"><option>Mensual</option><option>Quincenal</option><option>Semanal</option><option>Jornal</option><option>No especificado</option></select></label>
       <label>Salario convenido (Gs.)<input type="number" name="base_salary" id="employeeBaseSalary" min="0" step="1" required>{% if minimum_salary %}<small class="employee-field-help">Referencia mínima general: Gs. {{ minimum_salary.value|int|gs }}. Verificá el régimen aplicable.</small>{% endif %}</label>
-      <label>Tipo de salario<select name="salary_type" id="employeeSalaryType"><option>Mensual</option><option>Quincenal</option><option>Semanal</option><option>Jornal</option></select></label>
+      <label>Tipo de salario<select name="salary_type" id="employeeSalaryType"><option>Mensual</option><option>Quincenal</option><option>Semanal</option><option>Jornal</option><option>No especificado</option></select></label>
       <label>Jornada / horario<input name="work_schedule" id="employeeWorkSchedule" maxlength="120" placeholder="Ej.: Lunes a viernes, 08:00–17:00"></label>
       <label>Turno<select name="shift" id="employeeShift"><option>Diurno</option><option>Nocturno</option><option>Rotativo</option><option>Mixto</option><option>Otro</option></select></label>
       <label>Horas diarias<input type="number" name="daily_hours" id="employeeDailyHours" min="1" max="24" step="1" value="8" required></label>
