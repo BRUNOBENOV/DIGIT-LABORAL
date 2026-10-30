@@ -4,7 +4,7 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Optional
 
-from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, ForeignKey, Integer, LargeBinary, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, ForeignKey, Integer, JSON, LargeBinary, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -65,12 +65,16 @@ class ActivationRequest(Base):
 class Company(Base):
     __tablename__ = "companies"
     __table_args__ = (
-        UniqueConstraint("studio_id", "ruc", name="uq_company_ruc_per_studio"),
         UniqueConstraint("studio_id", "company_code", name="uq_company_code_per_studio"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     company_code: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    legacy_code: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    legacy_ruc: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+    legacy_source_file: Mapped[Optional[str]] = mapped_column(String(240), nullable=True)
+    legacy_source_row: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    legacy_source_data: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     studio_id: Mapped[int] = mapped_column(ForeignKey("studios.id"), index=True)
     legal_name: Mapped[str] = mapped_column(String(200), index=True)
     owner_name: Mapped[str] = mapped_column(String(180), default="")
