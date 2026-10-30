@@ -64,6 +64,28 @@
       <a href="/app/calendar?employee_id={{ employee.id }}">Crear vencimiento</a>
     </div>
     {% if user.role in ['administrador', 'contador', 'auxiliar'] %}<button class="btn primary full" type="button" data-modal-open="eventModal">+ Registrar evento</button>{% endif %}
+    {% if user.role in ['administrador','contador'] %}
+      <hr class="modal-separator">
+      {% if employee.status == 'Archivado' %}
+        <div class="employee-archive-control">
+          <b>Este legajo está archivado.</b>
+          <p class="employee-field-help">Podés restaurarlo. Se recuperará su estado laboral anterior y seguirá conservando toda su trazabilidad.</p>
+          <form method="post" action="/app/employees/{{ employee.id }}/restore" onsubmit="return confirm('¿Restaurar este legajo y devolverlo a su estado anterior? No se modificarán salarios ni documentos.');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button class="btn outline full" type="submit">Restaurar legajo</button>
+          </form>
+        </div>
+      {% else %}
+        <div class="employee-archive-control">
+          <b>¿Ya no corresponde mantener este legajo en los listados habituales?</b>
+          <p class="employee-field-help">Archivar no elimina al trabajador. Se conservarán su ficha, salarios, cálculos, liquidaciones, vacaciones, certificados, documentos e historial. Podrás consultarlo y restaurarlo después.</p>
+          <form method="post" action="/app/employees/{{ employee.id }}/archive" onsubmit="return confirm('¿Archivar este legajo? No se borrará ningún dato ni documento relacionado.');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button class="btn danger full" type="submit">Archivar legajo</button>
+          </form>
+        </div>
+      {% endif %}
+    {% endif %}
   </article>
 </section>
 
