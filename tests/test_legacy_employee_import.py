@@ -60,6 +60,13 @@ def _book_bytes() -> bytes:
         None, None, "N", "Operario", "0", 2000000,
         datetime(2017, 5, 1), datetime(2018, 5, 1),
     ])
+    sheet.append([
+        "10007", "JOSE", "LOPEZ", "1001", "001", "7777777",
+        None, None, None, None, None, "Paraguaya",
+        None, None, "Operario", None, "M", "CDE",
+        None, None, "N", "Operario", "0", 2000000,
+        datetime(2020, 5, 1), datetime(2019, 5, 1),
+    ])
     output = BytesIO()
     workbook.save(output)
     workbook.close()
@@ -81,12 +88,13 @@ def test_legacy_import_groups_rehires_and_preserves_history_without_duplicate_pe
         _book_bytes(), "trabajadores.xlsx", company_map, today=date(2026, 10, 30)
     )
 
-    assert result["summary"]["source_rows"] == 6
-    assert result["summary"]["identity_groups"] == 5
-    assert result["summary"]["importable"] == 2
+    assert result["summary"]["source_rows"] == 7
+    assert result["summary"]["identity_groups"] == 6
+    assert result["summary"]["importable"] == 3
     assert result["summary"]["excluded"] == 3
     assert result["summary"]["active"] == 1
-    assert result["summary"]["terminated"] == 1
+    assert result["summary"]["terminated"] == 2
+    assert result["summary"]["invalid_termination_dates"] == 1
     assert result["summary"]["repeated_identity_groups"] == 1
     assert result["summary"]["without_cedula"] == 1
 
@@ -106,6 +114,11 @@ def test_legacy_import_groups_rehires_and_preserves_history_without_duplicate_pe
     assert luis["synthetic_document"] is True
     assert luis["status"] == "Desvinculado"
     assert luis["termination_date"] == "2019-12-01"
+
+    jose = next(item for item in result["candidates"] if item["full_name"] == "JOSE LOPEZ")
+    assert jose["status"] == "Desvinculado"
+    assert jose["termination_date"] is None
+    assert "fechas de egreso" in jose["notes"]
 
     reasons = {item["reason"] for item in result["excluded"]}
     assert any("nombre" in reason.lower() for reason in reasons)
