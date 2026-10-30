@@ -19,6 +19,12 @@
     <label class="span-2">Base histórica (.xlsx)
       <input type="file" name="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
     </label>
+    <label class="span-2"><span><input type="checkbox" name="historical_only" value="true" checked> Importar todos como Desvinculado</span>
+      <small class="employee-field-help">Conserva el padrón histórico fuera de la nómina activa. Los vínculos abiertos en el archivo quedan pendientes de revisión, sin inventar una fecha de egreso ni una liquidación.</small>
+    </label>
+    <label class="span-2"><span><input type="checkbox" name="exclude_inconsistent_terminations" value="true" checked> Excluir legajos con egresos inconsistentes</span>
+      <small class="employee-field-help">Si cualquier período del legajo tiene un egreso inválido o anterior al ingreso, el legajo completo queda fuera de la carga para revisión manual.</small>
+    </label>
     <div class="form-actions span-2">
       <a class="btn ghost" href="/app/employees">Cancelar</a>
       <button class="btn primary" type="submit">Analizar y generar vista previa</button>
@@ -28,7 +34,7 @@
 <section class="panel" style="max-width:820px;padding:24px;margin-top:16px">
   <h3>Qué hará el proceso</h3>
   <ul>
-    <li>Relacionará los trabajadores con las empresas del estudio <b>Prueba personal de Bruno</b> mediante el código histórico.</li>
+    <li>Relacionará los trabajadores con las empresas del estudio actual mediante el código histórico.</li>
     <li>Consolidará reingresos de la misma persona y empresa en un único legajo, dejando ingresos y egresos en su línea de tiempo.</li>
     <li>Omitirá cédulas ya registradas para no sobrescribir legajos existentes ni modificar salarios.</li>
     <li>Separará los grupos sin fecha de ingreso o sin identificación personal para revisión manual.</li>

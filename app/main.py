@@ -19,7 +19,7 @@ from decimal import Decimal
 from contextlib import asynccontextmanager
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 from urllib.parse import parse_qs, quote, urlencode
 
 from PIL import Image, ImageChops, ImageOps
@@ -144,7 +144,7 @@ from .labor_code_sync import (
     normalize_search,
     sync_labor_code,
 )
-from .legacy_employee_import import parse_legacy_employee_workbook
+from .legacy_employee_import import parse_legacy_employee_workbook, validate_legacy_employee_policy
 from .import_service import (
     ImportPreview,
     build_employee_template,
@@ -2744,7 +2744,7 @@ def api_list_employees(
     company_ids = company_ids_for_user(db, user)
     query = select(Employee).where(Employee.company_id.in_(company_ids)) if company_ids else select(Employee).where(False)
     query = query.join(Company, Company.id == Employee.company_id)
-    if not show_archived:
+    if not include_archived:
         query = query.where(Company.status != "Archivada")
     if company_id is not None:
         if company_id not in company_ids:
@@ -3304,6 +3304,7 @@ def employees_page(
     section_id: OptionalQueryId = None,
     status_filter: str = "",
     show_archived: bool = False,
+    page: int = 1,
     user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ):
@@ -3338,7 +3339,13 @@ def employees_page(
     from .employee_exit_routes import sync_due_employee_exits
     if sync_due_employee_exits(db):
         db.commit()
-    employees = list(db.scalars(query.order_by(Employee.full_name)))
+    page_size = 100
+    total_count = db.scalar(select(func.count()).select_from(query.subquery())) or 0
+    total_pages = max(1, math.ceil(total_count / page_size))
+    page = max(1, min(page, total_pages))
+    employees = list(db.scalars(
+        query.order_by(Employee.full_name, Employee.id).limit(page_size).offset((page - 1) * page_size)
+    ))
     companies_query = select(Company).where(Company.id.in_(company_ids))
     if not show_archived:
         companies_query = companies_query.where(Company.status != "Archivada")
@@ -3347,7 +3354,11 @@ def employees_page(
     branches = list(db.scalars(branch_query))
     section_query = select(CompanySection).where(CompanySection.company_id.in_(company_ids)).order_by(CompanySection.company_id, CompanySection.section_code, CompanySection.name) if company_ids else select(CompanySection).where(False)
     sections = list(db.scalars(section_query))
-    employee_profiles = {item.id: _employee_profile(db, item.id) for item in employees}
+    employee_profiles = {
+        item.employee_id: item for item in db.scalars(
+            select(EmployeeComplianceProfile).where(EmployeeComplianceProfile.employee_id.in_([employee.id for employee in employees]))
+        )
+    } if employees else {}
     exits_by_employee = {}
     settlements_by_employee = {}
     if employees:
@@ -3372,6 +3383,9 @@ def employees_page(
         settlements_by_employee=settlements_by_employee, q=q, selected_company=company_id,
         selected_section=section_id, status_filter=status_filter, show_archived=show_archived,
         selected_employee=active_employee_id, minimum_salary=minimum_salary,
+        total_count=total_count, current_page=page, total_pages=total_pages,
+        previous_page_url=str(request.url.include_query_params(page=page - 1)) if page > 1 else None,
+        next_page_url=str(request.url.include_query_params(page=page + 1)) if page < total_pages else None,
     )
 
 
@@ -3415,6 +3429,8 @@ def legacy_employee_import_start(
 @app.post("/app/import/legacy-employees/preview")
 async def legacy_employee_import_preview(
     file: UploadFile = File(),
+    historical_only: Annotated[bool, Form()] = False,
+    exclude_inconsistent_terminations: Annotated[bool, Form()] = False,
     user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
     db: Session = Depends(get_db),
 ):
@@ -3459,6 +3475,8 @@ async def legacy_employee_import_preview(
             companies_by_legacy_code,
             max_rows=15_000,
             today=date.today(),
+            historical_only=historical_only,
+            exclude_inconsistent_terminations=exclude_inconsistent_terminations,
         )
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
@@ -3475,7 +3493,8 @@ async def legacy_employee_import_preview(
     write_audit(
         db, user, "previsualizar", "importacion_historica_funcionarios", token,
         f"{file.filename}: {parsed['summary']['source_rows']} filas, "
-        f"{parsed['summary']['importable']} legajos candidatos, {parsed['summary']['excluded']} excluidos.",
+        f"{parsed['summary']['importable']} legajos candidatos, {parsed['summary']['excluded']} excluidos; "
+        f"solo históricos={historical_only}; excluir egresos inconsistentes={exclude_inconsistent_terminations}.",
     )
     db.commit()
     return RedirectResponse(f"/app/import/legacy-employees/{token}", status_code=303)
@@ -3518,6 +3537,7 @@ def legacy_employee_import_preview_page(
         request, "legacy_employee_import_preview.html", db, user,
         token=token, filename=preview["filename"], summary=summary,
         candidates=preview["candidates"][:30], excluded=preview["excluded"],
+        import_options=preview.get("options") or {},
     )
 
 
@@ -3538,6 +3558,11 @@ def legacy_employee_import_confirm(
     visible_company_ids = set(company_ids_for_user(db, user))
     if not company_ids.issubset(visible_company_ids):
         raise HTTPException(403, "La vista previa contiene empresas fuera del estudio actual.")
+
+    try:
+        validate_legacy_employee_policy(preview)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
 
     existing_by_company: dict[int, set[str]] = {}
     existing_codes_by_company: dict[int, set[int]] = {}
@@ -3660,7 +3685,8 @@ def legacy_employee_import_confirm(
         write_audit(
             db, user, "confirmar", "importacion_historica_funcionarios", token,
             f"{preview['filename']}: {created_count} legajos creados; "
-            f"{skipped_existing} existentes omitidos; {len(events_to_add)} eventos históricos.",
+            f"{skipped_existing} existentes omitidos; {len(events_to_add)} eventos históricos; "
+            f"{len(preview['excluded'])} excluidos; política={preview.get('options') or {}}.",
         )
         db.commit()
     except IntegrityError as exc:

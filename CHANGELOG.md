@@ -1,3 +1,13 @@
+## 2.6.53 — Importación histórica sin altas activas y exclusión de egresos inconsistentes
+
+- Añade opciones explícitas para importar todos los legajos como Desvinculado y excluir el legajo completo cuando cualquiera de sus períodos tiene un egreso inconsistente.
+- Conserva los vínculos abiertos del archivo como antecedentes pendientes de revisión, sin inventar una fecha de egreso ni generar una liquidación final.
+- Distingue estados de la fuente y estados previstos en la vista previa, y muestra los grupos excluidos antes de confirmar.
+- Valida nuevamente la política del lote antes de guardar y la registra en auditoría. Mantiene las empresas de origen y omite legajos existentes.
+- Pagina el directorio de funcionarios de 100 en 100, conserva los filtros entre páginas y consulta sus perfiles en bloque para admitir padrones grandes.
+- Corrige la consulta de funcionarios de la API para respetar su opción de incluir archivados.
+- Añade pruebas del analizador, reingresos con fechas inconsistentes, confirmación HTTP, preservación del empleado activo existente y repetición sin duplicados.
+
 ## 2.6.51 — Calidad visual y consistencia de módulos
 
 - Corrige la referencia obsoleta a `module_subnav.html` en Operaciones de Cálculo; Anticipos, Disciplina y Telegrama colacionado vuelven a renderizar con la navegación global única.

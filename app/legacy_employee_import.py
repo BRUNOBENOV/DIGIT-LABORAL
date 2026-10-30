@@ -186,6 +186,8 @@ def parse_legacy_employee_workbook(
     *,
     max_rows: int = 15_000,
     today: date | None = None,
+    historical_only: bool = False,
+    exclude_inconsistent_terminations: bool = False,
 ) -> dict[str, Any]:
     if not filename.lower().endswith(".xlsx"):
         raise ValueError("La base histórica debe estar en formato .xlsx.")
@@ -234,6 +236,7 @@ def parse_legacy_employee_workbook(
         invalid_birth_groups = 0
         missing_salary_groups = 0
         invalid_termination_groups = 0
+        excluded_termination_groups = 0
         open_groups = 0
         closed_groups = 0
         group_today = today or date.today()
@@ -298,6 +301,19 @@ def parse_legacy_employee_workbook(
                     or record["termination_date"] < (record["admission_date"] or admission)
                 ) for record in records
             )
+            if invalid_termination and exclude_inconsistent_terminations:
+                excluded_termination_groups += 1
+                excluded.append({
+                    "company_code": company_code,
+                    "company_name": company_matches[0]["name"],
+                    "name": preferred["full_name"] or names[-1]["full_name"],
+                    "document_number": records[0]["document_number"],
+                    "excel_row": records[0]["excel_row"],
+                    "source_rows": [record["excel_row"] for record in records],
+                    "reason": "Tiene fechas de egreso inválidas o anteriores al ingreso; excluido para revisión manual.",
+                    "exclusion_type": "inconsistent_termination",
+                })
+                continue
             chosen_name = preferred["full_name"] or names[-1]["full_name"]
             chosen_position = preferred["position"] if preferred["position"] != "No informado" else next(
                 (record["position"] for record in reversed(records) if record["position"] != "No informado"),
@@ -367,10 +383,16 @@ def parse_legacy_employee_workbook(
                 notes.append("Una o más fechas de egreso de la fuente son inválidas o anteriores al ingreso; no se cargó una fecha de egreso dudosa.")
             if not any(record["admission_date"] for record in open_records) and current_employment:
                 notes.append("El registro abierto no indica ingreso; se usa la última fecha de ingreso disponible del legajo.")
-            if current_employment:
+            if current_employment and not historical_only:
                 employee_status = "Activo"
             else:
                 employee_status = "Desvinculado"
+            if historical_only and current_employment:
+                notes.append(
+                    "Legajo histórico pendiente de revisión: la fuente no informa un egreso fiable. "
+                    "Se importó como Desvinculado por decisión del responsable, sin asignar una fecha de egreso "
+                    "ni crear una liquidación final. No debe integrar la nómina activa."
+                )
 
             periods = []
             for record in records:
@@ -450,6 +472,7 @@ def parse_legacy_employee_workbook(
                 "events": periods,
                 "has_rehire_history": len(records) > 1,
                 "active_in_source": current_employment,
+                "warning_invalid_termination": invalid_termination,
                 "warning_invalid_birth": bool(any(record["birth_date"] and (
                     record["birth_date"] >= (record["admission_date"] or admission)
                     or record["birth_date"] > group_today
@@ -470,6 +493,10 @@ def parse_legacy_employee_workbook(
             "invalid_birth_date": sum(1 for item in candidates if item["warning_invalid_birth"]),
             "without_salary": missing_salary_groups,
             "invalid_termination_dates": invalid_termination_groups,
+            "excluded_inconsistent_terminations": excluded_termination_groups,
+            "will_activate": sum(item["status"] == "Activo" for item in candidates),
+            "will_terminate": sum(item["status"] == "Desvinculado" for item in candidates),
+            "historical_review": sum(historical_only and item["active_in_source"] for item in candidates),
             "historical_events": sum(len(item["events"]) for item in candidates),
             "archived_company_employees": sum(1 for item in candidates if item["company_status"] == "Archivada"),
         }
@@ -478,6 +505,20 @@ def parse_legacy_employee_workbook(
             "summary": summary,
             "candidates": candidates,
             "excluded": excluded,
+            "options": {
+                "historical_only": historical_only,
+                "exclude_inconsistent_terminations": exclude_inconsistent_terminations,
+            },
         }
     finally:
         workbook.close()
+
+
+def validate_legacy_employee_policy(preview: dict[str, Any]) -> None:
+    """Fail before any write if a stored preview violates its selected policy."""
+    options = preview.get("options") or {}
+    for item in preview["candidates"]:
+        if options.get("historical_only") and item["status"] != "Desvinculado":
+            raise ValueError("La vista previa histórica contiene un legajo activo. Volvé a analizar el archivo.")
+        if options.get("exclude_inconsistent_terminations") and item.get("warning_invalid_termination"):
+            raise ValueError("La vista previa contiene egresos excluidos para revisión. Volvé a analizar el archivo.")

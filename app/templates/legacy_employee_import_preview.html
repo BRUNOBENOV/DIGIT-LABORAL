@@ -15,6 +15,17 @@
   <span>Las filas repetidas por reingreso se consolidaron por empresa y cédula. Las cédulas existentes en DIGIT-LABORAL se omitirán; no se actualizarán datos ni salarios de esos legajos.</span>
 </div>
 <div class="plan-counter"><b>{{ summary.will_create|int }}</b><span>legajos nuevos previstos · {{ summary.already_exists }} ya existen y se omitirán</span></div>
+{% if import_options.historical_only %}
+<div class="alert warning" role="status">
+  <b>Archivo histórico: todos como Desvinculado.</b>
+  {{ summary.will_activate }} legajos se importarán como activos. {{ summary.historical_review }} tienen vínculo abierto en la fuente y quedarán como Desvinculado, pendientes de revisión, sin inventar una fecha de egreso.
+</div>
+{% endif %}
+{% if import_options.exclude_inconsistent_terminations %}
+<div class="alert warning" role="status">
+  <b>Egresos inconsistentes excluidos:</b> {{ summary.excluded_inconsistent_terminations }} legajos completos quedan fuera para revisión manual. El total de exclusiones es {{ summary.excluded }}.
+</div>
+{% endif %}
 <section class="panel" style="padding:20px;margin:14px 0">
   <h2>Resumen del análisis</h2>
   <div class="grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:12px">
@@ -23,6 +34,8 @@
     <div><b>{{ summary.importable }}</b><small class="table-sub">Legajos aptos para importar</small></div>
     <div><b>{{ summary.active }}</b><small class="table-sub">Con vínculo abierto en la fuente</small></div>
     <div><b>{{ summary.terminated }}</b><small class="table-sub">Con vínculo finalizado</small></div>
+    <div><b>{{ summary.will_activate|default(summary.active) }}</b><small class="table-sub">Previstos como Activo</small></div>
+    <div><b>{{ summary.will_terminate|default(summary.terminated) }}</b><small class="table-sub">Previstos como Desvinculado</small></div>
     <div><b>{{ summary.repeated_identity_groups }}</b><small class="table-sub">Personas con varios períodos</small></div>
     <div><b>{{ summary.without_cedula }}</b><small class="table-sub">Sin cédula; usarán código S/D interno</small></div>
     <div><b>{{ summary.excluded }}</b><small class="table-sub">Grupos excluidos para revisión</small></div>
@@ -62,7 +75,7 @@
   </div>
 </section>
 <section class="panel table-panel" style="margin-top:14px">
-  <div class="panel-heading"><div><h2>Grupos excluidos</h2><p>No se crearán legajos sin una fecha de ingreso válida o sin nombre. Estos datos deben corregirse en la fuente.</p></div></div>
+  <div class="panel-heading"><div><h2>Grupos excluidos</h2><p>Estos legajos no se cargarán. Revisá los motivos, incluidos los egresos inconsistentes cuando se seleccionó su exclusión, y corregí la fuente antes de un nuevo intento.</p></div></div>
   <div class="table-wrap">
     <table class="import-table">
       <thead><tr><th>Fila fuente</th><th>Código empresa</th><th>Empresa</th><th>Funcionario / C.I.</th><th>Motivo</th></tr></thead>
