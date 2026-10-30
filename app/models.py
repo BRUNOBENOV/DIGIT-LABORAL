@@ -927,3 +927,93 @@ class IntegrationBatchItem(Base):
 
     batch: Mapped[IntegrationBatch] = relationship()
     compliance_event: Mapped[ComplianceEvent] = relationship(foreign_keys=[compliance_event_id])
+
+
+class EmployeeExit(Base):
+    """Auditable end-of-employment event, independent from its financial settlement."""
+
+    __tablename__ = "employee_exits"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('Programado', 'Efectivo', 'Cancelado')",
+            name="ck_employee_exit_status",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), index=True)
+    effective_date: Mapped[date] = mapped_column(Date, index=True)
+    reason: Mapped[str] = mapped_column(String(100))
+    initiated_by: Mapped[str] = mapped_column(String(30))
+    include_exit_cause: Mapped[bool] = mapped_column(Boolean, default=False)
+    pre_notice_notified: Mapped[bool] = mapped_column(Boolean, default=False)
+    notice_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    status: Mapped[str] = mapped_column(String(30), default="Programado", index=True)
+    source: Mapped[str] = mapped_column(String(40), default="Manual")
+    notes: Mapped[str] = mapped_column(Text, default="")
+    constancia_certificate_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("generated_certificates.id"), nullable=True, index=True
+    )
+    created_by: Mapped[str] = mapped_column(String(180), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+    effective_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC)
+    )
+
+
+class FinalSettlement(Base):
+    """Financial workflow associated with an employment exit; never changes employment status."""
+
+    __tablename__ = "final_settlements"
+    __table_args__ = (
+        UniqueConstraint("employee_exit_id", name="uq_final_settlement_employee_exit"),
+        UniqueConstraint("calculation_record_id", name="uq_final_settlement_calculation"),
+        CheckConstraint(
+            "status IN ('Pendiente de Cálculo', 'En Revisión', 'Aprobada', 'Pagada')",
+            name="ck_final_settlement_status",
+        ),
+        CheckConstraint(
+            "calculated_amount IS NULL OR calculated_amount >= 0",
+            name="ck_final_settlement_calculated_amount",
+        ),
+        CheckConstraint(
+            "approved_amount IS NULL OR approved_amount >= 0",
+            name="ck_final_settlement_approved_amount",
+        ),
+        CheckConstraint(
+            "payment_amount IS NULL OR payment_amount >= 0",
+            name="ck_final_settlement_payment_amount",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), index=True)
+    employee_exit_id: Mapped[int] = mapped_column(
+        ForeignKey("employee_exits.id"), nullable=False, index=True
+    )
+    calculation_record_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("calculation_records.id"), nullable=True, index=True
+    )
+    status: Mapped[str] = mapped_column(String(40), default="Pendiente de Cálculo", index=True)
+    calculated_amount: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    approved_amount: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    approved_by: Mapped[str] = mapped_column(String(180), default="")
+    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    payment_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    payment_amount: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    payment_method: Mapped[str] = mapped_column(String(80), default="")
+    payment_reference: Mapped[str] = mapped_column(String(180), default="")
+    receipt_document_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("documents.id"), nullable=True, index=True
+    )
+    paid_by: Mapped[str] = mapped_column(String(180), default="")
+    paid_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    notes: Mapped[str] = mapped_column(Text, default="")
+    created_by: Mapped[str] = mapped_column(String(180), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC)
+    )
