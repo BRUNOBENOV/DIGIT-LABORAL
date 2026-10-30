@@ -3326,7 +3326,9 @@ def employees_page(
         request, db, user, company_ids, company_id, None
     )
     query = select(Employee).where(Employee.company_id.in_(company_ids)) if company_ids else select(Employee).where(False)
-    query = query.join(Company, Company.id == Employee.company_id).where(Company.status != "Archivada")
+    query = query.join(Company, Company.id == Employee.company_id)
+    if not show_archived:
+        query = query.where(Company.status != "Archivada")
     if company_id and company_id in company_ids:
         query = query.where(Employee.company_id == company_id)
     if active_employee_id:
