@@ -1,3 +1,12 @@
+## 2.6.50 — Recuperación de animaciones del menú lateral
+
+- Recupera el efecto hover azul oscuro y las transiciones suaves en los submódulos del menú lateral.
+- Corrige únicamente el texto del submódulo seleccionado en reposo: fondo blanco con letra azul oscura legible.
+- Al pasar el cursor, vuelve el tratamiento visual anterior de fondo azul y texto blanco, sin aplanar la animación.
+- Mantiene el contraste de los enlaces no seleccionados y el indicador lateral del apartado activo.
+- Renueva la clave de caché del tema y amplía las pruebas de regresión.
+- No modifica rutas, datos, cálculos, fórmulas ni permisos.
+
 ## 2.6.49 — Corrección de contraste de submódulos
 
 - Corrige los estados seleccionados del menú lateral: el submódulo activo mantiene texto azul oscuro sobre fondo claro tanto con el puntero encima como sin hover.
