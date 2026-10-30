@@ -1,6 +1,12 @@
-# Digit Laboral 2.6.49
+# Digit Laboral 2.6.50
 
 Plataforma de gestión y cumplimiento laboral para estudios contables paraguayos.
+## Novedades de la versión 2.6.50
+
+- Recupera las animaciones y el hover azul del menú lateral.
+- Mantiene azul oscuro en el texto del submódulo seleccionado cuando el cursor no está encima.
+- Restaura el texto blanco sobre el fondo azul al pasar el cursor, con transición suave.
+
 ## Novedades de la versión 2.6.49
 
 - Corrige el contraste de los submódulos seleccionados: el texto permanece azul oscuro sobre fondo claro con y sin hover.

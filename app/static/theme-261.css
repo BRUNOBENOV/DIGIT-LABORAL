@@ -125,23 +125,24 @@ body.app-body{
   min-height:36px!important;border:1px solid transparent!important;border-radius:8px!important;
   color:#EDF2FF!important;-webkit-text-fill-color:#EDF2FF!important;
   font-size:.78rem!important;font-weight:600!important;background:transparent!important;
+  transition:background-color .16s ease,color .16s ease,border-color .16s ease,box-shadow .16s ease,transform .16s ease!important;
 }
-/* Normal submodules stay legible on the navy sidebar. */
-.app-body .workspace-sidebar .workspace-submenu .workspace-nav-link:not(.active):not([aria-current="page"]){
-  color:#EDF2FF!important;-webkit-text-fill-color:#EDF2FF!important;background:transparent!important;
+/* Preserve the original animated hover treatment for links that are not selected. */
+.app-body .workspace-sidebar .workspace-submenu .workspace-nav-link:not(.active):not([aria-current="page"]):hover{
+  background:#143B88!important;border-color:#4269AB!important;
+  color:#FFFFFF!important;-webkit-text-fill-color:#FFFFFF!important;
 }
-/* Selected submodules keep dark text on the light active surface, including hover/focus. */
-.app-body .workspace-sidebar .workspace-submenu .workspace-nav-link.active,
-.app-body .workspace-sidebar .workspace-submenu .workspace-nav-link[aria-current="page"]{
+/* At rest, the selected item uses a light surface with readable dark text. */
+.app-body .workspace-sidebar .workspace-submenu .workspace-nav-link.active:not(:hover),
+.app-body .workspace-sidebar .workspace-submenu .workspace-nav-link[aria-current="page"]:not(:hover){
   background:#FFFFFF!important;border-color:#DBEAFE!important;
   color:#0B2D78!important;-webkit-text-fill-color:#0B2D78!important;
   box-shadow:inset 3px 0 #1D4ED8!important;font-weight:800!important;
 }
-/* Hovering a selected submodule must not revert its text to white. */
+/* On hover, restore the original navy highlight and white lettering. */
 .app-body .workspace-sidebar .workspace-submenu .workspace-nav-link.active:hover,
 .app-body .workspace-sidebar .workspace-submenu .workspace-nav-link[aria-current="page"]:hover{
-  background:#FFFFFF!important;border-color:#DBEAFE!important;
-  color:#0B2D78!important;-webkit-text-fill-color:#0B2D78!important;
+  color:#FFFFFF!important;-webkit-text-fill-color:#FFFFFF!important;
 }
 .app-body .workspace-nav-link .notification-count{
   background:#BBD1FF!important;color:#08285F!important;
