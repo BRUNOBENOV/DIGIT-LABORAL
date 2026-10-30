@@ -99,7 +99,7 @@
   .app-body .main-content .page-header .header-actions{flex-wrap:wrap}
 }
 @media(max-width:620px){
-  .app-body .main-content>:is(.page-header,.maintenance-subnav,.ui-module-nav){margin-bottom:15px}
+  .app-body .main-content>:is(.page-header,.maintenance-subnav){margin-bottom:15px}
   .app-body .main-content .page-header{gap:12px}
   .app-body .main-content .page-header .header-actions{width:100%;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,145px),1fr));gap:8px}
   .app-body .main-content .page-header .header-actions .btn{width:100%;justify-content:center}
