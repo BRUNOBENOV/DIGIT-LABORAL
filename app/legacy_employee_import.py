@@ -279,7 +279,7 @@ def parse_legacy_employee_workbook(
                 })
                 continue
 
-            open_records = [record for record in records if record["termination_date"] is None]
+            open_records = [record for record in records if not record["termination_present"]]
             current_employment = bool(open_records)
             preferred_pool = open_records or records
             preferred = max(
@@ -292,6 +292,12 @@ def parse_legacy_employee_workbook(
             admission = preferred["admission_date"] or max(
                 valid_admissions, key=lambda record: (record["admission_date"], record["excel_row"])
             )["admission_date"]
+            invalid_termination = any(
+                record["termination_present"] and (
+                    record["termination_date"] is None
+                    or record["termination_date"] < (record["admission_date"] or admission)
+                ) for record in records
+            )
             chosen_name = preferred["full_name"] or names[-1]["full_name"]
             chosen_position = preferred["position"] if preferred["position"] != "No informado" else next(
                 (record["position"] for record in reversed(records) if record["position"] != "No informado"),
@@ -321,7 +327,7 @@ def parse_legacy_employee_workbook(
             all_termination_dates = [
                 record["termination_date"] for record in records
                 if record["termination_date"] and (
-                    not record["admission_date"] or record["termination_date"] >= record["admission_date"]
+                    record["termination_date"] >= (record["admission_date"] or admission)
                 )
             ]
             termination = None if current_employment else (max(all_termination_dates) if all_termination_dates else None)
@@ -383,9 +389,7 @@ def parse_legacy_employee_workbook(
                         "effective_date": record["admission_date"].isoformat(),
                         "amount": record["salary"],
                     })
-                if record["termination_date"] and (
-                    not record["admission_date"] or record["termination_date"] >= record["admission_date"]
-                ):
+                if record["termination_date"] and record["termination_date"] >= (record["admission_date"] or admission):
                     periods.append({
                         "event_type": "Egreso histórico",
                         "title": f"Egreso histórico · {record['legacy_employee_code'] or 'sin CODTRA'}",
@@ -409,7 +413,7 @@ def parse_legacy_employee_workbook(
                 "occupation_code": "",
                 "position_category": "",
                 "work_schedule": schedule,
-                "shift": "Diurno",
+                "shift": "No especificado",
                 "weekly_hours": 48,
                 "salary_type": "No especificado",
                 "daily_hours": 8,
