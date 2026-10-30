@@ -25,8 +25,8 @@
   <div><span class="eyebrow">MANTENIMIENTOS</span><h1>Funcionarios</h1><p>Legajos personales, datos laborales e historial centralizado sin alterar los cálculos ya guardados.</p></div>
   <div class="header-actions">
     <a class="btn outline" href="/app/export/employees.csv">Exportar CSV</a>
-    <a class="btn outline" href="/app/import/legacy-employees">Importar base histórica</a>
     {% if user.role in ['administrador', 'contador', 'auxiliar'] %}
+      <a class="btn outline" href="/app/import/legacy-employees">Importar base histórica</a>
       <button class="btn outline" type="button" data-modal-open="importEmployeesModal">Importar Excel</button>
       {% if user.role in ['administrador','contador'] %}<button class="btn outline" type="button" data-modal-open="sectionsModal">Administrar secciones</button>{% endif %}
       <button class="btn primary" type="button" data-modal-open="employeeModal" id="newEmployeeButton">+ Nuevo funcionario</button>
