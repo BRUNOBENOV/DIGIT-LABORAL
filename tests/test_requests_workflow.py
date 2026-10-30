@@ -339,7 +339,7 @@ def test_employee_import_cannot_change_existing_salary():
         db.commit()
 
 
-def test_employee_status_treats_blank_date_as_empty_and_requires_exit_date():
+def test_employee_status_requires_dedicated_egreso_workflow():
     email, password, company_id, _ = ensure_admin()
     with SessionLocal() as db:
         employee = Employee(
@@ -357,43 +357,19 @@ def test_employee_status_treats_blank_date_as_empty_and_requires_exit_date():
 
     with TestClient(app) as client:
         csrf = login(client, email, password)
-        active = client.post(
-            f"/app/employees/{employee_id}/status",
-            data={"csrf_token": csrf, "status": "Activo", "termination_date": ""},
-            follow_redirects=False,
-        )
-        assert active.status_code == 303
-
-        missing_exit_date = client.post(
-            f"/app/employees/{employee_id}/status",
-            data={"csrf_token": csrf, "status": "Desvinculado", "termination_date": ""},
-            follow_redirects=False,
-        )
-        assert missing_exit_date.status_code == 303
-        error_page = client.get(missing_exit_date.headers["location"])
-        assert error_page.status_code == 200
-        assert "fecha efectiva de salida" in error_page.text.lower()
-
-        with SessionLocal() as db:
-            employee = db.get(Employee, employee_id)
-            assert employee is not None
-            assert employee.status == "Activo"
-            assert employee.termination_date is None
-
-        exit_date = date.today().isoformat()
-        terminated = client.post(
-            f"/app/employees/{employee_id}/status",
-            data={"csrf_token": csrf, "status": "Desvinculado", "termination_date": exit_date},
-            follow_redirects=False,
-        )
-        assert terminated.status_code == 303
+        for status_value in ("Activo", "Desvinculado", "Inactivo"):
+            response = client.post(
+                f"/app/employees/{employee_id}/status",
+                data={"csrf_token": csrf, "status": status_value, "termination_date": date.today().isoformat()},
+                follow_redirects=False,
+            )
+            assert response.status_code == 410
 
     with SessionLocal() as db:
         employee = db.get(Employee, employee_id)
         assert employee is not None
-        assert employee.status == "Desvinculado"
-        assert employee.termination_date == date.today()
-
+        assert employee.status == "Activo"
+        assert employee.termination_date is None
 
 
 def test_request_numeric_limits_and_hour_precision_are_enforced():
