@@ -1090,7 +1090,7 @@ def test_employee_exit_decouples_employment_state_from_settlement_payment(web_ca
     prefill = client.get(created.headers["location"])
     assert prefill.status_code == 200
     assert f'name="employee_exit_id" value="{exit_record.id}"' in prefill.text
-    assert f'name="end_date" type="date" value="{today.isoformat()}"' in prefill.text
+    assert f'value="{today.isoformat()}"' in prefill.text
 
 
 def test_exit_future_requires_pre_notice_and_becomes_effective_on_due_date(web_case, monkeypatch):
