@@ -16,6 +16,7 @@ def test_calculation_sidebar_has_one_global_entry_for_each_work_area():
     block = _calculation_sidebar_block()
     expected = [
         'href="/app/calculations?tipo=salary">Salario</a>',
+        'href="/app/liquidaciones?tipo=salary">Liquidación de haberes</a>',
         'href="/app/liquidaciones?tipo=settlement">Liquidación final</a>',
         'href="/app/payrolls">Nóminas mensuales</a>',
         'href="/app/calculations?tipo=hours">Horas y recargos</a>',
