@@ -342,7 +342,8 @@ def restore_employee(
 @router.get("/app/final-settlements/{settlement_id}")
 def final_settlement_detail(
     settlement_id: int, request: Request,
-    user: User = Depends(core.require_user), db: Session = Depends(core.get_db),
+    user: User = Depends(core.require_roles("administrador", "contador", "auxiliar", "empresa", "abogado")),
+    db: Session = Depends(core.get_db),
 ):
     settlement, exit_record, employee = _allowed_settlement(db, user, settlement_id)
     calc = db.get(CalculationRecord, settlement.calculation_record_id) if settlement.calculation_record_id else None
