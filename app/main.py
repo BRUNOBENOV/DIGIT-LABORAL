@@ -75,6 +75,8 @@ from .models import (
     CalculationRecord,
     Document,
     Employee,
+    EmployeeExit,
+    FinalSettlement,
     MedicalExam,
     EmployeeEvent,
     EmployeeComplianceProfile,
@@ -252,6 +254,8 @@ async def _periodic_notification_sweep() -> None:
         try:
             await asyncio.to_thread(create_due_request_notifications)
             await asyncio.to_thread(create_due_official_certificate_notifications)
+            from .employee_exit_routes import sync_due_employee_exits_all_studios
+            await asyncio.to_thread(sync_due_employee_exits_all_studios)
             await asyncio.to_thread(dispatch_notification_outbox)
         except Exception:
             logger.exception("Scheduled notification sweep failed")
@@ -856,14 +860,15 @@ def _validate_employee_payload(
         raise HTTPException(422, "La fecha de egreso no puede ser anterior a la fecha de ingreso.")
 
     status_value = clean_text(payload.get("status", existing.status if existing else "Activo"), max_length=30)
-    if status_value not in {"Activo", "Inactivo", "Desvinculado"}:
-        raise HTTPException(422, "El estado seleccionado no es válido. El archivo de legajos se realiza mediante la acción específica de archivo.")
-    if status_value in {"Inactivo", "Desvinculado"} and not termination_date and not (
-        existing and existing.status == status_value and existing.termination_date is None
-    ):
-        raise HTTPException(422, "Indicá la fecha de egreso para un funcionario inactivo o desvinculado.")
-    if status_value == "Activo":
-        termination_date = None
+    # Employment status and exit date are managed only by the separate exit workflow.
+    # Regular edits must not re-activate a worker or erase a scheduled exit.
+    if existing:
+        if status_value != existing.status:
+            raise HTTPException(409, "No se puede modificar el estado laboral desde Editar. Usá Registrar Egreso o Archivo.")
+        if termination_date != existing.termination_date:
+            raise HTTPException(409, "La fecha de egreso solo se modifica mediante el procedimiento de egreso.")
+    elif status_value != "Activo":
+        raise HTTPException(422, "Los legajos nuevos se registran como activos. La importación histórica utiliza un flujo independiente.")
 
     base_salary_raw = payload.get("base_salary", existing.base_salary if existing else None)
     if base_salary_raw in (None, ""):
@@ -2913,27 +2918,8 @@ async def api_update_employee(
 
 
 @app.delete("/api/employees/{employee_id}")
-def api_archive_employee(
-    employee_id: int,
-    user: User = Depends(require_roles("administrador", "contador")),
-    db: Session = Depends(get_db),
-):
-    employee = db.get(Employee, employee_id)
-    if not employee or employee.company_id not in company_ids_for_user(db, user):
-        raise HTTPException(404, "Funcionario no encontrado.")
-    if employee.status != "Archivado":
-        employee.status = "Archivado"
-        employee.updated_at = datetime.now(UTC)
-        employee.updated_by = user.email
-        add_employee_event(
-            db, employee, user, "Archivo", "Legajo archivado",
-            "Registro archivado de forma lógica; se conservaron cálculos, nóminas y documentos.",
-        )
-        write_audit(db, user, "archivar", "funcionario", str(employee.id), f"Legajo {employee.employee_code} · {employee.full_name}")
-        db.commit()
-    return {"ok": True, "id": employee.id, "employee_code": employee.employee_code, "status": employee.status}
-
-
+def obsolete_api_employee_delete(employee_id: int, user: User = Depends(require_roles("administrador", "contador")), db: Session = Depends(get_db)):
+    raise HTTPException(410, "La eliminación y el archivado mediante DELETE fueron retirados; utilizá la acción Archivar legajo.")
 
 # ---------------------------------------------------------------------------
 # Mantenimientos · Exámenes médicos ocupacionales
@@ -3349,6 +3335,9 @@ def employees_page(
             Employee.position.ilike(term),
             func.cast(Employee.employee_code, String).ilike(term),
         ))
+    from .employee_exit_routes import sync_due_employee_exits
+    if sync_due_employee_exits(db):
+        db.commit()
     employees = list(db.scalars(query.order_by(Employee.full_name)))
     companies_query = select(Company).where(Company.id.in_(company_ids))
     if not show_archived:
@@ -3359,13 +3348,28 @@ def employees_page(
     section_query = select(CompanySection).where(CompanySection.company_id.in_(company_ids)).order_by(CompanySection.company_id, CompanySection.section_code, CompanySection.name) if company_ids else select(CompanySection).where(False)
     sections = list(db.scalars(section_query))
     employee_profiles = {item.id: _employee_profile(db, item.id) for item in employees}
+    exits_by_employee = {}
+    settlements_by_employee = {}
+    if employees:
+        ids = [item.id for item in employees]
+        for item in db.scalars(
+            select(EmployeeExit).where(EmployeeExit.employee_id.in_(ids), EmployeeExit.status != "Cancelado")
+            .order_by(EmployeeExit.id.desc())
+        ):
+            exits_by_employee.setdefault(item.employee_id, item)
+        for item in db.scalars(
+            select(FinalSettlement).where(FinalSettlement.employee_id.in_(ids))
+            .order_by(FinalSettlement.id.desc())
+        ):
+            settlements_by_employee.setdefault(item.employee_id, item)
     minimum_salary = db.scalar(select(LaborParameter).where(
         LaborParameter.key == "minimum_monthly_salary_general", LaborParameter.active.is_(True)
     ))
     return render(
         request, "employees.html", db, user,
         employees=employees, companies=companies, branches=branches, sections=sections,
-        employee_profiles=employee_profiles, q=q, selected_company=company_id,
+        employee_profiles=employee_profiles, exits_by_employee=exits_by_employee,
+        settlements_by_employee=settlements_by_employee, q=q, selected_company=company_id,
         selected_section=section_id, status_filter=status_filter, show_archived=show_archived,
         selected_employee=active_employee_id, minimum_salary=minimum_salary,
     )
@@ -3688,6 +3692,12 @@ def employee_detail_page(
     employee = db.get(Employee, employee_id)
     if not employee or employee.company_id not in company_ids_for_user(db, user):
         raise HTTPException(404, "Funcionario no encontrado.")
+    from .employee_exit_routes import sync_due_employee_exits, latest_exit, latest_settlement
+    if sync_due_employee_exits(db, employee_id=employee.id):
+        db.commit()
+        db.refresh(employee)
+    employee_exit = latest_exit(db, employee.id)
+    final_settlement = latest_settlement(db, employee.id)
     events = list(db.scalars(select(EmployeeEvent).where(EmployeeEvent.employee_id == employee.id).order_by(EmployeeEvent.effective_date.desc(), EmployeeEvent.created_at.desc())))
     salaries = list(db.scalars(select(SalaryHistory).where(SalaryHistory.employee_id == employee.id).order_by(SalaryHistory.effective_from.desc(), SalaryHistory.created_at.desc())))
     documents = list(db.scalars(select(Document).where(Document.employee_id == employee.id).order_by(Document.created_at.desc())))
@@ -3701,6 +3711,7 @@ def employee_detail_page(
         documents=documents, certificates=certificates, calculations=calculations, vacations=vacations,
         payroll_lines=payroll_lines, deadlines=deadlines,
         employee_profile=_employee_profile(db, employee.id),
+        employee_exit=employee_exit, final_settlement=final_settlement,
     )
 
 
@@ -4115,65 +4126,14 @@ def edit_employee(
     return RedirectResponse(f"/app/employees/{employee.id}", status_code=303)
 
 
+# Keep deprecated mutation URLs rejected to prevent bypassing the exit workflow.
 @app.post("/app/employees/{employee_id}/status")
-def employee_status(
-    employee_id: int,
-    status_value: Annotated[str, Form(alias="status")],
-    termination_date: Annotated[str | date | None, Form()] = None,
-    user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
-    db: Session = Depends(get_db),
-):
-    employee = db.get(Employee, employee_id)
-    if not employee or employee.company_id not in company_ids_for_user(db, user):
-        raise HTTPException(404)
-    if status_value not in {"Activo", "Inactivo", "Desvinculado"}:
-        raise HTTPException(400, "El estado seleccionado no es válido.")
-    termination_date = optional_date(termination_date, field="fecha efectiva de salida")
-    if status_value != "Activo" and termination_date is None:
-        raise HTTPException(400, "Indicá la fecha efectiva de salida para inactivar o desvincular al funcionario.")
-    employee.status = status_value
-    employee.termination_date = termination_date if status_value != "Activo" else None
-    employee.updated_at = datetime.now(UTC)
-    employee.updated_by = user.email
-    effective = employee.termination_date or date.today()
-    add_employee_event(db, employee, user, "Estado", f"Estado actualizado a {status_value}", "", effective)
-    if status_value != "Activo":
-        ensure_compliance_event(
-            db, company_id=employee.company_id, employee_id=employee.id, branch_id=employee.branch_id, authority="REOP", event_type="Salida",
-            event_date=effective, due_date=None, payload={"status": status_value}, created_by=user.email,
-            source_key=f"employee:{employee.id}:exit:{effective.isoformat()}:reop",
-        )
-        if employee.ips_contributor:
-            ensure_compliance_event(
-                db, company_id=employee.company_id, employee_id=employee.id, branch_id=employee.branch_id, authority="REI", event_type="Salida",
-                event_date=effective, due_date=None, payload={"status": status_value}, created_by=user.email,
-                source_key=f"employee:{employee.id}:exit:{effective.isoformat()}:rei",
-            )
-    write_audit(db, user, "actualizar_estado", "funcionario", str(employee.id), status_value)
-    db.commit()
-    return RedirectResponse(f"/app/employees/{employee.id}", status_code=303)
-
+def obsolete_employee_status(employee_id: int, user: User = Depends(require_roles("administrador", "contador")), db: Session = Depends(get_db)):
+    raise HTTPException(410, "El cambio de estado directo fue retirado. Utilizá Registrar Egreso.")
 
 @app.post("/app/employees/{employee_id}/delete")
-def archive_employee_form(
-    employee_id: int,
-    user: User = Depends(require_roles("administrador", "contador")),
-    db: Session = Depends(get_db),
-):
-    employee = db.get(Employee, employee_id)
-    if not employee or employee.company_id not in company_ids_for_user(db, user):
-        raise HTTPException(404, "Funcionario no encontrado.")
-    employee.status = "Archivado"
-    employee.updated_at = datetime.now(UTC)
-    employee.updated_by = user.email
-    add_employee_event(
-        db, employee, user, "Archivo", "Legajo archivado",
-        "Registro archivado de forma lógica; se conservaron cálculos, nóminas y documentos.",
-    )
-    write_audit(db, user, "archivar", "funcionario", str(employee.id), f"Legajo {employee.employee_code} · {employee.full_name}")
-    db.commit()
-    return RedirectResponse("/app/employees?show_archived=true&archived=1", status_code=303)
-
+def obsolete_employee_delete(employee_id: int, user: User = Depends(require_roles("administrador", "contador")), db: Session = Depends(get_db)):
+    raise HTTPException(410, "La eliminación fue retirada. Utilizá Archivar legajo.")
 
 @app.get("/app/calendar", response_class=HTMLResponse)
 def calendar_page(
@@ -5691,6 +5651,8 @@ def calculation_status(
     item = db.get(CalculationRecord, calculation_id)
     if not item or item.company_id not in company_ids_for_user(db, user):
         raise HTTPException(404)
+    if db.scalar(select(FinalSettlement.id).where(FinalSettlement.calculation_record_id == item.id)):
+        raise HTTPException(409, "La liquidación final vinculada solo se aprueba desde su procedimiento.")
     if status_value not in {"Revisar", "Aprobado", "Anulado"}:
         raise HTTPException(400, "Estado inválido.")
     if status_value == "Aprobado":
@@ -7579,11 +7541,17 @@ def create_payroll(
         db.rollback()
         existing = db.scalar(select(Payroll).where(Payroll.company_id == company_id, Payroll.period == period))
         return RedirectResponse(f"/app/payrolls/{existing.id}" if existing else "/app/payrolls", status_code=303)
+    from .employee_exit_routes import sync_due_employee_exits
+    # Reconcile notified exits before payroll generation; the period window,
+    # not the date of accounting payment, determines participation.
+    sync_due_employee_exits(db)
     employees = list(db.scalars(
         select(Employee).where(
             Employee.company_id == company_id,
-            Employee.status == "Activo",
+            Employee.status.in_(("Activo", "Desvinculado")),
             Employee.admission_date <= period_end,
+            or_(Employee.termination_date.is_(None), Employee.termination_date >= period_start),
+            or_(Employee.status == "Activo", Employee.termination_date <= period_end),
         ).order_by(Employee.full_name)
     ))
     ips_rate = get_parameter(db, "ips_employee_rate_general", 9) / 100
@@ -10034,3 +10002,5 @@ def api_cancel_aguinaldo(
 # Register the existing professional calculation engine only after core helpers are defined.
 from .calculator_routes import router as calculator_router
 app.include_router(calculator_router)
+from .employee_exit_routes import router as employee_exit_router
+app.include_router(employee_exit_router)

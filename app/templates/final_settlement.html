@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Liquidación final #{{ settlement.id }} | Digit Laboral{% endblock %}
+{% block page_name %}Liquidación final{% endblock %}
+{% block content %}
+<style>
+  .final-workflow{display:grid;gap:18px;max-width:1170px;margin-inline:auto}
+  .final-workflow .wf-head{display:flex;justify-content:space-between;align-items:start;gap:16px;flex-wrap:wrap}
+  .final-workflow .wf-head h1{margin:3px 0 7px;font-size:clamp(1.6rem,2.5vw,2.2rem)}
+  .final-workflow .wf-intro{color:var(--text-secondary,#8f9bac);line-height:1.5}
+  .final-workflow .wf-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(205px,1fr));gap:12px}
+  .final-workflow .wf-stat{padding:16px;border:1px solid var(--border-color,#334155);border-radius:12px;background:var(--card-bg,#172334)}
+  .final-workflow .wf-stat small{display:block;color:var(--text-secondary,#9ba9ba);font-size:.78rem;margin-bottom:7px}
+  .final-workflow .wf-stat strong{font-size:1.1rem}
+  .final-workflow .wf-steps{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:14px 0}
+  .final-workflow .wf-step{padding:7px 12px;border:1px solid var(--border-color,#334155);border-radius:999px;font-size:.79rem;color:var(--text-secondary,#9ba9ba)}
+  .final-workflow .wf-step.active{color:var(--text-primary,#fff);border-color:var(--accent,#5b8def);font-weight:850}
+  .final-workflow .wf-controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+  .final-workflow .wf-fields{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}
+  .final-workflow .wf-fields label{display:grid;gap:6px;font-weight:650;font-size:.84rem}
+  .final-workflow .wf-fields input,.final-workflow .wf-fields select{width:100%;padding:10px 12px;border:1px solid var(--border-color,#334155);border-radius:9px;background:var(--input-bg,#101a2d);color:var(--text-primary,#fff);font:inherit}
+  .final-workflow .wf-alert{padding:14px 16px;border:1px solid var(--border-color,#334155);border-radius:10px}
+  .final-workflow .wf-doc{display:flex;align-items:center;justify-content:space-between;padding:10px 0;gap:12px;border-bottom:1px solid var(--border-color,#334155)}
+  .final-workflow .wf-doc:last-child{border-bottom:0}
+</style>
+<div class="final-workflow">
+  <a class="back-link dark" href="/app/employees/{{ employee.id }}">← Volver al expediente de {{ employee.full_name }}</a>
+  <header class="wf-head">
+    <div><span class="eyebrow">GESTIÓN LABORAL · CONTROL FINANCIERO</span><h1>Liquidación final #{{ settlement.id }}</h1><p class="wf-intro">El egreso laboral y el pago de la liquidación son estados independientes. Aprobar el cálculo no significa que se haya pagado.</p></div>
+    <span class="status-pill">{{ settlement.status }}</span>
+  </header>
+  <div class="wf-grid">
+    <div class="wf-stat"><small>Trabajador</small><strong>{{ employee.full_name }}</strong><p>Legajo {{ employee.employee_code or '—' }}</p></div>
+    <div class="wf-stat"><small>Estado laboral</small><strong>{{ employee.status }}</strong><p>Egreso {{ exit_record.effective_date|fecha }}{% if exit_record.status == "Programado" %} · Programado{% endif %}</p></div>
+    <div class="wf-stat"><small>Causal</small><strong>{{ reason_label }}</strong><p>Inicia: {{ exit_record.initiated_by }}</p></div>
+    <div class="wf-stat"><small>Importe aprobado</small><strong>{% if settlement.approved_amount is not none %}Gs. {{ settlement.approved_amount|gs }}{% else %}Pendiente{% endif %}</strong><p>No constituye constancia de pago.</p></div>
+  </div>
+  <section class="panel">
+    <div class="panel-head"><div><span>PROCEDIMIENTO ECONÓMICO</span><h2>Estado de liquidación</h2></div></div>
+    <div class="wf-steps">
+      {% for label in ['Pendiente de Cálculo','En Revisión','Aprobada','Pagada'] %}<span class="wf-step {{ 'active' if settlement.status == label else '' }}">{{ loop.index }}. {{ label }}</span>{% endfor %}
+    </div>
+    {% if settlement.status == 'Pendiente de Cálculo' or settlement.status == 'En Revisión' %}
+      <p class="wf-alert">Calculá o revisá el caso en el motor profesional. Allí se respetarán la fecha y el motivo del egreso. El resultado requiere aprobación expresa.</p>
+      <div class="wf-controls">
+        <a class="btn primary" href="/app/liquidaciones?tipo=settlement&amp;company_id={{ employee.company_id }}&amp;employee_id={{ employee.id }}&amp;exit_id={{ exit_record.id }}">{{ 'Recalcular liquidación' if settlement.calculation_record_id else 'Calcular liquidación final' }}</a>
+        {% if calculation %}<a class="btn outline" href="/app/liquidaciones/{{ calculation.id }}">Ver cálculo #{{ calculation.id }}</a>{% endif %}
+      </div>
+      {% if settlement.status == 'En Revisión' and calculation and user.role in ['administrador','contador'] %}
+      <form method="post" action="/app/final-settlements/{{ settlement.id }}/review" style="margin-top:16px">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <p class="wf-intro">Antes de aprobar, revisá el motivo de salida, el salario promedio, preaviso, indemnización, aguinaldo, vacaciones y base IPS. El cálculo se revalidará contra los datos guardados.</p>
+        <button class="btn primary" type="submit">Aprobar cálculo revisado</button>
+      </form>
+      {% endif %}
+    {% elif settlement.status == 'Aprobada' %}
+      <p class="wf-alert">Liquidación aprobada, todavía no pagada. La situación laboral del funcionario permanece independiente.</p>
+      {% if calculation %}<p><a href="/app/liquidaciones/{{ calculation.id }}">Consultar cálculo aprobado #{{ calculation.id }}</a></p>{% endif %}
+      {% if user.role in ['administrador','contador'] %}
+      <form method="post" enctype="multipart/form-data" action="/app/final-settlements/{{ settlement.id }}/payment" style="margin-top:16px">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="wf-fields">
+          <label>Fecha real de pago<input type="date" name="payment_date" required max="{{ today.isoformat() }}" value="{{ today.isoformat() }}"></label>
+          <label>Importe pagado · Gs.<input type="number" min="0" step="1" name="payment_amount" required value="{{ settlement.approved_amount }}"></label>
+          <label>Medio de pago<select name="payment_method" required><option value="">Seleccionar</option><option>Transferencia bancaria</option><option>Efectivo</option><option>Cheque</option><option>Otro</option></select></label>
+          <label>Referencia / número de operación<input name="payment_reference" maxlength="180" placeholder="Número de transferencia o referencia"></label>
+          <label>Comprobante PDF o imagen (obligatorio)<input type="file" name="receipt" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" required></label>
+        </div>
+        <p class="wf-intro">El importe total debe coincidir con el aprobado. Pagos parciales requieren un procedimiento contable diferente y no se registran como pagados mediante este formulario.</p>
+        <button class="btn primary" type="submit">Registrar pago y comprobante</button>
+      </form>
+      {% endif %}
+    {% else %}
+      <p class="wf-alert">Pago registrado el {{ settlement.payment_date|fecha }} por Gs. {{ settlement.payment_amount|gs }} mediante {{ settlement.payment_method }}. El respaldo está conservado en el expediente.</p>
+      <p>Registrado por: {{ settlement.paid_by }} · Referencia: {{ settlement.payment_reference or 'Sin referencia adicional' }}</p>
+      {% if settlement.receipt_document_id %}<p><a class="btn outline" href="/app/documents/{{ settlement.receipt_document_id }}/download">Descargar comprobante registrado</a></p>{% endif %}
+      {% if calculation %}<p><a href="/app/liquidaciones/{{ calculation.id }}">Consultar cálculo aprobado #{{ calculation.id }}</a></p>{% endif %}
+    {% endif %}
+  </section>
+  <section class="panel">
+    <div class="panel-head"><div><span>EVIDENCIA</span><h2>Documentación del egreso</h2></div><a href="/app/documents?company_id={{ employee.company_id }}&amp;employee_id={{ employee.id }}">Ir al archivo</a></div>
+    {% for doc in documents %}
+    <div class="wf-doc"><span><b>{{ doc.title }}</b><small style="display:block">{{ doc.category }} · {{ doc.created_at.strftime('%d/%m/%Y') if doc.created_at else '' }}</small></span><a class="btn outline" href="/app/documents/{{ doc.id }}/download">Descargar</a></div>
+    {% else %}
+    <p class="wf-intro">Todavía no se adjuntaron respaldos.</p>
+    {% endfor %}
+    {% if exit_record.constancia_certificate_id %}
+      <p><a class="btn outline" href="/app/certificates/{{ exit_record.constancia_certificate_id }}/download.pdf">Constancia laboral · PDF</a> <a class="btn outline" href="/app/certificates/{{ exit_record.constancia_certificate_id }}/download.docx">Word</a></p>
+    {% elif exit_record.status == 'Programado' %}
+      <p class="wf-intro">La constancia laboral se genera al hacerse efectivo el egreso.</p>
+    {% endif %}
+    <p class="wf-intro">Esta pantalla documenta actuaciones internas. Las notificaciones ante IPS/MTESS deben gestionarse y verificarse en sus respectivos circuitos.</p>
+  </section>
+</div>
+{% endblock %}

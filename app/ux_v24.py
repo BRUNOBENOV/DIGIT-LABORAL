@@ -95,7 +95,6 @@ def _valid_email(value: str) -> bool:
 
 _original_create_company = _take_route("/app/companies", "POST")
 _original_create_employee = _take_route("/app/employees", "POST")
-_original_employee_status = _take_route("/app/employees/{employee_id}/status", "POST")
 _original_create_vacation = _take_route("/app/vacations", "POST")
 _take_route("/app/calculations", "POST")
 _take_route("/app/payrolls/{payroll_id}/lines/{line_id}", "POST")
@@ -189,33 +188,6 @@ async def create_employee_v24(
         notes=_clean(form.get("notes"), 3000),
         branch_id=branch_id,
         ips_contributor=form.get("ips_contributor"),
-        user=user,
-        db=db,
-    )
-
-
-@app.post("/app/employees/{employee_id}/status")
-async def employee_status_v24(
-    employee_id: int,
-    request: Request,
-    user: User = Depends(core.require_roles("administrador", "contador", "auxiliar")),
-    db: Session = Depends(core.get_db),
-):
-    employee = db.get(Employee, employee_id)
-    if not employee or employee.company_id not in core.company_ids_for_user(db, user):
-        raise HTTPException(404, "Funcionario no encontrado.")
-    form = await request.form()
-    status_value = _clean(form.get("status"), 30) or "Activo"
-    termination_date = _date(form.get("termination_date"))
-    if status_value != "Activo" and termination_date is None:
-        return _error(f"/app/employees?company_id={employee.company_id}", "Indicá la fecha efectiva de salida para cambiar el estado.")
-    if termination_date and termination_date < employee.admission_date:
-        return _error(f"/app/employees?company_id={employee.company_id}", "La fecha de salida no puede ser anterior al ingreso.")
-    return await _invoke(
-        _original_employee_status,
-        employee_id=employee_id,
-        status_value=status_value,
-        termination_date=termination_date,
         user=user,
         db=db,
     )

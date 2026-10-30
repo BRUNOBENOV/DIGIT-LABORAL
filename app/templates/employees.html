@@ -20,6 +20,15 @@
   .section-management-actions button{font:inherit}
   @media(max-width:1050px){.employee-maintenance-filters{grid-template-columns:1fr 1fr 1fr}.employee-maintenance-filters .search-field{grid-column:1/-1}}
   @media(max-width:650px){.employee-maintenance-filters{grid-template-columns:1fr}.employee-maintenance-filters .search-field{grid-column:auto}.section-management-row{align-items:flex-start;flex-direction:column}.section-management-actions{width:100%}.section-management-actions .btn{flex:1}}
+  .employee-action-menu{display:inline-block;text-align:left;vertical-align:middle;min-width:136px}
+  .employee-action-menu>summary{cursor:pointer;list-style:none;border:1px solid var(--border-color,#334155);border-radius:8px;padding:8px 10px;font-weight:750;font-size:.8rem;color:var(--text-primary,#f3f6fb)}
+  .employee-action-menu>summary::-webkit-details-marker{display:none}
+  .employee-action-menu[open]{position:relative;z-index:20}
+  .employee-action-panel{display:grid;gap:6px;padding:9px 0 4px;min-width:190px}
+  .employee-action-panel a,.employee-action-panel button{display:block;text-align:left;width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--border-color,#334155);border-radius:8px;background:var(--input-bg,#101a2d);color:var(--text-primary,#f3f6fb);font-size:.8rem;text-decoration:none;cursor:pointer;font-family:inherit;font-weight:650}
+  .employee-action-panel .employee-archive-action{color:var(--text-secondary,#9eacbf)}
+  .employee-action-panel .employee-no-settlement{font-size:.75rem;color:var(--text-secondary,#9eacbf)}
+  .exit-modal-notice{border:1px solid var(--border-color,#334155);padding:12px 14px;border-radius:9px;line-height:1.5}
 </style>
 <div class="page-header">
   <div><span class="eyebrow">MANTENIMIENTOS</span><h1>Funcionarios</h1><p>Legajos personales, datos laborales e historial centralizado sin alterar los cálculos ya guardados.</p></div>
@@ -93,7 +102,29 @@
       <td>Gs. {{ employee.base_salary|gs }}{% if minimum_salary and employee.base_salary < minimum_salary.value %}<small class="salary-alert">Revisar referencia mínima general</small>{% endif %}</td>
       <td>{{ 'Sí' if employee.ips_contributor else 'No' }}</td>
       <td><span class="status-pill {{ employee.status|lower }}">{{ employee.status }}</span></td>
-      <td><div class="table-actions"><a class="table-save" href="/app/employees/{{ employee.id }}">Expediente</a>{% if user.role in ['administrador','contador','auxiliar'] %}<button class="table-save" type="button" data-modal-open="employeeModal" data-employee-code="{{ employee.employee_code }}" data-employee-company="{{ employee.company_id }}">Editar</button>{% endif %}</div></td>
+      <td><div class="table-actions"><a class="table-save" href="/app/employees/{{ employee.id }}">Expediente</a>{% if user.role in ['administrador','contador','auxiliar'] and employee.status != 'Archivado' %}<button class="table-save" type="button" data-modal-open="employeeModal" data-employee-code="{{ employee.employee_code }}" data-employee-company="{{ employee.company_id }}">Editar</button>{% endif %}
+      <details class="employee-action-menu"><summary aria-label="Acciones de {{ employee.full_name }}">⋯ Acciones</summary><div class="employee-action-panel">
+        <a href="/app/employees/{{ employee.id }}">Ver expediente</a>
+        {% if user.role in ['administrador','contador'] %}
+          {% if employee.status == 'Activo' %}
+            {% if exits_by_employee.get(employee.id) %}
+              <span class="employee-no-settlement">Egreso programado para {{ exits_by_employee[employee.id].effective_date|fecha }}</span>
+              {% if settlements_by_employee.get(employee.id) %}<a href="/app/final-settlements/{{ settlements_by_employee[employee.id].id }}">Ver liquidación final</a>{% endif %}
+            {% else %}
+              <button type="button" data-modal-open="registerExitModal" data-register-exit data-employee-id="{{ employee.id }}" data-employee-name="{{ employee.full_name }}" data-admission-date="{{ employee.admission_date.isoformat() }}">Registrar egreso</button>
+            {% endif %}
+          {% elif employee.status == 'Desvinculado' %}
+            {% if settlements_by_employee.get(employee.id) %}<a href="/app/final-settlements/{{ settlements_by_employee[employee.id].id }}">Ver liquidación final</a>{% else %}<span class="employee-no-settlement">Liquidación no registrada (legajo histórico)</span>{% endif %}
+          {% endif %}
+          {% if employee.status == 'Archivado' %}
+            <form method="post" action="/app/employees/{{ employee.id }}/restore"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit">Restaurar legajo</button></form>
+          {% else %}
+            <form method="post" action="/app/employees/{{ employee.id }}/archive" onsubmit="return confirm('¿Archivar este legajo? No se eliminarán nóminas, documentos ni liquidaciones.')"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="employee-archive-action" type="submit">Archivar legajo</button></form>
+          {% endif %}
+        {% elif user.role in ['auxiliar'] and settlements_by_employee.get(employee.id) %}
+          <a href="/app/final-settlements/{{ settlements_by_employee[employee.id].id }}">Ver liquidación final</a>
+        {% endif %}
+      </div></details></div></td>
     </tr>
   {% else %}
     <tr><td colspan="10" class="empty-state">No hay funcionarios para los filtros seleccionados.</td></tr>
@@ -102,6 +133,36 @@
   </tbody>
 </table></div></section>
 
+{% if user.role in ['administrador','contador'] %}
+<div class="modal" id="registerExitModal" aria-hidden="true"><div class="modal-backdrop" data-modal-close></div>
+  <section class="modal-card"><button class="modal-x" type="button" data-modal-close aria-label="Cerrar">×</button>
+    <span class="eyebrow">PROCEDIMIENTO LABORAL</span><h2>Registrar egreso</h2>
+    <p class="modal-intro">Trabajador: <b id="exitEmployeeName">Seleccioná un funcionario</b>. La fecha efectiva define el estado laboral; el cálculo y el pago se gestionan en un procedimiento separado.</p>
+    <form id="registerExitForm" method="post" enctype="multipart/form-data" action="/app/employees/0/exit" class="form-grid">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>Fecha efectiva de egreso *<input name="effective_date" id="exitEffectiveDate" type="date" value="{{ today.isoformat() }}" required></label>
+      <label>Motivo de egreso *<select name="reason" required>
+        <option value="">Seleccionar</option>
+        <option value="resignation">Renuncia</option>
+        <option value="dismissal">Despido sin causa</option>
+        <option value="justified">Despido con causa</option>
+        <option value="fixed_term_expiration">Vencimiento de contrato</option>
+        <option value="mutual_consent">Mutuo consentimiento</option>
+        <option value="worker_justified">Retiro justificado</option>
+        <option value="death">Fallecimiento</option>
+        <option value="other">Otro</option>
+      </select></label>
+      <label>Quién inicia la terminación *<select name="initiated_by" required><option value="">Seleccionar</option><option value="Empleador">Empleador</option><option value="Trabajador">Trabajador</option></select></label>
+      <label>Fecha de notificación, si procede<input name="notice_date" type="date"></label>
+      <label class="span-2"><input name="pre_notice_notified" type="checkbox" value="on"> La notificación/preaviso ya fue comunicado (requerido para fecha de egreso futura)</label>
+      <label class="span-2">Observaciones<textarea name="notes" maxlength="3000" rows="3" placeholder="Fundamento, modalidad y referencias del expediente"></textarea></label>
+      <label class="span-2">Documento respaldatorio PDF o imagen (opcional)<input name="supporting_file" type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"></label>
+      <p class="span-2 exit-modal-notice">El egreso no confirma ningún pago. Al registrarlo, se abrirá Cálculo → Liquidación Final con los datos de este trabajador. Si la fecha es futura y la notificación está acreditada, permanecerá activo hasta la fecha efectiva.</p>
+      <div class="form-actions span-2"><button class="btn ghost" type="button" data-modal-close>Cancelar</button><button class="btn primary" type="submit">Confirmar egreso</button></div>
+    </form>
+  </section>
+</div>
+{% endif %}
 {% if user.role in ['administrador','contador','auxiliar'] %}
 <div class="modal" id="employeeModal" aria-hidden="true"><div class="modal-backdrop" data-modal-close></div>
   <section class="modal-card">
@@ -144,7 +205,7 @@
       <p class="span-2 employee-field-help" id="employeeSalaryNotice">El salario vigente de un legajo existente no puede cambiarse desde esta ficha; debe tramitarse mediante una solicitud salarial aprobada.</p>
       <div class="form-actions span-2">
         <button class="btn ghost" type="button" data-modal-close>Cancelar</button>
-        {% if user.role in ['administrador','contador'] %}<button class="btn danger" id="employeeFormDelete" type="button" hidden>Archivar legajo</button>{% endif %}
+        {% if user.role in ['administrador','contador'] %}<button class="btn danger" id="employeeFormArchive" type="button" hidden>Archivar legajo</button>{% endif %}
         <button class="btn primary" id="employeeFormSubmit" type="submit">Registrar funcionario</button>
       </div>
     </form>
@@ -181,7 +242,7 @@
   const eyebrow = document.getElementById("employeeFormEyebrow");
   const intro = document.getElementById("employeeFormIntro");
   const submit = document.getElementById("employeeFormSubmit");
-  const deleteButton = document.getElementById("employeeFormDelete");
+  const archiveButton = document.getElementById("employeeFormArchive");
   const defaultAction = "/app/employees";
   const fieldNames = [
     "full_name","document_number","birth_date","nationality","marital_status","phone","email","address",
@@ -224,7 +285,7 @@
     eyebrow.textContent = "MANTENIMIENTOS · FUNCIONARIOS";
     intro.textContent = "Ingresá empresa y Código Legajo. Si el legajo existe, se recuperan los datos para editarlo sin duplicar el registro.";
     submit.textContent = "Registrar funcionario";
-    if (deleteButton) deleteButton.hidden = true;
+    if (archiveButton) archiveButton.hidden = true;
     companySelect.disabled = false;
     codeInput.readOnly = false;
     const admission = field("admission_date");
@@ -250,7 +311,7 @@
     eyebrow.textContent = "MANTENIMIENTOS · LEGAJO " + employee.employee_code;
     intro.textContent = "Los datos se actualizarán en el expediente existente. El salario vigente permanece protegido por el flujo de solicitud y aprobación.";
     submit.textContent = "Guardar cambios";
-    if (deleteButton) deleteButton.hidden = false;
+    if (archiveButton) archiveButton.hidden = false;
     companySelect.value = String(employee.company_id);
     companySelect.disabled = true;
     codeInput.value = String(employee.employee_code);
@@ -340,22 +401,33 @@
       setFeedback("El código ya corresponde a un legajo. Esperá a que termine la consulta o abrí el expediente existente.", "error");
     }
   });
-  if (deleteButton) {
-    deleteButton.addEventListener("click", async function () {
+  if (archiveButton) {
+    archiveButton.addEventListener("click", async function () {
       if (!loadedEmployeeId || !window.confirm("¿Archivar este legajo? No se borrarán nóminas, cálculos, documentos ni certificados.")) return;
       const csrf = field("csrf_token").value;
       try {
-        const response = await fetch("/api/employees/" + loadedEmployeeId, {
-          method:"DELETE", credentials:"same-origin", headers:{"X-CSRF-Token":csrf,"Accept":"application/json"}
+        const response = await fetch("/app/employees/" + loadedEmployeeId + "/archive", {
+          method:"POST", credentials:"same-origin", redirect:"manual",
+          headers:{"Content-Type":"application/x-www-form-urlencoded","X-CSRF-Token":csrf},
+          body:new URLSearchParams({csrf_token:csrf}).toString()
         });
-        const body = await response.json().catch(function(){return {};});
-        if (!response.ok) throw new Error(body.detail || "No se pudo archivar el legajo.");
+        if (!response.ok && response.type !== "opaqueredirect") throw new Error("No se pudo archivar el legajo.");
         window.location.href = "/app/employees?show_archived=true&archived=1";
       } catch(error) {
         setFeedback(error.message || "No se pudo archivar el legajo.", "error");
       }
     });
   }
+  const exitForm = document.getElementById("registerExitForm");
+  document.querySelectorAll("[data-register-exit]").forEach(function(button){
+    button.addEventListener("click", function(){
+      if (!exitForm) return;
+      exitForm.action = "/app/employees/" + button.dataset.employeeId + "/exit";
+      document.getElementById("exitEmployeeName").textContent = button.dataset.employeeName;
+      const dateField = document.getElementById("exitEffectiveDate");
+      dateField.min = button.dataset.admissionDate || "";
+    });
+  });
   document.querySelectorAll("[data-employee-code][data-employee-company]").forEach(function (button) {
     button.addEventListener("click", function () {
       const target = document.getElementById("employeeModal");

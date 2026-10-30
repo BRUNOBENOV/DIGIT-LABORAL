@@ -16,6 +16,7 @@
 <div class="dl-calculator-layout">
 <form id="labor-form" method="post" action="{{ '/app/liquidaciones/calcular' if private else '/herramientas/calcular' }}">
 <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="kind" value="{{ kind }}">
+{% if private and values.get("employee_exit_id") %}<input type="hidden" name="employee_exit_id" value="{{ values.employee_exit_id }}"><p class="dl-alert" role="status">Cálculo vinculado a un procedimiento de egreso. La fecha y la causal deben coincidir con el expediente. El registro del pago se realiza por separado.</p>{% endif %}
 {% if private %}<input type="hidden" name="company_id" value="{{ company_id }}"><input type="hidden" name="employee_id" value="{{ employee_id }}">{% endif %}
 <div class="dl-form-title"><span class="dl-step">01</span><h2>{{ titles[kind] }}</h2></div>
 {% if error %}<div class="dl-alert dl-error" role="alert" id="labor-error" tabindex="-1"><b>Revisá los datos</b><p>{{ error }}</p></div>{% endif %}

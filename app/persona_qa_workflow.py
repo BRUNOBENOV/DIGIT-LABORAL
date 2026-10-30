@@ -151,8 +151,16 @@ def run_admin_workflow(check, client, password: str) -> dict:  # noqa: ANN001
     expect_status(check, client.get('/herramientas'), {200}, 'centro público')
     expect_status(check, client.get(f'/app/liquidaciones?company_id={company_id}&employee_id={employee_id}'), {200}, 'centro profesional contextual')
 
-    response = client.post(f'/app/employees/{employee_id}/status', data={'status': 'Desvinculado', 'termination_date': '2019-01-01'}, follow_redirects=False)
-    expect_status(check, response, {303}, 'validación fecha salida')
-    check('form_error=' in response.headers.get('location', ''), 'salida anterior al ingreso sin feedback')
+    # Direct status changes are forbidden. Validate the dedicated exit workflow
+    # without modifying the live employee in the persona smoke scenario.
+    legacy = client.post(f'/app/employees/{employee_id}/status', data={'status': 'Desvinculado', 'termination_date': '2019-01-01'}, follow_redirects=False)
+    expect_status(check, legacy, {410}, 'estado directo retirado')
+    response = client.post(
+        f'/app/employees/{employee_id}/exit',
+        data={'effective_date': '2019-01-01', 'reason': 'dismissal', 'initiated_by': 'Empleador'},
+        follow_redirects=False,
+    )
+    expect_status(check, response, {422}, 'validación fecha de egreso en flujo dedicado')
+    check('La fecha de egreso no puede anteceder' in response.text, 'egreso anterior al ingreso no rechazado con detalle')
     logout(check, client)
     return {'company_id': company_id, 'employee_id': employee_id, 'payroll_id': payroll_id, 'line_id': line_id}

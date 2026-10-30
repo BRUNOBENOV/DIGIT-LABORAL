@@ -22,7 +22,7 @@ from .form_utils import OptionalQueryId
 from .labor_calculator import CalculationError, SOURCE, TITLES, VERSION, amount as round_gs, calculate, clean
 from .liquidation_export import build_liquidation_pdf, build_liquidation_csv
 from .labor_examples import example_values
-from .models import CalculationRecord, Company, Employee, Payroll, PayrollLine, PayrollComplianceDetail, User
+from .models import CalculationRecord, Company, Employee, EmployeeExit, FinalSettlement, Payroll, PayrollLine, PayrollComplianceDetail, User
 from .salary_history import employee_salary_history, salary_from_history, salary_for_period
 
 router = APIRouter()
@@ -136,13 +136,26 @@ def public_page(request: Request, tipo: str = "salary", ejemplo: bool = False):
 
 
 @router.get("/app/liquidaciones")
-def professional_page(request: Request, tipo: str = "settlement", company_id: OptionalQueryId = None, employee_id: OptionalQueryId = None,
+def professional_page(request: Request, tipo: str = "settlement", company_id: OptionalQueryId = None, employee_id: OptionalQueryId = None, exit_id: OptionalQueryId = None,
                       user: User = Depends(core.require_user), db: Session = Depends(core.get_db)):
     allowed_company_ids = core.company_ids_for_user(db, user)
     company_id, employee_id = core.default_labor_context(
         request, db, user, allowed_company_ids, company_id, employee_id
     )
     values = dict(context(tipo)["values"], company_id=company_id or 0, employee_id=employee_id or 0, prepared_by=user.full_name)
+    if exit_id:
+        from .employee_exit_routes import EXIT_REASONS
+        exit_record = db.get(EmployeeExit, exit_id)
+        if (tipo != "settlement" or not exit_record or
+                exit_record.company_id not in allowed_company_ids or
+                exit_record.employee_id != employee_id or
+                exit_record.status == "Cancelado"):
+            raise HTTPException(404, "No se encontró un egreso válido para esta liquidación.")
+        values.update(
+            employee_exit_id=str(exit_record.id),
+            end_date=exit_record.effective_date.isoformat(),
+            reason=exit_record.reason,
+        )
     scoped = private_context(db, user, values)
     if employee := scoped["employee"]:
         today = datetime.now(ZoneInfo("America/Asuncion")).date()
@@ -232,6 +245,29 @@ async def save_calculation(request: Request,
                            db: Session = Depends(core.get_db)):
     data = await form_values(request)
     scoped = private_context(db, user, data)
+    linked_settlement = None
+    linked_exit = None
+    if data.get("employee_exit_id"):
+        from .employee_exit_routes import EXIT_REASONS
+        try:
+            requested_exit_id = int(data["employee_exit_id"])
+        except (ValueError, TypeError):
+            raise HTTPException(422, "El identificador de egreso es inválido.")
+        linked_exit = db.get(EmployeeExit, requested_exit_id)
+        if (data.get("kind") != "settlement" or not linked_exit or
+            linked_exit.company_id not in core.company_ids_for_user(db, user) or
+            not scoped["employee"] or scoped["employee"].id != linked_exit.employee_id or
+            linked_exit.status == "Cancelado"):
+            raise HTTPException(409, "El cálculo no corresponde al egreso seleccionado.")
+        linked_settlement = db.scalar(select(FinalSettlement).where(
+            FinalSettlement.employee_exit_id == linked_exit.id
+        ))
+        if not linked_settlement or linked_settlement.status not in {"Pendiente de Cálculo", "En Revisión"}:
+            raise HTTPException(409, "Esta liquidación ya fue aprobada o pagada; no puede reemplazarse.")
+        if (data.get("end_date") != linked_exit.effective_date.isoformat() or
+            data.get("reason") != linked_exit.reason or
+            data.get("start_date") != scoped["employee"].admission_date.isoformat()):
+            raise HTTPException(422, "La causal y las fechas deben coincidir con el procedimiento de egreso.")
     try:
         if not scoped["company"] or not scoped["employee"]:
             raise CalculationError("Seleccioná empresa y funcionario para guardar el cálculo.")
@@ -247,8 +283,19 @@ async def save_calculation(request: Request,
         amount=result["net"], status="Borrador", source=SOURCE, notes=clean(data.get("notes"),600), created_by=user.full_name)
     db.add(item)
     db.flush()
+    if linked_settlement:
+        linked_settlement.calculation_record_id = item.id
+        linked_settlement.calculated_amount = int(result["net"])
+        linked_settlement.status = "En Revisión"
+        core.add_employee_event(
+            db, scoped["employee"], user, "Liquidación", "Liquidación final calculada",
+            f"Procedimiento #{linked_exit.id}; liquidación #{linked_settlement.id}; cálculo #{item.id}.",
+            core.current_paraguay_date(), int(result["net"]),
+        )
     core.write_audit(db, user, "crear", "liquidacion", str(item.id), "Motor " + VERSION)
     db.commit()
+    if linked_settlement:
+        return RedirectResponse(f"/app/final-settlements/{linked_settlement.id}", status_code=303)
     return RedirectResponse(f"/app/liquidaciones/{item.id}", status_code=303)
 
 
@@ -408,6 +455,8 @@ async def api_replace_calculation(
     db: Session = Depends(core.get_db),
 ):
     item, _ = saved_result(db, user, record_id)
+    if db.scalar(select(FinalSettlement.id).where(FinalSettlement.calculation_record_id == item.id)):
+        raise HTTPException(409, "Los cálculos vinculados a egresos solo se sustituyen desde el procedimiento de liquidación final.")
     try:
         payload = await request.json()
     except Exception:
@@ -450,6 +499,9 @@ async def api_update_calculation_status(
     db: Session = Depends(core.get_db),
 ):
     item, _ = saved_result(db, user, record_id)
+    linked = db.scalar(select(FinalSettlement).where(FinalSettlement.calculation_record_id == item.id))
+    if linked:
+        raise HTTPException(409, "Este cálculo pertenece a un procedimiento de egreso; se aprueba desde Liquidación Final.")
     try:
         payload = await request.json()
     except Exception:
@@ -475,6 +527,8 @@ def api_delete_calculation(
     db: Session = Depends(core.get_db),
 ):
     item, _ = saved_result(db, user, record_id)
+    if db.scalar(select(FinalSettlement.id).where(FinalSettlement.calculation_record_id == item.id)):
+        raise HTTPException(409, "No se puede anular un cálculo asociado a un procedimiento de egreso.")
     item.status = "Anulado"
     core.write_audit(db, user, "anular_api", "liquidacion", str(item.id), item.status)
     db.commit()

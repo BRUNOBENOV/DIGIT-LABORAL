@@ -1049,3 +1049,230 @@ def test_certificate_creation_and_print_previews_use_adjusted_company_logo():
     assert "/logo/print" in form_template
     assert "/logo/print" in print_template
     assert "def company_logo_print_v23" in route
+
+
+def test_employee_exit_decouples_employment_state_from_settlement_payment(web_case):
+    from app.models import EmployeeExit, FinalSettlement, GeneratedCertificate
+    from app.period_coverage import current_paraguay_date
+    client, db, _, company, employee, _ = web_case
+    employee.admission_date = date(2024, 1, 1)
+    db.commit()
+    today = current_paraguay_date()
+    csrf = token(client, f"/app/employees/{employee.id}")
+    created = client.post(
+        f"/app/employees/{employee.id}/exit",
+        data={
+            "csrf_token": csrf,
+            "effective_date": today.isoformat(),
+            "reason": "resignation",
+            "initiated_by": "Trabajador",
+        },
+        follow_redirects=False,
+    )
+    assert created.status_code == 303, created.text
+    assert "tipo=settlement" in created.headers["location"]
+    db.refresh(employee)
+    assert employee.status == "Desvinculado"
+    assert employee.termination_date == today
+    exit_record = db.query(EmployeeExit).filter_by(employee_id=employee.id).one()
+    assert exit_record.status == "Efectivo"
+    settlement = db.query(FinalSettlement).filter_by(employee_exit_id=exit_record.id).one()
+    assert settlement.status == "Pendiente de Cálculo"
+    assert settlement.payment_date is None
+    assert settlement.payment_amount is None
+    certificate = db.get(GeneratedCertificate, exit_record.constancia_certificate_id)
+    assert certificate is not None and certificate.status == "Borrador"
+    assert today.strftime("%Y") in certificate.body
+    detail = client.get(f"/app/final-settlements/{settlement.id}")
+    assert detail.status_code == 200
+    assert "Pendiente de Cálculo" in detail.text
+    assert "Constancia laboral" in detail.text
+    prefill = client.get(created.headers["location"])
+    assert prefill.status_code == 200
+    assert f'name="employee_exit_id" value="{exit_record.id}"' in prefill.text
+    assert f'value="{today.isoformat()}"' in prefill.text
+
+
+def test_exit_future_requires_pre_notice_and_becomes_effective_on_due_date(web_case, monkeypatch):
+    from app import employee_exit_routes as exit_routes
+    from app.models import EmployeeExit
+    from app.period_coverage import current_paraguay_date
+    from datetime import timedelta
+    client, db, _, company, employee, _ = web_case
+    today = current_paraguay_date()
+    employee.admission_date = date(2023, 2, 1)
+    db.commit()
+    due = today + timedelta(days=7)
+    csrf = token(client, f"/app/employees/{employee.id}")
+    data = {
+        "csrf_token": csrf,
+        "effective_date": due.isoformat(),
+        "reason": "dismissal",
+        "initiated_by": "Empleador",
+    }
+    failed = client.post(f"/app/employees/{employee.id}/exit", data=data, follow_redirects=False)
+    assert failed.status_code == 422
+    assert db.query(EmployeeExit).filter_by(employee_id=employee.id).count() == 0
+    data.update(pre_notice_notified="on", notice_date=today.isoformat())
+    registered = client.post(f"/app/employees/{employee.id}/exit", data=data, follow_redirects=False)
+    assert registered.status_code == 303
+    db.refresh(employee)
+    assert employee.status == "Activo"
+    assert employee.termination_date == due
+    pending = db.query(EmployeeExit).filter_by(employee_id=employee.id).one()
+    assert pending.status == "Programado"
+    monkeypatch.setattr(exit_routes, "current_paraguay_date", lambda: due)
+    assert exit_routes.sync_due_employee_exits(db, employee_id=employee.id) == 1
+    db.commit()
+    db.refresh(employee)
+    assert employee.status == "Desvinculado"
+    assert pending.status == "Efectivo"
+    assert exit_routes.sync_due_employee_exits(db, employee_id=employee.id) == 0
+
+
+def test_direct_employee_status_mutation_removed_and_archiving_restores_state(web_case):
+    from app.models import EmployeeEvent, PayrollLine
+    client, db, _, company, employee, _ = web_case
+    csrf = token(client, f"/app/employees/{employee.id}")
+    refused = client.post(
+        f"/app/employees/{employee.id}/status",
+        data={"csrf_token": csrf, "status": "Desvinculado", "termination_date": "2026-01-01"},
+        follow_redirects=False,
+    )
+    assert refused.status_code == 410
+    refused_delete = client.delete(
+        f"/api/employees/{employee.id}", headers={"X-CSRF-Token": csrf},
+        follow_redirects=False,
+    )
+    assert refused_delete.status_code == 410
+    previous = employee.status
+    archived = client.post(
+        f"/app/employees/{employee.id}/archive",
+        data={"csrf_token": csrf}, follow_redirects=False,
+    )
+    assert archived.status_code == 303
+    db.refresh(employee)
+    assert employee.status == "Archivado"
+    normal_list = client.get("/app/employees")
+    assert employee.full_name not in normal_list.text
+    include_archived = client.get("/app/employees?show_archived=true")
+    assert employee.full_name in include_archived.text
+    restored = client.post(
+        f"/app/employees/{employee.id}/restore",
+        data={"csrf_token": csrf}, follow_redirects=False,
+    )
+    assert restored.status_code == 303
+    db.refresh(employee)
+    assert employee.status == previous
+    assert db.query(EmployeeEvent).filter_by(employee_id=employee.id, event_type="Archivo").count() == 2
+
+
+def test_employee_exit_rejects_prior_admission_date_and_non_authorized_role(web_case):
+    client, db, box, company, employee, _ = web_case
+    employee.admission_date = date(2025, 1, 1)
+    db.commit()
+    csrf = token(client, f"/app/employees/{employee.id}")
+    data = {"csrf_token": csrf, "effective_date": "2024-12-31", "reason": "dismissal", "initiated_by": "Empleador"}
+    response = client.post(f"/app/employees/{employee.id}/exit", data=data, follow_redirects=False)
+    assert response.status_code == 422
+    data["effective_date"] = "2026-01-01"
+    box["user"].role = "auxiliar"
+    no_role = client.post(f"/app/employees/{employee.id}/exit", data=data, follow_redirects=False)
+    assert no_role.status_code == 403
+
+
+def test_final_settlement_payment_is_independent_and_keeps_evidence(web_case):
+    from datetime import datetime, UTC
+    import json
+    from app.labor_calculator import SOURCE
+    from app.models import EmployeeExit, FinalSettlement, CalculationRecord, Document
+    from app.period_coverage import current_paraguay_date
+    client, db, _, company, employee, _ = web_case
+    employee.admission_date = date(2024, 1, 1)
+    db.commit()
+    today = current_paraguay_date()
+    csrf = token(client, f"/app/employees/{employee.id}")
+    registered = client.post(
+        f"/app/employees/{employee.id}/exit",
+        data={"csrf_token": csrf, "effective_date": today.isoformat(), "reason": "dismissal", "initiated_by": "Empleador"},
+        follow_redirects=False,
+    )
+    assert registered.status_code == 303
+    exit_record = db.query(EmployeeExit).filter_by(employee_id=employee.id).one()
+    financial = db.query(FinalSettlement).filter_by(employee_exit_id=exit_record.id).one()
+    data = settlement()
+    data.update(
+        start_date=employee.admission_date.isoformat(),
+        end_date=today.isoformat(),
+        reason="dismissal",
+        company_id=str(company.id), employee_id=str(employee.id),
+    )
+    result = calculate(data)
+    calc = CalculationRecord(
+        company_id=company.id, employee_id=employee.id,
+        calculation_type="suite_settlement", reference_period=today.isoformat(),
+        input_json=json.dumps(data, ensure_ascii=False),
+        result_json=json.dumps(result, ensure_ascii=False),
+        amount=result["net"], status="Borrador", source=SOURCE,
+        created_by="Contador sintético",
+    )
+    db.add(calc)
+    db.flush()
+    financial.calculation_record_id = calc.id
+    financial.calculated_amount = result["net"]
+    financial.status = "En Revisión"
+    db.commit()
+    approved = client.post(
+        f"/app/final-settlements/{financial.id}/review",
+        data={"csrf_token": csrf}, follow_redirects=False,
+    )
+    assert approved.status_code == 303, approved.text
+    db.refresh(financial)
+    db.refresh(employee)
+    assert financial.status == "Aprobada"
+    assert financial.approved_amount == result["net"]
+    assert employee.status == "Desvinculado"
+    wrong_amount = client.post(
+        f"/app/final-settlements/{financial.id}/payment",
+        data={
+            "csrf_token": csrf, "payment_date": today.isoformat(),
+            "payment_amount": str(result["net"] + 1),
+            "payment_method": "Transferencia bancaria", "payment_reference": "TEST-INVALID",
+        },
+        files={"receipt": ("test.pdf", b"%PDF-1.4\nsample", "application/pdf")},
+        follow_redirects=False,
+    )
+    assert wrong_amount.status_code == 422
+    paid = client.post(
+        f"/app/final-settlements/{financial.id}/payment",
+        data={
+            "csrf_token": csrf, "payment_date": today.isoformat(),
+            "payment_amount": str(result["net"]),
+            "payment_method": "Transferencia bancaria", "payment_reference": "TRANSFER-TEST",
+        },
+        files={"receipt": ("test.pdf", b"%PDF-1.4\nsample", "application/pdf")},
+        follow_redirects=False,
+    )
+    assert paid.status_code == 303, paid.text
+    db.refresh(financial)
+    db.refresh(employee)
+    assert financial.status == "Pagada"
+    assert financial.payment_amount == result["net"]
+    assert financial.payment_date == today
+    assert financial.payment_reference == "TRANSFER-TEST"
+    assert employee.status == "Desvinculado"
+    receipt = db.get(Document, financial.receipt_document_id)
+    assert receipt is not None
+    assert bytes(receipt.content_bytes).startswith(b"%PDF-")
+    assert client.get(f"/app/documents/{receipt.id}/download").status_code == 200
+    duplicate = client.post(
+        f"/app/final-settlements/{financial.id}/payment",
+        data={
+            "csrf_token": csrf, "payment_date": today.isoformat(),
+            "payment_amount": str(result["net"]),
+            "payment_method": "Transferencia bancaria",
+        },
+        files={"receipt": ("test.pdf", b"%PDF-1.4\nsample", "application/pdf")},
+        follow_redirects=False,
+    )
+    assert duplicate.status_code == 409
