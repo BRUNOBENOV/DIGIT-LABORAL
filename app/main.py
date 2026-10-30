@@ -858,7 +858,9 @@ def _validate_employee_payload(
     status_value = clean_text(payload.get("status", existing.status if existing else "Activo"), max_length=30)
     if status_value not in {"Activo", "Inactivo", "Desvinculado"}:
         raise HTTPException(422, "El estado seleccionado no es válido. El archivo de legajos se realiza mediante la acción específica de archivo.")
-    if status_value in {"Inactivo", "Desvinculado"} and not termination_date:
+    if status_value in {"Inactivo", "Desvinculado"} and not termination_date and not (
+        existing and existing.status == status_value and existing.termination_date is None
+    ):
         raise HTTPException(422, "Indicá la fecha de egreso para un funcionario inactivo o desvinculado.")
     if status_value == "Activo":
         termination_date = None
