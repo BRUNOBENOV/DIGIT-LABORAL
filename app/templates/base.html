@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#0D1B2A">
+  <meta name="theme-color" content="#05256D">
   <title>{% block title %}Digit Laboral{% endblock %}</title>
   <link rel="icon" type="image/svg+xml" href="/static/branding/digit-laboral-favicon.svg?v=20261023a">
   <link rel="stylesheet" href="{{ url_for('static', path='app.css') }}">
@@ -18,24 +18,19 @@
   <link rel="stylesheet" href="{{ url_for('static', path='experience.css') }}?v=20261027a">
   <link rel="stylesheet" href="{{ url_for('static', path='brand-identity.css') }}?v=20261024c">
   <link rel="stylesheet" href="{{ url_for('static', path='certificate-premium.css') }}?v=20261029b">
-  <link rel="stylesheet" href="{{ url_for('static', path='theme-261.css') }}?v=20261027a">
+  <link rel="stylesheet" href="{{ url_for('static', path='theme-261.css') }}?v=20261030a">
   <link rel="stylesheet" href="{{ url_for('static', path='maintenance-workspace-263.css') }}?v=20261027c">
-  <link rel="stylesheet" href="{{ url_for('static', path='ui-system-264.css') }}?v=20261027d">
-  <link rel="stylesheet" href="{{ url_for('static', path='sidebar-contrast-265.css') }}?v=20261028f">
+  <link rel="stylesheet" href="{{ url_for('static', path='ui-system-264.css') }}?v=20261030a">
   <link rel="stylesheet" href="{{ url_for('static', path='brand-adjustments-267.css') }}?v=20261028b">
-  <link rel="stylesheet" href="{{ url_for('static', path='sidebar-active-269.css') }}?v=20261028d">
-  <link rel="stylesheet" href="{{ url_for('static', path='home-label-fix-2613.css') }}?v=20261028a">
   <link rel="stylesheet" href="{{ url_for('static', path='medical-exams-2618.css') }}?v=20261028a">
   <link rel="stylesheet" href="{{ url_for('static', path='calculation-operations-2619.css') }}?v=20261028a">
-  <link rel="stylesheet" href="{{ url_for('static', path='sidebar-brand-transparent-2617.css') }}?v=20261028a">
-  <link rel="stylesheet" href="{{ url_for('static', path='sidebar-brand-theme-2624.css') }}?v=20261028a">
 
   <style>
-    .app-version-indicator{display:inline-flex;align-items:center;gap:7px;flex:0 0 auto;margin-left:auto;padding:7px 10px;border:1px solid #dce4f0;border-radius:9px;background:#f8faff;color:#53627a;font:650 .64rem/1.1 "Aptos","Segoe UI",Arial,sans-serif;white-space:nowrap;font-variant-numeric:tabular-nums}
-    .app-version-indicator .app-version-label{font-size:.54rem;letter-spacing:.1em;font-weight:850;color:#7a879b}
-    .app-version-indicator b{font-size:.73rem;color:#173b86;font-weight:850}
-    .app-version-indicator .app-version-divider{width:1px;height:13px;background:#d7e0ed}
-    .app-version-indicator small{font-size:.58rem;font-weight:800;letter-spacing:.03em;color:#65738a}
+    .app-version-indicator{display:inline-flex;align-items:center;gap:7px;flex:0 0 auto;margin-left:auto;padding:7px 10px;border:1px solid #E1E7F0;border-radius:9px;background:#F2F5FA;color:#667085;font:650 .64rem/1.1 "Aptos","Segoe UI",Arial,sans-serif;white-space:nowrap;font-variant-numeric:tabular-nums}
+    .app-version-indicator .app-version-label{font-size:.54rem;letter-spacing:.1em;font-weight:850;color:#667085}
+    .app-version-indicator b{font-size:.73rem;color:#0B2D78;font-weight:850}
+    .app-version-indicator .app-version-divider{width:1px;height:13px;background:#D8E0EB}
+    .app-version-indicator small{font-size:.58rem;font-weight:800;letter-spacing:.03em;color:#667085}
     @media(max-width:1100px){.app-version-indicator .app-version-label{display:none}.app-version-indicator{padding:7px 8px;gap:5px}}
     @media(max-width:760px){.modern-topbar{gap:9px;padding:0 10px}.app-version-indicator{padding:7px;border-radius:8px;margin-left:auto}.app-version-indicator .app-version-divider,.app-version-indicator small{display:none}.app-version-indicator b{font-size:.68rem}.modern-brand{min-width:0;gap:7px}.modern-brand-mark.modern-brand-image{width:36px;height:36px;flex-basis:36px}.modern-brand-copy small{letter-spacing:.04em;font-size:.49rem}}
     @media(max-width:380px){.app-version-indicator{padding:6px}.modern-topbar{padding:0 7px}.modern-brand-copy b{font-size:.88rem}}
@@ -49,8 +44,8 @@
        solo cambia el texto cuando no hay hover; el fondo y el icono no se tocan. */
     body.app-body #modernMobileNav a.workspace-home-link[href="/app"].active:not(:hover) > span.workspace-home-label,
     body.app-body #modernMobileNav a.workspace-home-link[href="/app"].home-in-section-context:not(:hover) > span.workspace-home-label{
-      color:#2563EB!important;
-      -webkit-text-fill-color:#2563EB!important;
+      color:#1D4ED8!important;
+      -webkit-text-fill-color:#1D4ED8!important;
       opacity:1!important;
       visibility:visible!important;
       filter:none!important;
@@ -109,19 +104,22 @@
         </details>
 
         {% if user.role in ['administrador', 'contador', 'auxiliar'] %}
-        <details class="workspace-nav-group" {% if active_path.startswith('/app/liquidaciones') or active_path.startswith('/app/vacations') or active_path.startswith('/app/aguinaldo') or active_path.startswith('/app/calculations') or active_path.startswith('/app/calculation-operations') or active_path.startswith('/app/employee-history') or active_path.startswith('/app/medical-exams') %}open{% endif %}>
+        <details class="workspace-nav-group" {% if active_path.startswith('/app/liquidaciones') or active_path.startswith('/app/vacations') or active_path.startswith('/app/aguinaldo') or active_path.startswith('/app/calculations') or active_path.startswith('/app/payrolls') or active_path.startswith('/app/calculation-operations') or active_path.startswith('/app/employee-history') %}open{% endif %}>
           <summary><span class="workspace-group-symbol">02</span><span class="workspace-group-name">Cálculo</span><span class="workspace-group-chevron">⌄</span></summary>
           <div class="workspace-submenu">
-            <a class="workspace-nav-link {{ 'active' if active_path == '/app/liquidaciones' and request.query_params.get('tipo') == 'salary' else '' }}" href="/app/liquidaciones?tipo=salary">Salario</a>
-            <a class="workspace-nav-link {{ 'active' if active_path == '/app/liquidaciones' and request.query_params.get('tipo', 'settlement') != 'salary' else '' }}" href="/app/liquidaciones?tipo=settlement">Liquidación</a>
-            <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/aguinaldo') else '' }}" href="/app/aguinaldo">Aguinaldo</a>
+            <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/calculations') and request.query_params.get('tipo') == 'salary' else '' }}" href="/app/calculations?tipo=salary">Salario</a>
+            <a class="workspace-nav-link {{ 'active' if active_path == '/app/liquidaciones' and request.query_params.get('tipo') == 'salary' else '' }}" href="/app/liquidaciones?tipo=salary">Liquidación de haberes</a>
+            <a class="workspace-nav-link {{ 'active' if active_path == '/app/liquidaciones' and request.query_params.get('tipo', 'settlement') == 'settlement' else '' }}" href="/app/liquidaciones?tipo=settlement">Liquidación final</a>
+            <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/payrolls') else '' }}" href="/app/payrolls">Nóminas mensuales</a>
+            <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/calculations') and request.query_params.get('tipo') == 'hours' else '' }}" href="/app/calculations?tipo=hours">Horas y recargos</a>
             <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/calculations') and request.query_params.get('tipo') == 'notice' else '' }}" href="/app/calculations?tipo=notice">Preaviso</a>
+            <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/calculations') and not request.query_params.get('tipo') else '' }}" href="/app/calculations">Calculadoras laborales</a>
+            <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/aguinaldo') else '' }}" href="/app/aguinaldo">Aguinaldo</a>
             <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/vacations') else '' }}" href="/app/vacations">Vacaciones</a>
-            <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/calculation-operations') and request.query_params.get('tipo') == 'advance' else '' }}" href="/app/calculation-operations?tipo=advance">Anticipo</a>
+            <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/calculation-operations') and request.query_params.get('tipo') == 'advance' else '' }}" href="/app/calculation-operations?tipo=advance">Anticipos</a>
             <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/calculation-operations') and request.query_params.get('tipo') == 'discipline' else '' }}" href="/app/calculation-operations?tipo=discipline">Amonestaciones / Suspensión / Permisos</a>
             <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/calculation-operations') and request.query_params.get('tipo') == 'telegram' else '' }}" href="/app/calculation-operations?tipo=telegram">Telegrama colacionado</a>
             <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/employee-history') else '' }}" href="/app/employee-history">Histórico funcionario</a>
-            <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/medical-exams') else '' }}" href="/app/medical-exams">Examen Médico</a>
           </div>
         </details>
         {% endif %}
@@ -140,7 +138,7 @@
         <details class="workspace-nav-group" {% if active_path.startswith('/app/certificates') or active_path.startswith('/app/documents') %}open{% endif %}>
           <summary><span class="workspace-group-symbol">04</span><span class="workspace-group-name">Certificados</span><span class="workspace-group-chevron">⌄</span></summary>
           <div class="workspace-submenu">
-            <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/certificates') else '' }}" href="/app/certificates">Emitir certificados</a>
+            <a class="workspace-nav-link {{ 'active' if active_path == '/app/certificates' else '' }}" href="/app/certificates">Documentos laborales</a>
             <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/documents') else '' }}" href="/app/documents">Archivo documental</a>
           </div>
         </details>
@@ -165,7 +163,7 @@
       <div class="workspace-sidebar-bottom"><img class="workspace-sidebar-bottom-full-logo" src="/static/branding/digit-laboral-logo-blanco.svg?v=20261028b" alt="Digit Laboral" width="500" height="207"></div>
       {% endif %}
     </nav>
-    <main class="main-content">{% include "module_subnav.html" %}{% block content %}{% endblock %}</main>
+    <main class="main-content">{% block content %}{% endblock %}</main>
   </div>
 {% else %}
   {% block public_content %}{% endblock %}

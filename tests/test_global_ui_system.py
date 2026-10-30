@@ -39,14 +39,21 @@ def test_global_design_assets_are_loaded_after_the_existing_theme():
     ]
     assert all(index >= 0 for index in positions)
     assert positions == sorted(positions)
-    assert 'include "module_subnav.html"' in base
+    assert 'include "module_subnav.html"' not in base
     assert "ui-system-264.js" in base
+    for obsolete_patch in (
+        "sidebar-contrast-265.css",
+        "sidebar-active-269.css",
+        "home-label-fix-2613.css",
+        "sidebar-brand-transparent-2617.css",
+        "sidebar-brand-theme-2624.css",
+    ):
+        assert obsolete_patch not in base
     for token in (
-        "--ui-navy:#0D1B2A",
-        "--ui-primary:#2563EB",
-        "--ui-bg:#F9FAFB",
-        "--ui-text:#111827",
-        ".ui-module-nav",
+        "--ui-navy:#05256D",
+        "--ui-primary:#1D4ED8",
+        "--ui-bg:#F2F5FA",
+        "--ui-text:#172033",
         ".ui-section-card",
         ".ui-table-toolbar",
         "prefers-reduced-motion:reduce",
@@ -56,37 +63,77 @@ def test_global_design_assets_are_loaded_after_the_existing_theme():
         assert token in js
 
 
-def test_secondary_navigation_renders_for_major_authenticated_modules():
+def test_workspace_sidebar_is_the_single_global_navigation():
     with TestClient(app) as client:
         _login(client)
+        home = client.get("/app")
+        assert home.status_code == 200
+        assert 'id="modernMobileNav"' in home.text
+        sidebar = home.text.split('id="modernMobileNav"', 1)[1].split("</nav>", 1)[0]
+        for label in (
+            "Mantenimientos",
+            "Cálculo",
+            "Informes",
+            "Certificados",
+            "Utilitarios",
+        ):
+            assert label in sidebar
+        for href in (
+            "/app/calculations?tipo=salary",
+            "/app/payrolls",
+            "/app/medical-exams",
+            "/app/notifications",
+        ):
+            assert f'href="{href}"' in sidebar
+        assert sidebar.count('href="/app/medical-exams"') == 1
+        assert "/app/certificates/official" not in sidebar
+
+        calculation_start = sidebar.find('<span class="workspace-group-name">Cálculo</span>')
+        calculation_end = sidebar.find("</details>", calculation_start)
+        maintenance_start = sidebar.find('<span class="workspace-group-name">Mantenimientos</span>')
+        maintenance_end = sidebar.find("</details>", maintenance_start)
+        assert calculation_start >= 0 and calculation_end > calculation_start
+        assert "/app/medical-exams" not in sidebar[calculation_start:calculation_end]
+        assert "/app/medical-exams" in sidebar[maintenance_start:maintenance_end]
+
         cases = [
-            ("/app/calculations", "Subsecciones de cálculo laboral"),
-            ("/app/calculations?tipo=salary", "Salarios"),
-            ("/app/reports", "Subsecciones de informes"),
-            ("/app/certificates", "Subsecciones de certificados y documentos"),
-            ("/app/requests", "Subsecciones de utilitarios"),
-            ("/app/calendar", "Subsecciones de utilitarios"),
-            ("/app/payrolls", "Subsecciones de cálculo laboral"),
-            ("/app/vacations", "Subsecciones de cálculo laboral"),
-            ("/app/aguinaldo", "Subsecciones de cálculo laboral"),
-            ("/app/compliance", "Subsecciones de informes"),
-            ("/app/documents", "Subsecciones de certificados y documentos"),
-            ("/app/users", "Usuarios y permisos"),
-            ("/app/parameters", "Parámetros"),
+            "/app/calculations",
+            "/app/calculations?tipo=salary",
+            "/app/reports",
+            "/app/certificates",
+            "/app/requests",
+            "/app/calendar",
+            "/app/payrolls",
+            "/app/vacations",
+            "/app/aguinaldo",
+            "/app/compliance",
+            "/app/documents",
+            "/app/users",
+            "/app/parameters",
+            "/app/medical-exams",
         ]
-        for path, expected in cases:
+        for path in cases:
             response = client.get(path)
             assert response.status_code == 200, f"{path}: {response.status_code} {response.text[:300]}"
-            assert expected in response.text, f"no secondary navigation in {path}"
+            assert "ui-module-nav" not in response.text
+
+        calculation_index = client.get("/app/calculations")
+        assert calculation_index.status_code == 200
+        assert 'class="workspace-nav-link active" href="/app/calculations">Calculadoras laborales</a>' in calculation_index.text
+        assert 'class="workspace-nav-link active" href="/app/calculations?tipo=salary">Salario</a>' not in calculation_index.text
+
+        salary_page = client.get("/app/calculations?tipo=salary")
+        assert salary_page.status_code == 200
+        assert 'class="workspace-nav-link active" href="/app/calculations?tipo=salary">Salario</a>' in salary_page.text
+        assert 'class="workspace-nav-link active" href="/app/calculations">Calculadoras laborales</a>' not in salary_page.text
 
 
-def test_reusable_jinja_macros_are_documented_and_loaded_by_the_navigation_partial():
+def test_reusable_component_macros_are_documented():
     macro = (ROOT / "app" / "templates" / "components" / "ui.html").read_text(encoding="utf-8")
-    nav = (ROOT / "app" / "templates" / "module_subnav.html").read_text(encoding="utf-8")
-    docs = (ROOT / "docs" / "UI_SYSTEM_V264.md").read_text(encoding="utf-8")
-    assert "macro tab_nav" in macro
+    docs = (ROOT / "docs" / "VISUAL_SYSTEM_V2648.md").read_text(encoding="utf-8")
     assert "macro section_card" in macro
     assert "macro inline_help" in macro
-    assert 'from "components/ui.html" import tab_nav' in nav
     assert "FastAPI + Jinja2" in docs
-    assert "no implementa una SPA" in docs
+    assert "cinco áreas" in docs
+    assert "no modifica" in docs
+

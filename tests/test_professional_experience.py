@@ -106,7 +106,7 @@ def test_calculation_pages_render_only_the_selected_module():
 
     # The active module has one canonical entrypoint per requested submodule.
     for route in (
-        '/app/liquidaciones?tipo=salary',
+        '/app/calculations?tipo=salary',
         '/app/aguinaldo',
         '/app/vacations',
         '/app/calculations?tipo=notice',
@@ -128,22 +128,22 @@ def test_module_navigation_and_assets_are_versioned():
     assert ".calculation-index-card" in css
 
 
-def test_sidebar_uses_requested_brand_navy_and_original_white_logo():
+def test_sidebar_uses_consolidated_brand_navy_and_original_white_logo():
     root = Path(__file__).resolve().parents[1]
     base = (root / "app/templates/base.html").read_text(encoding="utf-8")
-    sidebar_css = (root / "app/static/sidebar-brand-theme-2624.css").read_text(encoding="utf-8")
+    theme = (root / "app/static/theme-261.css").read_text(encoding="utf-8")
     white_logo = (root / "app/static/branding/digit-laboral-logo-blanco.svg").read_text(encoding="utf-8")
 
-    assert "sidebar-brand-theme-2624.css" in base and "v=20261028a" in base
-    assert "background:#05256d!important" in sidebar_css
-    assert "background:#05256d!important" in sidebar_css.split("@media(max-width:860px)")[1]
+    assert "sidebar-brand-theme-2624.css" not in base
+    assert ".app-body .modern-mobile-nav.workspace-sidebar{" in theme
+    assert "background:#05256D!important;" in theme
     assert 'src="/static/branding/digit-laboral-logo-blanco.svg?v=20261028b"' in base
     # The white variant embeds and recolors the exact original wordmark, rather than redrawing it.
     assert "digit-laboral-logo-267.webp" in white_logo
     assert 'href="data:image/webp;base64,' in white_logo
     assert 'filter="url(#original-wordmark-white)"' in white_logo
     assert "<feColorMatrix" in white_logo
-    assert 'M10 10 H112' not in white_logo  # no separately redrawn replacement mark
+    assert 'M10 10 H112' not in white_logo
 
 
 def test_official_brand_identity_assets_are_used_across_the_product():

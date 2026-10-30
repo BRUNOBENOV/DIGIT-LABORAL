@@ -1,6 +1,12 @@
-# Digit Laboral 2.6.43
+# Digit Laboral 2.6.48
 
 Plataforma de gestión y cumplimiento laboral para estudios contables paraguayos.
+## Novedades de la versión 2.6.48
+
+- Unifica la identidad visual del espacio autenticado con la marca azul DIGIT y componentes compartidos.
+- Simplifica la navegación en cinco áreas y elimina accesos secundarios duplicados.
+- Unifica visualmente el centro laboral interno con el espacio de trabajo sin alterar cálculos ni documentos impresos.
+- Consolida los estilos de navegación y documenta los tokens del sistema visual.
 
 ## Novedades de la versión 2.6.43
 
