@@ -1179,3 +1179,100 @@ def test_employee_exit_rejects_prior_admission_date_and_non_authorized_role(web_
     box["user"].role = "auxiliar"
     no_role = client.post(f"/app/employees/{employee.id}/exit", data=data, follow_redirects=False)
     assert no_role.status_code == 403
+
+
+def test_final_settlement_payment_is_independent_and_keeps_evidence(web_case):
+    from datetime import datetime, UTC
+    import json
+    from app.labor_calculator import SOURCE
+    from app.models import EmployeeExit, FinalSettlement, CalculationRecord, Document
+    from app.period_coverage import current_paraguay_date
+    client, db, _, company, employee, _ = web_case
+    employee.admission_date = date(2024, 1, 1)
+    db.commit()
+    today = current_paraguay_date()
+    csrf = token(client, f"/app/employees/{employee.id}")
+    registered = client.post(
+        f"/app/employees/{employee.id}/exit",
+        data={"csrf_token": csrf, "effective_date": today.isoformat(), "reason": "dismissal", "initiated_by": "Empleador"},
+        follow_redirects=False,
+    )
+    assert registered.status_code == 303
+    exit_record = db.query(EmployeeExit).filter_by(employee_id=employee.id).one()
+    financial = db.query(FinalSettlement).filter_by(employee_exit_id=exit_record.id).one()
+    data = settlement()
+    data.update(
+        start_date=employee.admission_date.isoformat(),
+        end_date=today.isoformat(),
+        reason="dismissal",
+        company_id=str(company.id), employee_id=str(employee.id),
+    )
+    result = calculate(data)
+    calc = CalculationRecord(
+        company_id=company.id, employee_id=employee.id,
+        calculation_type="suite_settlement", reference_period=today.isoformat(),
+        input_json=json.dumps(data, ensure_ascii=False),
+        result_json=json.dumps(result, ensure_ascii=False),
+        amount=result["net"], status="Borrador", source=SOURCE,
+        created_by="Contador sintético",
+    )
+    db.add(calc)
+    db.flush()
+    financial.calculation_record_id = calc.id
+    financial.calculated_amount = result["net"]
+    financial.status = "En Revisión"
+    db.commit()
+    approved = client.post(
+        f"/app/final-settlements/{financial.id}/review",
+        data={"csrf_token": csrf}, follow_redirects=False,
+    )
+    assert approved.status_code == 303, approved.text
+    db.refresh(financial)
+    db.refresh(employee)
+    assert financial.status == "Aprobada"
+    assert financial.approved_amount == result["net"]
+    assert employee.status == "Desvinculado"
+    wrong_amount = client.post(
+        f"/app/final-settlements/{financial.id}/payment",
+        data={
+            "csrf_token": csrf, "payment_date": today.isoformat(),
+            "payment_amount": str(result["net"] + 1),
+            "payment_method": "Transferencia bancaria", "payment_reference": "TEST-INVALID",
+        },
+        files={"receipt": ("test.pdf", b"%PDF-1.4\nsample", "application/pdf")},
+        follow_redirects=False,
+    )
+    assert wrong_amount.status_code == 422
+    paid = client.post(
+        f"/app/final-settlements/{financial.id}/payment",
+        data={
+            "csrf_token": csrf, "payment_date": today.isoformat(),
+            "payment_amount": str(result["net"]),
+            "payment_method": "Transferencia bancaria", "payment_reference": "TRANSFER-TEST",
+        },
+        files={"receipt": ("test.pdf", b"%PDF-1.4\nsample", "application/pdf")},
+        follow_redirects=False,
+    )
+    assert paid.status_code == 303, paid.text
+    db.refresh(financial)
+    db.refresh(employee)
+    assert financial.status == "Pagada"
+    assert financial.payment_amount == result["net"]
+    assert financial.payment_date == today
+    assert financial.payment_reference == "TRANSFER-TEST"
+    assert employee.status == "Desvinculado"
+    receipt = db.get(Document, financial.receipt_document_id)
+    assert receipt is not None
+    assert bytes(receipt.content_bytes).startswith(b"%PDF-")
+    assert client.get(f"/app/documents/{receipt.id}/download").status_code == 200
+    duplicate = client.post(
+        f"/app/final-settlements/{financial.id}/payment",
+        data={
+            "csrf_token": csrf, "payment_date": today.isoformat(),
+            "payment_amount": str(result["net"]),
+            "payment_method": "Transferencia bancaria",
+        },
+        files={"receipt": ("test.pdf", b"%PDF-1.4\nsample", "application/pdf")},
+        follow_redirects=False,
+    )
+    assert duplicate.status_code == 409
