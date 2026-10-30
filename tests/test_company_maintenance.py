@@ -220,7 +220,7 @@ def test_company_directory_includes_archived_by_default_and_can_hide_them():
             default_directory = client.get("/app/companies")
             assert default_directory.status_code == 200
             assert "Empresa archivada visible QA" in default_directory.text
-            assert "name=\\"hide_archived\\"" in default_directory.text
+            assert 'name="hide_archived"' in default_directory.text
 
             active_only = client.get("/app/companies?hide_archived=true")
             assert active_only.status_code == 200
@@ -231,4 +231,4 @@ def test_company_directory_includes_archived_by_default_and_can_hide_them():
             if company:
                 db.delete(company)
                 db.commit()
-\n
+
