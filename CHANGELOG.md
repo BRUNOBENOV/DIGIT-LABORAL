@@ -1,3 +1,8 @@
+## 2.6.55 — Filtros opcionales y etiquetas accesibles al ordenar
+
+- Omite los filtros GET vacíos, incluido el año opcional, al cambiar el orden de los informes.
+- Evita que la etiqueta del botón de dirección se agregue al nombre accesible del selector.
+
 ## 2.6.54 — Orden ascendente y descendente compartido
 
 - Añade controles reutilizables con flechas de ambas direcciones, estado activo visible, título y navegación por teclado.
