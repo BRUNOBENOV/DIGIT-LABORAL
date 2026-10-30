@@ -4201,7 +4201,7 @@ def restore_employee_form(
     )
     detail = archive_event.detail if archive_event else ""
     match = re.search(
-        r"Estado anterior:\\s*(Activo|Inactivo|Desvinculado);\\s*Fecha de salida anterior:\\s*(\\d{4}-\\d{2}-\\d{2}|Sin fecha)",
+        r"Estado anterior:\s*(Activo|Inactivo|Desvinculado);\s*Fecha de salida anterior:\s*(\d{4}-\d{2}-\d{2}|Sin fecha)",
         detail,
     )
     if match:
