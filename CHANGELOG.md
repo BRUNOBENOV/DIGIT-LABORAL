@@ -1,3 +1,12 @@
+## 2.6.51 — Calidad visual y consistencia de módulos
+
+- Corrige la referencia obsoleta a `module_subnav.html` en Operaciones de Cálculo; Anticipos, Disciplina y Telegrama colacionado vuelven a renderizar con la navegación global única.
+- Añade tokens de compatibilidad para que los estilos heredados usen superficies claras, texto oscuro y bordes corporativos en vez de los fallbacks del tema anterior.
+- Unifica formularios, acciones, estados de operación y métricas del histórico de funcionario con la paleta DIGIT.
+- Mejora la adaptación de las operaciones a escritorio, tablet y móvil, manteniendo el respeto por movimiento reducido.
+- Amplía las pruebas con renderizado real de los tres submódulos y controles de contraste visual.
+- No modifica reglas de cálculo, importes, datos, permisos ni documentos generados.
+
 ## 2.6.50 — Recuperación de animaciones del menú lateral
 
 - Recupera el efecto hover azul oscuro y las transiciones suaves en los submódulos del menú lateral.
