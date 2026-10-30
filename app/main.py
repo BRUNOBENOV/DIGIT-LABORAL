@@ -585,6 +585,8 @@ def _company_api_record(db: Session, company: Company) -> dict:
     return {
         "id": company.id,
         "company_code": company.company_code,
+        "legacy_code": company.legacy_code or "",
+        "legacy_ruc": company.legacy_ruc or "",
         "legal_name": company.legal_name,
         "trade_name": company.trade_name or "",
         "owner_name": company.owner_name or "",
@@ -707,12 +709,13 @@ def _check_company_uniqueness(db: Session, studio_id: int, values: dict, exclude
         raise HTTPException(409, "El Código Empresa ya existe dentro de este estudio.")
 
     new_ruc_digits = _ruc_digits(values["ruc"])
-    existing_companies = db.scalars(select(Company).where(Company.studio_id == studio_id))
-    for current in existing_companies:
-        if exclude_id is not None and current.id == exclude_id:
-            continue
-        if _ruc_digits(current.ruc) == new_ruc_digits:
-            raise HTTPException(409, "Ya existe una empresa con ese RUC dentro del estudio.")
+    if new_ruc_digits:
+        existing_companies = db.scalars(select(Company).where(Company.studio_id == studio_id))
+        for current in existing_companies:
+            if exclude_id is not None and current.id == exclude_id:
+                continue
+            if _ruc_digits(current.ruc) == new_ruc_digits:
+                raise HTTPException(409, "Ya existe una empresa con ese RUC dentro del estudio.")
 
 
 def _apply_company_payload(db: Session, company: Company, values: dict) -> None:
@@ -1873,6 +1876,8 @@ def companies_page(
         query = query.where(or_(
             Company.legal_name.ilike(term),
             Company.ruc.ilike(term),
+            Company.legacy_ruc.ilike(term),
+            Company.legacy_code.ilike(term),
             Company.trade_name.ilike(term),
             func.cast(Company.company_code, String).ilike(term),
         ))
