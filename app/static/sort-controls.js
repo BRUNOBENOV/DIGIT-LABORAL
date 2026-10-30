@@ -36,6 +36,7 @@
   }
   function selector(select) {
     if (selectors.has(select)) return selectors.get(select);
+    if (!select.hasAttribute("aria-label")) select.setAttribute("aria-label", "Ordenar por");
     const control = document.createElement("span");
     control.className = "digit-sort-control";
     select.before(control);
@@ -63,7 +64,9 @@
       if (!form) return;
       const url = new URL(form.action || window.location.href);
       url.search = "";
-      for (const [key,value] of new FormData(form)) url.searchParams.set(key,String(value));
+      for (const [key,value] of new FormData(form)) {
+        if (String(value).trim() !== "") url.searchParams.set(key,String(value));
+      }
       const key = select.value || select.options[1]?.value || select.options[0]?.value || "";
       url.searchParams.set(select.name, select.hasAttribute("data-sort-signed") && order === "desc" ? "-"+key : key);
       if (!select.hasAttribute("data-sort-signed")) url.searchParams.set("direction",order);

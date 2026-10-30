@@ -1,6 +1,11 @@
-# Digit Laboral 2.6.54
+# Digit Laboral 2.6.55
 
 Plataforma de gestión y cumplimiento laboral para estudios contables paraguayos.
+## Novedades de la versión 2.6.55
+
+- Conserva los filtros opcionales vacíos sin provocar errores al ordenar informes.
+- Mantiene una etiqueta clara del selector para lectores de pantalla.
+
 ## Novedades de la versión 2.6.54
 
 - Unifica el orden ascendente y descendente con dos flechas visibles y controles accesibles por teclado.
