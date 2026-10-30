@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 
 from app.config import settings
 from app.database import SessionLocal
-from app.main import app, normalize_company_ruc, ruc_check_digit
+from app.main import _check_company_uniqueness, app, normalize_company_ruc, ruc_check_digit
 from app.models import AuditLog, Company, CompanyComplianceProfile, User
 from app.paraguay_locations import PARAGUAY_CITIES, PARAGUAY_CITY_NAMES, PARAGUAY_DEPARTMENTS
 
@@ -34,6 +34,24 @@ def test_ruc_normalization_checks_numeric_length_and_standardizes_display():
     assert normalize_company_ruc("80000519-9") is None
     assert normalize_company_ruc("ABC-123") is None
     assert normalize_company_ruc("123") is None
+
+
+
+def test_blank_legacy_ruc_does_not_collide_with_other_blank_records():
+    from types import SimpleNamespace
+
+    class FakeDB:
+        def scalar(self, statement):
+            return None
+
+        def scalars(self, statement):
+            return iter([SimpleNamespace(id=10, ruc=""), SimpleNamespace(id=11, ruc="")])
+
+    _check_company_uniqueness(
+        FakeDB(),
+        studio_id=99,
+        values={"company_code": 99991, "ruc": ""},
+    )
 
 
 def test_paraguay_city_catalog_has_262_unique_municipalities_and_valid_departments():
