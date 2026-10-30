@@ -114,6 +114,7 @@ def test_workspace_sidebar_is_the_single_global_navigation():
             "/app/calculation-operations?tipo=advance",
             "/app/calculation-operations?tipo=discipline",
             "/app/calculation-operations?tipo=telegram",
+            "/app/employee-history",
         ]
         for path in cases:
             response = client.get(path)
