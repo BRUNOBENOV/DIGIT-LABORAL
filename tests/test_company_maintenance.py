@@ -197,3 +197,38 @@ def test_api_company_list_requires_authentication():
     with TestClient(app) as client:
         response = client.get("/api/companies", follow_redirects=False)
         assert response.status_code in {302, 303}
+
+def test_company_directory_includes_archived_by_default_and_can_hide_them():
+    code = int(uuid.uuid4().int % 900_000_000) + 100_000_000
+    with SessionLocal() as db:
+        studio_id = db.scalar(select(User.studio_id).where(User.email == "admin@digitlaboral.com.py"))
+        assert studio_id is not None
+        company = Company(
+            studio_id=studio_id,
+            company_code=code,
+            legal_name="Empresa archivada visible QA",
+            ruc="",
+            city="Ciudad del Este",
+            status="Archivada",
+        )
+        db.add(company)
+        db.commit()
+        company_id = company.id
+    try:
+        with TestClient(app) as client:
+            _login(client)
+            default_directory = client.get("/app/companies")
+            assert default_directory.status_code == 200
+            assert "Empresa archivada visible QA" in default_directory.text
+            assert 'name="hide_archived"' in default_directory.text
+
+            active_only = client.get("/app/companies?hide_archived=true")
+            assert active_only.status_code == 200
+            assert "Empresa archivada visible QA" not in active_only.text
+    finally:
+        with SessionLocal() as db:
+            company = db.get(Company, company_id)
+            if company:
+                db.delete(company)
+                db.commit()
+

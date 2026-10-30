@@ -36,7 +36,7 @@
   <label class="search-field">Código, nombre o RUC<input name="q" value="{{ q }}" placeholder="Ej.: 1024, Comercial Norte o RUC" autocomplete="off"></label>
   <label>Ciudad<select name="city"><option value="">Todas las ciudades</option>{% for city_option in cities %}<option value="{{ city_option.name }}" {{ 'selected' if selected_city == city_option.name }}>{{ city_option.name }} · {{ city_option.department }}</option>{% endfor %}</select></label>
   <label>Departamento<select name="department"><option value="">Todos los departamentos</option>{% for department_option in departments %}<option value="{{ department_option }}" {{ 'selected' if selected_department == department_option }}>{{ department_option }}</option>{% endfor %}</select></label>
-  <label class="filter-check"><input type="checkbox" name="show_archived" value="true" {{ 'checked' if show_archived }}> Mostrar archivadas</label>
+  <label class="filter-check"><input type="checkbox" name="hide_archived" value="true" {{ 'checked' if hide_archived }}> Ocultar archivadas</label>
   <button class="btn primary" type="submit">Filtrar</button>
 </form>
 <div class="plan-counter"><b id="companyVisibleCount">{{ companies|length }}</b><span>empresas visibles · límite del estudio: {{ studio.company_limit }}</span></div>
@@ -77,7 +77,7 @@
     {% endif %}
   </article>
 {% else %}
-  <div class="empty-large"><h3>{{ 'Aún no tenés empresas asignadas' if user.role == 'abogado' else 'No hay empresas para mostrar' }}</h3><p>{% if user.role == 'abogado' %}Pedí al administrador del estudio que te asigne un trámite. Las empresas de tus expedientes aparecerán aquí.{% elif show_archived %}No hay empresas que coincidan con los filtros actuales.{% else %}Registrá la primera empresa para empezar a cargar funcionarios y operar.{% endif %}</p>{% if user.role in ['administrador','contador'] %}<button class="btn primary" type="button" data-modal-open="companyModal">+ Registrar empresa</button>{% endif %}</div>
+  <div class="empty-large"><h3>{{ 'Aún no tenés empresas asignadas' if user.role == 'abogado' else 'No hay empresas para mostrar' }}</h3><p>{% if user.role == 'abogado' %}Pedí al administrador del estudio que te asigne un trámite. Las empresas de tus expedientes aparecerán aquí.{% elif hide_archived %}No hay empresas que coincidan con los filtros actuales.{% else %}Registrá la primera empresa para empezar a cargar funcionarios y operar.{% endif %}</p>{% if user.role in ['administrador','contador'] %}<button class="btn primary" type="button" data-modal-open="companyModal">+ Registrar empresa</button>{% endif %}</div>
 {% endfor %}
   <p class="empty-state" id="companyQuickEmpty" hidden>No hay empresas que coincidan con la búsqueda o el filtro rápido.</p>
 </section>
