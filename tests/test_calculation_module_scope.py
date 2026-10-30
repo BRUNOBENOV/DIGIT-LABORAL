@@ -12,57 +12,50 @@ def _calculation_sidebar_block() -> str:
     return base[start:end]
 
 
-def test_calculation_sidebar_exposes_only_the_ten_requested_submodules():
+def test_calculation_sidebar_has_one_global_entry_for_each_work_area():
     block = _calculation_sidebar_block()
     expected = [
-        'href="/app/liquidaciones?tipo=salary">Salario</a>',
-        'href="/app/liquidaciones?tipo=settlement">Liquidación</a>',
-        'href="/app/aguinaldo">Aguinaldo</a>',
+        'href="/app/calculations?tipo=salary">Salario</a>',
+        'href="/app/liquidaciones?tipo=settlement">Liquidación final</a>',
+        'href="/app/payrolls">Nóminas mensuales</a>',
+        'href="/app/calculations?tipo=hours">Horas y recargos</a>',
         'href="/app/calculations?tipo=notice">Preaviso</a>',
+        'href="/app/calculations">Calculadoras laborales</a>',
+        'href="/app/aguinaldo">Aguinaldo</a>',
         'href="/app/vacations">Vacaciones</a>',
-        'href="/app/calculation-operations?tipo=advance">Anticipo</a>',
+        'href="/app/calculation-operations?tipo=advance">Anticipos</a>',
         'href="/app/calculation-operations?tipo=discipline">Amonestaciones / Suspensión / Permisos</a>',
         'href="/app/calculation-operations?tipo=telegram">Telegrama colacionado</a>',
         'href="/app/employee-history">Histórico funcionario</a>',
-        'href="/app/medical-exams">Examen Médico</a>',
     ]
-    assert (block.count('class="workspace-nav-link')) == 10
+    assert block.count('class="workspace-nav-link') == len(expected)
     assert all(item in block for item in expected)
+    assert "/app/medical-exams" not in block
     for removed in (
         "Panel de Cálculo",
         "Calculadora de horas y recargos",
         "Calculadora de aguinaldo",
         "Calculadora de vacaciones",
-        "Liquidaciones mensuales",
         "Cobertura de períodos",
     ):
         assert removed not in block
 
 
-def test_calculation_secondary_navigation_matches_the_ten_requested_submodules():
-    nav = (ROOT / "app" / "templates" / "module_subnav.html").read_text(encoding="utf-8")
-    start = nav.index("tab_nav('Subsecciones de cálculo laboral', [")
-    end = nav.index("]) }}", start)
-    block = nav[start:end]
-    expected_labels = [
-        "'Salario'", "'Liquidación'", "'Aguinaldo'", "'Preaviso'",
-        "'Vacaciones'", "'Anticipo'", "'Amonestaciones / Suspensión / Permisos'",
-        "'Telegrama colacionado'", "'Histórico funcionario'", "'Examen Médico'",
-    ]
-    assert block.count("{'label':") == 10
-    assert all(label in block for label in expected_labels)
-    assert "'label':'Panel'" not in block
-    assert "Carga de hora" not in block
-    assert "Cobertura de períodos" not in block
-    assert "Liquidaciones mensuales" not in block
+def test_calculation_pages_do_not_render_a_duplicate_global_secondary_navigation():
+    root = ROOT / "app" / "templates"
+    base = (root / "base.html").read_text(encoding="utf-8")
+    assert "module_subnav.html" not in base
+    assert not (root / "module_subnav.html").exists()
+    ui_css = (ROOT / "app" / "static" / "ui-system-264.css").read_text(encoding="utf-8")
+    assert ".ui-module-nav" not in ui_css
 
 
-def test_salary_entry_uses_the_professional_engine_and_surfaces_additional_earnings():
+def test_salary_entry_uses_the_selected_calculation_and_keeps_the_professional_workbench():
     base = (ROOT / "app" / "templates" / "base.html").read_text(encoding="utf-8")
     cards = (ROOT / "app" / "templates" / "calculations.html").read_text(encoding="utf-8")
     workbench = (ROOT / "app" / "templates" / "labor_workbench.html").read_text(encoding="utf-8")
     fields = (ROOT / "app" / "calculator_fields.py").read_text(encoding="utf-8")
-    assert 'href="/app/liquidaciones?tipo=salary">Salario</a>' in _calculation_sidebar_block()
+    assert 'href="/app/calculations?tipo=salary">Salario</a>' in _calculation_sidebar_block()
     assert 'href="/app/liquidaciones?tipo=salary{% if selected_company %}' in cards
     assert "Volver al módulo Cálculo" in workbench
     assert 'href="/app/payrolls"' not in workbench
