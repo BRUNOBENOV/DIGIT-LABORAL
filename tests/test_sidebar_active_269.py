@@ -18,11 +18,12 @@ def test_sidebar_states_are_owned_by_the_consolidated_theme():
     ):
         assert obsolete not in base
     assert '.workspace-home-link.active:not(:hover)' in css
-    assert ".workspace-submenu .workspace-nav-link.active," in css
-    assert ".workspace-submenu .workspace-nav-link[aria-current=\"page\"]{" in css
-    assert ".workspace-submenu .workspace-nav-link.active:hover," in css
+    assert ".workspace-submenu .workspace-nav-link.active:not(:hover)," in css
+    assert ".workspace-submenu .workspace-nav-link[aria-current=\"page\"]:not(:hover)" in css
     assert "-webkit-text-fill-color:#0B2D78!important" in css
-    assert ".workspace-submenu .workspace-nav-link.active:not(:hover)" not in css
+    assert ".workspace-submenu .workspace-nav-link.active:hover," in css
+    assert "-webkit-text-fill-color:#FFFFFF!important" in css
+    assert "transition:background-color .16s ease,color .16s ease" in css
     assert 'color:#0B2D78!important' in css
     assert 'background:#FFFFFF!important' in css
     assert 'box-shadow:inset 3px 0 #1D4ED8!important' in css
@@ -54,16 +55,20 @@ def test_home_context_state_does_not_override_the_active_or_hovered_sidebar_item
     assert ":hover)" in block
 
 
-def test_active_submodule_keeps_dark_text_when_hovered():
+def test_active_submodule_is_readable_at_rest_and_restores_hover_animation():
     css = (ROOT / "app" / "static" / "theme-261.css").read_text(encoding="utf-8")
-    selected_rule = css[css.index(".app-body .workspace-sidebar .workspace-submenu .workspace-nav-link.active,"): ]
-    selected_rule = selected_rule[:selected_rule.index("}")]
-    assert "background:#FFFFFF!important" in selected_rule
-    assert "color:#0B2D78!important" in selected_rule
-    assert "-webkit-text-fill-color:#0B2D78!important" in selected_rule
+    idle_start = css.index(
+        ".app-body .workspace-sidebar .workspace-submenu .workspace-nav-link.active:not(:hover),"
+    )
+    idle_rule = css[idle_start:css.index("}", idle_start) + 1]
+    assert "background:#FFFFFF!important" in idle_rule
+    assert "color:#0B2D78!important" in idle_rule
+    assert "-webkit-text-fill-color:#0B2D78!important" in idle_rule
 
-    hover_rule_start = css.index(".app-body .workspace-sidebar .workspace-submenu .workspace-nav-link.active:hover,")
-    hover_rule = css[hover_rule_start:css.index("}", hover_rule_start) + 1]
-    assert "background:#FFFFFF!important" in hover_rule
-    assert "color:#0B2D78!important" in hover_rule
-    assert "-webkit-text-fill-color:#0B2D78!important" in hover_rule
+    hover_start = css.index(
+        ".app-body .workspace-sidebar .workspace-submenu .workspace-nav-link.active:hover,"
+    )
+    hover_rule = css[hover_start:css.index("}", hover_start) + 1]
+    assert "color:#FFFFFF!important" in hover_rule
+    assert "-webkit-text-fill-color:#FFFFFF!important" in hover_rule
+    assert "background:#FFFFFF!important" not in hover_rule
