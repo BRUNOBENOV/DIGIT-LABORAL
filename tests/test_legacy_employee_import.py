@@ -74,6 +74,7 @@ def _book_bytes() -> bytes:
 
 
 def test_legacy_import_groups_rehires_and_preserves_history_without_duplicate_people():
+    """Consolidate rehires and reject untrustworthy dates without losing the timeline."""
     company_map = {
         "1001": [{
             "id": 11, "name": "Empresa Uno", "status": "Activa",
