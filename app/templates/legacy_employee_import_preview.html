@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Revisión de importación histórica | Digit Laboral{% endblock %}
+{% block page_name %}Revisión de importación{% endblock %}
+{% block content %}
+<a class="back-link dark" href="/app/import/legacy-employees">← Cancelar y volver</a>
+<div class="page-header">
+  <div>
+    <span class="eyebrow">VISTA PREVIA · SIN CAMBIOS EN LA BASE</span>
+    <h1>Revisión de la base histórica</h1>
+    <p>{{ filename }} · comprobá los resultados antes de confirmar.</p>
+  </div>
+</div>
+<div class="legal-v17-warning">
+  <b>Importante:</b>
+  <span>Las filas repetidas por reingreso se consolidaron por empresa y cédula. Las cédulas existentes en DIGIT-LABORAL se omitirán; no se actualizarán datos ni salarios de esos legajos.</span>
+</div>
+<div class="plan-counter"><b>{{ summary.will_create|int }}</b><span>legajos nuevos previstos · {{ summary.already_exists }} ya existen y se omitirán</span></div>
+<section class="panel" style="padding:20px;margin:14px 0">
+  <h2>Resumen del análisis</h2>
+  <div class="grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:12px">
+    <div><b>{{ summary.source_rows }}</b><small class="table-sub">Filas originales</small></div>
+    <div><b>{{ summary.identity_groups }}</b><small class="table-sub">Personas/legajos identificados</small></div>
+    <div><b>{{ summary.importable }}</b><small class="table-sub">Legajos aptos para importar</small></div>
+    <div><b>{{ summary.active }}</b><small class="table-sub">Con vínculo abierto en la fuente</small></div>
+    <div><b>{{ summary.terminated }}</b><small class="table-sub">Con vínculo finalizado</small></div>
+    <div><b>{{ summary.repeated_identity_groups }}</b><small class="table-sub">Personas con varios períodos</small></div>
+    <div><b>{{ summary.without_cedula }}</b><small class="table-sub">Sin cédula; usarán código S/D interno</small></div>
+    <div><b>{{ summary.excluded }}</b><small class="table-sub">Grupos excluidos para revisión</small></div>
+    <div><b>{{ summary.historical_events }}</b><small class="table-sub">Antecedentes laborales a registrar</small></div>
+    <div><b>{{ summary.invalid_birth_date }}</b><small class="table-sub">Con nacimiento inconsistente; se omitirá</small></div>
+    <div><b>{{ summary.invalid_termination_dates }}</b><small class="table-sub">Con egresos inconsistentes; no se asignará fecha dudosa</small></div>
+    <div><b>{{ summary.archived_company_employees }}</b><small class="table-sub">Legajos pertenecientes a empresas archivadas</small></div>
+  </div>
+</section>
+{% if summary.without_cedula or summary.without_salary or summary.invalid_birth_date or summary.invalid_termination_dates %}
+<div class="alert warning">
+  <b>Datos que requieren comprobación:</b>
+  {{ summary.without_cedula }} legajos no tienen cédula real y llevarán un identificador S/D; {{ summary.without_salary }} no tienen salario registrado y se dejarán en Gs. 0; {{ summary.invalid_birth_date }} tienen fecha de nacimiento inconsistente y se dejará vacía; {{ summary.invalid_termination_dates }} tienen fechas de egreso inválidas y se conservarán sin fecha de egreso válida.
+</div>
+{% endif %}
+<section class="panel table-panel" style="margin-top:14px">
+  <div class="panel-heading"><div><h2>Muestra de legajos</h2><p>Se muestran hasta 30 registros para comprobar nombres, empresa, documento y estado.</p></div></div>
+  <div class="table-wrap">
+    <table class="import-table">
+      <thead><tr><th>Empresa</th><th>Funcionario</th><th>Documento</th><th>Ingreso base</th><th>Salario</th><th>Estado</th><th>Períodos</th></tr></thead>
+      <tbody>
+      {% for item in candidates %}
+        <tr>
+          <td>{{ item.company_code }} · {{ item.company_name }}</td>
+          <td><b>{{ item.full_name }}</b><small class="table-sub">CODTRA: {{ item.legacy_employee_code or 'No informado' }}</small></td>
+          <td>{{ item.document_number }}{% if item.synthetic_document %}<small class="salary-alert">Identificador S/D interno</small>{% endif %}</td>
+          <td>{{ item.admission_date }}</td>
+          <td>Gs. {{ item.base_salary|gs }}</td>
+          <td><span class="status-pill {{ 'activa' if item.status == 'Activo' else 'inactiva' }}">{{ item.status }}</span></td>
+          <td>{{ item.events|length }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="7" class="empty-state">No hay legajos aptos para importar.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+<section class="panel table-panel" style="margin-top:14px">
+  <div class="panel-heading"><div><h2>Grupos excluidos</h2><p>No se crearán legajos sin una fecha de ingreso válida o sin nombre. Estos datos deben corregirse en la fuente.</p></div></div>
+  <div class="table-wrap">
+    <table class="import-table">
+      <thead><tr><th>Fila fuente</th><th>Código empresa</th><th>Empresa</th><th>Funcionario / C.I.</th><th>Motivo</th></tr></thead>
+      <tbody>
+      {% for item in excluded %}
+        <tr class="import-invalid">
+          <td>{{ item.excel_row }}</td>
+          <td>{{ item.company_code }}</td>
+          <td>{{ item.company_name or 'Sin correspondencia' }}</td>
+          <td>{{ item.name or 'Sin nombre' }}<small class="table-sub">{{ item.document_number or 'Sin cédula' }}</small></td>
+          <td>{{ item.reason }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="5" class="empty-state">No se detectaron grupos excluidos.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+<div class="legal-v17-warning" style="margin-top:14px">
+  <b>Tratamiento de datos:</b>
+  <span>Se preservará el salario actual del registro seleccionado como salario base, pero no se inventará un historial salarial mensual. El archivo no contiene datos fiables para completar tipo de contrato ni frecuencia de pago; esos campos quedarán como “No especificado”. No se generarán presentaciones REOP/IPS retroactivas a partir de este padrón.</span>
+</div>
+<form method="post" action="/app/import/legacy-employees/{{ token }}/confirm" class="import-confirm-bar">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <div><a class="btn ghost" href="/app/employees">Cancelar</a></div>
+  <button class="btn primary" type="submit" {{ 'disabled' if summary.will_create == 0 }}>Confirmar importación de {{ summary.will_create }} legajos</button>
+</form>
+{% endblock %}
