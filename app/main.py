@@ -3536,7 +3536,9 @@ def legacy_employee_import_confirm(
         raise HTTPException(403, "La vista previa contiene empresas fuera del estudio actual.")
 
     existing_by_company: dict[int, set[str]] = {}
-    used_codes_by_company: dict[int, set[int]] = {}
+    existing_codes_by_company: dict[int, set[int]] = {}
+    source_codes_by_company: dict[int, set[int]] = {}
+    assigned_codes_by_company: dict[int, set[int]] = {}
     next_code_by_company: dict[int, int] = {}
     if company_ids:
         existing_records = list(db.scalars(select(Employee).where(Employee.company_id.in_(company_ids))))
@@ -3545,9 +3547,16 @@ def legacy_employee_import_confirm(
                 normalize_document_number(employee.document_number)
             )
             if employee.employee_code is not None:
-                used_codes_by_company.setdefault(employee.company_id, set()).add(employee.employee_code)
+                existing_codes_by_company.setdefault(employee.company_id, set()).add(employee.employee_code)
+        for item in preview["candidates"]:
+            raw_code = str(item.get("legacy_employee_code") or "")
+            if raw_code.isdigit() and int(raw_code) > 0:
+                source_codes_by_company.setdefault(item["company_id"], set()).add(int(raw_code))
         for company_id in company_ids:
-            next_code_by_company[company_id] = max(used_codes_by_company.get(company_id, {0})) + 1
+            existing_codes = existing_codes_by_company.get(company_id, set())
+            source_codes = source_codes_by_company.get(company_id, set())
+            assigned_codes_by_company[company_id] = set(existing_codes)
+            next_code_by_company[company_id] = max(existing_codes | source_codes | {0}) + 1
 
     new_employees: list[Employee] = []
     candidate_refs: list[dict] = []
@@ -3559,16 +3568,19 @@ def legacy_employee_import_confirm(
             skipped_existing += 1
             continue
 
-        used_codes = used_codes_by_company.setdefault(company_id, set())
+        assigned_codes = assigned_codes_by_company.setdefault(
+            company_id, set(existing_codes_by_company.get(company_id, set()))
+        )
+        source_codes = source_codes_by_company.get(company_id, set())
         raw_code = item.get("legacy_employee_code") or ""
         requested_code = int(raw_code) if str(raw_code).isdigit() and int(raw_code) > 0 else None
-        if requested_code is not None and requested_code not in used_codes:
+        if requested_code is not None and requested_code not in assigned_codes:
             employee_code = requested_code
         else:
             employee_code = next_code_by_company.get(company_id, 1)
-            while employee_code in used_codes:
+            while employee_code in assigned_codes or employee_code in source_codes:
                 employee_code += 1
-        used_codes.add(employee_code)
+        assigned_codes.add(employee_code)
         next_code_by_company[company_id] = max(next_code_by_company.get(company_id, 1), employee_code + 1)
 
         employee = Employee(
