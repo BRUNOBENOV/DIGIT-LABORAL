@@ -2998,7 +2998,7 @@ def medical_exams_page(
     exam_type: str = "",
     result_filter: str = "",
     sort: str = "exam_date",
-    direction: str = "desc",
+    direction: str = "asc",
     edit_id: OptionalQueryId = None,
     user: User = Depends(require_roles("administrador", "contador")),
     db: Session = Depends(get_db),
@@ -3023,7 +3023,7 @@ def medical_exams_page(
     if sort not in sort_columns:
         sort = "exam_date"
     if direction not in {"asc", "desc"}:
-        direction = "desc"
+        direction = "asc"
 
     query = _medical_exam_filtered_query(
         db, user, q=q, employee_id=employee_id, exam_type=exam_type, result_filter=result_filter
@@ -3305,6 +3305,8 @@ def employees_page(
     status_filter: str = "",
     show_archived: bool = False,
     page: int = 1,
+    employee_sort: str = "name",
+    direction: str = "asc",
     user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ):
@@ -3343,8 +3345,22 @@ def employees_page(
     total_count = db.scalar(select(func.count()).select_from(query.subquery())) or 0
     total_pages = max(1, math.ceil(total_count / page_size))
     page = max(1, min(page, total_pages))
+    sort_columns = {
+        "name": func.lower(Employee.full_name), "code": Employee.employee_code,
+        "company": func.lower(Company.legal_name), "section": func.lower(CompanySection.name),
+        "admission": Employee.admission_date, "salary": Employee.base_salary,
+        "document": Employee.document_number, "position": func.lower(Employee.position),
+        "ips": Employee.ips_contributor, "status": Employee.status,
+    }
+    if employee_sort not in sort_columns:
+        employee_sort = "name"
+    direction = "desc" if direction == "desc" else "asc"
+    if employee_sort == "section":
+        query = query.outerjoin(CompanySection, Employee.section_id == CompanySection.id)
+    sort_column = sort_columns[employee_sort]
+    sort_expression = sort_column.desc() if direction == "desc" else sort_column.asc()
     employees = list(db.scalars(
-        query.order_by(Employee.full_name, Employee.id).limit(page_size).offset((page - 1) * page_size)
+        query.order_by(sort_expression.nulls_last(), Employee.id.asc()).limit(page_size).offset((page - 1) * page_size)
     ))
     companies_query = select(Company).where(Company.id.in_(company_ids))
     if not show_archived:
@@ -3384,6 +3400,7 @@ def employees_page(
         selected_section=section_id, status_filter=status_filter, show_archived=show_archived,
         selected_employee=active_employee_id, minimum_salary=minimum_salary,
         total_count=total_count, current_page=page, total_pages=total_pages,
+        selected_sort=employee_sort, sort_direction=direction,
         previous_page_url=str(request.url.include_query_params(page=page - 1)) if page > 1 else None,
         next_page_url=str(request.url.include_query_params(page=page + 1)) if page < total_pages else None,
     )
@@ -7036,6 +7053,8 @@ def salary_settlements_report_page(
     status: str = "",
     q: str = "",
     page: int = 1,
+    sort: str = "period",
+    direction: str = "asc",
     user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ):
@@ -7104,18 +7123,19 @@ def salary_settlements_report_page(
     total = int(db.scalar(count_query) or 0)
     pages = max(1, (total + page_size - 1) // page_size)
     page = min(page, pages)
+    sort_columns = {"date": CalculationRecord.created_at, "company": func.lower(Company.legal_name), "employee": func.lower(Employee.full_name), "period": CalculationRecord.reference_period, "status": CalculationRecord.status, "amount": CalculationRecord.amount}
+    if sort not in sort_columns:
+        sort = "period"
+    direction = "desc" if direction == "desc" else "asc"
+    ordered = sort_columns[sort].desc() if direction == "desc" else sort_columns[sort].asc()
     items = list(db.scalars(
-        query.order_by(
-            CalculationRecord.reference_period.desc(),
-            CalculationRecord.created_at.desc(),
-            CalculationRecord.id.desc(),
-        ).limit(page_size).offset((page - 1) * page_size)
+        query.order_by(ordered.nulls_last(), CalculationRecord.id.asc()).limit(page_size).offset((page - 1) * page_size)
     ))
     return render(
         request, "salary_settlement_index.html", db, user,
         companies=companies, employees=employees, items=items, total=total, page=page, pages=pages,
         page_size=page_size, selected_company=company_id, selected_employee=employee_id,
-        filters={"period": period, "status": status, "q": q},
+        filters={"period": period, "status": status, "q": q, "sort": sort, "direction": direction},
     )
 
 
@@ -7403,6 +7423,7 @@ def report_detail_page(
         return RedirectResponse(target, status_code=303)
 
     spec, allowed_company_ids = _validate_report_scope(report_key, company_id, employee_id, user, db)
+    sort = sort or ("date" if spec.variant == "admission_date" else report_sort_options(spec)[0][0])
     if year is not None and (year < 1900 or year > 2100):
         raise HTTPException(400, "El año debe estar entre 1900 y 2100.")
     result = fetch_report(

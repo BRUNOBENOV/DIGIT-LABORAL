@@ -74,33 +74,8 @@
       wrapper.parentElement.insertBefore(toolbar, wrapper);
 
       const rowCells = row => Array.from(row.cells).map(cell => safeText(cell)).join(" ");
-      let visibleRows = sourceRows.slice();
-      const sortButtons = [];
-      Array.from(head.rows).forEach(headerRow => {
-        Array.from(headerRow.cells).forEach((th, index) => {
-          if (th.colSpan > 1 || th.hasAttribute("data-no-sort") || th.querySelector("button,input,select,a") || !safeText(th)) return;
-          const button = document.createElement("button");
-          button.type = "button";
-          button.className = "ui-table-sort";
-          button.textContent = th.textContent.trim();
-          button.setAttribute("aria-label", "Ordenar por " + button.textContent);
-          button.setAttribute("aria-sort", "none");
-          th.textContent = "";
-          th.appendChild(button);
-          sortButtons.push({button,index,ascending:true});
-          button.addEventListener("click", () => {
-            const ascending = button.getAttribute("aria-sort") !== "ascending";
-            sortButtons.forEach(item => item.button.setAttribute("aria-sort","none"));
-            button.setAttribute("aria-sort",ascending ? "ascending" : "descending");
-            visibleRows.sort((a,b) => {
-              const left = normalize(a.cells[index]?.innerText || a.cells[index]?.textContent);
-              const right = normalize(b.cells[index]?.innerText || b.cells[index]?.textContent);
-              return left.localeCompare(right,"es",{numeric:true,sensitivity:"base"}) * (ascending ? 1 : -1);
-            });
-            visibleRows.forEach(row => body.appendChild(row));
-          });
-        });
-      });
+      // Shared header controls keep aria-sort on the column header.
+      window.DigitSort?.table(table);
 
       let empty = table.parentElement.querySelector(":scope > .ui-empty-filter");
       if (!empty) {
@@ -118,7 +93,6 @@
           row.hidden = !matches;
           if (matches) shown += 1;
         });
-        visibleRows = sourceRows.filter(row => !row.hidden);
         count.textContent = shown + (shown === 1 ? " fila visible" : " filas visibles");
         empty.hidden = shown > 0;
       };

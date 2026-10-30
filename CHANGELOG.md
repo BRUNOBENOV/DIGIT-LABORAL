@@ -1,3 +1,11 @@
+## 2.6.54 — Orden ascendente y descendente compartido
+
+- Añade controles reutilizables con flechas de ambas direcciones, estado activo visible, título y navegación por teclado.
+- Sincroniza el selector y los encabezados de las columnas ordenables. Las tablas locales ordenan todos sus registros sin perder el orden al filtrar o limpiar la búsqueda.
+- Aplica el orden en la consulta de Funcionarios antes de paginar, con desempate estable y conservación de los filtros al cambiar de página.
+- Propaga el orden de los informes a su paginación y exportación; integra los controles con Exámenes Médicos y el directorio de Empresas.
+- Verifica importes, fechas, filtros y direcciones mediante pruebas de interfaz y regresión de servidor con más de cien registros.
+
 ## 2.6.53 — Importación histórica sin altas activas y exclusión de egresos inconsistentes
 
 - Añade opciones explícitas para importar todos los legajos como Desvinculado y excluir el legajo completo cuando cualquiera de sus períodos tiene un egreso inconsistente.
