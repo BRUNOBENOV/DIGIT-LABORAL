@@ -78,18 +78,13 @@
       </select>
     </label>
     <label>Ordenar por
-      <select name="sort">
+      <select name="sort" id="medicalSort" data-sort-control data-sort-server="true" data-sort-direction="{{ direction }}">
         {% for key,label in sort_options %}
         <option value="{{ key }}" {{ 'selected' if sort == key else '' }}>{{ label }}</option>
         {% endfor %}
       </select>
     </label>
-    <label>Dirección
-      <select name="direction">
-        <option value="desc" {{ 'selected' if direction == 'desc' else '' }}>Descendente</option>
-        <option value="asc" {{ 'selected' if direction == 'asc' else '' }}>Ascendente</option>
-      </select>
-    </label>
+    <input type="hidden" name="direction" value="{{ direction }}">
     <div class="medical-exams-filter-actions">
       <button class="btn primary" type="submit">Aplicar filtros</button>
       <a class="btn ghost" href="/app/medical-exams">Limpiar</a>
@@ -159,7 +154,7 @@
     <a class="btn outline" href="/app/medical-exams/export.csv?q={{ q|urlencode }}&employee_id={{ employee_filter or '' }}&exam_type={{ exam_type|urlencode }}&result_filter={{ result_filter|urlencode }}">Descargar informe</a>
   </div>
   <div class="medical-exams-table-wrap">
-    <table class="medical-exams-table">
+    <table class="medical-exams-table" data-sort-selector="medicalSort">
       <caption class="sr-only">Exámenes médicos registrados y su vigencia</caption>
       <thead><tr><th scope="col">Código / empleado</th><th scope="col">Tipo</th><th scope="col">Fecha</th><th scope="col">Resultado</th><th scope="col">Vencimiento</th><th scope="col">Acciones</th></tr></thead>
       <tbody>

@@ -54,7 +54,7 @@
 {% if request.query_params.get('import_error') %}<div class="alert danger" role="alert">{{ request.query_params.get('import_error') }}</div>{% endif %}
 {% if request.query_params.get('imported') is not none %}<div class="alert success" role="status">Importación finalizada: {{ request.query_params.get('imported') }} creados, {{ request.query_params.get('updated') or 0 }} actualizados y {{ request.query_params.get('skipped') or 0 }} omitidos.</div>{% endif %}
 {% if request.query_params.get('salary_changes')|int > 0 %}<div class="alert warning">{{ request.query_params.get('salary_changes') }} {{ 'cambio salarial no se aplicó' if request.query_params.get('salary_changes')|int == 1 else 'cambios salariales no se aplicaron' }}. El salario vigente se conserva y debe tramitarse mediante <a href="/app/requests">una solicitud salarial</a>.</div>{% endif %}
-<form method="get" class="employee-maintenance-filters" role="search" aria-label="Filtros de funcionarios">
+<form method="get" id="employeeFilters" class="employee-maintenance-filters" role="search" aria-label="Filtros de funcionarios">
   <label class="search-field">Legajo, nombre, cédula o cargo<input name="q" value="{{ q }}" placeholder="Ej.: 1024, Juan Pérez o 4.123.456" autocomplete="off"></label>
   <label>Empresa<select name="company_id"><option value="">Todas las empresas</option>{% for company in companies %}<option value="{{ company.id }}" {{ 'selected' if selected_company == company.id }}>{{ company.company_code if company.company_code is not none else '—' }} · {{ company.legal_name }}</option>{% endfor %}</select></label>
   <label>Sección<select name="section_id"><option value="">Todas las secciones</option>{% for section in sections %}<option value="{{ section.id }}" {{ 'selected' if selected_section == section.id }}>{{ section.name }}{% if not section.active %} · Inactiva{% endif %}</option>{% endfor %}</select></label>
@@ -76,19 +76,16 @@
     <button class="maintenance-filter-chip" type="button" data-employee-filter="no-section" aria-pressed="false">Sin sección</button>
   </div>
   <label class="maintenance-sort-label" for="employeeSort">Ordenar por
-    <select id="employeeSort" name="employee_sort">
-      <option value="name">Nombre A–Z</option>
-      <option value="code">Código Legajo</option>
-      <option value="company">Empresa</option>
-      <option value="section">Sección</option>
-      <option value="admission">Fecha de ingreso</option>
-      <option value="salary">Salario base</option>
+    <select id="employeeSort" name="employee_sort" form="employeeFilters" data-sort-control data-sort-server="true" data-sort-direction="{{ sort_direction }}">
+      {% for key,label in [('name','Nombre'),('code','Código Legajo'),('company','Empresa'),('section','Sección'),('admission','Fecha de ingreso'),('salary','Salario base'),('document','Cédula'),('position','Cargo'),('ips','IPS'),('status','Estado')] %}
+      <option value="{{ key }}" {{ 'selected' if selected_sort == key }}>{{ label }}</option>
+      {% endfor %}
     </select>
   </label>
   <p class="maintenance-live-count" id="employeeVisibleCount" aria-live="polite">{{ employees|length }} funcionarios visibles</p>
 </div>
-<section class="panel table-panel maintenance-table-panel"><div class="table-wrap"><table id="employeeTable">
-  <thead><tr><th>Legajo / funcionario</th><th>Empresa</th><th>Cédula</th><th>Sección</th><th>Cargo</th><th>Ingreso</th><th>Salario base</th><th>IPS</th><th>Estado</th><th></th></tr></thead>
+<section class="panel table-panel maintenance-table-panel"><div class="table-wrap"><table id="employeeTable" data-sort-selector="employeeSort">
+  <thead><tr><th data-sort-key="name">Legajo / funcionario</th><th data-sort-key="company">Empresa</th><th data-sort-key="document">Cédula</th><th data-sort-key="section">Sección</th><th data-sort-key="position">Cargo</th><th data-sort-key="admission">Ingreso</th><th data-sort-key="salary">Salario base</th><th data-sort-key="ips">IPS</th><th data-sort-key="status">Estado</th><th></th></tr></thead>
   <tbody>
   {% for employee in employees %}
     {% set profile = employee_profiles.get(employee.id) %}
@@ -135,7 +132,7 @@
 {% if total_pages > 1 %}
 <nav class="form-actions" aria-label="Páginas de funcionarios" style="margin:16px 0">
   {% if previous_page_url %}<a class="btn ghost" href="{{ previous_page_url }}">← Anterior</a>{% endif %}
-  <span>Página {{ current_page }} de {{ total_pages }} · los filtros rápidos y el orden se aplican a esta página.</span>
+  <span>Página {{ current_page }} de {{ total_pages }} · el orden abarca todos los resultados; los filtros rápidos se aplican a esta página.</span>
   {% if next_page_url %}<a class="btn ghost" href="{{ next_page_url }}">Siguiente →</a>{% endif %}
 </nav>
 {% endif %}

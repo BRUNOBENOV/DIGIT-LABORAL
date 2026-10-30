@@ -548,6 +548,11 @@ def fetch_report(
     period = (period or "").strip()[:20]
     page = max(1, min(int(page or 1), 1_000_000))
     page_size = max(1, min(int(page_size or 25), 100))
+    descending = str(sort or "").startswith("-")
+    sort = str(sort or "").removeprefix("-")
+    allowed_sorts = {key for key, label in report_sort_options(spec)}
+    if sort not in allowed_sorts:
+        sort = "date" if spec.variant == "admission_date" else report_sort_options(spec)[0][0]
     if not company_ids:
         return {"records": [], "total": 0, "page": page, "page_size": page_size, "pages": 0, "columns": report_columns(spec)}
     if company_id is not None and company_id not in company_ids:
@@ -655,6 +660,17 @@ def fetch_report(
                 query = query.order_by(order_column.asc(), LaborDeadline.id.desc())
             else:
                 query = query.order_by(LaborDeadline.due_date.asc(), LaborDeadline.id.desc())
+    # Apply one explicit direction before pagination and export, with a stable tie-breaker.
+    primary_ids = {
+        "company": Company.id, "employee": Employee.id, "payroll": Payroll.id,
+        "payroll_line": PayrollLine.id, "family_allowance": PayrollLine.id,
+        "calculation": CalculationRecord.id, "aguinaldo": Aguinaldo.id,
+        "vacation": Vacation.id, "medical_exam": MedicalExam.id,
+        "operation": LaborOperation.id, "certificate": GeneratedCertificate.id,
+        "employee_event": EmployeeEvent.id, "deadline": LaborDeadline.id,
+    }
+    ordered = order_column.desc() if descending else order_column.asc()
+    query = query.order_by(None).order_by(ordered.nulls_last(), primary_ids[spec.dataset].asc())
     # Count the fully filtered query itself so every joined filter is included in the total.
     total_query = select(func.count()).select_from(query.order_by(None).subquery())
     total = int(db.scalar(total_query) or 0)

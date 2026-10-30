@@ -22,10 +22,11 @@
       const sortCards = () => {
         if (!sort) return;
         const key = sort.value;
+        const multiplier = sort.dataset.sortDirection === "desc" ? -1 : 1;
         cards.sort((a, b) => {
-          if (key === "code") return (Number(a.dataset.companyCode) || 0) - (Number(b.dataset.companyCode) || 0);
-          if (key === "employees") return (Number(b.dataset.companyEmployees) || 0) - (Number(a.dataset.companyEmployees) || 0);
-          return normalized(a.dataset.companyName).localeCompare(normalized(b.dataset.companyName), "es", {sensitivity:"base"});
+          if (key === "code") return ((Number(a.dataset.companyCode) || 0) - (Number(b.dataset.companyCode) || 0))*multiplier;
+          if (key === "employees") return ((Number(a.dataset.companyEmployees) || 0) - (Number(b.dataset.companyEmployees) || 0))*multiplier;
+          return normalized(a.dataset.companyName).localeCompare(normalized(b.dataset.companyName), "es", {sensitivity:"base"})*multiplier;
         });
         cards.forEach(card => companyGrid.appendChild(card));
       };
@@ -70,10 +71,16 @@
       const resultCount = document.getElementById("employeeResultCount");
       const empty = document.getElementById("employeeClientEmpty");
       const buttons = Array.from(document.querySelectorAll("[data-employee-filter]"));
-      let quickFilter = "all";
+      let quickFilter = new URLSearchParams(window.location.search).get("employee_quick") || "all";
+      const filterForm = document.getElementById("employeeFilters");
+      const quickField = document.createElement("input");
+      quickField.type="hidden"; quickField.name="employee_quick"; quickField.value=quickFilter;
+      if (filterForm) filterForm.append(quickField);
+      const selectedQuickButton = buttons.find(button=>button.dataset.employeeFilter===quickFilter);
+      if (selectedQuickButton) setPressed(buttons,selectedQuickButton);
 
       const sortRows = () => {
-        if (!body || !sort) return;
+        if (!body || !sort || sort.dataset.sortServer) return;
         const key = sort.value;
         const numericKeys = new Set(["code", "salary"]);
         rows.sort((a, b) => {
@@ -110,6 +117,7 @@
       };
       buttons.forEach(button => button.addEventListener("click", () => {
         quickFilter = button.dataset.employeeFilter || "all";
+        quickField.value = quickFilter;
         setPressed(buttons, button);
         apply();
       }));
