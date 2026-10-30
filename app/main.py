@@ -5651,6 +5651,8 @@ def calculation_status(
     item = db.get(CalculationRecord, calculation_id)
     if not item or item.company_id not in company_ids_for_user(db, user):
         raise HTTPException(404)
+    if db.scalar(select(FinalSettlement.id).where(FinalSettlement.calculation_record_id == item.id)):
+        raise HTTPException(409, "La liquidación final vinculada solo se aprueba desde su procedimiento.")
     if status_value not in {"Revisar", "Aprobado", "Anulado"}:
         raise HTTPException(400, "Estado inválido.")
     if status_value == "Aprobado":
