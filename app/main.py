@@ -4183,6 +4183,21 @@ def archive_employee_form(
     return RedirectResponse("/app/employees?show_archived=true&archived=1", status_code=303)
 
 
+def _archived_employee_previous_state(detail: str, fallback_termination: date | None) -> tuple[str, date | None]:
+    """Restore the employment state that existed immediately before logical archiving."""
+    match = re.search(
+        r"Estado anterior:\s*(Activo|Inactivo|Desvinculado);\s*Fecha de salida anterior:\s*(\d{4}-\d{2}-\d{2}|Sin fecha)",
+        detail or "",
+    )
+    if match:
+        restored_status = match.group(1)
+        restored_termination = date.fromisoformat(match.group(2)) if match.group(2) != "Sin fecha" else None
+        return restored_status, restored_termination
+    # Older archived records did not retain their previous state explicitly.
+    # Preserve the known termination date instead of assuming the person is active.
+    return ("Desvinculado" if fallback_termination else "Activo"), fallback_termination
+
+
 @app.post("/app/employees/{employee_id}/restore")
 def restore_employee_form(
     employee_id: int,
@@ -4200,18 +4215,9 @@ def restore_employee_form(
         .order_by(EmployeeEvent.created_at.desc(), EmployeeEvent.id.desc())
     )
     detail = archive_event.detail if archive_event else ""
-    match = re.search(
-        r"Estado anterior:\s*(Activo|Inactivo|Desvinculado);\s*Fecha de salida anterior:\s*(\d{4}-\d{2}-\d{2}|Sin fecha)",
-        detail,
+    restored_status, restored_termination = _archived_employee_previous_state(
+        detail, employee.termination_date
     )
-    if match:
-        restored_status = match.group(1)
-        restored_termination = date.fromisoformat(match.group(2)) if match.group(2) != "Sin fecha" else None
-    else:
-        # Older archived records did not retain their previous state explicitly.
-        # Preserve the known termination date instead of assuming the person is active.
-        restored_termination = employee.termination_date
-        restored_status = "Desvinculado" if restored_termination else "Activo"
 
     employee.status = restored_status
     employee.termination_date = restored_termination
