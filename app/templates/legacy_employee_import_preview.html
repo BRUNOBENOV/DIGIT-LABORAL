@@ -35,7 +35,7 @@
 {% if summary.without_cedula or summary.without_salary or summary.invalid_birth_date or summary.invalid_termination_dates %}
 <div class="alert warning">
   <b>Datos que requieren comprobación:</b>
-  {{ summary.without_cedula }} legajos no tienen cédula real y llevarán un identificador S/D; {{ summary.without_salary }} no tienen salario registrado y se dejarán en Gs. 0; {{ summary.invalid_birth_date }} tienen fecha de nacimiento inconsistente y se dejará vacía; {{ summary.invalid_termination_dates }} tienen fechas de egreso inválidas y se conservarán sin fecha de egreso válida.
+  {{ summary.without_cedula }} legajos no tienen cédula real y llevarán un identificador S/D; {{ summary.without_salary }} no tienen salario registrado y se dejarán en Gs. 0; {{ summary.invalid_birth_date }} tienen al menos una fecha de nacimiento inconsistente; se descartará la fecha dudosa y solo se usará otra fecha compatible cuando exista; {{ summary.invalid_termination_dates }} tienen fechas de egreso inválidas y se conservarán sin fecha de egreso válida.
 </div>
 {% endif %}
 <section class="panel table-panel" style="margin-top:14px">
