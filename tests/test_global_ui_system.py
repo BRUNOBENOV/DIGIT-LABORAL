@@ -86,7 +86,7 @@ def test_workspace_sidebar_is_the_single_global_navigation():
         ):
             assert f'href="{href}"' in sidebar
         assert sidebar.count('href="/app/medical-exams"') == 1
-        assert \'/app/certificates/official\' not in sidebar
+        assert "/app/certificates/official" not in sidebar
 
         calculation_start = sidebar.find('<span class="workspace-group-name">Cálculo</span>')
         calculation_end = sidebar.find("</details>", calculation_start)
