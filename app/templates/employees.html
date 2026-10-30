@@ -67,7 +67,7 @@
 {% elif user.role in ['administrador','contador','auxiliar'] %}
   <div class="v24-professional-note"><span class="v24-note-icon">✓</span><div><b>Control del legajo.</b> El Código Legajo es único dentro de cada empresa. Los cambios de salario siguen requiriendo una solicitud aprobada y quedan registrados en el historial.</div></div>
 {% endif %}
-<div class="plan-counter"><b id="employeeResultCount">{{ employees|length }}</b><span>funcionarios en el resultado</span></div>
+<div class="plan-counter"><b>{{ total_count }}</b><span>funcionarios en el resultado · <b id="employeeResultCount">{{ employees|length }}</b> en esta página</span></div>
 <div class="maintenance-list-toolbar" aria-label="Herramientas del directorio de funcionarios">
   <div class="maintenance-filter-chips" aria-label="Filtros rápidos de funcionarios">
     <button class="maintenance-filter-chip is-active" type="button" data-employee-filter="all" aria-pressed="true">Todos</button>
@@ -132,6 +132,13 @@
     <tr id="employeeClientEmpty" hidden><td colspan="10" class="empty-state">No hay funcionarios que coincidan con la búsqueda o el filtro rápido.</td></tr>
   </tbody>
 </table></div></section>
+{% if total_pages > 1 %}
+<nav class="form-actions" aria-label="Páginas de funcionarios" style="margin:16px 0">
+  {% if previous_page_url %}<a class="btn ghost" href="{{ previous_page_url }}">← Anterior</a>{% endif %}
+  <span>Página {{ current_page }} de {{ total_pages }} · los filtros rápidos y el orden se aplican a esta página.</span>
+  {% if next_page_url %}<a class="btn ghost" href="{{ next_page_url }}">Siguiente →</a>{% endif %}
+</nav>
+{% endif %}
 
 {% if user.role in ['administrador','contador'] %}
 <div class="modal" id="registerExitModal" aria-hidden="true"><div class="modal-backdrop" data-modal-close></div>

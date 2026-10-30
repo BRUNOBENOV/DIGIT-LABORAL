@@ -1,6 +1,12 @@
-# Digit Laboral 2.6.51
+# Digit Laboral 2.6.53
 
 Plataforma de gestión y cumplimiento laboral para estudios contables paraguayos.
+## Novedades de la versión 2.6.53
+
+- Permite cargar el padrón histórico completo como Desvinculado, sin activar vínculos abiertos ni crear liquidaciones finales.
+- Excluye legajos con egresos inconsistentes para revisión y muestra los estados previstos antes de confirmar.
+- Conserva los legajos existentes y registra las opciones de importación en auditoría.
+
 ## Novedades de la versión 2.6.51
 
 - Corrige la navegación de Anticipos, Disciplina y Telegrama colacionado para usar la navegación global única.
