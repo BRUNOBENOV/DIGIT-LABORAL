@@ -190,4 +190,6 @@ def test_contract_signed_state_requires_explicit_signature_receipt_confirmation(
 
 
 def test_contract_generator_version_is_bumped():
-    assert APP_VERSION == "2.6.51"
+    from pathlib import Path
+    expected = (Path(__file__).resolve().parents[1] / "VERSION").read_text(encoding="utf-8").strip()
+    assert APP_VERSION == expected
