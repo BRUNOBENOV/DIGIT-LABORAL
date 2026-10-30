@@ -33,6 +33,8 @@ def _date(value: Any, epoch: datetime | None) -> date | None:
     if isinstance(value, date):
         return value
     if isinstance(value, (int, float)) and math.isfinite(float(value)):
+        if float(value) <= 0:
+            return None
         try:
             parsed = from_excel(value, epoch=epoch)
             return parsed.date() if isinstance(parsed, datetime) else parsed
