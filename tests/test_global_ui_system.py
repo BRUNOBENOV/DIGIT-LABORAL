@@ -87,8 +87,6 @@ def test_workspace_sidebar_is_the_single_global_navigation():
             assert f'href="{href}"' in sidebar
         assert sidebar.count('href="/app/medical-exams"') == 1
         assert "/app/certificates/official" not in sidebar
-        assert "request.query_params.get('tipo', 'salary') == 'salary'" not in sidebar
-        assert "request.query_params.get('tipo') == 'salary'" in sidebar
 
         calculation_start = sidebar.find('<span class="workspace-group-name">Cálculo</span>')
         calculation_end = sidebar.find("</details>", calculation_start)
@@ -118,6 +116,16 @@ def test_workspace_sidebar_is_the_single_global_navigation():
             response = client.get(path)
             assert response.status_code == 200, f"{path}: {response.status_code} {response.text[:300]}"
             assert "ui-module-nav" not in response.text
+
+        calculation_index = client.get("/app/calculations")
+        assert calculation_index.status_code == 200
+        assert 'class="workspace-nav-link active" href="/app/calculations">Calculadoras laborales</a>' in calculation_index.text
+        assert 'class="workspace-nav-link active" href="/app/calculations?tipo=salary">Salario</a>' not in calculation_index.text
+
+        salary_page = client.get("/app/calculations?tipo=salary")
+        assert salary_page.status_code == 200
+        assert 'class="workspace-nav-link active" href="/app/calculations?tipo=salary">Salario</a>' in salary_page.text
+        assert 'class="workspace-nav-link active" href="/app/calculations">Calculadoras laborales</a>' not in salary_page.text
 
 
 def test_reusable_component_macros_are_documented():
