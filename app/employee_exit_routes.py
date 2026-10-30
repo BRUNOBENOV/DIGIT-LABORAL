@@ -204,6 +204,9 @@ def sync_due_employee_exits_all_studios() -> int:
     """Periodic sweep, scoped tenant by tenant; no cross-tenant visibility."""
     count = 0
     with SessionLocal() as db:
+        # RLS does not expose the studio registry to an unbound session.
+        # Enumerate as the trusted service context, then scope every exit query.
+        core.use_privileged_auth_context(db)
         studio_ids = list(db.scalars(select(Studio.id)))
         for studio_id in studio_ids:
             db.info["studio_id"] = studio_id
