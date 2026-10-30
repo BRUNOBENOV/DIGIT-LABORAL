@@ -455,6 +455,8 @@ async def api_replace_calculation(
     db: Session = Depends(core.get_db),
 ):
     item, _ = saved_result(db, user, record_id)
+    if db.scalar(select(FinalSettlement.id).where(FinalSettlement.calculation_record_id == item.id)):
+        raise HTTPException(409, "Los cálculos vinculados a egresos solo se sustituyen desde el procedimiento de liquidación final.")
     try:
         payload = await request.json()
     except Exception:
