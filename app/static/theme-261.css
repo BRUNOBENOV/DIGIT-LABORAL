@@ -288,3 +288,54 @@ body.app-body{
 @media(prefers-reduced-motion:reduce){
   .app-body *, .app-body *::before, .app-body *::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}
 }
+
+/* Internal labor workbench shares the same corporate identity as the workspace.
+   Public tools retain their separate public presentation. */
+.app-body .dl{
+  --ink:#172033;--muted:#667085;--line:#E1E7F0;--paper:#F2F5FA;--accent:#0B2D78;
+  color:#172033;
+}
+.app-body .dl .dl-eyebrow{color:#0B2D78!important}
+.app-body .dl .dl-button{
+  background:#05256D!important;border-color:#05256D!important;color:#FFFFFF!important;
+  border-radius:10px!important;box-shadow:0 3px 8px rgba(5,37,109,.14);
+}
+.app-body .dl .dl-button:hover{
+  background:#0B3A91!important;border-color:#0B3A91!important;box-shadow:0 6px 14px rgba(5,37,109,.18);
+}
+.app-body .dl .dl-outline{
+  background:#FFFFFF!important;border-color:#CFD9E8!important;color:#0B2D78!important;
+}
+.app-body .dl .dl-outline:hover{background:#EEF3FF!important;border-color:#AFC3E6!important;color:#05256D!important}
+.app-body .dl .dl-light{
+  background:#EEF3FF!important;border-color:#D9E5FA!important;color:#0B2D78!important;
+}
+.app-body .dl .dl-light:hover{background:#E1EBFC!important;border-color:#BED0EF!important}
+.app-body .dl :is(a,button,summary):focus-visible{
+  outline:3px solid rgba(29,78,216,.38)!important;outline-offset:3px!important;
+}
+.app-body .dl .dl-example-net,
+.app-body .dl .dl-saved-status{
+  background:#EEF3FF!important;border-color:#D6E2F5!important;color:#172033!important;
+}
+.app-body .dl .dl-example-net span,
+.app-body .dl .dl-example-net strong,
+.app-body .dl .dl-saved-status b{color:#0B2D78!important}
+.app-body .dl .dl-example-top span{background:#EEF3FF!important;color:#0B2D78!important}
+.app-body .dl .dl-tool:hover{background:#EEF3FF!important;border-color:#C9D8EF!important}
+.app-body .dl .dl-tool>span{color:#526B96!important}
+.app-body .dl .dl-audiences article{border-top-color:#315CA3!important}
+.app-body .dl .dl-management{background:#05256D!important;color:#FFFFFF!important}
+.app-body .dl .dl-management h2{color:#FFFFFF!important}
+.app-body .dl .dl-management p{color:#DCE7FF!important}
+.app-body .dl .dl-management .dl-eyebrow{color:#DCE7FF!important}
+.app-body .dl .dl-tabs a{border-color:#E1E7F0!important;background:#FFFFFF!important;color:#344054!important}
+.app-body .dl .dl-tabs a[aria-current]{background:#05256D!important;border-color:#05256D!important;color:#FFFFFF!important}
+.app-body .dl .dl-tabs a:hover{background:#EEF3FF!important;border-color:#C9D8EF!important;color:#0B2D78!important}
+.app-body .dl .dl-result-head{border-color:#DCE4EF}
+.app-body .dl .dl-result-status,
+.app-body .dl .dl-result-id,
+.app-body .dl .dl-facts{color:#344054}
+@media(max-width:860px){
+  .app-body .dl .dl-wrap{padding-left:clamp(14px,4vw,24px);padding-right:clamp(14px,4vw,24px)}
+}
