@@ -1049,3 +1049,133 @@ def test_certificate_creation_and_print_previews_use_adjusted_company_logo():
     assert "/logo/print" in form_template
     assert "/logo/print" in print_template
     assert "def company_logo_print_v23" in route
+
+
+def test_employee_exit_decouples_employment_state_from_settlement_payment(web_case):
+    from app.models import EmployeeExit, FinalSettlement, GeneratedCertificate
+    from app.period_coverage import current_paraguay_date
+    client, db, _, company, employee, _ = web_case
+    employee.admission_date = date(2024, 1, 1)
+    db.commit()
+    today = current_paraguay_date()
+    csrf = token(client, f"/app/employees/{employee.id}")
+    created = client.post(
+        f"/app/employees/{employee.id}/exit",
+        data={
+            "csrf_token": csrf,
+            "effective_date": today.isoformat(),
+            "reason": "resignation",
+            "initiated_by": "Trabajador",
+        },
+        follow_redirects=False,
+    )
+    assert created.status_code == 303, created.text
+    assert "tipo=settlement" in created.headers["location"]
+    db.refresh(employee)
+    assert employee.status == "Desvinculado"
+    assert employee.termination_date == today
+    exit_record = db.query(EmployeeExit).filter_by(employee_id=employee.id).one()
+    assert exit_record.status == "Efectivo"
+    settlement = db.query(FinalSettlement).filter_by(employee_exit_id=exit_record.id).one()
+    assert settlement.status == "Pendiente de Cálculo"
+    assert settlement.payment_date is None
+    assert settlement.payment_amount is None
+    certificate = db.get(GeneratedCertificate, exit_record.constancia_certificate_id)
+    assert certificate is not None and certificate.status == "Borrador"
+    assert today.strftime("%Y") in certificate.body
+    detail = client.get(f"/app/final-settlements/{settlement.id}")
+    assert detail.status_code == 200
+    assert "Pendiente de Cálculo" in detail.text
+    assert "Constancia laboral" in detail.text
+    prefill = client.get(created.headers["location"])
+    assert prefill.status_code == 200
+    assert f'name="employee_exit_id" value="{exit_record.id}"' in prefill.text
+    assert f'name="end_date" type="date" value="{today.isoformat()}"' in prefill.text
+
+
+def test_exit_future_requires_pre_notice_and_becomes_effective_on_due_date(web_case, monkeypatch):
+    from app import employee_exit_routes as exit_routes
+    from app.models import EmployeeExit
+    from app.period_coverage import current_paraguay_date
+    from datetime import timedelta
+    client, db, _, company, employee, _ = web_case
+    today = current_paraguay_date()
+    employee.admission_date = date(2023, 2, 1)
+    db.commit()
+    due = today + timedelta(days=7)
+    csrf = token(client, f"/app/employees/{employee.id}")
+    data = {
+        "csrf_token": csrf,
+        "effective_date": due.isoformat(),
+        "reason": "dismissal",
+        "initiated_by": "Empleador",
+    }
+    failed = client.post(f"/app/employees/{employee.id}/exit", data=data, follow_redirects=False)
+    assert failed.status_code == 422
+    assert db.query(EmployeeExit).filter_by(employee_id=employee.id).count() == 0
+    data.update(pre_notice_notified="on", notice_date=today.isoformat())
+    registered = client.post(f"/app/employees/{employee.id}/exit", data=data, follow_redirects=False)
+    assert registered.status_code == 303
+    db.refresh(employee)
+    assert employee.status == "Activo"
+    assert employee.termination_date == due
+    pending = db.query(EmployeeExit).filter_by(employee_id=employee.id).one()
+    assert pending.status == "Programado"
+    monkeypatch.setattr(exit_routes, "current_paraguay_date", lambda: due)
+    assert exit_routes.sync_due_employee_exits(db, employee_id=employee.id) == 1
+    db.commit()
+    db.refresh(employee)
+    assert employee.status == "Desvinculado"
+    assert pending.status == "Efectivo"
+    assert exit_routes.sync_due_employee_exits(db, employee_id=employee.id) == 0
+
+
+def test_direct_employee_status_mutation_removed_and_archiving_restores_state(web_case):
+    from app.models import EmployeeEvent, PayrollLine
+    client, db, _, company, employee, _ = web_case
+    csrf = token(client, f"/app/employees/{employee.id}")
+    refused = client.post(
+        f"/app/employees/{employee.id}/status",
+        data={"csrf_token": csrf, "status": "Desvinculado", "termination_date": "2026-01-01"},
+        follow_redirects=False,
+    )
+    assert refused.status_code == 410
+    refused_delete = client.delete(
+        f"/api/employees/{employee.id}", headers={"X-CSRF-Token": csrf},
+        follow_redirects=False,
+    )
+    assert refused_delete.status_code == 410
+    previous = employee.status
+    archived = client.post(
+        f"/app/employees/{employee.id}/archive",
+        data={"csrf_token": csrf}, follow_redirects=False,
+    )
+    assert archived.status_code == 303
+    db.refresh(employee)
+    assert employee.status == "Archivado"
+    normal_list = client.get("/app/employees")
+    assert employee.full_name not in normal_list.text
+    include_archived = client.get("/app/employees?show_archived=true")
+    assert employee.full_name in include_archived.text
+    restored = client.post(
+        f"/app/employees/{employee.id}/restore",
+        data={"csrf_token": csrf}, follow_redirects=False,
+    )
+    assert restored.status_code == 303
+    db.refresh(employee)
+    assert employee.status == previous
+    assert db.query(EmployeeEvent).filter_by(employee_id=employee.id, event_type="Archivo").count() == 2
+
+
+def test_employee_exit_rejects_prior_admission_date_and_non_authorized_role(web_case):
+    client, db, box, company, employee, _ = web_case
+    employee.admission_date = date(2025, 1, 1)
+    db.commit()
+    csrf = token(client, f"/app/employees/{employee.id}")
+    data = {"csrf_token": csrf, "effective_date": "2024-12-31", "reason": "dismissal", "initiated_by": "Empleador"}
+    response = client.post(f"/app/employees/{employee.id}/exit", data=data, follow_redirects=False)
+    assert response.status_code == 422
+    data["effective_date"] = "2026-01-01"
+    box["user"].role = "auxiliar"
+    no_role = client.post(f"/app/employees/{employee.id}/exit", data=data, follow_redirects=False)
+    assert no_role.status_code == 403
