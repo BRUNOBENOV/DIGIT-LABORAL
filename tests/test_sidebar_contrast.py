@@ -22,7 +22,10 @@ def test_sidebar_normal_hover_and_active_states_have_sufficient_visual_separatio
     assert ".workspace-submenu .workspace-nav-link" in css
     assert "color:#EDF2FF!important" in css
     assert "background:#143B88!important" in css
-    assert ".workspace-nav-link.active:not(:hover)" in css
+    assert ".workspace-nav-link.active," in css
+    assert ".workspace-nav-link[aria-current=\"page\"]{" in css
+    assert ".workspace-nav-link.active:hover," in css
+    assert "-webkit-text-fill-color:#0B2D78!important" in css
     assert "background:#FFFFFF!important" in css
     assert "color:#0B2D78!important" in css
     assert "box-shadow:inset 3px 0 #1D4ED8!important" in css
