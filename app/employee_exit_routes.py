@@ -369,6 +369,17 @@ def settle_review(
     calc = db.get(CalculationRecord, settlement.calculation_record_id)
     if not calc or calc.calculation_type != "suite_settlement" or calc.employee_id != employee.id or calc.company_id != employee.company_id:
         raise HTTPException(409, "El cálculo asociado no corresponde a este egreso.")
+    try:
+        inputs = json.loads(calc.input_json or "{}")
+    except (TypeError, ValueError):
+        raise HTTPException(409, "Las entradas asociadas al cálculo no son válidas.") from None
+    if not isinstance(inputs, dict) or (
+        inputs.get("kind") != "settlement"
+        or inputs.get("start_date") != employee.admission_date.isoformat()
+        or inputs.get("end_date") != exit_record.effective_date.isoformat()
+        or inputs.get("reason") != exit_record.reason
+    ):
+        raise HTTPException(409, "El cálculo no conserva la fecha y la causal del egreso; debe rehacerse.")
     # Revalidate persisted calculations against the current professional engine.
     core._revalidate_calculation_before_approval(calc, db)
     if int(calc.amount) < 0:
