@@ -1,3 +1,14 @@
+## 2.6.48 — Sistema visual corporativo unificado
+
+- Unifica la identidad del espacio autenticado con azul de marca #05256D, azul de acción #1D4ED8, lienzo #F2F5FA, paneles blancos y texto #172033.
+- Consolida los estados de la barra lateral dentro del tema global y elimina cinco hojas de correcciones visuales superpuestas.
+- Establece la barra lateral como navegación global única para Mantenimientos, Cálculo, Informes, Certificados y Utilitarios; elimina la barra secundaria global redundante.
+- Ubica Exámenes Médicos únicamente en Mantenimientos y retira del menú el enlace MTESS/IPS heredado que redirigía al generador documental.
+- Homogeneiza cabeceras, paneles, formularios, tablas, botones, estados de foco y ventanas modales en el sistema de componentes.
+- Aplica la identidad corporativa al centro laboral autenticado sin alterar la apariencia de herramientas públicas ni documentos impresos.
+- Añade documentación del sistema visual y pruebas de regresión para navegación, tokens y rutas.
+- No modifica fórmulas, cálculos, modelos, migraciones, permisos, registros ni procesos laborales.
+
 ## 2.6.46 — Contrato Individual de Trabajo editable y versionado
 
 - Amplía el contrato con información de las partes y cláusulas sobre funciones, lugar, duración, jornada, remuneración, beneficios, prueba, seguridad social, derechos, domicilio, condiciones especiales, terminación y firmas.
