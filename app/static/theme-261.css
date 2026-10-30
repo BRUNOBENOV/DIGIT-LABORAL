@@ -1,42 +1,42 @@
 /* DigIT-Laboral 2.6.2 — Blue workspace design system
    Scoped to the authenticated workspace so public/marketing pages keep their own layout. */
 :root{
-  --navy:#0D1B2A;
-  --blue:#1E40AF;
-  --bright:#2563EB;
-  --sky:#EFF6FF;
+  --navy:#05256D;
+  --blue:#0B2D78;
+  --bright:#1D4ED8;
+  --sky:#EEF3FF;
   --ink:#111827;
   --muted:#6B7280;
   --line:#E5E7EB;
-  --soft:#F9FAFB;
+  --soft:#F2F5FA;
   --white:#FFFFFF;
   --shadow:0 2px 8px rgba(17,24,39,.08);
-  --modern-navy:#0D1B2A;
-  --modern-blue:#1E40AF;
-  --modern-blue-2:#2563EB;
-  --modern-soft:#F9FAFB;
+  --modern-navy:#05256D;
+  --modern-blue:#0B2D78;
+  --modern-blue-2:#1D4ED8;
+  --modern-soft:#F2F5FA;
   --modern-line:#E5E7EB;
   --modern-text:#111827;
   --modern-muted:#6B7280;
   --modern-shadow:0 2px 8px rgba(17,24,39,.08);
-  --premium-navy:#0D1B2A;
-  --premium-blue:#1E40AF;
-  --premium-bright:#2563EB;
-  --premium-soft:#F9FAFB;
+  --premium-navy:#05256D;
+  --premium-blue:#0B2D78;
+  --premium-bright:#1D4ED8;
+  --premium-soft:#F2F5FA;
   --premium-line:#E5E7EB;
   --premium-shadow:0 2px 8px rgba(17,24,39,.08);
   --exp-ink:#111827;
   --exp-muted:#6B7280;
   --exp-line:#E5E7EB;
-  --exp-canvas:#F9FAFB;
+  --exp-canvas:#F2F5FA;
   --exp-surface:#FFFFFF;
-  --exp-primary:#2563EB;
+  --exp-primary:#1D4ED8;
   --exp-primary-dark:#1D4ED8;
-  --exp-primary-soft:#EFF6FF;
+  --exp-primary-soft:#EEF3FF;
   --exp-shadow:0 2px 8px rgba(17,24,39,.08);
   --exp-shadow-hover:0 8px 20px rgba(17,24,39,.12);
   --text-primary:#111827;
-  --text-secondary:#6B7280;
+  --text-secondary:#667085;
   --input-bg:#FFFFFF;
   color-scheme:light;
 }
@@ -52,66 +52,105 @@ body.app-body{
   text-rendering:optimizeLegibility;
 }
 .app-body .app-shell,
-.app-body .main-content{background:#F9FAFB!important;color:#111827}
-.app-body .main-content{padding-top:26px}
+.app-body .main-content{background:#F2F5FA!important;color:#172033}
+.app-body .main-content{padding-top:28px}
 .app-body .page-header{
-  border:1px solid #E5E7EB!important;
-  border-left:4px solid #1E40AF!important;
-  border-radius:8px!important;
-  background:#FFFFFF!important;
-  box-shadow:0 2px 8px rgba(17,24,39,.06)!important;
+  border:0!important;border-bottom:1px solid #DDE4EF!important;border-left:0!important;
+  border-radius:0!important;background:transparent!important;box-shadow:none!important;
+  padding:0 0 17px!important;margin-bottom:22px!important;
 }
-.app-body .page-header h1{color:#111827!important;font-size:clamp(1.75rem,2.25vw,2rem);font-weight:700;letter-spacing:-.035em}
-.app-body .page-header p{color:#6B7280!important;font-size:1rem}
+.app-body .page-header h1{color:#17233B!important;font-size:clamp(1.7rem,2.25vw,2.15rem);font-weight:800;letter-spacing:-.04em;line-height:1.14}
+.app-body .page-header p{color:#667085!important;font-size:.9rem;line-height:1.55}
 .app-body .page-header .eyebrow,
-.app-body .page-header .eyebrow-label{background:#EFF6FF!important;color:#1E40AF!important}
-.app-body .eyebrow,.app-body .eyebrow-label{color:#1E40AF}
+.app-body .page-header .eyebrow-label{background:transparent!important;color:#0B2D78!important;padding:0!important}
+.app-body .eyebrow,.app-body .eyebrow-label{color:#0B2D78}
 .app-body h1,.app-body h2,.app-body h3,.app-body h4{color:#111827}
 
-/* Fixed-feeling dark navy navigation; bright blue marks the current location. */
+/* Primary workspace navigation: one corporate blue, with a clear selected state. */
 .app-body .modern-topbar{
-  background:#FFFFFF!important;
-  border-bottom:1px solid #E5E7EB!important;
-  box-shadow:0 1px 4px rgba(17,24,39,.045)!important;
+  background:rgba(255,255,255,.98)!important;
+  border-bottom:1px solid #E1E7F0!important;
+  box-shadow:0 2px 12px rgba(13,31,67,.045)!important;
 }
-.app-body .modern-brand-copy b{color:#111827!important}
-.app-body .modern-brand-copy small{color:#6B7280!important}
+.app-body .modern-brand-copy b{color:#17233B!important}
+.app-body .modern-brand-copy small{color:#758199!important}
 .app-body .modern-mobile-nav.workspace-sidebar{
-  background:#0D1B2A!important;
-  border-right:1px solid #203347!important;
-  box-shadow:4px 0 18px rgba(13,27,42,.10)!important;
-  color:#FFFFFF!important;
+  background:#05256D!important;
+  border-right:1px solid rgba(255,255,255,.16)!important;
+  box-shadow:4px 0 18px rgba(5,37,109,.12)!important;
+  color:#F8FAFC!important;
 }
-.app-body .workspace-sidebar-label{color:#A9B8C9!important}
-.app-body .workspace-home-link{color:#E5EDF7!important;border-color:transparent!important}
-.app-body .workspace-home-link:hover,
-.app-body .workspace-home-link.active{
-  background:#172B40!important;border-color:#2C435D!important;color:#FFFFFF!important;
+.app-body .workspace-sidebar-label{
+  color:#C9D8FF!important;font-size:.62rem!important;font-weight:850!important;letter-spacing:.13em!important;
 }
-.app-body .workspace-home-symbol{background:#1A2D42!important;color:#C7D8EC!important}
-.app-body .workspace-home-link.active .workspace-home-symbol{background:#2563EB!important;color:#FFFFFF!important}
-.app-body .workspace-nav-group{background:#122537!important;border-color:#24394D!important}
-.app-body .workspace-nav-group[open]{background:#152C42!important;border-color:#34506D!important;box-shadow:0 4px 14px rgba(0,0,0,.12)!important}
-.app-body .workspace-nav-group>summary{color:#E5EDF7!important}
+.app-body .workspace-home-link{
+  min-height:43px!important;border:1px solid transparent!important;border-radius:10px!important;
+  color:#F3F6FF!important;font-size:.84rem!important;font-weight:750!important;
+}
+.app-body .workspace-home-link:not(.active):hover{
+  background:#123B8A!important;border-color:#3764B4!important;color:#FFFFFF!important;
+}
+.app-body .workspace-home-link.active:not(:hover){
+  background:#FFFFFF!important;border-color:#DCE6FA!important;color:#0B2D78!important;
+}
+.app-body .workspace-home-symbol{
+  background:#0A347F!important;border:1px solid #4269AB!important;color:#E7EEFF!important;
+}
+.app-body .workspace-home-link.active .workspace-home-symbol{
+  background:#EAF0FF!important;border-color:#D7E3FA!important;color:#0B2D78!important;
+}
+.app-body .workspace-nav-group{
+  background:#082C79!important;border:1px solid rgba(221,233,255,.20)!important;border-radius:11px!important;
+}
+.app-body .workspace-nav-group[open]{
+  background:#0A317F!important;border-color:#4B70B9!important;
+  box-shadow:0 4px 14px rgba(0,0,0,.16)!important;
+}
+.app-body .workspace-nav-group>summary{
+  min-height:43px!important;border-radius:9px!important;color:#F8FAFC!important;font-weight:800!important;
+}
 .app-body .workspace-nav-group>summary:hover,
-.app-body .workspace-nav-group[open]>summary{background:#1B344E!important;color:#FFFFFF!important}
-.app-body .workspace-group-symbol{background:#1A2D42!important;border-color:#344B63!important;color:#D0DEEF!important}
-.app-body .workspace-nav-group[open] .workspace-group-symbol{background:#1E40AF!important;border-color:#3B82F6!important;color:#FFFFFF!important}
-.app-body .workspace-submenu{border-left-color:#38516C!important}
-.app-body .workspace-nav-link{color:#C3D0E0!important;border-color:transparent!important}
-.app-body .workspace-nav-link:hover{background:#1A3048!important;color:#FFFFFF!important}
-.app-body .workspace-nav-link.active{
-  background:#1E40AF!important;border-color:#3B82F6!important;
-  box-shadow:inset 3px 0 #93C5FD!important;color:#FFFFFF!important;font-weight:800!important;
+.app-body .workspace-nav-group[open]>summary{
+  background:#143B88!important;color:#FFFFFF!important;
 }
-.app-body .workspace-nav-link .notification-count{background:#93C5FD!important;color:#0D1B2A!important}
-.app-body .workspace-sidebar-bottom{border-top-color:#2B4157!important;color:#C3D0E0!important}
+.app-body .workspace-group-symbol{
+  background:#0D367F!important;border:1px solid #4265A6!important;color:#EAF0FF!important;
+}
+.app-body .workspace-nav-group[open] .workspace-group-symbol{
+  background:#1D4ED8!important;border-color:#8FB4FF!important;color:#FFFFFF!important;
+}
+.app-body .workspace-group-chevron{color:#D9E5FF!important}
+.app-body .workspace-submenu{border-left:2px solid #5178C2!important}
+.app-body .workspace-sidebar .workspace-submenu .workspace-nav-link{
+  min-height:36px!important;border:1px solid transparent!important;border-radius:8px!important;
+  color:#EDF2FF!important;font-size:.78rem!important;font-weight:600!important;
+}
+.app-body .workspace-sidebar .workspace-submenu .workspace-nav-link:not(.active):hover{
+  background:#143B88!important;border-color:#4269AB!important;color:#FFFFFF!important;
+}
+.app-body .workspace-sidebar .workspace-submenu .workspace-nav-link.active:not(:hover),
+.app-body .workspace-sidebar .workspace-submenu .workspace-nav-link[aria-current="page"]:not(:hover){
+  background:#FFFFFF!important;border-color:#DBEAFE!important;color:#0B2D78!important;
+  box-shadow:inset 3px 0 #1D4ED8!important;font-weight:800!important;
+}
+.app-body .workspace-nav-link .notification-count{
+  background:#BBD1FF!important;color:#08285F!important;
+}
+.app-body .workspace-sidebar-bottom{
+  margin-top:auto!important;border-top-color:rgba(221,233,255,.28)!important;color:#EAF0FF!important;
+}
 .app-body .workspace-sidebar-bottom b{color:#FFFFFF!important}
-.app-body .workspace-sidebar-bottom small{color:#A9B8C9!important}
-.app-body .workspace-sidebar-bottom-mark.workspace-brand-image{border-color:#344B63!important;background:#FFFFFF!important}
+.app-body .workspace-sidebar-bottom small{color:#D3E0FF!important}
+.app-body .workspace-sidebar .workspace-sidebar-bottom-full-logo{
+  display:block!important;width:166px!important;max-width:100%!important;max-height:70px!important;
+  height:auto!important;object-fit:contain!important;background:transparent!important;border:0!important;
+  border-radius:0!important;padding:0!important;box-shadow:none!important;
+}
 .app-body .workspace-sidebar a:focus-visible,
-.app-body .workspace-sidebar summary:focus-visible{outline:3px solid #93C5FD!important;outline-offset:2px}
-.app-body .workspace-sidebar-backdrop{background:rgba(13,27,42,.55)!important}
+.app-body .workspace-sidebar summary:focus-visible{
+  outline:3px solid #DDE8FF!important;outline-offset:3px!important;
+}
+.app-body .workspace-sidebar-backdrop{background:rgba(5,18,47,.58)!important}
 
 /* Consistent white cards, restrained borders and low-elevation shadows. */
 .app-body .panel,
@@ -133,10 +172,10 @@ body.app-body{
 .app-body .report-filter-panel{
   background:#FFFFFF;
   border-color:#E5E7EB;
-  border-radius:8px;
-  box-shadow:0 2px 8px rgba(17,24,39,.06);
+  border-radius:14px;
+  box-shadow:0 5px 18px rgba(16,36,75,.045);
 }
-.app-body .panel{padding:20px}
+.app-body .panel{padding:clamp(15px,2vw,22px)}
 .app-body .panel-head{border-bottom-color:#E5E7EB}
 .app-body .panel-head h2,
 .app-body .panel h2,
@@ -150,7 +189,7 @@ body.app-body{
 .app-body .panel-head span,
 .app-body .v23-card-head .eyebrow-label{color:#6B7280}
 .app-body .home-module-card{border-top-color:#1E40AF!important}
-.app-body .home-module-heading{background:#F9FAFB!important;border-bottom-color:#E5E7EB!important}
+.app-body .home-module-heading{background:#F6F8FC!important;border-bottom-color:#E5EAF2!important}
 .app-body .home-module-number,
 .app-body .home-onboarding-number,
 .app-body .home-module-number{background:#1E40AF!important;color:#FFFFFF!important;border-color:#1E40AF!important}
@@ -179,14 +218,14 @@ body.app-body{
 .app-body tbody tr:hover td{background:#EFF6FF!important}
 
 /* Buttons, form controls and accessible keyboard focus. */
-.app-body .btn{min-height:40px;border-radius:8px;font-weight:650;transition:background-color .16s ease,border-color .16s ease,box-shadow .16s ease,transform .16s ease}
+.app-body .btn{min-height:42px;border-radius:10px;font-weight:700;transition:background-color .16s ease,border-color .16s ease,box-shadow .16s ease,transform .16s ease}
 .app-body .btn.primary,
 .app-body .btn:not(.outline):not(.ghost):not(.danger):not(.light-button){
-  background:#2563EB!important;border-color:#2563EB!important;color:#FFFFFF!important;box-shadow:0 2px 5px rgba(37,99,235,.18)!important;
+  background:#1D4ED8!important;border-color:#1D4ED8!important;color:#FFFFFF!important;box-shadow:0 3px 8px rgba(29,78,216,.15)!important;
 }
 .app-body .btn.primary:hover,
 .app-body .btn:not(.outline):not(.ghost):not(.danger):not(.light-button):hover{
-  background:#1D4ED8!important;border-color:#1D4ED8!important;box-shadow:0 4px 10px rgba(37,99,235,.22)!important;transform:translateY(-1px);
+  background:#1741B5!important;border-color:#1741B5!important;box-shadow:0 6px 14px rgba(29,78,216,.20)!important;transform:translateY(-1px);
 }
 .app-body .btn.outline,
 .app-body .btn.ghost{background:#FFFFFF!important;border-color:#D1D5DB!important;color:#1E40AF!important}
@@ -211,11 +250,11 @@ body.app-body{
 .app-body button:focus-visible,
 .app-body a:focus-visible,
 .app-body summary:focus-visible{
-  outline:3px solid rgba(37,99,235,.45)!important;outline-offset:2px;
+  outline:3px solid rgba(29,78,216,.38)!important;outline-offset:2px;
 }
 .app-body input:focus,
 .app-body select:focus,
-.app-body textarea:focus{border-color:#2563EB;box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+.app-body textarea:focus{border-color:#1D4ED8;box-shadow:0 0 0 3px rgba(29,78,216,.12)}
 .app-body .form-grid label,
 .app-body .form-grid .field-label,
 .app-body .search-form label,
@@ -244,7 +283,7 @@ body.app-body{
 
 @media(max-width:860px){
   .app-body .main-content{padding-top:20px}
-  .app-body .modern-mobile-nav.workspace-sidebar{background:#0D1B2A!important;border-right-color:#203347!important}
+  .app-body .modern-mobile-nav.workspace-sidebar{background:#05256D!important;border-right-color:rgba(255,255,255,.16)!important}
 }
 @media(prefers-reduced-motion:reduce){
   .app-body *, .app-body *::before, .app-body *::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}
