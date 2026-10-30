@@ -1861,7 +1861,7 @@ def companies_page(
     q: str = "",
     city: str = "",
     department: str = "",
-    show_archived: bool = False,
+    hide_archived: bool = False,
     user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ):
@@ -1869,7 +1869,7 @@ def companies_page(
         return RedirectResponse(f"/app/companies/{user.company_id}", status_code=303)
     company_ids = company_ids_for_user(db, user)
     query = select(Company).where(Company.id.in_(company_ids)) if company_ids else select(Company).where(False)
-    if not show_archived:
+    if hide_archived:
         query = query.where(Company.status != "Archivada")
     if q.strip():
         term = f"%{q.strip()}%"
@@ -1890,7 +1890,7 @@ def companies_page(
     companies = list(db.scalars(query.order_by(Company.legal_name)))
     return render(
         request, "companies.html", db, user, companies=companies, q=q, selected_city=city,
-        selected_department=department, show_archived=show_archived,
+        selected_department=department, hide_archived=hide_archived,
         departments=PARAGUAY_DEPARTMENTS, cities=PARAGUAY_CITIES,
     )
 
