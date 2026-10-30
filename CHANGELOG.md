@@ -1,3 +1,11 @@
+## 2.6.49 — Corrección de contraste de submódulos
+
+- Corrige los estados seleccionados del menú lateral: el submódulo activo mantiene texto azul oscuro sobre fondo claro tanto con el puntero encima como sin hover.
+- Los submódulos no seleccionados conservan texto claro solo sobre la superficie azul de la barra lateral.
+- Se fija explícitamente el color de texto y el relleno tipográfico para evitar que reglas heredadas vuelvan a aplicar letras blancas sobre fondo blanco.
+- Se renueva la versión de caché de la hoja de estilos y se agregan pruebas de regresión para los estados hover y activo.
+- No modifica rutas, datos, cálculos, fórmulas ni permisos.
+
 ## 2.6.48 — Sistema visual corporativo unificado
 
 - Unifica la identidad del espacio autenticado con azul de marca #05256D, azul de acción #1D4ED8, lienzo #F2F5FA, paneles blancos y texto #172033.
