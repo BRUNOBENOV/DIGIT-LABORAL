@@ -27,8 +27,16 @@ def upgrade() -> None:
         if name not in columns:
             op.add_column("companies", column)
 
-    indexes = {item["name"] for item in sa.inspect(bind).get_indexes("companies")}
-    if "uq_company_ruc_per_studio" in indexes:
+    inspector = sa.inspect(bind)
+    unique_constraints = {
+        item.get("name") for item in inspector.get_unique_constraints("companies")
+    }
+    indexes = {item["name"] for item in inspector.get_indexes("companies")}
+    if "uq_company_ruc_per_studio" in unique_constraints:
+        op.drop_constraint(
+            "uq_company_ruc_per_studio", "companies", type_="unique"
+        )
+    elif "uq_company_ruc_per_studio" in indexes:
         op.drop_index("uq_company_ruc_per_studio", table_name="companies")
     op.create_index(
         "uq_company_ruc_per_studio",
