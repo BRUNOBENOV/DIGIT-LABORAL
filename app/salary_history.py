@@ -94,6 +94,13 @@ def salary_for_period(
             "dentro del período; revisá el prorrateo antes de cerrar."
         )
 
+    if employee.termination_date and period_start <= employee.termination_date <= period_end:
+        warnings.append(
+            f"{employee.full_name}: egreso efectivo el {employee.termination_date:%d/%m/%Y} "
+            "dentro del período; revisar días devengados, liquidación final y evitar duplicaciones. "
+            "No se prorratea automáticamente el salario de la línea mensual."
+        )
+
     changes_in_period = [
         item
         for item in history
