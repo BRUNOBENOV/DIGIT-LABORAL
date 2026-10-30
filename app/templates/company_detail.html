@@ -22,7 +22,8 @@
   <div class="company-profile-main">
     <span class="eyebrow">EMPRESA</span>
     <h1>{{ company.legal_name }}</h1>
-    <p>Código {{ company.company_code if company.company_code is not none else "Sin asignar" }} · {{ company.trade_name or "Sin nombre comercial" }} · RUC {{ company.ruc }}</p>
+    <p>Código histórico {{ company.legacy_code or (company.company_code if company.company_code is not none else "Sin asignar") }} · {{ company.trade_name or "Sin nombre comercial" }} · RUC {{ company.ruc or "No validado" }}</p>
+    {% if not company.ruc and company.legacy_ruc %}<small>Dato de RUC original: {{ company.legacy_ruc }} · pendiente de verificación</small>{% endif %}
     <div class="tag-row"><span>{{ company.city or 'Sin ciudad' }}</span><span class="status-pill {{ company.status|lower }}">{{ company.status }}</span></div>
   </div>
   <div class="company-main-actions">
@@ -206,7 +207,7 @@
 <label>Código Empresa<input name="company_code" type="number" min="1" max="2147483647" step="1" value="{{ company.company_code or '' }}" required></label>
 <label>Nombre Empresa<input name="legal_name" value="{{ company.legal_name }}" maxlength="200" required></label>
 <label>Nombre comercial<input name="trade_name" value="{{ company.trade_name or '' }}" maxlength="160"></label>
-<label>N.º RUC<input name="ruc" value="{{ company.ruc }}" inputmode="numeric" pattern="[0-9.\- ]{4,14}" maxlength="14" required></label>
+<label>N.º RUC<input name="ruc" value="{{ company.ruc }}" inputmode="numeric" pattern="[0-9.\- ]{4,14}" maxlength="14" placeholder="Ej.: 80000519-8"></label>
 <div class="span-2"><span class="company-form-section">RESPONSABLES Y CONTACTO</span></div>
 <label>Propietario<input name="owner_name" value="{{ company.owner_name or '' }}" maxlength="180"></label>
 <label>Representante Legal<input name="legal_representative" value="{{ company.legal_representative or '' }}" maxlength="180"></label>
