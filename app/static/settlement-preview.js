@@ -11,7 +11,8 @@
     const prefix = panel.dataset.prefix || "";
     const field = name => form.elements.namedItem(prefix + name);
     const status = panel.querySelector("[data-settlement-status]");
-    let timer, controller, sequence = 0, projection = null;
+    let timer, controller, sequence = 0, projection = null, sourceValues = null;
+    const emitProjection = () => form.dispatchEvent(new CustomEvent("settlement:projection", {detail:{prefix, projection, values:sourceValues}}));
     const write = (key, value) => {
       const output = panel.querySelector(`[data-settlement-value="${key}"]`);
       if (output) output.textContent = value;
@@ -31,7 +32,7 @@
       });
       if (field("stability_evidence")) field("stability_evidence").minLength = needed ? 10 : 0;
       const review = field("stability_basis")?.closest("[data-regime-review]");
-      if (review) review.hidden = !needed;
+      if (review) { review.hidden = !needed; if (needed) review.open = true; }
     };
     const updateStatus = () => {
       if (!projection) return;
@@ -41,6 +42,7 @@
         probation: "Confirmá si se cumplió el período de prueba para calcular los conceptos de despido.",
         not_applicable: "La causal elegida no activa automáticamente indemnización ni preaviso a cargo del empleador.",
         ordinary: "Días calculados automáticamente. Pulsá Calcular o Recalcular para incorporarlos al resultado.",
+        ordinary_reference: "Referencia ordinaria calculada automáticamente. Con diez años o más, la estabilidad sigue pendiente de revisión antes de aprobar.",
         stability_double: hasConfirmation()
           ? "Doble indemnización confirmada para el cálculo. Pulsá Calcular o Recalcular para sumar ambos conceptos al resultado."
           : "Proyección de doble indemnización. Completá el fundamento y el respaldo y confirmá su revisión para incluirla en el total."
@@ -52,6 +54,8 @@
     };
     const clearProjection = () => {
       projection = null;
+      sourceValues = null;
+      emitProjection();
       panel.querySelectorAll("output").forEach(output => { output.textContent = "—"; });
     };
     const load = async () => {
@@ -67,11 +71,14 @@
       panel.setAttribute("aria-busy", "true");
       status.textContent = "Calculando días e importes…";
       const body = new URLSearchParams({kind: "settlement"});
+      const submitted = {};
       body.set("csrf_token", form.elements.namedItem("csrf_token")?.value || "");
       projectionFields.forEach(name => {
         const input = field(name);
-        body.set(name, input?.type === "checkbox" ? (input.checked ? "on" : "") : input?.value || "");
+        submitted[name] = input?.type === "checkbox" ? (input.checked ? "on" : "") : input?.value || "";
+        body.set(name, submitted[name]);
       });
+      for (const name of ["settlement_preset_version","average_from_salary"]) if (field(name)) body.set(name,field(name).value);
       try {
         const response = await fetch("/herramientas/liquidacion/previsualizar", {
           method: "POST", body, credentials: "same-origin", signal: controller.signal,
@@ -84,10 +91,12 @@
           return;
         }
         projection = data;
+        sourceValues = submitted;
         ["units", "days", "notice_due", "notice_payable"].forEach(key => write(key, data[key] ?? "Pendiente"));
         write("daily_base", Number(data.average) > 0 ? "Gs. " + data.daily_base : "Pendiente");
         ["severance", "notice"].forEach(key => write(key, data[key] == null ? "Pendiente" : money(data[key])));
         updateStatus();
+        emitProjection();
       } catch (error) {
         if (error.name !== "AbortError" && current === sequence) {
           status.textContent = "No se pudo actualizar la vista previa. Podés pulsar Calcular o Recalcular para obtener el resultado.";
@@ -112,10 +121,11 @@
       panel.setAttribute("aria-busy", "false");
       clearProjection();
       status.textContent = "Actualizando la proyección…";
-      timer = setTimeout(load, 300);
+      timer = setTimeout(load, form.closest(".dl-quick") ? 500 : 300);
     };
     form.addEventListener("input", changed);
     form.addEventListener("change", changed);
+    form.addEventListener("settlement:request-projection", emitProjection);
     form.addEventListener("reset", () => {
       clearTimeout(timer);
       ++sequence;

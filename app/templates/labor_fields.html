@@ -1,4 +1,4 @@
-{% macro input_field(field, values, error_field='', prefix='', locked=false, compact=false) %}
+{% macro input_field(field, values, error_field='', prefix='', locked=false, compact=false, suggestion_label='') %}
 {% set value = values.get(field.name, field.value) %}
 {% set name = prefix ~ field.name %}
 <div class="dl-field {{ 'dl-check' if field.type == 'checkbox' else '' }} {{ 'dl-invalid' if error_field == field.name else '' }}" data-field="{{ name }}">
@@ -17,6 +17,7 @@
 {% else %}<input id="f-{{ name }}" name="{{ name }}" type="{{ field.type }}" value="{{ value }}" {% if field.required %}required{% endif %} {% if field.help %}aria-describedby="help-{{ name }}"{% endif %} {% if error_field == field.name %}aria-invalid="true"{% endif %} {% for key,val in field.attrs.items() %}{{ key }}="{{ val }}"{% endfor %} {% if locked %}readonly{% endif %}>{% endif %}
 {% endif %}
 {% if field.help and not compact %}<small id="help-{{ name }}">{{ field.help }}</small>{% endif %}
+{% if compact and field.name == 'average_salary' %}<small class="dl-salary-suggestion" data-average-salary-hint data-label="{{ suggestion_label }}" {% if values.get('average_from_salary') != 'on' %}hidden{% endif %}>{{ suggestion_label }}</small>{% endif %}
 </div>
 {% endmacro %}
 

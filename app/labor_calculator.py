@@ -5,8 +5,9 @@ from calendar import monthrange
 from datetime import date
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from .labor_wage_rules import minimum_wage_for_period
+from .settlement_presets import settlement_defaults
 
-VERSION = "2026.10.4"
+VERSION = "2026.10.5"
 SOURCE = "Centro laboral"
 TITLES = {"salary": "Liquidación de salario", "settlement": "Liquidación de haberes",
           "aguinaldo": "Aguinaldo", "vacation": "Vacaciones", "hours": "Horas y recargos"}
@@ -120,13 +121,14 @@ def settlement_projection(data):
     A projection never confirms the legal grounds or saves a worker's exit.
     Monthly remuneration remains on base 30; do not import DOS base-26 totals.
     """
+    data = settlement_defaults(data)
     start, end = read_date(data, "start_date"), read_date(data, "end_date")
     if end < start:
         raise CalculationError("El egreso no puede ser anterior al ingreso.", "end_date")
     years = completed_years(start, end)
     units = years + int(end > anniversary(anniversary(start, years), months=6))
     regime = str(data.get("severance_regime") or "auto")
-    if regime not in {"auto", "stability_double"}:
+    if regime not in {"auto", "ordinary", "stability_double"}:
         raise CalculationError("Elegí un régimen de indemnización válido.", "severance_regime")
     reason = str(data.get("reason") or "")
     if regime == "stability_double" and (
@@ -139,34 +141,38 @@ def settlement_projection(data):
             "severance_regime",
         )
     due = notice_days(start, end)
-    served = number(data, "notice_served", "días de preaviso cumplidos", maximum=str(due))
-    average = number(data, "average_salary", "promedio salarial", decimals=2)
-    if checked(data, "protected") or not checked(data, "indefinite"):
-        status = "special"
-    elif reason not in {"dismissal", "worker_justified"}:
+    applicable = reason in {"dismissal", "worker_justified"}
+    served = number(data, "notice_served", "días de preaviso cumplidos", maximum=str(due)) if applicable else ZERO
+    average = number(data, "average_salary", "promedio salarial", decimals=2) if applicable else ZERO
+    if not applicable:
         status = "not_applicable"
+    elif checked(data, "protected") or not checked(data, "indefinite"):
+        status = "special"
     elif not checked(data, "trial_completed"):
         status = "probation"
     elif regime == "stability_double":
         status = "stability_double"
+    elif years >= 10 and regime == "ordinary":
+        status = "ordinary_reference"
     elif years >= 10:
         status = "review"
     else:
         status = "ordinary"
-    multiplier = 2 if status == "stability_double" else 1 if status == "ordinary" else 0
-    days = 15 * units * multiplier if multiplier else None
+    multiplier = 2 if status == "stability_double" else 1 if status in {"ordinary", "ordinary_reference"} else 0
+    days = 15 * units * multiplier if multiplier else 0 if not applicable else None
     payable = int(Decimal(due) - served)
     return dict(
         years=years, units=units, ordinary_days=15 * units, days=days,
         multiplier=multiplier, status=status, notice_due=due,
-        notice_served=int(served), notice_payable=payable if multiplier else None,
+        notice_served=int(served), notice_payable=payable if multiplier else 0 if not applicable else None,
         average=str(average), daily_base=f"{average / 30:,.2f}".translate(str.maketrans(",.", ".,")),
-        severance=amount(average / 30 * days) if multiplier and average else None,
-        notice=amount(average / 30 * payable) if multiplier and average else None,
+        severance=amount(average / 30 * days) if multiplier and average else 0 if not applicable else None,
+        notice=amount(average / 30 * payable) if multiplier and average else 0 if not applicable else None,
     )
 
 
 def calculate(data):
+    data = settlement_defaults(data)
     kind = data.get("kind", "salary")
     if kind not in TITLES:
         raise CalculationError("Elegí un tipo de cálculo válido.", "kind")
@@ -416,6 +422,7 @@ def calculate(data):
 
         projection = settlement_projection(data)
         double_confirmed = projection["status"] == "stability_double"
+        ordinary_reference = projection["status"] == "ordinary_reference"
         if double_confirmed:
             basis = str(data.get("stability_basis") or "")
             if basis not in STABILITY_BASES:
@@ -448,7 +455,7 @@ def calculate(data):
             or reason in {"justified", "worker_justified", "fixed_term_expiration", "mutual_consent", "death", "other"}
         )
 
-        if special_severance_regime:
+        if special_severance_regime and not ordinary_reference:
             result["warnings"].append(
                 "Subtotal parcial: el caso activa estabilidad de diez años, protección especial o contrato no indefinido. "
                 "No se agrega automáticamente indemnización ordinaria ni preaviso; verificá el régimen aplicable y la documentación."
@@ -466,12 +473,28 @@ def calculate(data):
                 result["warnings"].append(
                     "Se declaró protección laboral especial. Revisá la tutela aplicable; este motor no determina si el despido es válido."
                 )
+                if basis := clean(data.get("protection_basis")):
+                    fact("Fundamento de protección declarado", basis)
+                if evidence := clean(data.get("protection_evidence"), 600):
+                    result["notes"].append("Respaldo de protección declarado por el liquidador: " + evidence)
             if not checked(data, "indefinite"):
                 result["warnings"].append(
                     "El vínculo no está marcado como indefinido. Verificá la modalidad y el vencimiento contractual; se omitió la fórmula ordinaria."
                 )
         elif reason in {"dismissal", "worker_justified"} and checked(data, "trial_completed"):
             average = positive(data, "average_salary", "promedio salarial de los últimos seis meses o menor tiempo de servicio", decimals=2)
+            if ordinary_reference:
+                fact("Régimen mostrado", "Ordinaria de referencia · estabilidad pendiente de revisión")
+                result["warnings"].append(
+                    "Subtotal parcial: incluye una referencia ordinaria del artículo 91. Con diez años o más debe revisarse "
+                    "la estabilidad laboral de los artículos 94–99; esta referencia no determina la indemnización definitiva ni permite aprobar el caso."
+                )
+            if checked(data, "average_from_salary") and average == salary:
+                fact("Origen del promedio", "Salario mensual usado como sugerencia; promedio no verificado")
+                result["warnings"].append(
+                    "El promedio se sugirió a partir del salario mensual. Revisá las remuneraciones computables de los últimos seis meses "
+                    "o menor tiempo de servicio (art. 92); el salario actual no acredita ese promedio."
+                )
             units = projection["units"]
             severance = projection["severance"] or 0
             average_label = (gs(average) if average == average.to_integral_value() else
@@ -479,14 +502,14 @@ def calculate(data):
             severance_legal = ("Arts. 91, 92 y 94–99; fundamento declarado y confirmado" if double_confirmed
                                else "Arts. 85, 91 y 92" if reason == "worker_justified" else "Arts. 91 y 92")
             add(
-                "Indemnización doble por estabilidad" if double_confirmed else "Indemnización ordinaria por antigüedad", severance,
+                "Indemnización doble por estabilidad" if double_confirmed else "Indemnización ordinaria de referencia" if ordinary_reference else "Indemnización ordinaria por antigüedad", severance,
                 f"Gs. {average_label} / 30 × 15 × {units}" + (" × 2" if double_confirmed else ""), severance_legal
             )
             due, served = projection["notice_due"], projection["notice_served"]
             notice = projection["notice"] or 0
             notice_legal = "Arts. 85, 87, 90 y 92" if reason == "worker_justified" else "Arts. 87, 90 y 92"
             add(
-                "Indemnización por preaviso no cumplido", notice,
+                "Indemnización por preaviso no cumplido · referencia" if ordinary_reference else "Indemnización por preaviso no cumplido", notice,
                 f"Gs. {average_label} / 30 × {due - served}", notice_legal
             )
             protected += severance + notice

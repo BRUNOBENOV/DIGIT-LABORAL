@@ -108,6 +108,9 @@
     status.textContent = "Promedio en modo manual. Revisá el importe y su respaldo antes de recalcular.";
   });
   reviewed.addEventListener("change", sync);
+  form.addEventListener("settlement:preset", event => {
+    if (["resignation","justified"].includes(event.detail?.reason)) makeManual();
+  });
   form.addEventListener("input", event => {
     if (event.target === amount && !applying) makeManual();
   });

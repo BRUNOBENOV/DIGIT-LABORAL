@@ -27,6 +27,7 @@ from .labor_examples import example_values
 from .models import CalculationRecord, Company, Employee, EmployeeExit, FinalSettlement, Payroll, PayrollLine, PayrollComplianceDetail, User
 from .salary_history import employee_salary_history, salary_from_history, salary_for_period
 from .payroll_average import annotate_average, propose_monthly_average, verify_average_selection
+from .settlement_presets import settlement_defaults
 
 router = APIRouter()
 HEADERS = {"Cache-Control": "no-store", "X-Digit-Laboral-Version": VERSION}
@@ -39,8 +40,11 @@ def context(kind, values=None):
     defaults = {f["name"]: f["value"] for g in GROUPS[kind] for f in g["fields"]}
     defaults.update(issued_date=today.isoformat(), month=today.strftime("%Y-%m"),
                     year=str(today.year), end_date=today.isoformat())
+    if kind == "settlement":
+        defaults.update(kind=kind, settlement_preset_version="1", severance_regime="ordinary")
     if values is not None:
         defaults.update(values)
+    defaults = settlement_defaults(defaults)
     return dict(kind=kind, titles=TITLES, groups=GROUPS[kind], quick_steps=quick_steps(kind), values=defaults, result=None,
                 error="", error_field="", private=False, companies=[], employees=[], history=[])
 
@@ -57,7 +61,7 @@ async def form_values(request):
         for field in group["fields"]:
             if field["type"] == "checkbox":
                 data.setdefault(field["name"], "")
-    return data
+    return settlement_defaults(data)
 
 
 def private_context(db, user, data):
@@ -126,7 +130,17 @@ def page(request, kind, data=None, result=None, error=None, db=None, user=None, 
         {"id": item.id, "effective_from": item.effective_from.isoformat(), "new_salary": int(item.new_salary or 0)}
         for item in private.get("salary_history", [])
     ]
+    suggestion_label = "Sugerido del salario ingresado. Modificar si es necesario"
+    if employee := private.get("employee"):
+        try:
+            target = date.fromisoformat(str(ctx["values"].get("end_date", "")))
+            recorded_salary = salary_from_history(employee, private["salary_history"], target)
+            if str(ctx["values"].get("salary", "")) == str(recorded_salary):
+                suggestion_label = "Sugerido del legajo. Modificar si es necesario"
+        except ValueError:
+            pass
     ctx.update(private, salary_history_data=salary_history_data, result=result,
+               average_suggestion_label=suggestion_label,
                live_summary=calculation_summary(result) if result else None, error=str(error or ""),
                error_field=getattr(error, "field", ""), copied_from=copied_from)
     response = core.render(request, "labor_workbench.html", db, user, **ctx)
@@ -137,6 +151,7 @@ def page(request, kind, data=None, result=None, error=None, db=None, user=None, 
 
 
 def calculate_scoped(data, db, scoped):
+    data.update(settlement_defaults(data))
     proposal = verify_average_selection(db, scoped.get("employee"), data)
     result = annotate_average(calculate(data), proposal)
     return add_salary_period_warnings(result, db, scoped, data)
