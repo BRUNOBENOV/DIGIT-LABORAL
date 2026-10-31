@@ -35,6 +35,7 @@
       if (!form) return;
       let timer;
       form.addEventListener("digit:page-navigation", () => window.clearTimeout(timer));
+      form.addEventListener("digit:entity-interaction", () => window.clearTimeout(timer));
       const search = form.querySelector('[name="q"]');
       const submitFilters = () => { window.clearTimeout(timer); const url = urlFromForm(form); url.searchParams.set("page", "1"); navigate(url, form); };
       form.addEventListener("submit", event => {

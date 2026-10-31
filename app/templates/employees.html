@@ -59,7 +59,7 @@
   <input type="hidden" name="direction" value="{{ sort_direction }}">
   <input type="hidden" name="employee_quick" value="{{ employee_quick }}">
   <label class="search-field">Legajo, nombre, cédula o cargo<input type="search" name="q" value="{{ q }}" placeholder="Ej.: 1024, Juan Pérez o 4.123.456" autocomplete="off"></label>
-  <label>Empresa<select name="company_id"><option value="">Todas las empresas</option>{% for company in companies %}<option value="{{ company.id }}" {{ 'selected' if selected_company == company.id }}>{{ company.company_code if company.company_code is not none else '—' }} · {{ company.legal_name }}</option>{% endfor %}</select></label>
+  <label>Empresa<select name="company_id" data-searchable-entity="company" data-entity-scope="{{ 'all' if show_archived else 'current' }}"><option value="">Todas las empresas</option>{% for company in companies|entity_choices %}<option value="{{ company.id }}" {{ 'selected' if selected_company == company.id }}>{{ company.legacy_code or (company.company_code if company.company_code is not none else 'Sin código') }} - {{ company.legal_name }}</option>{% endfor %}</select></label>
   <label>Sección<select name="section_id"><option value="">Todas las secciones</option>{% for section in sections %}<option value="{{ section.id }}" {{ 'selected' if selected_section == section.id }}>{{ section.name }}{% if not section.active %} · Inactiva{% endif %}</option>{% endfor %}</select></label>
   <label>Estado<select name="status_filter"><option value="">Todos los estados</option>{% for state in ['Activo','Inactivo','Desvinculado','Archivado'] %}<option value="{{ state }}" {{ 'selected' if status_filter == state }}>{{ state }}</option>{% endfor %}</select></label>
   <label class="filter-check"><input type="checkbox" name="show_archived" value="true" {{ 'checked' if show_archived }}> Incluir archivados</label>
@@ -174,7 +174,7 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <div class="employee-form-section">IDENTIFICACIÓN DEL LEGAJO</div>
       <label>Código Legajo<input name="employee_code" id="employeeCode" type="number" min="1" max="2147483647" step="1" inputmode="numeric" required aria-describedby="employeeCodeFeedback"><small class="employee-field-help">Número positivo, único dentro de la empresa.</small></label>
-      <label>Empresa<select name="company_id" id="employeeCompany" required>{% for company in companies %}<option value="{{ company.id }}" {{ 'selected' if selected_company == company.id }}>{{ company.company_code if company.company_code is not none else '—' }} · {{ company.legal_name }}</option>{% endfor %}</select></label>
+      <label>Empresa<select name="company_id" id="employeeCompany" required data-searchable-entity="company" data-entity-scope="current">{% for company in companies|entity_choices %}<option value="{{ company.id }}" {{ 'selected' if selected_company == company.id }}>{{ company.legacy_code or (company.company_code if company.company_code is not none else 'Sin código') }} - {{ company.legal_name }}</option>{% endfor %}</select></label>
       <div class="employee-code-feedback" id="employeeCodeFeedback" role="status" aria-live="polite"></div>
       <div class="employee-form-section">DATOS PERSONALES Y CONTACTO</div>
       <label class="span-2">Nombre completo<input name="full_name" id="employeeFullName" required maxlength="180" autocomplete="name"></label>
@@ -212,14 +212,14 @@
   </section>
 </div>
 
-<div class="modal" id="importEmployeesModal" aria-hidden="true"><div class="modal-backdrop" data-modal-close></div><section class="modal-card"><button class="modal-x" type="button" data-modal-close>×</button><span class="eyebrow">IMPORTACIÓN MASIVA</span><h2>Importar funcionarios</h2><p class="modal-intro">Descargá la plantilla, completala y subila en formato Excel o CSV. El sistema mostrará una vista previa antes de guardar.</p><a class="btn ghost full" href="/app/import/employees/template.xlsx">Descargar plantilla Excel</a><form method="post" action="/app/import/employees/preview" enctype="multipart/form-data" class="form-grid import-upload-form"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label class="span-2">Empresa<select name="company_id" required>{% for company in companies %}<option value="{{ company.id }}" {{ 'selected' if selected_company == company.id }}>{{ company.legal_name }}</option>{% endfor %}</select></label><label class="span-2">Archivo<input type="file" name="file" accept=".xlsx,.csv" required></label><div class="form-actions span-2"><button class="btn ghost" type="button" data-modal-close>Cancelar</button><button class="btn primary" type="submit">Validar archivo</button></div></form></section></div>
+<div class="modal" id="importEmployeesModal" aria-hidden="true"><div class="modal-backdrop" data-modal-close></div><section class="modal-card"><button class="modal-x" type="button" data-modal-close>×</button><span class="eyebrow">IMPORTACIÓN MASIVA</span><h2>Importar funcionarios</h2><p class="modal-intro">Descargá la plantilla, completala y subila en formato Excel o CSV. El sistema mostrará una vista previa antes de guardar.</p><a class="btn ghost full" href="/app/import/employees/template.xlsx">Descargar plantilla Excel</a><form method="post" action="/app/import/employees/preview" enctype="multipart/form-data" class="form-grid import-upload-form"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label class="span-2">Empresa<select name="company_id" required data-searchable-entity="company" data-entity-scope="current">{% for company in companies|entity_choices %}<option value="{{ company.id }}" {{ 'selected' if selected_company == company.id }}>{{ company.legacy_code or (company.company_code if company.company_code is not none else 'Sin código') }} - {{ company.legal_name }}</option>{% endfor %}</select></label><label class="span-2">Archivo<input type="file" name="file" accept=".xlsx,.csv" required></label><div class="form-actions span-2"><button class="btn ghost" type="button" data-modal-close>Cancelar</button><button class="btn primary" type="submit">Validar archivo</button></div></form></section></div>
 {% endif %}
 
 {% if user.role in ['administrador','contador'] %}
 <div class="modal" id="sectionsModal" aria-hidden="true"><div class="modal-backdrop" data-modal-close></div><section class="modal-card"><button class="modal-x" type="button" data-modal-close aria-label="Cerrar">×</button><span class="eyebrow">MANTENIMIENTOS · ESTRUCTURA INTERNA</span><h2>Secciones por empresa</h2><p class="modal-intro">Una sección es un área funcional (Administración, Ventas o Producción). No reemplaza a una sucursal física.</p>
   <form id="sectionManageForm" class="form-grid">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="section_id" id="managedSectionId">
-    <label class="span-2">Empresa<select id="sectionCompany" required>{% for company in companies %}<option value="{{ company.id }}" {{ 'selected' if selected_company == company.id }}>{{ company.legal_name }}</option>{% endfor %}</select></label>
+    <label class="span-2">Empresa<select id="sectionCompany" required data-searchable-entity="company" data-entity-scope="current">{% for company in companies|entity_choices %}<option value="{{ company.id }}" {{ 'selected' if selected_company == company.id }}>{{ company.legacy_code or (company.company_code if company.company_code is not none else 'Sin código') }} - {{ company.legal_name }}</option>{% endfor %}</select></label>
     <label>Código de sección<input type="number" id="managedSectionCode" min="1" step="1" required></label>
     <label>Nombre de sección<input type="text" id="managedSectionName" maxlength="140" required placeholder="Ej.: Administración"></label>
     <div class="form-actions span-2"><button class="btn ghost" id="sectionFormReset" type="button">Limpiar</button><button class="btn primary" id="sectionFormSubmit" type="submit">Guardar sección</button></div>
@@ -303,7 +303,7 @@
       syncCompanyOptions();
     }
   }
-  function setEditMode(employee) {
+  async function setEditMode(employee) {
     loadedCode = String(employee.employee_code);
     loadedEmployeeId = employee.id;
     form.action = "/app/employees/" + employee.id + "/edit";
@@ -312,7 +312,8 @@
     intro.textContent = "Los datos se actualizarán en el expediente existente. El salario vigente permanece protegido por el flujo de solicitud y aprobación.";
     submit.textContent = "Guardar cambios";
     if (archiveButton) archiveButton.hidden = false;
-    companySelect.value = String(employee.company_id);
+    if (window.DigitEntitySelect) await window.DigitEntitySelect.setValue(companySelect, employee.company_id);
+    else companySelect.value = String(employee.company_id);
     companySelect.disabled = true;
     codeInput.value = String(employee.employee_code);
     codeInput.readOnly = true;
@@ -365,7 +366,7 @@
         throw new Error(body.detail || "No se pudo consultar el legajo.");
       }
       const employee = await response.json();
-      setEditMode(employee);
+      await setEditMode(employee);
     } catch (error) {
       if (seq === requestSequence) setFeedback(error.message || "No se pudo consultar el legajo.", "error");
     }
@@ -428,15 +429,18 @@
       dateField.min = button.dataset.admissionDate || "";
     });
   });
-  document.querySelectorAll("[data-employee-code][data-employee-company]").forEach(function (button) {
-    button.addEventListener("click", function () {
+  document.querySelectorAll("button[data-employee-code][data-employee-company]").forEach(function (button) {
+    button.addEventListener("click", async function () {
       const target = document.getElementById("employeeModal");
       if (!target) return;
       setCreateMode(true);
-      companySelect.value = button.dataset.employeeCompany;
-      codeInput.value = button.dataset.employeeCode || "";
-      syncCompanyOptions();
-      window.setTimeout(lookupCode, 50);
+      try {
+        if (window.DigitEntitySelect) await window.DigitEntitySelect.setValue(companySelect, button.dataset.employeeCompany);
+        else companySelect.value = button.dataset.employeeCompany;
+        codeInput.value = button.dataset.employeeCode || "";
+        syncCompanyOptions();
+        window.setTimeout(lookupCode, 50);
+      } catch (error) { setFeedback(error.message || "No se pudo cargar la empresa del legajo.", "error"); }
     });
   });
   document.getElementById("newEmployeeButton")?.addEventListener("click", function () {

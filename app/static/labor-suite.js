@@ -49,8 +49,8 @@
       employee.querySelectorAll("option:not(:first-child)").forEach(option => option.remove());
       if (!formChanged) company.form.requestSubmit();
     });
-    employee.addEventListener("change", () => {
-      if (!formChanged) employee.form.requestSubmit();
+    employee.addEventListener("change", event => {
+      if (!formChanged && event.detail?.source !== "company-context") employee.form.requestSubmit();
     });
   }
   const error = document.getElementById("labor-error");

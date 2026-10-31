@@ -54,10 +54,10 @@
       <input type="search" name="q" value="{{ q }}" maxlength="100" placeholder="Código, empleado, cédula o empresa" autocomplete="off">
     </label>
     <label>Empleado
-      <select name="employee_id">
+      <select name="employee_id" data-searchable-entity="employee" data-entity-scope="company-current">
         <option value="">Todos los empleados</option>
-        {% for item in employees %}
-        <option value="{{ item.id }}" {{ 'selected' if employee_filter == item.id else '' }}>{{ item.full_name }} · {{ item.company.legal_name }}</option>
+        {% for item in employees|entity_choices %}
+        <option value="{{ item.id }}" {{ 'selected' if employee_filter == item.id else '' }} data-company="{{ item.company_id }}">{{ item.employee_code if item.employee_code is not none else 'Sin legajo' }} - {{ item.full_name }}</option>
         {% endfor %}
       </select>
     </label>
@@ -101,12 +101,10 @@
   <form method="post" action="{{ '/app/medical-exams/' ~ edit_record.id ~ '/edit' if edit_record else '/app/medical-exams/create' }}" class="medical-exams-editor-form" id="medicalExamForm">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <label>Empleado asociado *
-      <select name="employee_id" id="medicalExamEmployee" required>
+      <select name="employee_id" id="medicalExamEmployee" required data-searchable-entity="employee" data-entity-scope="company-current">
         <option value="">Seleccioná un funcionario</option>
-        {% for item in employees %}
-        <option value="{{ item.id }}" {{ 'selected' if edit_record and edit_record.employee_id == item.id else '' }}>
-          {{ item.employee_code if item.employee_code is not none else item.id }} · {{ item.full_name }} · {{ item.company.legal_name }}
-        </option>
+        {% for item in employees|entity_choices %}
+        <option value="{{ item.id }}" {{ 'selected' if edit_record and edit_record.employee_id == item.id else '' }} data-company="{{ item.company_id }}">{{ item.employee_code if item.employee_code is not none else 'Sin legajo' }} - {{ item.full_name }}</option>
         {% endfor %}
       </select>
       <small>La empresa se toma del legajo seleccionado para evitar asociaciones cruzadas.</small>

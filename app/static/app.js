@@ -43,7 +43,7 @@ if (calculatorWorkbench) {
       option.hidden = !visible; option.disabled = !visible;
       if (visible && !first) first = option;
     });
-    if (employeeFilter && employeeFilter.selectedOptions[0]?.disabled) employeeFilter.value = first?.value || '';
+    if (employeeFilter && employeeFilter.selectedOptions[0]?.disabled) employeeFilter.value = employeeFilter.dataset.searchableEntity ? '' : (first?.value || '');
     syncCalculationContext();
   });
   employeeFilter?.addEventListener('change', syncCalculationContext);
@@ -170,7 +170,7 @@ if (certificateForm) {
       option.disabled = !visible;
       if (visible && !first) first = option;
     });
-    if (selectedOption(employeeSelect)?.dataset.company !== companyId && first) employeeSelect.value = first.value;
+    if (selectedOption(employeeSelect)?.dataset.company !== companyId && first) employeeSelect.value = employeeSelect.dataset.searchableEntity ? '' : first.value;
     const company = selectedOption(companySelect);
     if (company?.dataset.city) cityInput.value = company.dataset.city;
     loadEmployee();

@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
 from . import main as core
+from .entity_selects import seed_choices
 from .calculator_fields import GROUPS
 from .form_utils import OptionalQueryId
 from .labor_calculator import CalculationError, SOURCE, TITLES, VERSION, amount as round_gs, calculate, clean
@@ -59,7 +60,7 @@ async def form_values(request):
 
 def private_context(db, user, data):
     company_ids = core.company_ids_for_user(db, user)
-    companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name)))
+    companies = seed_choices(db, select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name), Company, selected_ids=[data.get("company_id")])
     try:
         company_id = int(data.get("company_id") or 0)
         employee_id = int(data.get("employee_id") or 0)
@@ -69,7 +70,10 @@ def private_context(db, user, data):
     employee = db.get(Employee, employee_id) if employee_id else None
     if employee_id and (not employee or not company or employee.company_id != company.id):
         raise HTTPException(404, "Funcionario no encontrado en la empresa seleccionada.")
-    employees = list(db.scalars(select(Employee).where(Employee.company_id.in_(company_ids)).order_by(Employee.full_name))) if company_ids else []
+    employee_choices = select(Employee).where(Employee.company_id.in_(company_ids))
+    if company_id:
+        employee_choices = employee_choices.where(Employee.company_id == company_id)
+    employees = seed_choices(db, employee_choices.order_by(Employee.full_name), Employee, selected_ids=[employee_id])
     query = select(CalculationRecord).where(CalculationRecord.company_id.in_(company_ids), CalculationRecord.source == SOURCE)
     if company:
         query = query.where(CalculationRecord.company_id == company.id)

@@ -75,9 +75,9 @@
     <form method="post" action="/app/certificates/official" class="form-grid official-form-grid" id="officialCertificateCreateForm">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <label>Empresa
-        <select name="company_id" id="officialCertificateCompany" required>
-          {% for company in companies %}
-          <option value="{{ company.id }}" {{ 'selected' if company.id == selected_company_id }}>{{ company.legal_name }}</option>
+        <select name="company_id" id="officialCertificateCompany" required data-searchable-entity="company" data-entity-scope="all">
+          {% for company in companies|entity_choices %}
+          <option value="{{ company.id }}" {{ 'selected' if company.id == selected_company_id }}>{{ company.legacy_code or (company.company_code if company.company_code is not none else 'Sin código') }} - {{ company.legal_name }}</option>
           {% endfor %}
         </select>
       </label>
@@ -89,10 +89,10 @@
         </select>
       </label>
       <label>Funcionario relacionado
-        <select name="employee_id" id="officialCertificateEmployee">
+        <select name="employee_id" id="officialCertificateEmployee" data-searchable-entity="employee" data-entity-scope="all">
           <option value="">Sin funcionario asociado / trámite patronal</option>
-          {% for employee in employees %}
-          <option value="{{ employee.id }}" data-company="{{ employee.company_id }}">{{ employee.full_name }} · {{ employee.company.legal_name }}</option>
+          {% for employee in employees|entity_choices %}
+          <option value="{{ employee.id }}" data-company="{{ employee.company_id }}">{{ employee.employee_code if employee.employee_code is not none else 'Sin legajo' }} - {{ employee.full_name }}</option>
           {% endfor %}
         </select>
       </label>
@@ -114,9 +114,9 @@
       {% if companies|length > 1 %}
       <form method="get" action="/app/certificates/official" class="inline-filter">
         <label>Empresa
-          <select name="company_id" onchange="this.form.submit()">
+          <select name="company_id" onchange="this.form.submit()" data-searchable-entity="company" data-entity-scope="all">
             <option value="">Todas las empresas</option>
-            {% for company in companies %}<option value="{{ company.id }}" {{ 'selected' if company.id == selected_company_id }}>{{ company.legal_name }}</option>{% endfor %}
+            {% for company in companies|entity_choices %}<option value="{{ company.id }}" {{ 'selected' if company.id == selected_company_id }}>{{ company.legacy_code or (company.company_code if company.company_code is not none else 'Sin código') }} - {{ company.legal_name }}</option>{% endfor %}
           </select>
         </label>
       </form>

@@ -41,6 +41,7 @@ from .labor_calculator import amount as round_gs, anniversary as labor_anniversa
 from .labor_wage_rules import minimum_wage_for_period
 from .salary_history import salary_for_period
 from .pagination import Pagination, normalize_page_size
+from .entity_selects import entity_choices, seed_choices
 from .config import settings
 from .database import Base, SessionLocal, apply_session_tenant_context, engine, postgres_rls_role_issues
 from .document_export import (
@@ -1207,6 +1208,7 @@ def format_date(value: date | datetime | None) -> str:
 
 
 templates.env.filters["gs"] = format_gs
+templates.env.filters["entity_choices"] = entity_choices
 templates.env.filters["fecha"] = format_date
 
 CERTIFICATE_TYPES = DOCUMENT_LABELS
@@ -2493,7 +2495,7 @@ def sections_page(
         if company_ids
         else select(Company).where(False)
     )
-    companies = list(db.scalars(companies_query))
+    companies = seed_choices(db, companies_query, Company, request=request)
     active_company_ids = {company.id for company in companies}
 
     company_id, _ = default_labor_context(request, db, user, company_ids, company_id, None)
@@ -3036,13 +3038,12 @@ def medical_exams_page(
     db: Session = Depends(get_db),
 ):
     allowed_company_ids = company_ids_for_user(db, user)
-    employees = list(db.scalars(
-        select(Employee)
+    edit_record = _medical_exam_allowed(db, user, edit_id) if edit_id is not None else None
+    employees = seed_choices(db, select(Employee)
         .join(Company, Company.id == Employee.company_id)
         .where(Employee.company_id.in_(allowed_company_ids), Company.status != "Archivada")
         .options(selectinload(Employee.company))
-        .order_by(Company.legal_name, Employee.full_name)
-    )) if allowed_company_ids else []
+        .order_by(Company.legal_name, Employee.full_name), Employee, request=request, selected_ids=[edit_record.employee_id if edit_record else None]) if allowed_company_ids else []
 
     sort_columns = {
         "exam_code": MedicalExam.exam_code,
@@ -3064,7 +3065,6 @@ def medical_exams_page(
     rows = list(db.scalars(
         query.order_by(sort_column.asc() if direction == "asc" else sort_column.desc(), MedicalExam.id.desc())
     ))
-    edit_record = _medical_exam_allowed(db, user, edit_id) if edit_id is not None else None
     today_value = date.today()
     expiry_states = {item.id: medical_exam_expiry_state(item.expires_on, today=today_value) for item in rows}
 
@@ -3410,7 +3410,7 @@ def employees_page(
     companies_query = select(Company).where(Company.id.in_(company_ids))
     if not show_archived:
         companies_query = companies_query.where(Company.status != "Archivada")
-    companies = list(db.scalars(companies_query.order_by(Company.legal_name))) if company_ids else []
+    companies = seed_choices(db, companies_query.order_by(Company.legal_name), Company, request=request) if company_ids else []
     branch_query = select(Branch).where(Branch.company_id.in_(company_ids)).order_by(Branch.name) if company_ids else select(Branch).where(False)
     branches = list(db.scalars(branch_query))
     section_query = select(CompanySection).where(CompanySection.company_id.in_(company_ids)).order_by(CompanySection.company_id, CompanySection.section_code, CompanySection.name) if company_ids else select(CompanySection).where(False)
@@ -4228,7 +4228,7 @@ def calendar_page(
     status_filter: str = "", user: User = Depends(require_user), db: Session = Depends(get_db),
 ):
     company_ids = company_ids_for_user(db, user)
-    companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name))) if company_ids else []
+    companies = seed_choices(db, select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name), Company, request=request) if company_ids else []
     employees_query = select(Employee).where(Employee.company_id.in_(company_ids)) if company_ids else select(Employee).where(False)
     if company_id and company_id in company_ids:
         employees_query = employees_query.where(Employee.company_id == company_id)
@@ -4675,8 +4675,8 @@ def requests_page(
     db: Session = Depends(get_db),
 ):
     company_ids = company_ids_for_user(db, user)
-    companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name))) if company_ids else []
-    employees = list(db.scalars(select(Employee).where(Employee.company_id.in_(company_ids)).order_by(Employee.full_name))) if company_ids else []
+    companies = seed_choices(db, select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name), Company, request=request) if company_ids else []
+    employees = seed_choices(db, select(Employee).where(Employee.company_id.in_(company_ids)).order_by(Employee.full_name), Employee, request=request) if company_ids else []
 
     allowed_statuses = {"Pendiente", "En revisión", "Falta información", "Procesando", "Aprobada", "Rechazada", "Resuelta", "Aplicada"}
     standard_types = {"Alta de funcionario", "Baja de funcionario", "Cambio salarial", "Vacaciones", "Permiso/licencia", "Documento laboral", "Otra consulta"}
@@ -5458,14 +5458,8 @@ def calculation_period_coverage(
     company_id, employee_id = default_labor_context(
         request, db, user, company_ids, company_id, employee_id
     )
-    companies = list(
-        db.scalars(select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name))
-    ) if company_ids else []
-    employees = list(
-        db.scalars(
-            select(Employee).where(Employee.company_id.in_(company_ids)).order_by(Employee.full_name)
-        )
-    ) if company_ids else []
+    companies = seed_choices(db, select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name), Company, request=request) if company_ids else []
+    employees = seed_choices(db, select(Employee).where(Employee.company_id.in_(company_ids)).order_by(Employee.full_name), Employee, request=request) if company_ids else []
     selected_company = None
     selected_employee = None
     coverage = None
@@ -5515,9 +5509,9 @@ def calculations_page(
     company_id, employee_id = default_labor_context(
         request, db, user, company_ids, company_id, employee_id
     )
-    companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name))) if company_ids else []
+    companies = seed_choices(db, select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name), Company, request=request) if company_ids else []
     employees_query = select(Employee).where(Employee.company_id.in_(company_ids), Employee.status == "Activo") if company_ids else select(Employee).where(False)
-    employees = list(db.scalars(employees_query.order_by(Employee.full_name)))
+    employees = seed_choices(db, employees_query.order_by(Employee.full_name), Employee, request=request)
     recent_query = select(CalculationRecord).where(CalculationRecord.company_id.in_(company_ids), CalculationRecord.source != "Centro laboral") if company_ids else select(CalculationRecord).where(False)
     if company_id and company_id in company_ids:
         recent_query = recent_query.where(CalculationRecord.company_id == company_id)
@@ -5880,8 +5874,6 @@ def certificates_page(
         company_id, employee_id = default_labor_context(
             request, db, user, company_ids, company_id, employee_id
         )
-    companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name))) if company_ids else []
-    employees = list(db.scalars(select(Employee).where(Employee.company_id.in_(company_ids)).order_by(Employee.full_name))) if company_ids else []
     generated = list(
         db.scalars(
             select(GeneratedCertificate)
@@ -5902,6 +5894,8 @@ def certificates_page(
         raise HTTPException(404, "Empresa no encontrada.")
     if employee_id and (not selected_employee or selected_employee.company_id not in company_ids):
         raise HTTPException(404, "Funcionario no encontrado.")
+    companies = seed_choices(db, select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name), Company, request=request, selected_ids=[selected_company.id if selected_company else None])
+    employees = seed_choices(db, select(Employee).where(Employee.company_id.in_(company_ids)).order_by(Employee.full_name), Employee, request=request, selected_ids=[selected_employee.id if selected_employee else None])
     vacation_by_employee: dict[int, Vacation] = {}
     employee_ids = [employee.id for employee in employees]
     if employee_ids:
@@ -6765,10 +6759,10 @@ def reports_page(
     company_id, employee_id = default_labor_context(
         request, db, user, company_ids, company_id, employee_id
     )
-    companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name))) if company_ids else []
+    companies = seed_choices(db, select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name), Company, request=request) if company_ids else []
     if company_id not in company_ids:
         company_id = None
-    employees = list(db.scalars(select(Employee).where(Employee.company_id.in_(company_ids)).order_by(Employee.full_name))) if company_ids else []
+    employees = seed_choices(db, select(Employee).where(Employee.company_id.in_(company_ids)).order_by(Employee.full_name), Employee, request=request) if company_ids else []
     if employee_id and employee_id not in {item.id for item in employees}:
         employee_id = None
     calculations_query = select(CalculationRecord).where(CalculationRecord.company_id == company_id) if company_id else select(CalculationRecord).where(False)
@@ -7118,16 +7112,14 @@ def salary_settlements_report_page(
     status = clean_text(status, max_length=30)
     q = clean_text(q, max_length=120)
 
-    companies = list(
-        db.scalars(select(Company).where(Company.id.in_(allowed_ids)).order_by(Company.legal_name))
-    ) if allowed_ids else []
+    companies = seed_choices(db, select(Company).where(Company.id.in_(allowed_ids)).order_by(Company.legal_name), Company, request=request) if allowed_ids else []
     employees_query = (
         select(Employee).where(Employee.company_id.in_(allowed_ids)).order_by(Employee.full_name)
         if allowed_ids else select(Employee).where(False)
     )
     if company_id:
         employees_query = employees_query.where(Employee.company_id == company_id)
-    employees = list(db.scalars(employees_query.limit(1500)))
+    employees = seed_choices(db, employees_query, Employee, request=request)
 
     conditions = [
         CalculationRecord.company_id.in_(allowed_ids),
@@ -7477,11 +7469,11 @@ def report_detail_page(
     result = fetch_report(
         db, spec, allowed_company_ids, company_id, employee_id, q, status, year, period, page, page_size, sort
     )
-    companies = list(db.scalars(select(Company).where(Company.id.in_(allowed_company_ids)).order_by(Company.legal_name))) if allowed_company_ids else []
+    companies = seed_choices(db, select(Company).where(Company.id.in_(allowed_company_ids)).order_by(Company.legal_name), Company, request=request) if allowed_company_ids else []
     employee_query = select(Employee).where(Employee.company_id.in_(allowed_company_ids)).order_by(Employee.full_name) if allowed_company_ids else select(Employee).where(False)
     if company_id is not None:
         employee_query = employee_query.where(Employee.company_id == company_id)
-    employees = list(db.scalars(employee_query.limit(1000)))
+    employees = seed_choices(db, employee_query, Employee, request=request)
     params = _report_query_parameters(q, company_id, employee_id, status, year, period, 1, page_size, sort)
     export_base = f"/app/reports/{report_key}/export?{urlencode(params)}"
     return render(
@@ -7508,8 +7500,8 @@ def ai_page(
     db: Session = Depends(get_db),
 ):
     company_ids = company_ids_for_user(db, user)
-    companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name))) if company_ids else []
-    employees = list(db.scalars(select(Employee).where(Employee.company_id.in_(company_ids)).order_by(Employee.full_name))) if company_ids else []
+    companies = seed_choices(db, select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name), Company, request=request) if company_ids else []
+    employees = seed_choices(db, select(Employee).where(Employee.company_id.in_(company_ids)).order_by(Employee.full_name), Employee, request=request) if company_ids else []
     selected_company = db.get(Company, company_id) if company_id in company_ids else None
     selected_employee = db.get(Employee, employee_id) if employee_id else None
     if selected_employee and selected_employee.company_id not in company_ids:
@@ -7636,9 +7628,9 @@ def payrolls_page(
     line_counts = dict(db.execute(select(PayrollLine.payroll_id, func.count(PayrollLine.id)).where(
         PayrollLine.payroll_id.in_([payroll.id for payroll in payrolls])
     ).group_by(PayrollLine.payroll_id)).all()) if payrolls else {}
-    companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids), Company.status == "Activa").order_by(Company.legal_name))) if company_ids else []
-    filter_companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name))) if company_ids else []
-    filter_employees = list(db.scalars(select(Employee).where(Employee.company_id.in_(company_ids)).order_by(Employee.full_name))) if company_ids else []
+    companies = seed_choices(db, select(Company).where(Company.id.in_(company_ids), Company.status == "Activa").order_by(Company.legal_name), Company, request=request) if company_ids else []
+    filter_companies = seed_choices(db, select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name), Company, request=request) if company_ids else []
+    filter_employees = seed_choices(db, select(Employee).where(Employee.company_id.in_(company_ids)).order_by(Employee.full_name), Employee, request=request) if company_ids else []
     return render(request, "payrolls.html", db, user, payrolls=payrolls, companies=companies,
                   filter_companies=filter_companies, filter_employees=filter_employees,
                   selected_company_id=selected_company_id, selected_employee_id=selected_employee_id,
@@ -7918,10 +7910,10 @@ def vacations_page(
         vacation_query = vacation_query.where(Employee.company_id == selected_company_id)
     if selected_employee_id:
         vacation_query = vacation_query.where(Vacation.employee_id == selected_employee_id)
-    employees = list(db.scalars(employee_query.order_by(Employee.full_name)))
+    employees = seed_choices(db, employee_query.order_by(Employee.full_name), Employee, request=request)
     items = list(db.scalars(vacation_query.order_by(Vacation.created_at.desc())))
-    companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name))) if company_ids else []
-    filter_employees = list(db.scalars(select(Employee).where(Employee.company_id.in_(company_ids)).order_by(Employee.full_name))) if company_ids else []
+    companies = seed_choices(db, select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name), Company, request=request) if company_ids else []
+    filter_employees = seed_choices(db, select(Employee).where(Employee.company_id.in_(company_ids)).order_by(Employee.full_name), Employee, request=request) if company_ids else []
     return render(request, "vacations.html", db, user, employees=employees, filter_employees=filter_employees,
                   companies=companies, items=items, selected_company_id=selected_company_id,
                   selected_employee_id=selected_employee_id)
@@ -7977,7 +7969,7 @@ def aguinaldo_page(
         aguinaldo_query = aguinaldo_query.where(Employee.company_id == selected_company_id)
     if selected_employee_id:
         aguinaldo_query = aguinaldo_query.where(Aguinaldo.employee_id == selected_employee_id)
-    employees = list(db.scalars(employee_query.order_by(Employee.full_name)))
+    employees = seed_choices(db, employee_query.order_by(Employee.full_name), Employee, request=request)
     items = list(db.scalars(aguinaldo_query.order_by(Aguinaldo.year.desc(), Aguinaldo.created_at.desc())))
     suggested_total = None
     suggestion_note = ""
@@ -7994,8 +7986,8 @@ def aguinaldo_page(
             "periodos esperados cubiertos. Si no hay nóminas cerradas, el importe queda vacío. "
             "Verificá conceptos computables, ajustes y anticipos antes de aprobar."
         )
-    companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name))) if company_ids else []
-    filter_employees = list(db.scalars(select(Employee).where(Employee.company_id.in_(company_ids)).order_by(Employee.full_name))) if company_ids else []
+    companies = seed_choices(db, select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name), Company, request=request) if company_ids else []
+    filter_employees = seed_choices(db, select(Employee).where(Employee.company_id.in_(company_ids)).order_by(Employee.full_name), Employee, request=request) if company_ids else []
     return render(request, "aguinaldo.html", db, user, employees=employees, filter_employees=filter_employees,
                   companies=companies, items=items, selected_company_id=selected_company_id,
                   selected_employee_id=selected_employee_id, suggested_total=suggested_total,
@@ -8155,14 +8147,15 @@ def calculation_operations_page(
     if tipo not in OPERATION_TYPES:
         raise HTTPException(404, "Submódulo no encontrado.")
     company_ids = company_ids_for_user(db, user)
+    editing = _visible_labor_operation(db, user, edit) if edit else None
     selected_company, selected_employee = default_labor_context(
         request, db, user, company_ids, company_id, employee_id
     )
-    companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name))) if company_ids else []
+    companies = seed_choices(db, select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name), Company, request=request, selected_ids=[editing.company_id if editing else None]) if company_ids else []
     employee_query = select(Employee).where(Employee.company_id.in_(company_ids)) if company_ids else select(Employee).where(False)
     if selected_company:
         employee_query = employee_query.where(Employee.company_id == selected_company)
-    employees = list(db.scalars(employee_query.order_by(Employee.full_name)))
+    employees = seed_choices(db, employee_query.order_by(Employee.full_name), Employee, request=request, selected_ids=[editing.employee_id if editing else None])
     query = _labor_operation_query(db, user, tipo, selected_company, selected_employee)
     term = q.strip()[:120]
     if term:
@@ -8175,7 +8168,6 @@ def calculation_operations_page(
             )
         )
     items = list(db.scalars(query.order_by(LaborOperation.effective_date.desc(), LaborOperation.created_at.desc()).limit(300)))
-    editing = _visible_labor_operation(db, user, edit) if edit else None
     if editing and editing.operation_type != tipo:
         raise HTTPException(400, "El registro no pertenece al submódulo seleccionado.")
     editing_payload = _operation_payload_from_model(editing) if editing else {}
@@ -8435,14 +8427,14 @@ def employee_history_page(
     selected_company, selected_employee = default_labor_context(
         request, db, user, company_ids, company_id, employee_id
     )
-    companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name))) if company_ids else []
+    companies = seed_choices(db, select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name), Company, request=request) if company_ids else []
     query = select(Employee).where(Employee.company_id.in_(company_ids)) if company_ids else select(Employee).where(False)
     if selected_company:
         query = query.where(Employee.company_id == selected_company)
     term = q.strip()[:120]
     if term:
         query = query.where(or_(Employee.full_name.ilike(f"%{term}%"), Employee.document_number.ilike(f"%{term}%")))
-    employees = list(db.scalars(query.order_by(Employee.full_name).limit(500)))
+    employees = seed_choices(db, query.order_by(Employee.full_name).limit(500), Employee, request=request)
     selected = db.get(Employee, selected_employee) if selected_employee else None
     if selected and selected.company_id not in company_ids:
         raise HTTPException(404, "Funcionario no encontrado.")
@@ -8491,11 +8483,11 @@ def documents_page(
         document_query = document_query.where(
             or_(Document.employee_id == selected_employee_id, Document.employee_id.is_(None))
         )
-    companies = list(db.scalars(company_query.order_by(Company.legal_name)))
-    employees = list(db.scalars(employee_query.order_by(Employee.full_name)))
+    companies = seed_choices(db, company_query.order_by(Company.legal_name), Company, request=request)
+    employees = seed_choices(db, employee_query.order_by(Employee.full_name), Employee, request=request)
     documents = list(db.scalars(document_query.order_by(Document.created_at.desc())))
-    filter_employees = list(db.scalars(select(Employee).where(Employee.company_id.in_(company_ids)).order_by(Employee.full_name))) if company_ids else []
-    all_companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name))) if company_ids else []
+    filter_employees = seed_choices(db, select(Employee).where(Employee.company_id.in_(company_ids)).order_by(Employee.full_name), Employee, request=request) if company_ids else []
+    all_companies = seed_choices(db, select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name), Company, request=request) if company_ids else []
     return render(request, "documents.html", db, user, companies=all_companies, employees=employees,
                   filter_employees=filter_employees, documents=documents,
                   selected_company_id=selected_company_id, selected_employee_id=selected_employee_id)
@@ -8684,7 +8676,7 @@ def security_logout_all(request: Request, user: User = Depends(require_user), db
 @app.get("/app/users", response_class=HTMLResponse)
 def users_page(request: Request, user: User = Depends(require_roles("administrador")), db: Session = Depends(get_db)):
     users = list(db.scalars(select(User).where(User.studio_id == user.studio_id).order_by(User.full_name)))
-    companies = list(db.scalars(select(Company).where(Company.studio_id == user.studio_id).order_by(Company.legal_name)))
+    companies = seed_choices(db, select(Company).where(Company.studio_id == user.studio_id).order_by(Company.legal_name), Company, request=request)
     securities = list(db.scalars(select(UserSecurity).where(UserSecurity.user_id.in_([item.id for item in users])))) if users else []
     security_by_user = {item.user_id: item for item in securities}
     return render(request, "users.html", db, user, users=users, companies=companies, security_by_user=security_by_user)
@@ -8829,7 +8821,7 @@ def compliance_page(
     db: Session = Depends(get_db),
 ):
     company_ids = company_ids_for_user(db, user)
-    companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name))) if company_ids else []
+    companies = seed_choices(db, select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name), Company, request=request) if company_ids else []
     selected_company = None
     if company_id:
         selected_company = company_allowed(db, user, company_id)
@@ -10135,3 +10127,6 @@ from .calculator_routes import router as calculator_router
 app.include_router(calculator_router)
 from .employee_exit_routes import router as employee_exit_router
 app.include_router(employee_exit_router)
+
+from .entity_select_routes import router as entity_select_router
+app.include_router(entity_select_router)
