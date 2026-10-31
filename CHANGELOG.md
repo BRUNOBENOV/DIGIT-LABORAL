@@ -1,3 +1,12 @@
+## 2.6.60 — Liquidaciones compactas con resumen en vivo
+
+- Organiza las pantallas salarial y de liquidación final en cinco pasos. Solo abre los datos base al iniciar; la validación despliega el paso y los editores que contienen el dato a corregir.
+- Incorpora un resumen lateral fijo con el neto y los conceptos calculados por el servidor. La vista previa espera 300 ms, descarta respuestas atrasadas y no guarda registros ni habilita descargas de documentos desactualizados.
+- Mantiene visibles el estado parcial y las revisiones del cálculo. No inventa vacaciones, promedios ni bases IPS; conserva las validaciones del régimen indemnizatorio y de las fuentes de nómina.
+- Pliega el asistente de promedio, vacaciones, aguinaldo, ajustes, documento e historial. Las ayudas contextuales funcionan con ratón, teclado y pantalla táctil.
+- Añade F6 para calcular, resumen adaptable a tablets y acción de cálculo fija en pantallas pequeñas. Conserva la impresión del documento completo.
+- Sin migraciones, dependencias nuevas ni cambios en las fórmulas del motor 2026.10.4.
+
 ## 2.6.59 — Promedio mensual propuesto desde nóminas cerradas
 
 - Consulta los períodos que cubren los últimos seis meses de contrato o el menor tiempo de servicio y propone el promedio solo con cobertura completa, fechas coherentes y tipo de salario Mensual registrado.

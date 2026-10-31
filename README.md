@@ -1,6 +1,13 @@
-# Digit Laboral 2.6.59
+# Digit Laboral 2.6.60
 
 Plataforma de gestión y cumplimiento laboral para estudios contables paraguayos.
+## Novedades de la versión 2.6.60
+
+- Simplifica las liquidaciones salarial y final en cinco pasos plegables, con los datos base abiertos y un resumen lateral fijo.
+- Actualiza el resumen con el mismo motor del servidor, con espera de 300 ms. Distingue los subtotales parciales e invalida el documento anterior cuando cambian las entradas.
+- Permite calcular con F6, abrir directamente un dato pendiente, consultar ayudas por teclado o ratón y editar los conceptos dentro de su sección.
+- Pliega el promedio de nóminas, los detalles técnicos, el documento completo y el historial. Mantiene los campos, las confirmaciones legales, las fuentes y las descargas existentes.
+
 ## Novedades de la versión 2.6.59
 
 - Propone el promedio mensual para indemnización y preaviso desde las nóminas cerradas del funcionario, con desglose por período y concepto y confirmación antes de aplicarlo.

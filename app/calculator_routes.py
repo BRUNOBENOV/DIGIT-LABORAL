@@ -19,6 +19,7 @@ from starlette.concurrency import run_in_threadpool
 from . import main as core
 from .entity_selects import seed_choices
 from .calculator_fields import GROUPS
+from .calculator_presentation import calculation_summary, quick_steps
 from .form_utils import OptionalQueryId
 from .labor_calculator import CalculationError, SOURCE, TITLES, VERSION, amount as round_gs, calculate, clean, settlement_projection
 from .liquidation_export import build_liquidation_pdf, build_liquidation_csv
@@ -40,7 +41,7 @@ def context(kind, values=None):
                     year=str(today.year), end_date=today.isoformat())
     if values is not None:
         defaults.update(values)
-    return dict(kind=kind, titles=TITLES, groups=GROUPS[kind], values=defaults, result=None,
+    return dict(kind=kind, titles=TITLES, groups=GROUPS[kind], quick_steps=quick_steps(kind), values=defaults, result=None,
                 error="", error_field="", private=False, companies=[], employees=[], history=[])
 
 
@@ -125,7 +126,8 @@ def page(request, kind, data=None, result=None, error=None, db=None, user=None, 
         {"id": item.id, "effective_from": item.effective_from.isoformat(), "new_salary": int(item.new_salary or 0)}
         for item in private.get("salary_history", [])
     ]
-    ctx.update(private, salary_history_data=salary_history_data, result=result, error=str(error or ""),
+    ctx.update(private, salary_history_data=salary_history_data, result=result,
+               live_summary=calculation_summary(result) if result else None, error=str(error or ""),
                error_field=getattr(error, "field", ""), copied_from=copied_from)
     response = core.render(request, "labor_workbench.html", db, user, **ctx)
     response.headers.update(HEADERS)
@@ -212,7 +214,11 @@ async def public_calculate(request: Request):
     try:
         result = calculate(data)
     except CalculationError as exc:
+        if "application/json" in request.headers.get("accept", ""):
+            return JSONResponse({"error": str(exc), "field": exc.field}, status_code=422, headers=HEADERS)
         return page(request, data["kind"], data, error=exc)
+    if "application/json" in request.headers.get("accept", ""):
+        return JSONResponse(calculation_summary(result), headers=HEADERS)
     return page(request, data["kind"], data, result=result)
 
 
@@ -236,7 +242,11 @@ async def professional_calculate(request: Request, user: User = Depends(core.req
     try:
         result = calculate_scoped(data, db, scoped)
     except CalculationError as exc:
+        if "application/json" in request.headers.get("accept", ""):
+            return JSONResponse({"error": str(exc), "field": exc.field}, status_code=422, headers=HEADERS)
         return page(request, data["kind"], data, error=exc, db=db, user=user)
+    if "application/json" in request.headers.get("accept", ""):
+        return JSONResponse(calculation_summary(result), headers=HEADERS)
     return page(request, data["kind"], data, result=result, db=db, user=user)
 
 

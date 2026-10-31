@@ -3,30 +3,9 @@
 {% from 'labor_fields.html' import input_field as shared_field %}
 {% from 'labor_fields.html' import settlement_preview %}
 {% macro input_field(field) %}
-{{ shared_field(field, values, error_field, locked=private and ((company_id and field.name in ['employer','ruc']) or (employee_id and field.name in ['employee','ci','position']))) }}
+{{ shared_field(field, values, error_field, locked=private and ((company_id and field.name in ['employer','ruc']) or (employee_id and field.name in ['employee','ci','position'])), compact=kind in ['salary','settlement']) }}
 {% endmacro %}
-{% macro workbench() %}
-<div class="dl dl-workbench {{ 'dl-wrap' if not private else '' }}">
-<header class="dl-workbench-head"><p class="dl-eyebrow">{{ 'CENTRO PROFESIONAL' if private else 'CALCULADORAS LABORALES · PARAGUAY' }}</p><h1>{{ titles[kind] if private else 'Calculá. Revisá. Emití.' }}</h1><p>{% if private and kind == 'salary' %}Liquidá el período con desglose de sueldo, horas extras, comisiones, bonificaciones, aportes y descuentos. Revisá la base y el resultado antes de aprobar o imprimir.{% elif private and kind == 'settlement' %}Revisá salarios, conceptos de egreso y bases aplicables en un módulo dedicado, con desglose y descarga del resultado.{% elif private %}Completá los datos de esta liquidación. La revisión y el desglose permanecen dentro del módulo seleccionado.{% else %}Completá los datos y obtené un desglose listo para descargar. Los campos con * son obligatorios.{% endif %}</p></header>
-{% if private %}<div class="dl-output-actions"><a class="dl-textlink" href="/app/calculations">Volver al módulo Cálculo</a></div>{% else %}<div class="dl-output-actions"><a class="dl-textlink" href="/empezar">Guía para empezar</a><a class="dl-textlink" href="/herramientas/comparar?tipo={{ kind }}">Comparar dos escenarios</a></div>{% endif %}
-{% if not private and values.get('reference') == 'EJEMPLO' %}<p class="dl-alert dl-example-notice">Estás usando datos ficticios. Podés calcular y descargar el ejemplo; reemplazá los datos antes de usarlo en un caso real.</p>{% endif %}
-{% if copied_from %}<p class="dl-alert" role="status">Datos cargados desde la liquidación #{{ copied_from }}. Revisá el período y los conceptos antes de calcular. El registro original se conserva.</p>{% endif %}
-{% if private %}<form method="get" action="/app/liquidaciones" class="dl-context module-selection-form" data-module-selection><input type="hidden" name="tipo" value="{{ kind }}"><div class="dl-field"><label for="ctx-company">Empresa</label><select name="company_id" id="ctx-company" data-module-company aria-describedby="context-help" data-searchable-entity="company" data-entity-scope="all"><option value="">Seleccioná una empresa</option>{% for item in companies|entity_choices %}<option value="{{ item.id }}" {% if item.id == company_id %}selected{% endif %}>{{ item.legacy_code or (item.company_code if item.company_code is not none else 'Sin código') }} - {{ item.legal_name }}</option>{% endfor %}</select></div><div class="dl-field"><label for="ctx-employee">Funcionario</label><select name="employee_id" id="ctx-employee" data-module-employee aria-describedby="context-help" data-searchable-entity="employee" data-entity-scope="all"><option value="">Seleccioná un funcionario</option>{% for item in employees|entity_choices %}<option value="{{ item.id }}" data-company="{{ item.company_id }}" {% if item.id == employee_id %}selected{% endif %}>{{ item.employee_code if item.employee_code is not none else 'Sin legajo' }} - {{ item.full_name }}</option>{% endfor %}</select></div><button class="dl-button dl-outline">Cargar selección</button><small id="context-help">Elegí una empresa y luego un funcionario. Sus datos se cargarán en el formulario.</small></form>{% endif %}
-{% if private and not companies %}<p class="dl-alert">Todavía no hay empresas en tu espacio. <a href="/app/companies">Registrá una empresa</a> para organizar tus liquidaciones.</p>{% elif private and company_id and not employees %}<p class="dl-alert">Esta empresa todavía no tiene funcionarios. <a href="/app/employees?company_id={{ company_id }}">Registrá un funcionario</a> para guardar sus liquidaciones.</p>{% endif %}
-{% if not private %}<nav class="dl-tabs" aria-label="Tipo de cálculo">{% for key, title in titles.items() %}<a href="/herramientas?tipo={{ key }}" {% if key == kind %}aria-current="page"{% endif %}>{{ title }}</a>{% endfor %}</nav>{% endif %}
-<div class="dl-calculator-layout">
-<form id="labor-form" method="post" action="{{ '/app/liquidaciones/calcular' if private else '/herramientas/calcular' }}">
-<input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="kind" value="{{ kind }}">
-{% if private and values.get("employee_exit_id") %}<input type="hidden" name="employee_exit_id" value="{{ values.employee_exit_id }}"><p class="dl-alert" role="status">Cálculo vinculado a un procedimiento de egreso. La fecha y la causal deben coincidir con el expediente. El registro del pago se realiza por separado.</p>{% endif %}
-{% if private %}<input type="hidden" name="company_id" value="{{ company_id }}"><input type="hidden" name="employee_id" value="{{ employee_id }}">{% endif %}
-<div class="dl-form-title"><span class="dl-step">01</span><h2>{{ titles[kind] }}</h2></div>
-{% if error %}<div class="dl-alert dl-error" role="alert" id="labor-error" tabindex="-1"><b>Revisá los datos</b><p>{{ error }}</p></div>{% endif %}
-{% for group in groups %}
-{% if group.advanced %}<details class="dl-form-section"><summary>{{ group.title }}</summary><div class="dl-fields">{% for field in group.fields %}{{ input_field(field) }}{% endfor %}</div></details>
-{% else %}<fieldset class="dl-form-section"><legend>{{ group.title }}</legend><div class="dl-fields">{% for field in group.fields %}{{ input_field(field) }}{% endfor %}</div></fieldset>{% endif %}
-{% if kind == 'settlement' and group.title == 'Indemnización y preaviso' %}{% if private %}{% include 'payroll_average_panel.html' %}{% endif %}{{ settlement_preview() }}{% endif %}
-{% endfor %}
-{% if kind == 'salary' %}
+{% macro salary_preview() %}
 <fieldset class="dl-form-section dl-overtime-preview" aria-describedby="overtime-preview-note">
   <legend>Vista previa de horas y recargos</legend>
   <div class="dl-fields">
@@ -40,13 +19,40 @@
   </div>
   <p class="dl-caption" id="overtime-preview-note" role="status" aria-live="polite">La vista previa es orientativa. Verificá los recargos aplicables y no declares la misma hora en más de una categoría.</p>
 </fieldset>
-{% endif %}
+{% endmacro %}
+{% macro salary_hint() %}
 {% if private and employee and kind == 'salary' %}
 <p id="salary-history-hint" class="dl-caption" aria-live="polite">La sugerencia usa la vigencia registrada al inicio del mes. Si falta un salario vigente para ese período, verificá el importe manualmente; revisá también cambios ocurridos dentro del mes.</p>
 {% elif private and employee and kind == 'settlement' %}
 <p id="salary-history-hint" class="dl-caption" aria-live="polite">La sugerencia usa la última vigencia salarial no posterior a la fecha de egreso. Si no existe historial aplicable, verificá el importe manualmente y revisá los componentes del promedio.</p>
 {% endif %}
-<div class="dl-form-submit"><button class="dl-button" type="submit" data-keep-enabled="true">{{ 'Recalcular' if result else 'Calcular liquidación' }} <span aria-hidden="true">→</span></button><span>Revisá los conceptos antes de firmar.</span></div>
+{% endmacro %}
+{% macro workbench() %}
+<div class="dl dl-workbench {{ 'dl-quick' if quick_steps else '' }} {{ 'dl-wrap' if not private else '' }}">
+<header class="dl-workbench-head"><p class="dl-eyebrow">{{ 'CENTRO PROFESIONAL' if private else 'CALCULADORAS LABORALES · PARAGUAY' }}</p><h1>{{ titles[kind] if private else 'Calculá. Revisá. Emití.' }}</h1><p>{% if private and kind == 'salary' %}Liquidá el período con desglose de sueldo, horas extras, comisiones, bonificaciones, aportes y descuentos. Revisá la base y el resultado antes de aprobar o imprimir.{% elif private and kind == 'settlement' %}Revisá salarios, conceptos de egreso y bases aplicables en un módulo dedicado, con desglose y descarga del resultado.{% elif private %}Completá los datos de esta liquidación. La revisión y el desglose permanecen dentro del módulo seleccionado.{% else %}Completá los datos y obtené un desglose listo para descargar. Los campos con * son obligatorios.{% endif %}</p></header>
+{% if private %}<div class="dl-output-actions"><a class="dl-textlink" href="/app/calculations">Volver al módulo Cálculo</a></div>{% else %}<div class="dl-output-actions"><a class="dl-textlink" href="/empezar">Guía para empezar</a><a class="dl-textlink" href="/herramientas/comparar?tipo={{ kind }}">Comparar dos escenarios</a></div>{% endif %}
+{% if not private and values.get('reference') == 'EJEMPLO' %}<p class="dl-alert dl-example-notice">Estás usando datos ficticios. Podés calcular y descargar el ejemplo; reemplazá los datos antes de usarlo en un caso real.</p>{% endif %}
+{% if copied_from %}<p class="dl-alert" role="status">Datos cargados desde la liquidación #{{ copied_from }}. Revisá el período y los conceptos antes de calcular. El registro original se conserva.</p>{% endif %}
+{% if private %}<form method="get" action="/app/liquidaciones" class="dl-context module-selection-form" data-module-selection><input type="hidden" name="tipo" value="{{ kind }}"><div class="dl-field"><label for="ctx-company">Empresa</label><select name="company_id" id="ctx-company" data-module-company aria-describedby="context-help" data-searchable-entity="company" data-entity-scope="all"><option value="">Seleccioná una empresa</option>{% for item in companies|entity_choices %}<option value="{{ item.id }}" {% if item.id == company_id %}selected{% endif %}>{{ item.legacy_code or (item.company_code if item.company_code is not none else 'Sin código') }} - {{ item.legal_name }}</option>{% endfor %}</select></div><div class="dl-field"><label for="ctx-employee">Funcionario</label><select name="employee_id" id="ctx-employee" data-module-employee aria-describedby="context-help" data-searchable-entity="employee" data-entity-scope="all"><option value="">Seleccioná un funcionario</option>{% for item in employees|entity_choices %}<option value="{{ item.id }}" data-company="{{ item.company_id }}" {% if item.id == employee_id %}selected{% endif %}>{{ item.employee_code if item.employee_code is not none else 'Sin legajo' }} - {{ item.full_name }}</option>{% endfor %}</select></div><button class="dl-button dl-outline">Cargar selección</button><small id="context-help">Elegí una empresa y luego un funcionario. Sus datos se cargarán en el formulario.</small></form>{% endif %}
+{% if private and not companies %}<p class="dl-alert">Todavía no hay empresas en tu espacio. <a href="/app/companies">Registrá una empresa</a> para organizar tus liquidaciones.</p>{% elif private and company_id and not employees %}<p class="dl-alert">Esta empresa todavía no tiene funcionarios. <a href="/app/employees?company_id={{ company_id }}">Registrá un funcionario</a> para guardar sus liquidaciones.</p>{% endif %}
+{% if not private %}<nav class="dl-tabs" aria-label="Tipo de cálculo">{% for key, title in titles.items() %}<a href="/herramientas?tipo={{ key }}" {% if key == kind %}aria-current="page"{% endif %}>{{ title }}</a>{% endfor %}</nav>{% endif %}
+<div class="dl-calculator-layout">
+<form id="labor-form" method="post" action="{{ '/app/liquidaciones/calcular' if private else '/herramientas/calcular' }}">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="kind" value="{{ kind }}">
+{% if private and values.get("employee_exit_id") %}<input type="hidden" name="employee_exit_id" value="{{ values.employee_exit_id }}"><p class="dl-alert" role="status">Cálculo vinculado a un procedimiento de egreso. La fecha y la causal deben coincidir con el expediente. El registro del pago se realiza por separado.</p>{% endif %}
+{% if private %}<input type="hidden" name="company_id" value="{{ company_id }}"><input type="hidden" name="employee_id" value="{{ employee_id }}">{% endif %}
+{% if not quick_steps %}<div class="dl-form-title"><span class="dl-step">01</span><h2>{{ titles[kind] }}</h2></div>{% endif %}
+{% if error %}<div class="dl-alert dl-error" role="alert" id="labor-error" tabindex="-1"><b>Revisá los datos</b><p>{{ error }}</p></div>{% endif %}
+{% if quick_steps %}{% include 'labor_quick_steps.html' %}{% else %}
+{% for group in groups %}
+{% if group.advanced %}<details class="dl-form-section"><summary>{{ group.title }}</summary><div class="dl-fields">{% for field in group.fields %}{{ input_field(field) }}{% endfor %}</div></details>
+{% else %}<fieldset class="dl-form-section"><legend>{{ group.title }}</legend><div class="dl-fields">{% for field in group.fields %}{{ input_field(field) }}{% endfor %}</div></fieldset>{% endif %}
+{% if kind == 'settlement' and group.title == 'Indemnización y preaviso' %}{% if private %}{% include 'payroll_average_panel.html' %}{% endif %}{{ settlement_preview() }}{% endif %}
+{% endfor %}
+{% if kind == 'salary' %}{{ salary_preview() }}{% endif %}
+{% endif %}
+
+<div class="dl-form-submit {{ 'dl-quick-fallback' if quick_steps else '' }}"><button class="dl-button" type="submit" data-keep-enabled="true">{{ 'Recalcular' if result else 'Calcular liquidación' }} <span aria-hidden="true">→</span></button><span>Revisá los conceptos antes de firmar.</span></div>
 </form>
 {% if kind == 'salary' %}
 <script>
@@ -121,14 +127,17 @@
 </script>
 {% endif %}
 <aside class="dl-output">
+{% if quick_steps %}{% include 'labor_live_summary.html' %}{% else %}
 {% if result %}
 <p class="dl-alert dl-stale" hidden role="status">Cambiaste datos. Volvé a calcular para actualizar el resultado y las descargas.</p>
 <div class="dl-output-actions"><button type="submit" class="dl-button" form="labor-form" data-keep-enabled="true" formaction="{{ '/app/liquidaciones' if private else '/herramientas' }}/exportar/pdf" data-result-action>Descargar PDF</button><button type="submit" class="dl-button dl-outline" form="labor-form" data-keep-enabled="true" formaction="{{ '/app/liquidaciones' if private else '/herramientas' }}/exportar/csv" data-result-action>CSV</button><button type="button" class="dl-button dl-outline" data-print data-result-action>Imprimir</button>
 {% if private and user.role in ['administrador','contador','auxiliar'] %}<button type="submit" class="dl-button dl-outline" form="labor-form" formaction="/app/liquidaciones/guardar" data-result-action {% if not company_id or not employee_id %}disabled title="Seleccioná empresa y funcionario para guardar"{% endif %}>Guardar en el funcionario</button>{% endif %}</div>
 {% include "liquidation_result.html" %}
 {% else %}<div class="dl-empty"><span class="dl-step">02</span><h2>Acá vas a ver tu liquidación.</h2><p>El resultado mostrará cada haber, descuento y fórmula. Luego podrás descargar un PDF con original y duplicado.</p><ol><li>Completá los datos del cálculo.</li><li>Revisá el neto y las observaciones.</li><li>Descargá, imprimí o guardá el documento.</li></ol><p class="dl-caption">{{ 'Para guardar, seleccioná empresa y funcionario.' if private else 'No necesitás cuenta. Los datos de esta consulta no se guardan como expediente.' }}</p></div>{% endif %}
+{% endif %}
 </aside></div>
-{% if private %}<section class="dl-history"><h2>Historial del centro laboral</h2><p>Últimos 30 cálculos de la selección. Cada registro conserva su resultado original.</p><div class="dl-table-wrap"><table><thead><tr><th>Referencia</th><th>Tipo de cálculo</th><th>Funcionario</th><th>Período</th><th>Importe · Gs.</th><th>Documento</th></tr></thead><tbody>{% for item in history %}<tr><td>#{{ item.id }}</td><td>{{ titles.get(item.calculation_type|replace('suite_',''), item.calculation_type) }}</td><td>{{ item.employee.full_name if item.employee else 'Sin funcionario' }}</td><td>{{ item.reference_period }}</td><td>{{ item.amount|gs }}</td><td><a href="/app/liquidaciones/{{ item.id }}">Ver y descargar</a></td></tr>{% else %}<tr><td colspan="6">Todavía no hay cálculos guardados para esta selección.</td></tr>{% endfor %}</tbody></table></div></section>{% endif %}
+{% if quick_steps and result %}<details class="dl-document-preview" id="labor-document"><summary>Documento completo · desglose y descargas</summary><div class="dl-document-content"><div class="dl-output-actions"><button type="submit" class="dl-button" form="labor-form" data-keep-enabled="true" formaction="{{ '/app/liquidaciones' if private else '/herramientas' }}/exportar/pdf" data-result-action>Descargar PDF</button><button type="submit" class="dl-button dl-outline" form="labor-form" data-keep-enabled="true" formaction="{{ '/app/liquidaciones' if private else '/herramientas' }}/exportar/csv" data-result-action>CSV</button><button type="button" class="dl-button dl-outline" data-print data-result-action>Imprimir</button></div>{% include "liquidation_result.html" %}</div></details>{% endif %}
+{% if private %}<details class="dl-history"><summary>Historial del centro laboral · {{ history|length }} registros</summary><p>Últimos 30 cálculos de la selección. Cada registro conserva su resultado original.</p><div class="dl-table-wrap"><table><thead><tr><th>Referencia</th><th>Tipo de cálculo</th><th>Funcionario</th><th>Período</th><th>Importe · Gs.</th><th>Documento</th></tr></thead><tbody>{% for item in history %}<tr><td>#{{ item.id }}</td><td>{{ titles.get(item.calculation_type|replace('suite_',''), item.calculation_type) }}</td><td>{{ item.employee.full_name if item.employee else 'Sin funcionario' }}</td><td>{{ item.reference_period }}</td><td>{{ item.amount|gs }}</td><td><a href="/app/liquidaciones/{{ item.id }}">Ver y descargar</a></td></tr>{% else %}<tr><td colspan="6">Todavía no hay cálculos guardados para esta selección.</td></tr>{% endfor %}</tbody></table></div></details>{% endif %}
 </div>
 {% if private and employee and kind in ['salary', 'settlement'] %}
 <script type="application/json" id="salary-history-data">{{ salary_history_data|tojson }}</script>

@@ -30,6 +30,8 @@
         input.closest(".dl-field").hidden = !needed;
       });
       if (field("stability_evidence")) field("stability_evidence").minLength = needed ? 10 : 0;
+      const review = field("stability_basis")?.closest("[data-regime-review]");
+      if (review) review.hidden = !needed;
     };
     const updateStatus = () => {
       if (!projection) return;

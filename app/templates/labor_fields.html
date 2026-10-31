@@ -1,17 +1,22 @@
-{% macro input_field(field, values, error_field='', prefix='', locked=false) %}
+{% macro input_field(field, values, error_field='', prefix='', locked=false, compact=false) %}
 {% set value = values.get(field.name, field.value) %}
 {% set name = prefix ~ field.name %}
-<div class="dl-field {{ 'dl-check' if field.type == 'checkbox' else '' }} {{ 'dl-invalid' if error_field == field.name else '' }}">
+<div class="dl-field {{ 'dl-check' if field.type == 'checkbox' else '' }} {{ 'dl-invalid' if error_field == field.name else '' }}" data-field="{{ name }}">
+{% if compact %}<div class="dl-field-heading">{% endif %}
 {% if field.type == 'checkbox' %}
-<label for="f-{{ name }}"><input type="checkbox" id="f-{{ name }}" name="{{ name }}" value="on" {% if value in ['on','true','1',True] %}checked{% endif %}>{{ field.label }}</label>
+<label for="f-{{ name }}"><input type="checkbox" id="f-{{ name }}" name="{{ name }}" value="on" {% if compact and field.help %}aria-describedby="help-{{ name }}"{% endif %} {% if value in ['on','true','1',True] %}checked{% endif %}>{{ field.label }}</label>
 {% else %}
 <label for="f-{{ name }}">{{ field.label }}{% if field.required %}<span aria-hidden="true"> *</span>{% endif %}</label>
+{% endif %}
+{% if compact and field.help %}<span class="dl-help"><button type="button" class="dl-help-trigger" aria-label="Ayuda: {{ field.label }}" aria-describedby="help-{{ name }}" aria-expanded="false" title="{{ field.help }}">i</button><span id="help-{{ name }}" class="dl-help-text" role="tooltip">{{ field.help }}</span></span>{% endif %}
+{% if compact %}</div>{% endif %}
+{% if field.type != 'checkbox' %}
 {% if field.type == 'select' %}
 <select id="f-{{ name }}" name="{{ name }}" {% if field.help %}aria-describedby="help-{{ name }}"{% endif %}>{% for k,label in field.attrs.options %}<option value="{{ k }}" {% if value == k %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
 {% elif field.type == 'textarea' %}<textarea id="f-{{ name }}" name="{{ name }}" rows="3" maxlength="600">{{ value }}</textarea>
 {% else %}<input id="f-{{ name }}" name="{{ name }}" type="{{ field.type }}" value="{{ value }}" {% if field.required %}required{% endif %} {% if field.help %}aria-describedby="help-{{ name }}"{% endif %} {% if error_field == field.name %}aria-invalid="true"{% endif %} {% for key,val in field.attrs.items() %}{{ key }}="{{ val }}"{% endfor %} {% if locked %}readonly{% endif %}>{% endif %}
 {% endif %}
-{% if field.help %}<small id="help-{{ name }}">{{ field.help }}</small>{% endif %}
+{% if field.help and not compact %}<small id="help-{{ name }}">{{ field.help }}</small>{% endif %}
 </div>
 {% endmacro %}
 

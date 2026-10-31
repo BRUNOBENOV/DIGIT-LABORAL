@@ -1,0 +1,32 @@
+{% for step in quick_steps %}
+{% set names = step.groups|map(attribute='fields')|sum(start=[])|map(attribute='name')|list %}
+<details class="dl-quick-step" data-quick-step="{{ step.number }}" {% if step.number == 1 or error_field in names %}open{% endif %}>
+  <summary><span class="dl-quick-number" aria-hidden="true">{{ '%02d'|format(step.number) }}</span><span><b>{{ step.title }}</b><small>{{ step.hint }}</small></span><span class="dl-quick-chevron" aria-hidden="true">⌄</span></summary>
+  <div class="dl-quick-step-body">
+  {% for group in step.groups %}
+    {% set concept = 'vacations' if group.title == 'Vacaciones pendientes' else 'aguinaldo' if group.title == 'Aguinaldo' else '' %}
+    {% if concept %}
+    <div class="dl-concept-readout"><span>{{ 'Vacaciones reconocidas' if concept == 'vacations' else 'Aguinaldo devengado' }}</span><output data-concept-amount="{{ concept }}">{{ 'Gs. ' ~ (live_summary['values'][concept]|gs) if live_summary else 'Pendiente de revisión' }}</output></div>
+    <details class="dl-inline-editor" data-concept-editor="{{ concept }}" {% if error_field in group.fields|map(attribute='name')|list %}open{% endif %}><summary>{{ 'Modificar a mano' if result else 'Ingresar días reconocidos' if concept == 'vacations' else 'Ingresar remuneración anual' }}</summary>
+    {% elif group.advanced %}<details class="dl-inline-editor"><summary>{{ group.title }}</summary>
+    {% endif %}
+    <fieldset class="dl-quick-group"><legend>{{ group.title }}</legend><div class="dl-fields">
+      {% for field in group.fields %}
+        {% if field.name not in ['stability_basis','stability_evidence','stability_confirmed'] %}{{ input_field(field) }}{% endif %}
+      {% endfor %}
+    </div>
+    {% if group.title == 'Indemnización y preaviso' %}
+      <details class="dl-inline-editor" data-regime-review {% if values.get('severance_regime') == 'stability_double' %}open{% endif %}><summary>Fundamento y respaldo del régimen</summary><div class="dl-fields">{% for field in group.fields %}{% if field.name in ['stability_basis','stability_evidence','stability_confirmed'] %}{{ input_field(field) }}{% endif %}{% endfor %}</div></details>
+    {% endif %}
+    </fieldset>
+    {% if concept or group.advanced %}</details>{% endif %}
+  {% endfor %}
+  {% if step.number == 1 %}{{ salary_hint() }}{% endif %}
+  {% if kind == 'settlement' and step.number == 2 %}
+    {{ settlement_preview() }}
+    {% if private %}<details class="dl-inline-editor dl-average-disclosure"><summary>Buscar promedio en nóminas cerradas</summary>{% include 'payroll_average_panel.html' %}</details>{% endif %}
+  {% elif kind == 'salary' and step.number == 2 %}{{ salary_preview() }}{% endif %}
+  {% if step.number == 5 %}<p class="dl-caption">Revisá conceptos e identificación antes de guardar o emitir. El cálculo se conserva como borrador.</p><button type="button" class="dl-button dl-outline" data-open-document data-result-action {% if not result %}disabled{% endif %}>Ver documento completo</button>{% endif %}
+  </div>
+</details>
+{% endfor %}
