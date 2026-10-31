@@ -547,20 +547,20 @@ def fetch_report(
     status_filter = (status_filter or "").strip()[:40]
     period = (period or "").strip()[:20]
     page = max(1, min(int(page or 1), 1_000_000))
-    page_size = max(1, min(int(page_size or 25), 100))
+    page_size = max(1, min(int(page_size or 25), 200))
     descending = str(sort or "").startswith("-")
     sort = str(sort or "").removeprefix("-")
     allowed_sorts = {key for key, label in report_sort_options(spec)}
     if sort not in allowed_sorts:
         sort = "date" if spec.variant == "admission_date" else report_sort_options(spec)[0][0]
     if not company_ids:
-        return {"records": [], "total": 0, "page": page, "page_size": page_size, "pages": 0, "columns": report_columns(spec)}
+        return {"records": [], "total": 0, "page": 1, "page_size": page_size, "pages": 0, "columns": report_columns(spec)}
     if company_id is not None and company_id not in company_ids:
-        return {"records": [], "total": 0, "page": page, "page_size": page_size, "pages": 0, "columns": report_columns(spec)}
+        return {"records": [], "total": 0, "page": 1, "page_size": page_size, "pages": 0, "columns": report_columns(spec)}
     if employee_id is not None:
         employee = db.get(Employee, employee_id)
         if not employee or employee.company_id not in company_ids or (company_id is not None and employee.company_id != company_id):
-            return {"records": [], "total": 0, "page": page, "page_size": page_size, "pages": 0, "columns": report_columns(spec)}
+            return {"records": [], "total": 0, "page": 1, "page_size": page_size, "pages": 0, "columns": report_columns(spec)}
     if spec.dataset == "company":
         query, count_query = _company_query(db, company_ids, company_id, q)
         if status_filter:
@@ -674,6 +674,7 @@ def fetch_report(
     # Count the fully filtered query itself so every joined filter is included in the total.
     total_query = select(func.count()).select_from(query.order_by(None).subquery())
     total = int(db.scalar(total_query) or 0)
+    page = min(page, max(1, (total + page_size - 1) // page_size))
     values = list(db.execute(query.offset((page - 1) * page_size).limit(page_size)).all())
     records = []
     for value in values:

@@ -1,0 +1,43 @@
+{% macro render_pagination(pager, form_id, target_id, label='registros') -%}
+<section class="app-pagination" data-pagination data-filter-form="{{ form_id }}" data-page-target="{{ target_id }}" data-total="{{ pager.total }}" data-page="{{ pager.page }}" data-pages="{{ pager.pages }}" data-page-size="{{ pager.page_size }}" aria-label="Paginación de {{ label }}">
+  <div class="app-pagination-info">
+    <p class="app-pagination-summary" role="status">Mostrando <b>{{ pager.start }}</b> a <b>{{ pager.end }}</b> de <b>{{ pager.total }}</b> registros</p>
+    <span>Página {{ pager.page }} de {{ pager.pages }}</span>
+  </div>
+  <nav class="app-pagination-nav" aria-label="Páginas de {{ label }}">
+    {% if pager.page > 1 %}
+      <a href="{{ pager.url(page=1) }}" title="Ir a la primera página">« Primera</a>
+      <a href="{{ pager.url(page=pager.page-1) }}" rel="prev" title="Ir a la página anterior">‹ Anterior</a>
+    {% else %}
+      <button type="button" disabled>« Primera</button><button type="button" disabled>‹ Anterior</button>
+    {% endif %}
+    {% for number in pager.numbers %}
+      {% if number is none %}<span class="app-pagination-ellipsis" aria-label="Páginas omitidas">…</span>
+      {% elif number == pager.page %}<span class="app-pagination-current" aria-current="page" aria-label="Página {{ number }}, actual">{{ number }}</span>
+      {% else %}<a href="{{ pager.url(page=number) }}" aria-label="Ir a página {{ number }}">{{ number }}</a>{% endif %}
+    {% endfor %}
+    {% if pager.page < pager.pages %}
+      <a href="{{ pager.url(page=pager.page+1) }}" rel="next" title="Ir a la página siguiente">Siguiente ›</a>
+      <a href="{{ pager.url(page=pager.pages) }}" title="Ir a la última página">Última »</a>
+    {% else %}
+      <button type="button" disabled>Siguiente ›</button><button type="button" disabled>Última »</button>
+    {% endif %}
+  </nav>
+  <div class="app-pagination-options">
+    <form method="get" action="{{ pager.path }}" data-page-size-form aria-label="Tamaño de página de {{ label }}">
+      {% for key, value in pager.filters.items() %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
+      <input type="hidden" name="page" value="1">
+      <label>Registros por página<select name="page_size" aria-label="Registros por página">{% for size in pager.sizes %}<option value="{{ size }}" {{ 'selected' if size == pager.page_size }}>{{ size }}</option>{% endfor %}</select></label>
+      <noscript><button type="submit">Aplicar tamaño</button></noscript>
+    </form>
+    <form method="get" action="{{ pager.path }}" data-page-jump-form aria-label="Salto de página de {{ label }}">
+      {% for key, value in pager.filters.items() %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
+      <input type="hidden" name="page_size" value="{{ pager.page_size }}">
+      <label>Ir a página<input name="page" type="number" min="1" max="{{ pager.pages }}" step="1" value="{{ pager.page }}" inputmode="numeric" required {{ 'disabled' if pager.pages == 1 }} aria-label="Ir a página"></label>
+      <button type="submit" {{ 'disabled' if pager.pages == 1 }}>Ir</button>
+    </form>
+  </div>
+  <input type="hidden" name="page_size" value="{{ pager.page_size }}" form="{{ form_id }}">
+  <div class="app-list-loading" data-list-loading role="status" aria-live="polite" hidden><span aria-hidden="true"></span>Cargando registros…</div>
+</section>
+{%- endmacro %}

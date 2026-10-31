@@ -1,0 +1,24 @@
+.app-body .app-pagination{margin:16px 0;padding:16px 18px;border:1px solid #D8E2EF;border-radius:14px;background:#fff;color:#52647D;font-size:.8rem;box-shadow:0 3px 12px #05256d05;font-variant-numeric:tabular-nums}
+.app-body .app-pagination-info{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.app-body .app-pagination-summary{margin:0;color:#334766}.app-body .app-pagination-summary b{color:#05256D}
+.app-body .app-pagination-nav{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:6px}
+.app-body .app-pagination-nav a,.app-body .app-pagination-nav button,.app-body .app-pagination-current{display:inline-flex;align-items:center;justify-content:center;min-height:38px;min-width:38px;padding:8px 11px;border:1px solid #CFDBEC;border-radius:9px;background:#fff;color:#17467F;font:inherit;font-weight:750;line-height:1.2;text-decoration:none;white-space:nowrap;box-sizing:border-box}
+.app-body .app-pagination-nav a:hover{background:#EDF4FF;border-color:#3572B8;color:#05256D}
+.app-body .app-pagination-nav button:disabled{background:#F3F6FA;border-color:#E1E7EF;color:#68758A;cursor:not-allowed}
+.app-body .app-pagination-current{background:#05256D;border-color:#05256D;color:#fff}
+.app-body .app-pagination-ellipsis{padding:5px;color:#64748B}
+.app-body .app-pagination-options{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;border-top:1px solid #E6ECF4;padding-top:12px;margin-top:12px}
+.app-body .app-pagination form,.app-body .app-pagination label{display:flex;align-items:center;gap:8px;margin:0;font:inherit;color:#465C79}
+.app-body .app-pagination select,.app-body .app-pagination input[type=number]{min-height:38px;padding:7px 10px;border:1px solid #CAD7E9;border-radius:8px;background:#fff;color:#173B70;font:inherit;font-weight:700;box-sizing:border-box}
+.app-body .app-pagination input[type=number]{width:80px;min-width:0}.app-body .app-pagination select{width:78px;min-width:0}
+.app-body .app-pagination-options button{min-height:38px;padding:7px 13px;border:1px solid #05256D;border-radius:8px;background:#05256D;color:#fff;font:inherit;font-weight:750;cursor:pointer}
+.app-body .app-pagination-options button:disabled,.app-body .app-pagination input:disabled{background:#F3F6FA;color:#68758A;border-color:#E1E7EF;cursor:not-allowed}
+.app-body .app-pagination a:focus-visible,.app-body .app-pagination button:focus-visible,.app-body .app-pagination input:focus-visible,.app-body .app-pagination select:focus-visible{outline:3px solid #3572B8;outline-offset:3px}
+.app-body .maintenance-filter-chip{text-decoration:none}
+.app-body .app-list-loading{position:fixed;right:24px;bottom:24px;z-index:1500;display:flex;align-items:center;gap:10px;padding:13px 18px;border:1px solid #B5CCEB;border-radius:12px;background:#fff;color:#05256D;font-weight:750;box-shadow:0 6px 26px #05256d26}
+.app-body .app-list-loading[hidden]{display:none}.app-body .app-list-loading>span{width:18px;height:18px;border:2px solid #CDDBEE;border-top-color:#05256D;border-radius:50%;animation:digit-page-spin .75s linear infinite}
+@keyframes digit-page-spin{to{transform:rotate(360deg)}}
+@media(max-width:900px){.app-body .app-pagination{padding:14px}.app-body .app-pagination-nav{gap:5px}.app-body .app-pagination-nav a,.app-body .app-pagination-nav button{padding:8px;min-height:40px}}
+@media(max-width:560px){.app-body .app-pagination-options{align-items:flex-start;flex-direction:column}.app-body .app-pagination-info{gap:5px}.app-body .app-list-loading{right:12px;bottom:12px;left:12px;justify-content:center}}
+@media(prefers-reduced-motion:reduce){.app-body .app-list-loading>span{animation:none}}
+@media print{.app-pagination,.app-list-loading{display:none!important}}

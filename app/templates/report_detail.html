@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "components/pagination.html" import render_pagination %}
 {% block title %}{{ report.label }} | Informes | Digit Laboral{% endblock %}
 {% block page_name %}Informes{% endblock %}
 {% block content %}
@@ -7,7 +8,7 @@
 </style>
 <div class="report-detail-hero"><div><span class="eyebrow">{{ report.group|upper }}</span><h1>{{ report.label }}</h1><p>{{ report.description }}</p></div><div class="report-detail-actions"><a class="btn ghost" href="/app/reports">← Todos los informes</a><a class="btn ghost" href="{{ export_base }}&format=xlsx">Exportar Excel</a><a class="btn ghost" href="{{ export_base }}&format=pdf">Exportar PDF</a><button class="btn primary" type="button" onclick="window.print()">Imprimir</button></div></div>
 {% if report.note %}<div class="report-detail-note"><strong>Nota:</strong> {{ report.note }}</div>{% endif %}
-<form method="get" action="/app/reports/{{ report.key }}" class="report-detail-filters">
+<form method="get" action="/app/reports/{{ report.key }}" id="reportFilters" data-paginated-filters class="report-detail-filters">
 <label>Buscar<input type="search" name="q" value="{{ filters.q or '' }}" placeholder="Nombre, RUC, documento…"></label>
 <label>Empresa<select name="company_id"><option value="">Todas las autorizadas</option>{% for company in companies %}<option value="{{ company.id }}" {{ 'selected' if selected_company == company.id }}>{{ company.legal_name }}</option>{% endfor %}</select></label>
 <label>Funcionario<select name="employee_id"><option value="">Todos</option>{% for employee in employees %}<option value="{{ employee.id }}" {{ 'selected' if selected_employee == employee.id }}>{{ employee.full_name }} · {{ employee.company.legal_name }}</option>{% endfor %}</select></label>
@@ -15,13 +16,11 @@
 <label>Año<input type="number" name="year" min="2000" max="2100" value="{{ filters.year or '' }}" placeholder="Ej.: 2026"></label>
 <label>Periodo<input type="month" name="period" value="{{ filters.period or '' }}"></label>
 <label>Ordenar por<select name="sort" id="reportSort" data-sort-control data-sort-server="true" data-sort-signed data-sort-direction="{{ 'desc' if filters.sort.startswith('-') else 'asc' }}"><option value="" {{ 'selected' if not filters.sort }}>Predeterminado</option>{% for sort_key, sort_label in sort_options %}<option value="{{ sort_key }}" {{ 'selected' if filters.sort.removeprefix('-') == sort_key }}>{{ sort_label }}</option>{% endfor %}</select></label>
-<input type="hidden" name="page_size" value="{{ pagination.page_size }}"><button class="btn primary" type="submit">Aplicar</button>
+<button class="btn primary" type="submit">Aplicar</button>
 </form>
 <div class="report-detail-metrics"><span><strong>{{ pagination.total }}</strong> registros encontrados · página {{ pagination.page }} de {{ pagination.pages if pagination.pages else 1 }}</span><span>Fuente: registros actuales de DIGIT-LABORAL</span></div>
-<section class="report-table-shell"><div class="report-table-scroll"><table class="report-data-table" data-sort-selector="reportSort"><thead><tr>{% for column in columns %}<th scope="col">{{ column }}</th>{% endfor %}</tr></thead><tbody>{% for row in rows %}<tr>{% for column in columns %}<td>{{ row.get(column, '') }}</td>{% endfor %}</tr>{% else %}<tr><td class="report-empty" colspan="{{ columns|length }}">No hay registros que coincidan con estos filtros. Revisá la empresa, el periodo o cargá los datos en su módulo de origen.</td></tr>{% endfor %}</tbody></table></div>
-<div class="report-pagination"><span>Mostrando {{ rows|length }} de {{ pagination.total }} registros · Máximo {{ pagination.page_size }} por página</span><nav aria-label="Paginación del informe">
-{% if pagination.page > 1 %}<a href="{{ pagination_base }}&page=1">« Primera</a><a href="{{ pagination_base }}&page={{ pagination.page - 1 }}">‹ Anterior</a>{% else %}<span class="disabled">« Primera</span><span class="disabled">‹ Anterior</span>{% endif %}<span class="current">{{ pagination.page }}</span>
-{% if pagination.page < pagination.pages %}<a href="{{ pagination_base }}&page={{ pagination.page + 1 }}">Siguiente ›</a><a href="{{ pagination_base }}&page={{ pagination.pages }}">Última »</a>{% else %}<span class="disabled">Siguiente ›</span><span class="disabled">Última »</span>{% endif %}
-</nav></div></section>
+<section class="report-table-shell"><div class="report-table-scroll"><table class="report-data-table" id="reportTable" data-server-paginated data-sort-selector="reportSort"><thead><tr>{% for column in columns %}<th scope="col">{{ column }}</th>{% endfor %}</tr></thead><tbody>{% for row in rows %}<tr>{% for column in columns %}<td>{{ row.get(column, '') }}</td>{% endfor %}</tr>{% else %}<tr><td class="report-empty" colspan="{{ columns|length }}">No hay registros que coincidan con estos filtros. Revisá la empresa, el periodo o cargá los datos en su módulo de origen.</td></tr>{% endfor %}</tbody></table></div>
+</section>
+{{ render_pagination(pager, 'reportFilters', 'reportTable', 'informes') }}
 <p class="report-inline-help">Los resultados están paginados en la base de datos. La exportación respeta los filtros aplicados. Los reportes preparatorios no reemplazan declaraciones ni formularios oficiales.</p>
 {% endblock %}

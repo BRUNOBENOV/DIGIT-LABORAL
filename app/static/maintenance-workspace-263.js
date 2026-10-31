@@ -10,7 +10,7 @@
 
     // Directorio de empresas: búsqueda inmediata, filtros rápidos y orden estable del DOM.
     const companyGrid = document.querySelector("[data-company-directory]");
-    if (companyGrid) {
+    if (companyGrid && !companyGrid.hasAttribute("data-server-paginated")) {
       const cards = Array.from(companyGrid.querySelectorAll("[data-company-card]"));
       const query = document.querySelector(".company-maintenance-filters [name='q']");
       const sort = document.getElementById("companySort");
@@ -62,7 +62,7 @@
 
     // Directorio de funcionarios: ordenación y filtros locales sin descartar los filtros de servidor.
     const employeeTable = document.getElementById("employeeTable");
-    if (employeeTable) {
+    if (employeeTable && !employeeTable.hasAttribute("data-server-paginated")) {
       const body = employeeTable.querySelector("tbody");
       const rows = Array.from(employeeTable.querySelectorAll("tbody tr[data-employee-row]"));
       const query = document.querySelector(".employee-maintenance-filters [name='q']");

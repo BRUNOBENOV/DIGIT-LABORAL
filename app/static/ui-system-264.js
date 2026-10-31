@@ -47,7 +47,7 @@
 
   function enhanceTables(root) {
     root.querySelectorAll(".table-wrap table:not([data-ui-no-enhance]):not([data-ui-enhanced])").forEach(table => {
-      if (table.id === "employeeTable" || table.closest(".certificate-preview-shell,.certificate-print,.calendar-grid,.calendar-month,.print-sheet")) return;
+      if (table.id === "employeeTable" || table.hasAttribute("data-server-paginated") || table.closest(".certificate-preview-shell,.certificate-print,.calendar-grid,.calendar-month,.print-sheet")) return;
       const head = table.tHead;
       const body = table.tBodies && table.tBodies[0];
       if (!head || !body || !head.rows.length) return;

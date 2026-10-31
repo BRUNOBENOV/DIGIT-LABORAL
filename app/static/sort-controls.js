@@ -73,7 +73,8 @@
       const quick = form.querySelector('[name="employee_quick"]');
       if (quick) url.searchParams.set("employee_quick",quick.value);
       url.searchParams.delete("page");
-      window.location.assign(url.toString());
+      if (window.DigitPagination) window.DigitPagination.navigate(url, form);
+      else window.location.assign(url.toString());
     };
     const api = {get direction(){return order;}, set(key,next){select.value=key;order=direction(next);update();select.dispatchEvent(new Event("change",{bubbles:true}));}};
     selectors.set(select,api);
