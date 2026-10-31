@@ -36,8 +36,9 @@
     });
   });
   if (form) form.addEventListener("invalid", event => {
-    const details = event.target.closest("details");
-    if (details) details.open = true;
+    for (let parent = event.target.parentElement; parent; parent = parent.parentElement) {
+      if (parent.tagName === "DETAILS") parent.open = true;
+    }
   }, true);
   const company = document.getElementById("ctx-company");
   const employee = document.getElementById("ctx-employee");
@@ -56,14 +57,15 @@
   const error = document.getElementById("labor-error");
   if (error) {
     document.querySelectorAll(".dl-invalid").forEach(field => {
-      const details = field.closest("details");
-      if (details) details.open = true;
+      for (let parent = field.parentElement; parent; parent = parent.parentElement) {
+        if (parent.tagName === "DETAILS") parent.open = true;
+      }
     });
     error.focus();
   } else if (form && result) {
     // On a phone the result is below the whole form. Bring it into view.
     result.focus({preventScroll: true});
-    if (window.matchMedia("(max-width: 860px)").matches) result.scrollIntoView({block: "start"});
+    if (!form.closest(".dl-quick") && window.matchMedia("(max-width: 860px)").matches) result.scrollIntoView({block: "start"});
   }
 })();
 
