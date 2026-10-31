@@ -1,3 +1,12 @@
+## 2.6.58 — Indemnización y preaviso por estabilidad con revisión visible
+
+- Añade la selección de doble indemnización para despido sin causa con diez años de servicio o más, contrato indefinido y prueba cumplida, con fundamento legal, respaldo y confirmación del liquidador. No permite trasladarla a renuncias, contratos a plazo ni otras protecciones sin resolver.
+- Calcula días e importes en el servidor y comparte la proyección con los formularios público, profesional y de comparación; consulta tras una pausa y descarta respuestas atrasadas.
+- Expone los años computables, días de indemnización y preaviso, promedio y divisor. La fracción suma un año solo si supera seis meses; la doble indemnización aplica el factor dos una sola vez.
+- Acepta dos decimales en el promedio, mantiene divisor 30 para el mensualizado y redondea al final de cada concepto. Muestra preaviso cumplido 0 por defecto y mantiene esa interpretación para vacíos.
+- Conserva fundamento, confirmación y detalle en el historial y exportaciones; exige renovar la confirmación al modificar los supuestos y evita aprobar un subtotal parcial como liquidación completa.
+- Mantiene el cálculo ordinario y las fórmulas guardadas compatibles para promedios enteros; no modifica registros de funcionarios ni pagos existentes.
+
 ## 2.6.57 — Selectores globales con búsqueda asíncrona
 
 - Reutiliza SearchableCompanySelect y SearchableEmployeeSelect en los selectores de Empresas y Funcionarios de los módulos, filtros y modales.
