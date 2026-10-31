@@ -5706,6 +5706,14 @@ def _revalidate_calculation_before_approval(item: CalculationRecord, db: Session
     if item.source == "Centro laboral":
         from .labor_calculator import CalculationError as ProfessionalCalculationError, calculate as professional_calculate
         try:
+            if saved_inputs.get("average_origin") == "payroll":
+                from .payroll_average import verify_average_selection
+                proposal = verify_average_selection(db, db.get(Employee, item.employee_id), saved_inputs)
+                recorded = saved_results.get("average_provenance")
+                keys = ("employee_id", "company_id", "admission_date", "window_start", "window_end",
+                        "salary_type", "periods", "average_salary", "fingerprint")
+                if not isinstance(recorded, dict) or any(recorded.get(key) != proposal.get(key) for key in keys):
+                    raise ValueError("El respaldo del promedio no coincide con sus fuentes.")
             current = professional_calculate(saved_inputs)
         except (ProfessionalCalculationError, ValueError, TypeError) as exc:
             raise HTTPException(409, "No se pudo volver a validar la liquidación con sus entradas guardadas.") from exc
