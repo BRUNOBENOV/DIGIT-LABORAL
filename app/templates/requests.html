@@ -10,9 +10,9 @@
 <section class="panel request-filter-panel">
   <form method="get" action="/app/requests" class="form-grid request-filters">
     <label>Empresa
-      <select name="company_id">
+      <select name="company_id" data-searchable-entity="company" data-entity-scope="all">
         <option value="">Todas las empresas</option>
-        {% for company in companies %}<option value="{{ company.id }}" {{ 'selected' if selected_company == company.id }}>{{ company.legal_name }}</option>{% endfor %}
+        {% for company in companies|entity_choices %}<option value="{{ company.id }}" {{ 'selected' if selected_company == company.id }}>{{ company.legacy_code or (company.company_code if company.company_code is not none else 'Sin código') }} - {{ company.legal_name }}</option>{% endfor %}
       </select>
     </label>
     <label>Estado
@@ -76,8 +76,8 @@
     <form method="post" action="/app/requests" class="form-grid" id="requestCreateForm">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <label class="span-2">Empresa
-        <select name="company_id" id="requestCompany" required>
-          {% for company in companies %}<option value="{{ company.id }}" {{ 'selected' if selected_company == company.id }}>{{ company.legal_name }}</option>{% endfor %}
+        <select name="company_id" id="requestCompany" required data-searchable-entity="company" data-entity-scope="all">
+          {% for company in companies|entity_choices %}<option value="{{ company.id }}" {{ 'selected' if selected_company == company.id }}>{{ company.legacy_code or (company.company_code if company.company_code is not none else 'Sin código') }} - {{ company.legal_name }}</option>{% endfor %}
         </select>
       </label>
       <label>Tipo de trámite
@@ -88,9 +88,9 @@
       </label>
       <label>Prioridad<select name="priority"><option>Normal</option><option>Alta</option><option>Urgente</option></select></label>
       <label class="span-2">Funcionario relacionado (si corresponde)
-        <select name="employee_id" id="requestEmployee">
+        <select name="employee_id" id="requestEmployee" data-searchable-entity="employee" data-entity-scope="all">
           <option value="">Seleccionar más adelante</option>
-          {% for employee in employees %}<option value="{{ employee.id }}" data-company="{{ employee.company_id }}">{{ employee.full_name }} · {{ employee.company.legal_name }}</option>{% endfor %}
+          {% for employee in employees|entity_choices %}<option value="{{ employee.id }}" data-company="{{ employee.company_id }}">{{ employee.employee_code if employee.employee_code is not none else 'Sin legajo' }} - {{ employee.full_name }}</option>{% endfor %}
         </select>
       </label>
       <label class="span-2">Asunto<input name="subject" maxlength="180" placeholder="Ej. Solicitud de vacaciones de diciembre"></label>

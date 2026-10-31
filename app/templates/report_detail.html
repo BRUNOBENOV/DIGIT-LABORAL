@@ -10,8 +10,8 @@
 {% if report.note %}<div class="report-detail-note"><strong>Nota:</strong> {{ report.note }}</div>{% endif %}
 <form method="get" action="/app/reports/{{ report.key }}" id="reportFilters" data-paginated-filters class="report-detail-filters">
 <label>Buscar<input type="search" name="q" value="{{ filters.q or '' }}" placeholder="Nombre, RUC, documento…"></label>
-<label>Empresa<select name="company_id"><option value="">Todas las autorizadas</option>{% for company in companies %}<option value="{{ company.id }}" {{ 'selected' if selected_company == company.id }}>{{ company.legal_name }}</option>{% endfor %}</select></label>
-<label>Funcionario<select name="employee_id"><option value="">Todos</option>{% for employee in employees %}<option value="{{ employee.id }}" {{ 'selected' if selected_employee == employee.id }}>{{ employee.full_name }} · {{ employee.company.legal_name }}</option>{% endfor %}</select></label>
+<label>Empresa<select name="company_id" data-searchable-entity="company" data-entity-scope="all"><option value="">Todas las autorizadas</option>{% for company in companies|entity_choices %}<option value="{{ company.id }}" {{ 'selected' if selected_company == company.id }}>{{ company.legacy_code or (company.company_code if company.company_code is not none else 'Sin código') }} - {{ company.legal_name }}</option>{% endfor %}</select></label>
+<label>Funcionario<select name="employee_id" data-searchable-entity="employee" data-entity-scope="all"><option value="">Todos</option>{% for employee in employees|entity_choices %}<option value="{{ employee.id }}" {{ 'selected' if selected_employee == employee.id }} data-company="{{ employee.company_id }}">{{ employee.employee_code if employee.employee_code is not none else 'Sin legajo' }} - {{ employee.full_name }}</option>{% endfor %}</select></label>
 <label>Estado<input type="text" name="status" value="{{ filters.status or '' }}" placeholder="Ej.: Cerrado"></label>
 <label>Año<input type="number" name="year" min="2000" max="2100" value="{{ filters.year or '' }}" placeholder="Ej.: 2026"></label>
 <label>Periodo<input type="month" name="period" value="{{ filters.period or '' }}"></label>

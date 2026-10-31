@@ -26,18 +26,18 @@
   </div>
   <form method="get" action="/app/calculations/periodos" class="calculation-context-form module-selection-form" data-module-selection>
     <label>Empresa
-      <select name="company_id" id="coverageCompany" data-module-company required>
+      <select name="company_id" id="coverageCompany" data-module-company required data-searchable-entity="company" data-entity-scope="all">
         <option value="">Seleccionar empresa</option>
-        {% for company in companies %}
-        <option value="{{ company.id }}" {{ 'selected' if selected_company == company.id }}>{{ company.legal_name }}</option>
+        {% for company in companies|entity_choices %}
+        <option value="{{ company.id }}" {{ 'selected' if selected_company == company.id }}>{{ company.legacy_code or (company.company_code if company.company_code is not none else 'Sin código') }} - {{ company.legal_name }}</option>
         {% endfor %}
       </select>
     </label>
     <label>Funcionario
-      <select name="employee_id" id="coverageEmployee" data-module-employee required>
+      <select name="employee_id" id="coverageEmployee" data-module-employee required data-searchable-entity="employee" data-entity-scope="all">
         <option value="">Seleccionar funcionario</option>
-        {% for employee in employees %}
-        <option value="{{ employee.id }}" data-company="{{ employee.company_id }}" {{ 'selected' if selected_employee == employee.id }}>{{ employee.full_name }} · {{ employee.company.legal_name }}</option>
+        {% for employee in employees|entity_choices %}
+        <option value="{{ employee.id }}" data-company="{{ employee.company_id }}" {{ 'selected' if selected_employee == employee.id }}>{{ employee.employee_code if employee.employee_code is not none else 'Sin legajo' }} - {{ employee.full_name }}</option>
         {% endfor %}
       </select>
     </label>

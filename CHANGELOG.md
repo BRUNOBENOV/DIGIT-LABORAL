@@ -1,3 +1,12 @@
+## 2.6.57 — Selectores globales con búsqueda asíncrona
+
+- Reutiliza SearchableCompanySelect y SearchableEmployeeSelect en los selectores de Empresas y Funcionarios de los módulos, filtros y modales.
+- Busca en el servidor por código y nombre de empresa; por legajo, nombre y cédula de funcionario. Normaliza acentos y formatos de cédula, prioriza coincidencias exactas y limita las sugerencias a diez.
+- Respeta la empresa elegida, el estado operativo del selector y el alcance de cada usuario y estudio. Las respuestas de datos personales no se almacenan en caché compartida.
+- Añade navegación por teclado, opción activa visible, botón para limpiar, estado vacío y carga con debounce de 300 ms y cancelación de búsquedas anteriores.
+- Conserva los selectores nativos como soporte de IDs, envío de formularios y eventos; obtiene los datos completos solo de la selección confirmada para mantener cálculos y certificados.
+- Limita las opciones iniciales de los formularios y mantiene seleccionados los registros fuera de las primeras coincidencias, incluidos los formularios en edición.
+
 ## 2.6.56 — Paginación completa y búsqueda global en los listados
 
 - Crea un componente Jinja compartido con “Mostrando X a Y de Z registros”, controles de primera/anterior/siguiente/última, números con elipsis, tamaño de página y salto directo.

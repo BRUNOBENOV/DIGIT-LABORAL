@@ -1,0 +1,22 @@
+.app-body .entity-select{display:block;position:relative;min-width:0;width:100%;font:inherit}
+.app-body .entity-select-native{position:absolute!important;left:0!important;top:0!important;width:1px!important;height:1px!important;min-height:0!important;padding:0!important;margin:0!important;border:0!important;clip-path:inset(50%)!important;overflow:hidden!important;opacity:0!important;pointer-events:none!important}
+.app-body .entity-select-control{display:flex;align-items:center;position:relative;min-width:0;width:100%;border:1px solid #CDD9EA;border-radius:9px;background:#fff;box-sizing:border-box}
+.app-body .entity-select-control:focus-within{border-color:#3572B8;box-shadow:0 0 0 3px #3572b81f}
+.app-body .main-content .entity-select input.entity-select-input{display:block;width:100%;min-width:0;min-height:42px;margin:0;padding:10px 78px 10px 12px;border:0;border-radius:9px;background:transparent;color:#172B4B;font:inherit;font-weight:600;box-shadow:none;outline:none;text-overflow:ellipsis;box-sizing:border-box}
+.app-body .entity-select-input::placeholder{color:#65748B;font-weight:500}
+.app-body .entity-select-input[aria-invalid=true]{outline:2px solid #B4232E;outline-offset:1px}
+.app-body .entity-select-control button{position:absolute;top:50%;transform:translateY(-50%);display:inline-flex;align-items:center;justify-content:center;min-height:32px;width:30px;padding:0;border:0;border-radius:6px;background:transparent;color:#536681;cursor:pointer;font:inherit;box-shadow:none;line-height:1}
+.app-body .entity-select-control .entity-select-clear{right:32px;font-size:21px}.app-body .entity-select-control .entity-select-toggle{right:3px;font-size:24px}
+.app-body .entity-select-control button:hover{background:#EDF3FB;color:#05256D}.app-body .entity-select-control button:focus-visible{outline:2px solid #3572B8;outline-offset:1px}
+.app-body .entity-select-control button[hidden]{display:none}.app-body .entity-select.is-disabled .entity-select-control{background:#F2F5F9}.app-body .entity-select.is-disabled input{color:#66758B;cursor:not-allowed}
+.app-body .entity-select-popover{position:fixed;z-index:10050;overflow:auto;overscroll-behavior:contain;padding:5px;border:1px solid #BFCFE5;border-radius:11px;background:#fff;color:#172B4B;box-shadow:0 10px 30px #05256d26;box-sizing:border-box;font-family:inherit;font-size:.82rem;font-weight:500}
+.app-body .entity-select-popover[hidden]{display:none}.app-body .entity-select-option{padding:10px;border:1px solid transparent;border-radius:7px;cursor:pointer;line-height:1.35;overflow-wrap:anywhere}
+.app-body .entity-select-option:hover,.app-body .entity-select-option.is-active{background:#EDF4FF;border-color:#BDD2EF;color:#05256D}
+.app-body .entity-select-option[aria-selected=true]{border-left:3px solid #05256D;background:#E6EEFB}
+.app-body .entity-select-option-title{display:block;font-weight:750;color:#153C75}.app-body .entity-select-option-detail{display:block;margin-top:3px;font-size:.72rem;color:#52647E;font-weight:500}
+.app-body .entity-select-status{margin:4px 1px 0;padding:9px 10px;color:#5B6E88;font-size:.74rem;font-weight:500;line-height:1.4}
+.app-body .entity-select-spinner{position:absolute;right:65px;width:14px;height:14px;border:2px solid #D5E0EF;border-top-color:#05256D;border-radius:50%;animation:digit-entity-spin .7s linear infinite}
+.app-body .entity-select-spinner[hidden]{display:none}@keyframes digit-entity-spin{to{transform:rotate(360deg)}}
+@media(max-width:800px){.app-body .main-content .entity-select input.entity-select-input{min-height:44px}.app-body .entity-select-option{padding:12px 10px}}
+@media(prefers-reduced-motion:reduce){.app-body .entity-select-spinner{animation:none}}
+@media print{.entity-select-popover,.entity-select-clear,.entity-select-toggle,.entity-select-spinner{display:none!important}}

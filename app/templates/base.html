@@ -23,6 +23,7 @@
   <link rel="stylesheet" href="{{ url_for('static', path='ui-system-264.css') }}?v=20261030a">
   <link rel="stylesheet" href="{{ url_for('static', path='sort-controls.css') }}?v={{ app_version }}">
   <link rel="stylesheet" href="{{ url_for('static', path='pagination.css') }}?v={{ app_version }}">
+  <link rel="stylesheet" href="{{ url_for('static', path='entity-selects.css') }}?v={{ app_version }}">
   <link rel="stylesheet" href="{{ url_for('static', path='brand-adjustments-267.css') }}?v=20261028b">
   <link rel="stylesheet" href="{{ url_for('static', path='medical-exams-2618.css') }}?v=20261028a">
   <link rel="stylesheet" href="{{ url_for('static', path='calculation-operations-2619.css') }}?v=20261030b">
@@ -170,13 +171,14 @@
 {% else %}
   {% block public_content %}{% endblock %}
 {% endif %}
+<script src="{{ url_for('static', path='entity-selects.js') }}?v={{ app_version }}"></script>
 <script src="{{ url_for('static', path='app.js') }}?v={{ app_version }}"></script>
 <script src="{{ url_for('static', path='v17.js') }}"></script>
 <script src="{{ url_for('static', path='v20.js') }}"></script>
 <script src="{{ url_for('static', path='v22-dashboard.js') }}"></script>
 <script src="{{ url_for('static', path='v23.js') }}?v=20261023b"></script>
 <script src="{{ url_for('static', path='v24.js') }}"></script>
-<script src="{{ url_for('static', path='labor-suite.js') }}?v=20260929b" defer></script>
+<script src="{{ url_for('static', path='labor-suite.js') }}?v={{ app_version }}" defer></script>
 <script src="{{ url_for('static', path='experience.js') }}?v=20261022b"></script>
 <script>
 (function () {
