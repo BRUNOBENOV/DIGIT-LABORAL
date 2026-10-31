@@ -1,3 +1,11 @@
+## 2.6.56 — Paginación completa y búsqueda global en los listados
+
+- Crea un componente Jinja compartido con “Mostrando X a Y de Z registros”, controles de primera/anterior/siguiente/última, números con elipsis, tamaño de página y salto directo.
+- Pagina Empresas y Liquidaciones en SQL, y permite 25, 50, 100 o 200 registros en Funcionarios e Informes con límites y desempates estables.
+- Aplica los filtros rápidos de Empresas y Funcionarios al conjunto completo antes de paginar; evita buscadores locales sobre páginas parciales.
+- Conserva búsqueda, filtros, dirección, tamaño y página en las URLs; al cambiar criterios reinicia la página y mantiene los encabezados de orden sincronizados.
+- Añade búsqueda automática tras una pausa, restauración del foco e indicador accesible de carga, con controles responsivos y respeto por movimiento reducido.
+
 ## 2.6.55 — Filtros opcionales y etiquetas accesibles al ordenar
 
 - Omite los filtros GET vacíos, incluido el año opcional, al cambiar el orden de los informes.

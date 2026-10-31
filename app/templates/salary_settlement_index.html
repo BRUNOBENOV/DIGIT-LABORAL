@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "components/pagination.html" import render_pagination %}
 {% block title %}Liquidación de Salarios | Informes | DIGIT-LABORAL{% endblock %}
 {% block page_name %}Informes{% endblock %}
 {% block content %}
@@ -39,8 +40,9 @@
   <div class="salary-reports-count"><b>{{ total }}</b><span>registros encontrados</span></div>
 </section>
 <div class="salary-report-notice"><strong>Documento interno de trabajo.</strong> Se presentan los importes guardados por Cálculo sin volver a calcularlos. La plantilla imprimible no es un formulario oficial emitido por MTESS o IPS y no acredita por sí sola el pago realizado.</div>
-<form method="get" action="/app/reports/liquidaciones-salarios" class="salary-report-filters">
-  <label>Buscar<input type="search" name="q" value="{{ filters.q }}" placeholder="Empresa, RUC o funcionario"></label>
+<form method="get" action="/app/reports/liquidaciones-salarios" id="salaryReportFilters" data-paginated-filters class="salary-report-filters">
+<input type="hidden" name="direction" value="{{ filters.direction }}">
+    <label>Buscar<input type="search" name="q" value="{{ filters.q }}" placeholder="Empresa, RUC o funcionario"></label>
   <label>Empresa<select name="company_id"><option value="">Todas las autorizadas</option>{% for company in companies %}<option value="{{ company.id }}" {{ 'selected' if selected_company == company.id }}>{{ company.legal_name }}</option>{% endfor %}</select></label>
   <label>Funcionario<select name="employee_id"><option value="">Todos</option>{% for employee in employees %}<option value="{{ employee.id }}" {{ 'selected' if selected_employee == employee.id }}>{{ employee.full_name }} · {{ employee.company.legal_name }}</option>{% endfor %}</select></label>
   <label>Período<input type="month" name="period" value="{{ filters.period }}"></label>
@@ -49,7 +51,7 @@
   <button class="btn primary" type="submit">Aplicar filtros</button>
 </form>
 <div class="salary-report-summary"><span><strong>{{ total }}</strong> cálculos salariales · página {{ page }} de {{ pages }}</span><span>Origen: módulo Cálculo · registros persistidos</span></div>
-<section class="salary-report-table-shell"><div class="salary-report-scroll"><table class="salary-report-table" data-sort-selector="salaryReportSort">
+<section class="salary-report-table-shell"><div class="salary-report-scroll"><table class="salary-report-table" id="salaryReportTable" data-server-paginated data-sort-selector="salaryReportSort">
 <thead><tr><th data-sort-key="date">Registro / fecha</th><th data-sort-key="company">Empresa</th><th data-sort-key="employee">Funcionario</th><th data-sort-key="period">Período</th><th data-sort-key="status">Estado</th><th data-sort-key="amount">Neto guardado</th><th>Acciones</th></tr></thead>
 <tbody>
 {% for item in items %}
@@ -64,10 +66,7 @@
 </tr>
 {% else %}<tr><td colspan="7" class="salary-report-empty">No se encontraron cálculos de salario guardados con estos filtros. Realizá y guardá un cálculo en el módulo Cálculo; este informe no inventa importes ni genera registros de prueba.</td></tr>{% endfor %}
 </tbody></table></div>
-<div class="salary-report-pagination"><span>Mostrando {{ items|length }} de {{ total }} registros</span><nav aria-label="Paginación de liquidaciones">
-{% if page > 1 %}<a href="/app/reports/liquidaciones-salarios?sort={{ filters.sort|default("period") }}&direction={{ filters.direction|default("asc") }}&page=1{% if selected_company %}&company_id={{ selected_company }}{% endif %}{% if selected_employee %}&employee_id={{ selected_employee }}{% endif %}{% if filters.period %}&period={{ filters.period }}{% endif %}{% if filters.status %}&status={{ filters.status|urlencode }}{% endif %}{% if filters.q %}&q={{ filters.q|urlencode }}{% endif %}">« Primera</a><a href="/app/reports/liquidaciones-salarios?sort={{ filters.sort|default("period") }}&direction={{ filters.direction|default("asc") }}&page={{ page-1 }}{% if selected_company %}&company_id={{ selected_company }}{% endif %}{% if selected_employee %}&employee_id={{ selected_employee }}{% endif %}{% if filters.period %}&period={{ filters.period }}{% endif %}{% if filters.status %}&status={{ filters.status|urlencode }}{% endif %}{% if filters.q %}&q={{ filters.q|urlencode }}{% endif %}">‹ Anterior</a>{% else %}<span class="disabled">« Primera</span><span class="disabled">‹ Anterior</span>{% endif %}
-<span class="current">{{ page }}</span>
-{% if page < pages %}<a href="/app/reports/liquidaciones-salarios?sort={{ filters.sort|default("period") }}&direction={{ filters.direction|default("asc") }}&page={{ page+1 }}{% if selected_company %}&company_id={{ selected_company }}{% endif %}{% if selected_employee %}&employee_id={{ selected_employee }}{% endif %}{% if filters.period %}&period={{ filters.period }}{% endif %}{% if filters.status %}&status={{ filters.status|urlencode }}{% endif %}{% if filters.q %}&q={{ filters.q|urlencode }}{% endif %}">Siguiente ›</a><a href="/app/reports/liquidaciones-salarios?sort={{ filters.sort|default("period") }}&direction={{ filters.direction|default("asc") }}&page={{ pages }}{% if selected_company %}&company_id={{ selected_company }}{% endif %}{% if selected_employee %}&employee_id={{ selected_employee }}{% endif %}{% if filters.period %}&period={{ filters.period }}{% endif %}{% if filters.status %}&status={{ filters.status|urlencode }}{% endif %}{% if filters.q %}&q={{ filters.q|urlencode }}{% endif %}">Última »</a>{% else %}<span class="disabled">Siguiente ›</span><span class="disabled">Última »</span>{% endif %}
-</nav></div></section>
+</section>
+{{ render_pagination(pager, 'salaryReportFilters', 'salaryReportTable', 'liquidaciones') }}
 <p class="salary-report-help">La lista está paginada por base de datos. Las versiones anteriores se conservan; una nueva revisión genera otro registro, no sobrescribe el cálculo que se emitió previamente.</p>
 {% endblock %}

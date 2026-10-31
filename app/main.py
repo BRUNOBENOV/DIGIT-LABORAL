@@ -40,6 +40,7 @@ from .auth import hash_password, verify_password
 from .labor_calculator import amount as round_gs, anniversary as labor_anniversary
 from .labor_wage_rules import minimum_wage_for_period
 from .salary_history import salary_for_period
+from .pagination import Pagination, normalize_page_size
 from .config import settings
 from .database import Base, SessionLocal, apply_session_tenant_context, engine, postgres_rls_role_issues
 from .document_export import (
@@ -1871,6 +1872,11 @@ def companies_page(
     city: str = "",
     department: str = "",
     hide_archived: bool = False,
+    company_quick: str = "all",
+    company_sort: str = "name",
+    direction: str = "asc",
+    page: int = 1,
+    page_size: int = 100,
     user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ):
@@ -1896,11 +1902,37 @@ def companies_page(
         query = query.where(Company.id.in_(
             select(CompanyComplianceProfile.company_id).where(CompanyComplianceProfile.department == department.strip())
         ))
-    companies = list(db.scalars(query.order_by(Company.legal_name)))
+    if company_quick not in {"all", "active", "archived", "no-logo"}:
+        company_quick = "all"
+    if company_quick == "active":
+        query = query.where(Company.status == "Activa")
+    elif company_quick == "archived":
+        query = query.where(Company.status == "Archivada")
+    elif company_quick == "no-logo":
+        query = query.where(~Company.branding.has(CompanyBranding.logo_bytes != b""))
+    employee_count = select(func.count(Employee.id)).where(Employee.company_id == Company.id).correlate(Company).scalar_subquery()
+    sort_columns = {"name": func.lower(Company.legal_name), "code": Company.company_code, "employees": employee_count}
+    if company_sort not in sort_columns:
+        company_sort = "name"
+    direction = "desc" if direction == "desc" else "asc"
+    total = db.scalar(select(func.count()).select_from(query.subquery())) or 0
+    pager = Pagination("/app/companies", total, page, page_size, {
+        "q": q, "city": city, "department": department, "hide_archived": hide_archived,
+        "company_quick": company_quick, "company_sort": company_sort, "direction": direction,
+    })
+    ordered = sort_columns[company_sort].desc() if direction == "desc" else sort_columns[company_sort].asc()
+    companies = list(db.scalars(query.options(selectinload(Company.branding)).order_by(
+        ordered.nulls_last(), Company.id.asc()
+    ).limit(pager.page_size).offset(pager.offset)))
+    employee_counts = dict(db.execute(select(Employee.company_id, func.count(Employee.id)).where(
+        Employee.company_id.in_([company.id for company in companies])
+    ).group_by(Employee.company_id)).all()) if companies else {}
     return render(
         request, "companies.html", db, user, companies=companies, q=q, selected_city=city,
         selected_department=department, hide_archived=hide_archived,
         departments=PARAGUAY_DEPARTMENTS, cities=PARAGUAY_CITIES,
+        pager=pager, employee_counts=employee_counts, company_quick=company_quick,
+        selected_sort=company_sort, sort_direction=direction,
     )
 
 
@@ -3305,6 +3337,8 @@ def employees_page(
     status_filter: str = "",
     show_archived: bool = False,
     page: int = 1,
+    page_size: int = 100,
+    employee_quick: str = "all",
     employee_sort: str = "name",
     direction: str = "asc",
     user: User = Depends(require_user),
@@ -3330,6 +3364,14 @@ def employees_page(
         query = query.where(Employee.status == status_filter)
     if section_id:
         query = query.where(Employee.section_id == section_id)
+    if employee_quick not in {"all", "active", "ips", "no-section"}:
+        employee_quick = "all"
+    if employee_quick == "active":
+        query = query.where(Employee.status == "Activo")
+    elif employee_quick == "ips":
+        query = query.where(Employee.ips_contributor.is_(True))
+    elif employee_quick == "no-section":
+        query = query.where(Employee.section_id.is_(None))
     if q.strip():
         term = f"%{q.strip()}%"
         query = query.where(or_(
@@ -3341,10 +3383,7 @@ def employees_page(
     from .employee_exit_routes import sync_due_employee_exits
     if sync_due_employee_exits(db):
         db.commit()
-    page_size = 100
     total_count = db.scalar(select(func.count()).select_from(query.subquery())) or 0
-    total_pages = max(1, math.ceil(total_count / page_size))
-    page = max(1, min(page, total_pages))
     sort_columns = {
         "name": func.lower(Employee.full_name), "code": Employee.employee_code,
         "company": func.lower(Company.legal_name), "section": func.lower(CompanySection.name),
@@ -3355,6 +3394,12 @@ def employees_page(
     if employee_sort not in sort_columns:
         employee_sort = "name"
     direction = "desc" if direction == "desc" else "asc"
+    pager = Pagination("/app/employees", total_count, page, page_size, {
+        "q": q, "company_id": company_id, "section_id": section_id, "status_filter": status_filter,
+        "show_archived": show_archived, "employee_quick": employee_quick,
+        "employee_sort": employee_sort, "direction": direction,
+    })
+    page, page_size, total_pages = pager.page, pager.page_size, pager.pages
     if employee_sort == "section":
         query = query.outerjoin(CompanySection, Employee.section_id == CompanySection.id)
     sort_column = sort_columns[employee_sort]
@@ -3401,8 +3446,7 @@ def employees_page(
         selected_employee=active_employee_id, minimum_salary=minimum_salary,
         total_count=total_count, current_page=page, total_pages=total_pages,
         selected_sort=employee_sort, sort_direction=direction,
-        previous_page_url=str(request.url.include_query_params(page=page - 1)) if page > 1 else None,
-        next_page_url=str(request.url.include_query_params(page=page + 1)) if page < total_pages else None,
+        pager=pager, employee_quick=employee_quick,
     )
 
 
@@ -7053,6 +7097,7 @@ def salary_settlements_report_page(
     status: str = "",
     q: str = "",
     page: int = 1,
+    page_size: int = 100,
     sort: str = "period",
     direction: str = "asc",
     user: User = Depends(require_user),
@@ -7072,8 +7117,6 @@ def salary_settlements_report_page(
             raise HTTPException(422, "Seleccioná un mes válido.") from exc
     status = clean_text(status, max_length=30)
     q = clean_text(q, max_length=120)
-    page_size = 30
-    page = max(1, min(int(page or 1), 100000))
 
     companies = list(
         db.scalars(select(Company).where(Company.id.in_(allowed_ids)).order_by(Company.legal_name))
@@ -7121,12 +7164,15 @@ def salary_settlements_report_page(
         .where(*conditions)
     )
     total = int(db.scalar(count_query) or 0)
-    pages = max(1, (total + page_size - 1) // page_size)
-    page = min(page, pages)
     sort_columns = {"date": CalculationRecord.created_at, "company": func.lower(Company.legal_name), "employee": func.lower(Employee.full_name), "period": CalculationRecord.reference_period, "status": CalculationRecord.status, "amount": CalculationRecord.amount}
     if sort not in sort_columns:
         sort = "period"
     direction = "desc" if direction == "desc" else "asc"
+    pager = Pagination("/app/reports/liquidaciones-salarios", total, page, page_size, {
+        "company_id": company_id, "employee_id": employee_id, "q": q, "period": period,
+        "status": status, "sort": sort, "direction": direction,
+    })
+    page, page_size, pages = pager.page, pager.page_size, pager.pages
     ordered = sort_columns[sort].desc() if direction == "desc" else sort_columns[sort].asc()
     items = list(db.scalars(
         query.order_by(ordered.nulls_last(), CalculationRecord.id.asc()).limit(page_size).offset((page - 1) * page_size)
@@ -7136,6 +7182,7 @@ def salary_settlements_report_page(
         companies=companies, employees=employees, items=items, total=total, page=page, pages=pages,
         page_size=page_size, selected_company=company_id, selected_employee=employee_id,
         filters={"period": period, "status": status, "q": q, "sort": sort, "direction": direction},
+        pager=pager,
     )
 
 
@@ -7424,6 +7471,7 @@ def report_detail_page(
 
     spec, allowed_company_ids = _validate_report_scope(report_key, company_id, employee_id, user, db)
     sort = sort or ("date" if spec.variant == "admission_date" else report_sort_options(spec)[0][0])
+    page_size = normalize_page_size(page_size, default=25)
     if year is not None and (year < 1900 or year > 2100):
         raise HTTPException(400, "El año debe estar entre 1900 y 2100.")
     result = fetch_report(
@@ -7436,7 +7484,6 @@ def report_detail_page(
     employees = list(db.scalars(employee_query.limit(1000)))
     params = _report_query_parameters(q, company_id, employee_id, status, year, period, 1, page_size, sort)
     export_base = f"/app/reports/{report_key}/export?{urlencode(params)}"
-    pagination_base = f"/app/reports/{report_key}?{urlencode(params)}"
     return render(
         request, "report_detail.html", db, user,
         report=spec, companies=companies, employees=employees,
@@ -7444,7 +7491,11 @@ def report_detail_page(
         filters={"q": q, "status": status, "year": year, "period": period, "sort": sort},
         sort_options=report_sort_options(spec),
         pagination=result, columns=result["columns"], rows=result["records"],
-        export_base=export_base, pagination_base=pagination_base,
+        export_base=export_base,
+        pager=Pagination(f"/app/reports/{report_key}", result["total"], result["page"], result["page_size"], {
+            "company_id": company_id, "employee_id": employee_id, "q": q, "status": status,
+            "year": year, "period": period, "sort": sort,
+        }),
     )
 
 
@@ -7540,6 +7591,12 @@ def payrolls_page(
     request: Request,
     company_id: OptionalQueryId = None,
     employee_id: OptionalQueryId = None,
+    q: str = "",
+    status: str = "",
+    sort: str = "period",
+    direction: str = "asc",
+    page: int = 1,
+    page_size: int = 100,
     user: User = Depends(require_roles("administrador", "contador", "auxiliar", "empresa")),
     db: Session = Depends(get_db),
 ):
@@ -7547,18 +7604,45 @@ def payrolls_page(
     selected_company_id, selected_employee_id = default_labor_context(
         request, db, user, company_ids, company_id, employee_id
     )
-    payroll_query = select(Payroll).where(Payroll.company_id.in_(company_ids)) if company_ids else select(Payroll).where(False)
+    payroll_query = select(Payroll).join(Company).where(Payroll.company_id.in_(company_ids)) if company_ids else select(Payroll).join(Company).where(False)
     if selected_company_id:
         payroll_query = payroll_query.where(Payroll.company_id == selected_company_id)
     if selected_employee_id:
-        payroll_query = payroll_query.join(PayrollLine).where(PayrollLine.employee_id == selected_employee_id)
-    payrolls = list(db.scalars(payroll_query.order_by(Payroll.period.desc(), Payroll.created_at.desc()).distinct()))
+        payroll_query = payroll_query.where(Payroll.lines.any(PayrollLine.employee_id == selected_employee_id))
+    if status.strip():
+        payroll_query = payroll_query.where(Payroll.status == status.strip())
+    if q.strip():
+        term = f"%{q.strip()}%"
+        payroll_query = payroll_query.where(or_(
+            Company.legal_name.ilike(term), Company.ruc.ilike(term), Payroll.period.ilike(term),
+            Payroll.notes.ilike(term), Payroll.status.ilike(term),
+            Payroll.lines.any(PayrollLine.employee.has(or_(Employee.full_name.ilike(term), Employee.document_number.ilike(term)))),
+        ))
+    line_count = select(func.count(PayrollLine.id)).where(PayrollLine.payroll_id == Payroll.id).correlate(Payroll).scalar_subquery()
+    sort_columns = {"period": Payroll.period, "company": func.lower(Company.legal_name), "employees": line_count,
+                    "gross": Payroll.total_gross, "ips": Payroll.total_ips_employee, "net": Payroll.total_net, "status": Payroll.status}
+    if sort not in sort_columns:
+        sort = "period"
+    direction = "desc" if direction == "desc" else "asc"
+    total = db.scalar(select(func.count()).select_from(payroll_query.subquery())) or 0
+    pager = Pagination("/app/payrolls", total, page, page_size, {
+        "company_id": selected_company_id, "employee_id": selected_employee_id, "q": q,
+        "status": status, "sort": sort, "direction": direction,
+    })
+    ordered = sort_columns[sort].desc() if direction == "desc" else sort_columns[sort].asc()
+    payrolls = list(db.scalars(payroll_query.options(selectinload(Payroll.company)).order_by(
+        ordered.nulls_last(), Payroll.id.asc()
+    ).limit(pager.page_size).offset(pager.offset)))
+    line_counts = dict(db.execute(select(PayrollLine.payroll_id, func.count(PayrollLine.id)).where(
+        PayrollLine.payroll_id.in_([payroll.id for payroll in payrolls])
+    ).group_by(PayrollLine.payroll_id)).all()) if payrolls else {}
     companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids), Company.status == "Activa").order_by(Company.legal_name))) if company_ids else []
     filter_companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name))) if company_ids else []
     filter_employees = list(db.scalars(select(Employee).where(Employee.company_id.in_(company_ids)).order_by(Employee.full_name))) if company_ids else []
     return render(request, "payrolls.html", db, user, payrolls=payrolls, companies=companies,
                   filter_companies=filter_companies, filter_employees=filter_employees,
-                  selected_company_id=selected_company_id, selected_employee_id=selected_employee_id)
+                  selected_company_id=selected_company_id, selected_employee_id=selected_employee_id,
+                  pager=pager, line_counts=line_counts, q=q, selected_status=status, selected_sort=sort, sort_direction=direction)
 
 
 @app.post("/app/payrolls")

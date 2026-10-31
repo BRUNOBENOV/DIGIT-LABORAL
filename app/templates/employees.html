@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "components/pagination.html" import render_pagination %}
 {% block title %}Funcionarios | Digit Laboral{% endblock %}
 {% block page_name %}Funcionarios{% endblock %}
 {% block content %}
@@ -54,8 +55,10 @@
 {% if request.query_params.get('import_error') %}<div class="alert danger" role="alert">{{ request.query_params.get('import_error') }}</div>{% endif %}
 {% if request.query_params.get('imported') is not none %}<div class="alert success" role="status">Importación finalizada: {{ request.query_params.get('imported') }} creados, {{ request.query_params.get('updated') or 0 }} actualizados y {{ request.query_params.get('skipped') or 0 }} omitidos.</div>{% endif %}
 {% if request.query_params.get('salary_changes')|int > 0 %}<div class="alert warning">{{ request.query_params.get('salary_changes') }} {{ 'cambio salarial no se aplicó' if request.query_params.get('salary_changes')|int == 1 else 'cambios salariales no se aplicaron' }}. El salario vigente se conserva y debe tramitarse mediante <a href="/app/requests">una solicitud salarial</a>.</div>{% endif %}
-<form method="get" id="employeeFilters" class="employee-maintenance-filters" role="search" aria-label="Filtros de funcionarios">
-  <label class="search-field">Legajo, nombre, cédula o cargo<input name="q" value="{{ q }}" placeholder="Ej.: 1024, Juan Pérez o 4.123.456" autocomplete="off"></label>
+<form method="get" action="/app/employees" data-paginated-filters id="employeeFilters" class="employee-maintenance-filters" role="search" aria-label="Filtros de funcionarios">
+  <input type="hidden" name="direction" value="{{ sort_direction }}">
+  <input type="hidden" name="employee_quick" value="{{ employee_quick }}">
+  <label class="search-field">Legajo, nombre, cédula o cargo<input type="search" name="q" value="{{ q }}" placeholder="Ej.: 1024, Juan Pérez o 4.123.456" autocomplete="off"></label>
   <label>Empresa<select name="company_id"><option value="">Todas las empresas</option>{% for company in companies %}<option value="{{ company.id }}" {{ 'selected' if selected_company == company.id }}>{{ company.company_code if company.company_code is not none else '—' }} · {{ company.legal_name }}</option>{% endfor %}</select></label>
   <label>Sección<select name="section_id"><option value="">Todas las secciones</option>{% for section in sections %}<option value="{{ section.id }}" {{ 'selected' if selected_section == section.id }}>{{ section.name }}{% if not section.active %} · Inactiva{% endif %}</option>{% endfor %}</select></label>
   <label>Estado<select name="status_filter"><option value="">Todos los estados</option>{% for state in ['Activo','Inactivo','Desvinculado','Archivado'] %}<option value="{{ state }}" {{ 'selected' if status_filter == state }}>{{ state }}</option>{% endfor %}</select></label>
@@ -70,10 +73,9 @@
 <div class="plan-counter"><b>{{ total_count }}</b><span>funcionarios en el resultado · <b id="employeeResultCount">{{ employees|length }}</b> en esta página</span></div>
 <div class="maintenance-list-toolbar" aria-label="Herramientas del directorio de funcionarios">
   <div class="maintenance-filter-chips" aria-label="Filtros rápidos de funcionarios">
-    <button class="maintenance-filter-chip is-active" type="button" data-employee-filter="all" aria-pressed="true">Todos</button>
-    <button class="maintenance-filter-chip" type="button" data-employee-filter="active" aria-pressed="false">Activos</button>
-    <button class="maintenance-filter-chip" type="button" data-employee-filter="ips" aria-pressed="false">Con IPS</button>
-    <button class="maintenance-filter-chip" type="button" data-employee-filter="no-section" aria-pressed="false">Sin sección</button>
+    {% for key, label in [('all','Todos'),('active','Activos'),('ips','Con IPS'),('no-section','Sin sección')] %}
+    <a class="maintenance-filter-chip {{ 'is-active' if employee_quick == key }}" href="{{ pager.url(page=1, employee_quick=key) }}" data-employee-filter="{{ key }}" data-list-filter="employee_quick" data-filter-form="employeeFilters" data-filter-value="{{ key }}" {{ 'aria-current=true' if employee_quick == key }}>{{ label }}</a>
+    {% endfor %}
   </div>
   <label class="maintenance-sort-label" for="employeeSort">Ordenar por
     <select id="employeeSort" name="employee_sort" form="employeeFilters" data-sort-control data-sort-server="true" data-sort-direction="{{ sort_direction }}">
@@ -84,7 +86,7 @@
   </label>
   <p class="maintenance-live-count" id="employeeVisibleCount" aria-live="polite">{{ employees|length }} funcionarios visibles</p>
 </div>
-<section class="panel table-panel maintenance-table-panel"><div class="table-wrap"><table id="employeeTable" data-sort-selector="employeeSort">
+<section class="panel table-panel maintenance-table-panel"><div class="table-wrap"><table id="employeeTable" data-server-paginated data-sort-selector="employeeSort">
   <thead><tr><th data-sort-key="name">Legajo / funcionario</th><th data-sort-key="company">Empresa</th><th data-sort-key="document">Cédula</th><th data-sort-key="section">Sección</th><th data-sort-key="position">Cargo</th><th data-sort-key="admission">Ingreso</th><th data-sort-key="salary">Salario base</th><th data-sort-key="ips">IPS</th><th data-sort-key="status">Estado</th><th></th></tr></thead>
   <tbody>
   {% for employee in employees %}
@@ -129,13 +131,7 @@
     <tr id="employeeClientEmpty" hidden><td colspan="10" class="empty-state">No hay funcionarios que coincidan con la búsqueda o el filtro rápido.</td></tr>
   </tbody>
 </table></div></section>
-{% if total_pages > 1 %}
-<nav class="form-actions" aria-label="Páginas de funcionarios" style="margin:16px 0">
-  {% if previous_page_url %}<a class="btn ghost" href="{{ previous_page_url }}">← Anterior</a>{% endif %}
-  <span>Página {{ current_page }} de {{ total_pages }} · el orden abarca todos los resultados; los filtros rápidos se aplican a esta página.</span>
-  {% if next_page_url %}<a class="btn ghost" href="{{ next_page_url }}">Siguiente →</a>{% endif %}
-</nav>
-{% endif %}
+{{ render_pagination(pager, 'employeeFilters', 'employeeTable', 'funcionarios') }}
 
 {% if user.role in ['administrador','contador'] %}
 <div class="modal" id="registerExitModal" aria-hidden="true"><div class="modal-backdrop" data-modal-close></div>

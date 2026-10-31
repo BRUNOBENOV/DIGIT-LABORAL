@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "components/pagination.html" import render_pagination %}
 {% block title %}Empresas | Digit Laboral{% endblock %}
 {% block page_name %}Empresas{% endblock %}
 {% block content %}
@@ -32,37 +33,36 @@
 {% if request.query_params.get('duplicate') %}<div class="alert danger" role="alert">Ya existe una empresa con ese RUC dentro del estudio.</div>{% endif %}
 {% if request.query_params.get('code_duplicate') %}<div class="alert danger" role="alert">Ese Código Empresa ya existe en el estudio. Ingresá otro código.</div>{% endif %}
 {% if request.query_params.get('archived') %}<div class="alert success" role="status">La empresa fue archivada. Se conserva su historial laboral y puede volver a mostrarse mediante el filtro de archivadas.</div>{% endif %}
-<form method="get" class="company-maintenance-filters" role="search" aria-label="Filtros de empresas">
-  <label class="search-field">Código, nombre o RUC<input name="q" value="{{ q }}" placeholder="Ej.: 1024, Comercial Norte o RUC" autocomplete="off"></label>
+<form method="get" action="/app/companies" id="companyFilters" data-paginated-filters class="company-maintenance-filters" role="search" aria-label="Filtros de empresas">
+  <input type="hidden" name="direction" value="{{ sort_direction }}">
+  <input type="hidden" name="company_quick" value="{{ company_quick }}">
+  <label class="search-field">Código, nombre o RUC<input type="search" name="q" value="{{ q }}" placeholder="Ej.: 1024, Comercial Norte o RUC" autocomplete="off"></label>
   <label>Ciudad<select name="city"><option value="">Todas las ciudades</option>{% for city_option in cities %}<option value="{{ city_option.name }}" {{ 'selected' if selected_city == city_option.name }}>{{ city_option.name }} · {{ city_option.department }}</option>{% endfor %}</select></label>
   <label>Departamento<select name="department"><option value="">Todos los departamentos</option>{% for department_option in departments %}<option value="{{ department_option }}" {{ 'selected' if selected_department == department_option }}>{{ department_option }}</option>{% endfor %}</select></label>
   <label class="filter-check"><input type="checkbox" name="hide_archived" value="true" {{ 'checked' if hide_archived }}> Ocultar archivadas</label>
   <button class="btn primary" type="submit">Filtrar</button>
 </form>
-<div class="plan-counter"><b id="companyVisibleCount">{{ companies|length }}</b><span>empresas visibles · límite del estudio: {{ studio.company_limit }}</span></div>
+<div class="plan-counter"><b>{{ pager.total }}</b><span>empresas en el resultado · <b id="companyVisibleCount">{{ companies|length }}</b> en esta página · límite del estudio: {{ studio.company_limit }}</span></div>
 <div class="maintenance-list-toolbar" aria-label="Herramientas del directorio de empresas">
   <div class="maintenance-filter-chips" aria-label="Filtros rápidos de empresas">
-    <button class="maintenance-filter-chip is-active" type="button" data-company-filter="all" aria-pressed="true">Todas</button>
-    <button class="maintenance-filter-chip" type="button" data-company-filter="active" aria-pressed="false">Activas</button>
-    <button class="maintenance-filter-chip" type="button" data-company-filter="archived" aria-pressed="false">Archivadas</button>
-    <button class="maintenance-filter-chip" type="button" data-company-filter="no-logo" aria-pressed="false">Sin logo</button>
+    {% for key, label in [('all','Todas'),('active','Activas'),('archived','Archivadas'),('no-logo','Sin logo')] %}
+    <a class="maintenance-filter-chip {{ 'is-active' if company_quick == key }}" href="{{ pager.url(page=1, company_quick=key) }}" data-company-filter="{{ key }}" data-list-filter="company_quick" data-filter-form="companyFilters" data-filter-value="{{ key }}" {{ 'aria-current=true' if company_quick == key }}>{{ label }}</a>
+    {% endfor %}
   </div>
   <label class="maintenance-sort-label" for="companySort">Ordenar por
-    <select id="companySort" name="company_sort" data-sort-control>
-      <option value="name">Nombre</option>
-      <option value="code">Código de empresa</option>
-      <option value="employees">Cantidad de funcionarios</option>
+    <select id="companySort" name="company_sort" form="companyFilters" data-sort-control data-sort-server="true" data-sort-direction="{{ sort_direction }}">
+      {% for key, label in [('name','Nombre'),('code','Código de empresa'),('employees','Cantidad de funcionarios')] %}<option value="{{ key }}" {{ 'selected' if selected_sort == key }}>{{ label }}</option>{% endfor %}
     </select>
   </label>
 </div>
-<section class="company-card-grid" id="companyDirectoryGrid" data-company-directory aria-label="Listado de empresas">
+<section class="company-card-grid" id="companyDirectoryGrid" data-company-directory data-server-paginated aria-label="Listado de empresas">
 {% for company in companies %}
-  <article class="company-card" data-company-card data-company-name="{{ company.legal_name|lower }}" data-company-code="{{ company.company_code if company.company_code is not none else 0 }}" data-company-status="{{ company.status|lower }}" data-company-logo="{{ 'yes' if company.branding and company.branding.logo_bytes else 'no' }}" data-company-employees="{{ company.employees|length }}">
+  <article class="company-card" data-company-card data-company-name="{{ company.legal_name|lower }}" data-company-code="{{ company.company_code if company.company_code is not none else 0 }}" data-company-status="{{ company.status|lower }}" data-company-logo="{{ 'yes' if company.branding and company.branding.logo_bytes else 'no' }}" data-company-employees="{{ employee_counts.get(company.id, 0) }}">
     <a class="company-card-open" href="/app/companies/{{ company.id }}">
       <div class="company-card-top">{% if company.branding and company.branding.logo_bytes %}<span class="company-logo-card-frame"><img class="company-logo-card" src="/app/companies/{{ company.id }}/logo" alt="Logo de {{ company.legal_name }}"></span>{% else %}<span class="company-avatar large">{{ company.legal_name[:2]|upper }}</span>{% endif %}<span class="status-pill {{ company.status|lower }}">{{ company.status }}</span></div>
       <div class="company-code-pill">Código {{ company.legacy_code or (company.company_code if company.company_code is not none else 'Sin asignar') }}</div>
       <h3>{{ company.legal_name }}</h3><p>{{ company.trade_name or company.owner_name or 'Sin nombre comercial ni propietario informado' }}</p>
-      <dl><div><dt>RUC</dt><dd>{{ company.ruc or 'No validado' }}{% if not company.ruc and company.legacy_ruc %}<small>Dato antiguo: {{ company.legacy_ruc }}</small>{% endif %}</dd></div><div><dt>Ciudad</dt><dd>{{ company.city }}</dd></div><div><dt>Contacto</dt><dd>{{ company.contact_name or company.responsible_name or 'Sin contacto' }}</dd></div><div><dt>Funcionarios</dt><dd>{{ company.employees|length }}</dd></div></dl>
+      <dl><div><dt>RUC</dt><dd>{{ company.ruc or 'No validado' }}{% if not company.ruc and company.legacy_ruc %}<small>Dato antiguo: {{ company.legacy_ruc }}</small>{% endif %}</dd></div><div><dt>Ciudad</dt><dd>{{ company.city }}</dd></div><div><dt>Contacto</dt><dd>{{ company.contact_name or company.responsible_name or 'Sin contacto' }}</dd></div><div><dt>Funcionarios</dt><dd>{{ employee_counts.get(company.id, 0) }}</dd></div></dl>
       <div class="company-card-foot"><span class="brand-state {{ 'ready' if company.branding and company.branding.logo_bytes else 'pending' }}">{{ 'Logo cargado' if company.branding and company.branding.logo_bytes else ('Falta logo · solicitar actualización' if user.role == 'abogado' else 'Falta logo · abrí para subirlo') }}</span><span class="card-link">Abrir expediente →</span></div>
     </a>
     {% if user.role in ['administrador','contador'] %}
@@ -81,6 +81,7 @@
 {% endfor %}
   <p class="empty-state" id="companyQuickEmpty" hidden>No hay empresas que coincidan con la búsqueda o el filtro rápido.</p>
 </section>
+{{ render_pagination(pager, 'companyFilters', 'companyDirectoryGrid', 'empresas') }}
 
 {% if user.role in ['administrador','contador'] %}
 <div class="modal" id="companyModal" aria-hidden="true"><div class="modal-backdrop" data-modal-close></div><section class="modal-card"><button class="modal-x" type="button" data-modal-close aria-label="Cerrar formulario">×</button><span class="eyebrow" id="companyFormEyebrow">MANTENIMIENTOS · EMPRESAS</span><h2 id="companyFormTitle">Registrar empresa</h2><p class="modal-intro">Completá los datos principales de la ficha. El código permite recuperar la empresa sin volver a cargar la información.</p>
