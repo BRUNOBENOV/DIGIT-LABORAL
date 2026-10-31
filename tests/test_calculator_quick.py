@@ -110,3 +110,15 @@ def test_calculated_document_and_manual_editors_remain_available_without_javascr
     assert document.select_one("#labor-result") is not None
     assert document.select_one('[formaction="/herramientas/exportar/pdf"]') is not None
     assert soup.select_one("#labor-form [type=submit]") is not None
+
+
+def test_empty_vacation_fields_remain_distinct_from_an_explicit_zero(web_case):
+    client, *_ = web_case
+    values = settlement(csrf_token=token(client))
+    for entered, expected in [("", "Sin días informados"), ("0", "Gs. 0")]:
+        values["pending_days"] = entered
+        response = client.post("/herramientas/calcular", data=values)
+        assert response.status_code == 200
+        soup = BeautifulSoup(response.text, "html.parser")
+        assert soup.select_one('[data-concept-amount="vacations"]').text == expected
+        assert soup.select_one('[data-summary-value="vacations"]').text == ("Revisar días" if not entered else "Gs. 0")

@@ -28,6 +28,7 @@
 {% endif %}
 {% endmacro %}
 {% macro workbench() %}
+{% set vacation_days_entered = (values.get('pending_days','')|string|trim) or (values.get('double_days','')|string|trim) or (values.get('proportional_days','')|string|trim) %}
 <div class="dl dl-workbench {{ 'dl-quick' if quick_steps else '' }} {{ 'dl-wrap' if not private else '' }}">
 <header class="dl-workbench-head"><p class="dl-eyebrow">{{ 'CENTRO PROFESIONAL' if private else 'CALCULADORAS LABORALES · PARAGUAY' }}</p><h1>{{ titles[kind] if private else 'Calculá. Revisá. Emití.' }}</h1><p>{% if private and kind == 'salary' %}Liquidá el período con desglose de sueldo, horas extras, comisiones, bonificaciones, aportes y descuentos. Revisá la base y el resultado antes de aprobar o imprimir.{% elif private and kind == 'settlement' %}Revisá salarios, conceptos de egreso y bases aplicables en un módulo dedicado, con desglose y descarga del resultado.{% elif private %}Completá los datos de esta liquidación. La revisión y el desglose permanecen dentro del módulo seleccionado.{% else %}Completá los datos y obtené un desglose listo para descargar. Los campos con * son obligatorios.{% endif %}</p></header>
 {% if private %}<div class="dl-output-actions"><a class="dl-textlink" href="/app/calculations">Volver al módulo Cálculo</a></div>{% else %}<div class="dl-output-actions"><a class="dl-textlink" href="/empezar">Guía para empezar</a><a class="dl-textlink" href="/herramientas/comparar?tipo={{ kind }}">Comparar dos escenarios</a></div>{% endif %}

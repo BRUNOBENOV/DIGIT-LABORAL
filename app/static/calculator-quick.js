@@ -7,6 +7,7 @@
   const total = panel.querySelector("[data-summary-total]"), review = panel.querySelector("[data-review-field]");
   const warnings = panel.querySelector("[data-summary-warnings]"), warningList = panel.querySelector("[data-summary-warning-list]");
   const money = value => "Gs. " + new Intl.NumberFormat("es-PY", {maximumFractionDigits:0}).format(value);
+  const vacationDaysEntered = () => ["pending_days","double_days","proportional_days"].some(name => String(form.elements.namedItem(name)?.value || "").trim() !== "");
   let timer, controller, sequence = 0, pendingField = "", printWasOpen = false;
   const reveal = input => {
     for (let parent = input?.parentElement; parent && parent !== root; parent = parent.parentElement) {
@@ -56,9 +57,12 @@
       }
       panel.querySelectorAll("[data-summary-value]").forEach(output => {
         const key = output.dataset.summaryValue;
-        output.textContent = money(key === "net" ? data.net : data.values[key]);
+        output.textContent = key === "vacations" && !vacationDaysEntered() ? "Revisar días" : money(key === "net" ? data.net : data.values[key]);
       });
-      root.querySelectorAll("[data-concept-amount]").forEach(output => { output.textContent = money(data.values[output.dataset.conceptAmount]); });
+      root.querySelectorAll("[data-concept-amount]").forEach(output => {
+        const key = output.dataset.conceptAmount;
+        output.textContent = key === "vacations" && !vacationDaysEntered() ? "Sin días informados" : money(data.values[key]);
+      });
       panel.querySelector("[data-summary-label]").textContent = data.label;
       total.classList.toggle("is-partial", data.partial);
       badge.textContent = data.partial ? "Parcial" : "Vista previa";
