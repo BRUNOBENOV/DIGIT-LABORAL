@@ -1,4 +1,6 @@
 """Campos compartidos por el formulario público y el profesional."""
+from .labor_calculator import STABILITY_BASES
+
 def field(name, label, kind="number", value="", help="", required=False, **attrs):
     if kind == "number":
         attrs = {"min": "0", "max": "100000000000", "step": "1", **attrs}
@@ -114,10 +116,24 @@ GROUPS = {
             field("trial_completed", "Período de prueba cumplido", "checkbox", "on",
                   help="Si no se confirmó su conclusión, el motor no agregará automáticamente la indemnización ni el preaviso ordinarios."),
             field("protected", "Existe protección especial (maternidad, fuero u otra)", "checkbox",
-                  help="Activá si existe una tutela especial. El caso quedará sujeto a revisión de su régimen."),
+                  help="Activá si existe una tutela especial. El caso quedará sujeto a revisión de su régimen.")]),
+        group("Indemnización y preaviso", [
+            field("severance_regime", "Régimen de indemnización", "select", "auto",
+                  help="Con diez años o más, seleccioná el régimen revisado. Los días se calculan solos; no hace falta ingresarlos manualmente.", options=[
+                      ("auto", "Automático · ordinaria o revisión por estabilidad"),
+                      ("stability_double", "Doble indemnización por estabilidad · arts. 96–99")]),
             field("average_salary", "Promedio salarial para indemnización y preaviso · Gs.",
-                  help="Promedio de remuneraciones devengadas en los últimos seis meses o menor tiempo de servicio (art. 92). Revisá conceptos variables y computables."),
-            field("notice_served", "Días de preaviso cumplidos", max="90")]),
+                  step="0.01", help="Promedio de los últimos seis meses o menor tiempo de servicio (art. 92). Admite dos decimales; para el mensualizado se divide entre 30, sin redondear la base diaria antes de multiplicar."),
+            field("notice_served", "Días de preaviso cumplidos", value="0", max="90",
+                  help="Si no hubo preaviso, dejá 0. Un campo vacío también se interpreta como cero."),
+            field("stability_basis", "Fundamento de la doble indemnización", "select", "",
+                  help="Completá únicamente si elegiste doble indemnización. La antigüedad por sí sola no acredita su procedencia.",
+                  options=[("", "Seleccioná el fundamento documentado"), *STABILITY_BASES.items()]),
+            field("stability_evidence", "Respaldo y revisión del régimen", "textarea",
+                  help="Para la doble indemnización, identificá la resolución, acta o antecedente y la revisión profesional que sustenta el supuesto elegido.",
+                  maxlength="600"),
+            field("stability_confirmed", "Confirmo que revisé el fundamento y el respaldo de la doble indemnización", "checkbox",
+                  help="Esta confirmación permite sumar el concepto al cálculo; no acredita por sí sola los hechos, la validez del despido ni el pago.")]),
         EXTRAS, group("Vacaciones pendientes", [
             field("pending_days", "Días pendientes con pago simple", max="365", step="0.01"),
             field("double_days", "Días pendientes con pago doble", max="365", step="0.01",

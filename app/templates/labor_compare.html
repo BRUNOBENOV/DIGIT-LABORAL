@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% from 'labor_fields.html' import input_field %}
+{% from 'labor_fields.html' import input_field, settlement_preview %}
 {% block title %}Comparar escenarios | Digit Laboral{% endblock %}
 {% block public_content %}
 {% include 'labor_public_nav.html' %}
@@ -17,6 +17,7 @@
 {% for group in groups %}
 {% if group.advanced %}<details class="dl-form-section"><summary>{{ group.title }}</summary><div class="dl-fields">{% for field in group.fields %}{{ input_field(field,scenarios[side],errors.get(side,{}).get('field',''),side ~ '_') }}{% endfor %}</div></details>
 {% else %}<fieldset class="dl-form-section"><legend>{{ group.title }}</legend><div class="dl-fields">{% for field in group.fields %}{{ input_field(field,scenarios[side],errors.get(side,{}).get('field',''),side ~ '_') }}{% endfor %}</div></fieldset>{% endif %}
+{% if kind == 'settlement' and group.title == 'Indemnización y preaviso' %}{{ settlement_preview(side ~ '_') }}{% endif %}
 {% endfor %}</section>
 {% endfor %}
 </div>

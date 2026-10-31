@@ -14,3 +14,16 @@
 {% if field.help %}<small id="help-{{ name }}">{{ field.help }}</small>{% endif %}
 </div>
 {% endmacro %}
+
+{% macro settlement_preview(prefix='') %}
+<fieldset class="dl-form-section" data-settlement-preview data-prefix="{{ prefix }}">
+  <legend>Días e importes calculados</legend>
+  <dl class="dl-facts">
+    {% for key,label in [('units','Años computables'),('days','Días de indemnización'),('notice_due','Preaviso de referencia · días'),('notice_payable','Preaviso pendiente · días'),('daily_base','Base diaria · promedio / 30'),('severance','Indemnización estimada'),('notice','Preaviso estimado')] %}
+    <div><dt>{{ label }}</dt><dd><output data-settlement-value="{{ key }}">—</output></dd></div>
+    {% endfor %}
+  </dl>
+  <p class="dl-caption" role="status" aria-live="polite" data-settlement-status>Completá las fechas y el promedio. El servidor calcula los días; los importes se incorporan al pulsar Calcular o Recalcular.</p>
+  <small>Mensualizado: promedio mensual / 30. La fracción de antigüedad suma un año solo si supera seis meses. Se redondea cada concepto al final, sin redondear antes la base diaria.</small>
+</fieldset>
+{% endmacro %}

@@ -12,7 +12,7 @@ from sqlalchemy import delete, select
 
 from app.auth import hash_password
 from app.database import SessionLocal
-from app.main import app
+from app.main import APP_VERSION, app
 from app.models import (
     AuditLog, CalculationRecord, Company, CompanyBranding, CompanyComplianceProfile,
     CompanyRequest, Employee, EmployeeComplianceProfile, LaborOperation, MedicalExam,
@@ -177,7 +177,7 @@ def test_all_modules_render_bounded_searchable_choices_with_large_tenant(entity_
     assert selects,path
     for select_node in selects:
         assert len(select_node.select("option"))<=12,(path,select_node.get("id"))
-    assert "entity-selects.js?v=2.6.57" in response.text
+    assert f"entity-selects.js?v={APP_VERSION}" in response.text
 
 
 def test_selected_records_outside_seed_remain_selected_in_filters_and_editors(entity_directory):

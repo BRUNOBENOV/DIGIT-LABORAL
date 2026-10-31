@@ -15,7 +15,7 @@
         if (source.type === "checkbox") target.checked = source.checked;
         else target.value = source.value;
       }
-      form.dispatchEvent(new Event("input", {bubbles: true}));
+      form.dispatchEvent(new CustomEvent("input", {bubbles: true, detail: {copiedScenario: "b_"}}));
       const status = document.querySelector("[data-copy-status]");
       if (status) status.textContent = "Datos de A copiados en B. Cambiá los supuestos y volvé a comparar.";
     });

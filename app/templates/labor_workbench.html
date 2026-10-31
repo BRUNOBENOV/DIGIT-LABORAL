@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ titles[kind] }} | Digit Laboral{% endblock %}
 {% from 'labor_fields.html' import input_field as shared_field %}
+{% from 'labor_fields.html' import settlement_preview %}
 {% macro input_field(field) %}
 {{ shared_field(field, values, error_field, locked=private and ((company_id and field.name in ['employer','ruc']) or (employee_id and field.name in ['employee','ci','position']))) }}
 {% endmacro %}
@@ -23,6 +24,7 @@
 {% for group in groups %}
 {% if group.advanced %}<details class="dl-form-section"><summary>{{ group.title }}</summary><div class="dl-fields">{% for field in group.fields %}{{ input_field(field) }}{% endfor %}</div></details>
 {% else %}<fieldset class="dl-form-section"><legend>{{ group.title }}</legend><div class="dl-fields">{% for field in group.fields %}{{ input_field(field) }}{% endfor %}</div></fieldset>{% endif %}
+{% if kind == 'settlement' and group.title == 'Indemnización y preaviso' %}{{ settlement_preview() }}{% endif %}
 {% endfor %}
 {% if kind == 'salary' %}
 <fieldset class="dl-form-section dl-overtime-preview" aria-describedby="overtime-preview-note">

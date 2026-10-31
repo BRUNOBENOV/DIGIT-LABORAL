@@ -11,7 +11,7 @@ from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import RedirectResponse, Response
+from fastapi.responses import JSONResponse, RedirectResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
@@ -20,7 +20,7 @@ from . import main as core
 from .entity_selects import seed_choices
 from .calculator_fields import GROUPS
 from .form_utils import OptionalQueryId
-from .labor_calculator import CalculationError, SOURCE, TITLES, VERSION, amount as round_gs, calculate, clean
+from .labor_calculator import CalculationError, SOURCE, TITLES, VERSION, amount as round_gs, calculate, clean, settlement_projection
 from .liquidation_export import build_liquidation_pdf, build_liquidation_csv
 from .labor_examples import example_values
 from .models import CalculationRecord, Company, Employee, EmployeeExit, FinalSettlement, Payroll, PayrollLine, PayrollComplianceDetail, User
@@ -191,6 +191,18 @@ async def public_calculate(request: Request):
     except CalculationError as exc:
         return page(request, data["kind"], data, error=exc)
     return page(request, data["kind"], data, result=result)
+
+
+@router.post("/herramientas/liquidacion/previsualizar")
+async def settlement_preview(request: Request):
+    """Stateless numeric projection, shared by public and private calculators."""
+    data = await form_values(request)
+    if data["kind"] != "settlement":
+        raise HTTPException(422, "La vista previa corresponde a liquidación de haberes.")
+    try:
+        return JSONResponse(settlement_projection(data), headers=HEADERS)
+    except CalculationError as exc:
+        return JSONResponse({"error": str(exc), "field": exc.field}, status_code=422, headers=HEADERS)
 
 
 @router.post("/app/liquidaciones/calcular")

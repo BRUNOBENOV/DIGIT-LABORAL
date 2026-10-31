@@ -5709,6 +5709,11 @@ def _revalidate_calculation_before_approval(item: CalculationRecord, db: Session
             current = professional_calculate(saved_inputs)
         except (ProfessionalCalculationError, ValueError, TypeError) as exc:
             raise HTTPException(409, "No se pudo volver a validar la liquidación con sus entradas guardadas.") from exc
+        if saved_inputs.get("kind") == "settlement" and current.get("partial"):
+            raise HTTPException(
+                409,
+                "La liquidación sigue siendo un subtotal parcial. Resolvé el régimen y los conceptos pendientes y volvé a calcular antes de aprobar.",
+            )
         keys = ("gross", "discounts", "net", "employer_contribution", "employer_cost", "earnings", "deductions")
         if any(current.get(key) != saved_results.get(key) for key in keys if key in current):
             raise HTTPException(
