@@ -6,7 +6,7 @@
   {% for group in step.groups %}
     {% set concept = 'vacations' if group.title == 'Vacaciones pendientes' else 'aguinaldo' if group.title == 'Aguinaldo' else '' %}
     {% if concept %}
-    <div class="dl-concept-readout"><span>{{ 'Vacaciones reconocidas' if concept == 'vacations' else 'Aguinaldo devengado' }}</span><output data-concept-amount="{{ concept }}">{{ 'Gs. ' ~ (live_summary['values'][concept]|gs) if live_summary else 'Pendiente de revisión' }}</output></div>
+    <div class="dl-concept-readout"><span>{{ 'Vacaciones reconocidas' if concept == 'vacations' else 'Aguinaldo devengado' }}</span><output data-concept-amount="{{ concept }}">{{ 'Sin días informados' if concept == 'vacations' and not vacation_days_entered else 'Gs. ' ~ (live_summary['values'][concept]|gs) if live_summary else 'Pendiente de revisión' }}</output></div>
     <details class="dl-inline-editor" data-concept-editor="{{ concept }}" {% if error_field in group.fields|map(attribute='name')|list %}open{% endif %}><summary>{{ 'Modificar a mano' if result else 'Ingresar días reconocidos' if concept == 'vacations' else 'Ingresar remuneración anual' }}</summary>
     {% elif group.advanced %}<details class="dl-inline-editor"><summary>{{ group.title }}</summary>
     {% endif %}
