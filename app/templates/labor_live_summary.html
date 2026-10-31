@@ -6,13 +6,14 @@
   </div>
   <p class="dl-summary-status" role="status" aria-live="polite" data-summary-status>{{ 'Resultado calculado. Revisá los conceptos antes de emitir.' if result else 'Completá los datos para ver el resumen.' }}</p>
   <button type="button" class="dl-summary-link" data-review-field hidden>Revisar dato pendiente</button>
+  <div class="dl-summary-actions"><button type="submit" class="dl-button" form="labor-form" data-keep-enabled="true" data-quick-calculate>{{ 'Recalcular' if result else 'Calcular liquidación' }} <kbd>F6</kbd></button>
+  {% if result %}<button type="button" class="dl-button dl-outline" data-open-document data-result-action>Revisar documento</button>{% if private and user.role in ['administrador','contador','auxiliar'] %}<button type="submit" class="dl-button dl-outline" form="labor-form" formaction="/app/liquidaciones/guardar" data-result-action {% if not company_id or not employee_id %}disabled title="Seleccioná empresa y funcionario para guardar"{% endif %}>Guardar en el funcionario</button>{% endif %}{% endif %}</div>
   <details class="dl-summary-breakdown" open><summary>Ver conceptos</summary><dl class="dl-summary-items">
   {% set labels = [('salary','Salario pendiente' if kind == 'settlement' else 'Salario del período'),('aguinaldo','Aguinaldo'),('vacations','Vacaciones'),('severance','Indemnización'),('notice','Preaviso'),('other','Otros haberes'),('ips','Descuento IPS'),('other_discounts','Otros descuentos')] %}
   {% for key,label in labels %}{% if kind == 'settlement' or key not in ['aguinaldo','vacations','severance','notice'] %}<div><dt>{{ label }}</dt><dd data-summary-value="{{ key }}">{{ 'Gs. ' ~ (live_summary['values'][key]|gs) if live_summary else '—' }}</dd></div>{% endif %}{% endfor %}
   </dl></details>
   <details class="dl-summary-warnings" data-summary-warnings {% if not live_summary or not live_summary.warnings %}hidden{% endif %}><summary data-summary-warning-count>Revisiones pendientes{% if live_summary %} · {{ live_summary.warnings|length }}{% endif %}</summary><ul data-summary-warning-list>{% if live_summary %}{% for warning in live_summary.warnings %}<li>{{ warning }}</li>{% endfor %}{% endif %}</ul></details>
-  <div class="dl-summary-actions"><button type="submit" class="dl-button" form="labor-form" data-keep-enabled="true" data-quick-calculate>{{ 'Recalcular' if result else 'Calcular liquidación' }} <kbd>F6</kbd></button>
-  {% if result %}<button type="button" class="dl-button dl-outline" data-open-document data-result-action>Revisar documento</button>{% if private and user.role in ['administrador','contador','auxiliar'] %}<button type="submit" class="dl-button dl-outline" form="labor-form" formaction="/app/liquidaciones/guardar" data-result-action {% if not company_id or not employee_id %}disabled title="Seleccioná empresa y funcionario para guardar"{% endif %}>Guardar en el funcionario</button>{% endif %}{% endif %}</div>
+
   <p class="dl-summary-footnote">La vista previa no guarda cambios. Calcular habilita el documento.</p>
   <p class="dl-alert dl-stale" hidden role="status">Datos modificados: recalculá para actualizar el documento.</p>
 </section>
