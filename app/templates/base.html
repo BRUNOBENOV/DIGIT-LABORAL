@@ -180,6 +180,7 @@
 <script src="{{ url_for('static', path='v24.js') }}"></script>
 <script src="{{ url_for('static', path='labor-suite.js') }}?v={{ app_version }}" defer></script>
 {% if kind == 'settlement' %}<script src="{{ url_for('static', path='settlement-preview.js') }}?v={{ app_version }}" defer></script>{% endif %}
+{% if kind == 'settlement' and private %}<script src="{{ url_for('static', path='payroll-average.js') }}?v={{ app_version }}" defer></script>{% endif %}
 <script src="{{ url_for('static', path='experience.js') }}?v=20261022b"></script>
 <script>
 (function () {

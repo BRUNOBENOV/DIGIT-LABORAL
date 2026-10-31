@@ -1,0 +1,22 @@
+<fieldset class="dl-form-section" data-payroll-average-panel>
+  <legend>Promedio desde nóminas</legend>
+  <input type="hidden" name="average_origin" value="{{ values.get('average_origin','manual') }}">
+  <input type="hidden" name="average_payroll_fingerprint" value="{{ values.get('average_payroll_fingerprint','') }}">
+  <p class="dl-caption" role="status" aria-live="polite" data-average-status>Seleccioná empresa y funcionario y completá las fechas para consultar los períodos disponibles.</p>
+  <dl class="dl-facts">
+    <div><dt>Nóminas cerradas y consistentes</dt><dd><output data-average-coverage>—</output></dd></div>
+    <div><dt>Promedio mensual propuesto</dt><dd><output data-average-amount>Sin propuesta</output></dd></div>
+  </dl>
+  <details><summary>Ver conceptos por mes</summary>
+    <div class="dl-table-wrap"><table><thead><tr><th>Período</th><th>Salario base</th><th>Horas extras</th><th>Comisiones</th><th>Bonificaciones</th><th>Otros ingresos</th><th>Ausencias</th><th>Remuneración propuesta</th><th>Estado</th></tr></thead><tbody data-average-periods></tbody></table></div>
+    <p class="dl-caption" data-average-methodology>Se consulta el intervalo de los últimos seis meses o el menor tiempo de servicio, según las fechas del cálculo.</p>
+  </details>
+  <div class="dl-field dl-check">
+    <label for="average-payroll-reviewed"><input type="checkbox" id="average-payroll-reviewed" name="average_payroll_reviewed" value="on" {% if values.get('average_payroll_reviewed') in ['on','true','1',True] %}checked{% endif %}>Revisé la modalidad mensual y los conceptos computables de la propuesta</label>
+  </div>
+  <div class="dl-actions">
+    <button type="button" class="dl-button" data-average-apply disabled>Usar promedio propuesto</button>
+    <button type="button" class="dl-button dl-outline" data-average-manual hidden>Editar promedio manualmente</button>
+  </div>
+  <p class="dl-caption">La propuesta se aplica al promedio de indemnización y preaviso. Las nóminas abiertas, los meses faltantes y los intervalos parciales requieren revisión. No se sustituyen por cero ni se extrapola el último sueldo.</p>
+</fieldset>

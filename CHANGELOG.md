@@ -1,3 +1,12 @@
+## 2.6.59 — Promedio mensual propuesto desde nóminas cerradas
+
+- Consulta los períodos que cubren los últimos seis meses de contrato o el menor tiempo de servicio y propone el promedio solo con cobertura completa, fechas coherentes y tipo de salario Mensual registrado.
+- Suma los haberes guardados en cada línea y resta las ausencias. Presenta sueldo base, extras, comisiones, bonificaciones y otros ingresos para revisar su carácter computable; no confunde el neto con la remuneración ni suma dos veces el detalle complementario.
+- Muestra meses faltantes, nóminas abiertas, importes inconsistentes y fracciones de mes que requieren revisión. Mantiene el promedio no disponible sin completar huecos con cero ni extrapolar el sueldo actual.
+- Incorpora un control explícito para aplicar la propuesta y permite volver al ingreso manual. Conserva las fuentes, sus períodos y la revisión declarada en el historial y en los documentos.
+- Verifica el importe y la huella de las fuentes al calcular, guardar o exportar un resultado nuevo y antes de aprobar un cálculo guardado. Las reimpresiones conservan el resultado original.
+- No modifica esquema ni dependencias, legajos históricos, estados laborales ni liquidaciones existentes. El motor profesional pasa a 2026.10.4.
+
 ## 2.6.58 — Indemnización y preaviso por estabilidad con revisión visible
 
 - Añade la selección de doble indemnización para despido sin causa con diez años de servicio o más, contrato indefinido y prueba cumplida, con fundamento legal, respaldo y confirmación del liquidador. No permite trasladarla a renuncias, contratos a plazo ni otras protecciones sin resolver.

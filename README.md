@@ -1,6 +1,13 @@
-# Digit Laboral 2.6.58
+# Digit Laboral 2.6.59
 
 Plataforma de gestión y cumplimiento laboral para estudios contables paraguayos.
+## Novedades de la versión 2.6.59
+
+- Propone el promedio mensual para indemnización y preaviso desde las nóminas cerradas del funcionario, con desglose por período y concepto y confirmación antes de aplicarlo.
+- Verifica la cobertura de los últimos seis meses o el menor tiempo de servicio. Los meses faltantes, las nóminas abiertas o inconsistentes y los intervalos parciales quedan pendientes de revisión.
+- Conserva el origen y las fuentes en el cálculo guardado y sus documentos. Revalida las nóminas antes de calcular, guardar, exportar un nuevo resultado o aprobar.
+- Mantiene el ingreso manual y exige modalidad mensual registrada para la propuesta automática. No interpreta códigos históricos de remuneración.
+
 ## Novedades de la versión 2.6.58
 
 - Resuelve la liquidación de trabajadores con estabilidad desde una sección visible de Indemnización y preaviso: selección de doble indemnización, fundamento, respaldo y confirmación profesional.

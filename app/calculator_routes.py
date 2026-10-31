@@ -25,6 +25,7 @@ from .liquidation_export import build_liquidation_pdf, build_liquidation_csv
 from .labor_examples import example_values
 from .models import CalculationRecord, Company, Employee, EmployeeExit, FinalSettlement, Payroll, PayrollLine, PayrollComplianceDetail, User
 from .salary_history import employee_salary_history, salary_from_history, salary_for_period
+from .payroll_average import annotate_average, propose_monthly_average, verify_average_selection
 
 router = APIRouter()
 HEADERS = {"Cache-Control": "no-store", "X-Digit-Laboral-Version": VERSION}
@@ -133,6 +134,28 @@ def page(request, kind, data=None, result=None, error=None, db=None, user=None, 
     return response
 
 
+def calculate_scoped(data, db, scoped):
+    proposal = verify_average_selection(db, scoped.get("employee"), data)
+    result = annotate_average(calculate(data), proposal)
+    return add_salary_period_warnings(result, db, scoped, data)
+
+
+@router.get("/api/liquidaciones/promedio-salarial")
+def payroll_average_proposal(
+    company_id: int, employee_id: int, end_date: date, start_date: date | None = None,
+    user: User = Depends(core.require_user), db: Session = Depends(core.get_db),
+):
+    company = core.company_allowed(db, user, company_id)
+    employee = db.get(Employee, employee_id)
+    if not employee or employee.company_id != company.id:
+        raise HTTPException(404, "Funcionario no encontrado en la empresa seleccionada.")
+    try:
+        proposal = propose_monthly_average(db, employee, end_date, start=start_date)
+    except CalculationError as exc:
+        raise HTTPException(422, str(exc)) from None
+    return JSONResponse(proposal, headers=HEADERS)
+
+
 @router.get("/herramientas")
 def public_page(request: Request, tipo: str = "salary", ejemplo: bool = False):
     values = example_values(tipo, context(tipo)["values"]) if ejemplo and tipo in {"salary", "settlement"} else None
@@ -211,8 +234,7 @@ async def professional_calculate(request: Request, user: User = Depends(core.req
     data = await form_values(request)
     scoped = private_context(db, user, data)
     try:
-        result = calculate(data)
-        result = add_salary_period_warnings(result, db, scoped, data)
+        result = calculate_scoped(data, db, scoped)
     except CalculationError as exc:
         return page(request, data["kind"], data, error=exc, db=db, user=user)
     return page(request, data["kind"], data, result=result, db=db, user=user)
@@ -248,8 +270,7 @@ async def professional_export(request: Request, fmt: str, user: User = Depends(c
     data = await form_values(request)
     scoped = private_context(db, user, data)
     try:
-        result = calculate(data)
-        result = add_salary_period_warnings(result, db, scoped, data)
+        result = calculate_scoped(data, db, scoped)
         return await download(result, fmt)
     except CalculationError as exc:
         return page(request, data["kind"], data, error=exc, db=db, user=user)
@@ -287,8 +308,7 @@ async def save_calculation(request: Request,
     try:
         if not scoped["company"] or not scoped["employee"]:
             raise CalculationError("Seleccioná empresa y funcionario para guardar el cálculo.")
-        result = calculate(data)
-        result = add_salary_period_warnings(result, db, scoped, data)
+        result = calculate_scoped(data, db, scoped)
         if result["net"] > 2147483647:
             raise CalculationError("Este monto supera el límite del historial actual; podés descargar el cálculo.")
     except CalculationError as exc:
@@ -439,8 +459,7 @@ async def api_create_calculation(
     if not scoped["company"] or not scoped["employee"]:
         raise HTTPException(422, "Seleccioná empresa y funcionario para guardar el cálculo.")
     try:
-        result = calculate(data)
-        result = add_salary_period_warnings(result, db, scoped, data)
+        result = calculate_scoped(data, db, scoped)
     except CalculationError as exc:
         raise HTTPException(422, str(exc)) from None
     if result["net"] > 2147483647:
@@ -490,7 +509,7 @@ async def api_replace_calculation(
     if not scoped["company"] or not scoped["employee"] or scoped["company"].id != item.company_id:
         raise HTTPException(422, "El funcionario debe permanecer dentro de la empresa del registro.")
     try:
-        result = calculate(data)
+        result = calculate_scoped(data, db, scoped)
     except CalculationError as exc:
         raise HTTPException(422, str(exc)) from None
     if result["net"] > 2147483647:
