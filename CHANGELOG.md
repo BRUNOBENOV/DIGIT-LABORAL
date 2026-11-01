@@ -1,3 +1,13 @@
+## 2.6.62 — Remuneración anual desde nóminas cerradas
+
+- Precarga las remuneraciones computables y el aguinaldo devengado al seleccionar el funcionario. Consulta desde el 1 de enero del año de egreso o el ingreso posterior, hasta el egreso, con fuentes por mes y opción de desbloquear el ingreso manual.
+- Usa salario base, horas extras, comisiones y bonificaciones remunerativas menos ausencias; no resta IPS, anticipos ni retenciones. No duplica el detalle complementario ni suma asignación familiar o aporte patronal. Otros ingresos sin clasificación se señalan para revisión manual.
+- Verifica cierre, importes y fechas de cada período. Un mes parcial necesita fechas respaldadas que coincidan con el intervalo; no prorratea ni incluye haberes posteriores al egreso. Las coberturas incompletas muestran la suma disponible como parcial y bloquean su aprobación definitiva.
+- Conserva el mensaje de ingreso manual para legajos sin nóminas y nunca inventa sueldos ni meses en cero. El aguinaldo manual se actualiza con la misma fórmula y redondeo del motor.
+- Guarda la huella y el detalle de las fuentes y los revalida al calcular, guardar, exportar y aprobar. También aplica esa validación en el cambio de estado por API. Las reimpresiones conservan el documento guardado.
+- Muestra un subtotal de haberes conocidos mientras faltan datos para el neto, manteniendo visibles los pendientes y bloqueado el guardado incompleto.
+- Motor 2026.11.1. Sin migraciones ni dependencias nuevas.
+
 ## 2.6.61 — Valores predeterminados por motivo de egreso
 
 - Selecciona la ordinaria y restablece el preaviso cumplido a cero al cambiar el motivo. Renuncia y despido con causa muestran indemnización y preaviso en cero sin exigir parámetros ajenos a esas causales.
