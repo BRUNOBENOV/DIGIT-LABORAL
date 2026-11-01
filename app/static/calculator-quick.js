@@ -11,26 +11,36 @@
   const money = value => "Gs. " + new Intl.NumberFormat("es-PY", {maximumFractionDigits:0}).format(value);
   const vacationDaysEntered = () => ["pending_days","double_days","proportional_days"].some(name => String(form.elements.namedItem(name)?.value || "").trim() !== "");
   let timer, controller, sequence = 0, pendingField = "", printWasOpen = false;
-  let knownProjection = null, completeSummary = panel.dataset.hasResult === "true";
+  let knownProjection = null, knownAnnual = null, completeSummary = panel.dataset.hasResult === "true";
   const showKnownProjection = () => {
-    if (completeSummary || !knownProjection?.projection || !knownProjection.values) return;
-    const matches = Object.entries(knownProjection.values).every(([name,value]) => {
+    if (completeSummary) return;
+    let subtotal = 0, hasKnown = false;
+    const annualMatches = knownAnnual && knownAnnual.value === form.elements.namedItem("annual_remuneration")?.value;
+    if (annualMatches && Number.isInteger(knownAnnual.accrued)) {
+      subtotal += knownAnnual.accrued; hasKnown = true;
+      panel.querySelector('[data-summary-value="aguinaldo"]').textContent = money(knownAnnual.accrued);
+      root.querySelector('[data-concept-amount="aguinaldo"]').textContent = money(knownAnnual.accrued);
+    }
+    const matches = knownProjection?.projection && knownProjection.values && Object.entries(knownProjection.values).every(([name,value]) => {
       const input = form.elements.namedItem(name);
       return value === (input?.type === "checkbox" ? (input.checked ? "on" : "") : input?.value || "");
     });
-    if (!matches) return;
-    const data = knownProjection.projection;
-    if (data.status === "stability_double" && (
+    const data = matches ? knownProjection.projection : null;
+    const doubleConfirmed = data?.status !== "stability_double" || !(
       !form.elements.namedItem("stability_confirmed")?.checked || !form.elements.namedItem("stability_basis")?.value
       || (form.elements.namedItem("stability_evidence")?.value.trim().length || 0) < 10
-    )) return;
-    for (const [key,source] of [["severance","severance"],["notice","notice"]]) {
+    );
+    if (data && doubleConfirmed) for (const [key,source] of [["severance","severance"],["notice","notice"]]) {
       const output = panel.querySelector(`[data-summary-value="${key}"]`);
-      if (output && data[source] != null) output.textContent = money(data[source]);
+      if (output && Number.isInteger(data[source])) {
+        output.textContent = money(data[source]); subtotal += data[source]; hasKnown = true;
+      }
     }
-    if (["ordinary_reference","review","special","probation"].includes(data.status)) {
-      panel.querySelector("[data-summary-label]").textContent = "Subtotal parcial";
+    if (hasKnown) {
+      panel.querySelector("[data-summary-label]").textContent = "Subtotal de haberes conocidos";
+      panel.querySelector('[data-summary-value="net"]').textContent = money(subtotal);
       total.classList.add("is-partial");
+      panel.querySelector("[data-summary-known]").hidden = false;
     }
   };
   const reveal = input => {
@@ -43,6 +53,7 @@
     root.querySelectorAll("[data-concept-amount]").forEach(output => { output.textContent = "Pendiente de revisión"; });
     panel.querySelector("[data-summary-label]").textContent = "Total a cobrar";
     total.classList.remove("is-partial");
+    panel.querySelector("[data-summary-known]").hidden = true;
     badge.textContent = "Pendiente";
     status.textContent = message;
     warnings.hidden = true;
@@ -91,6 +102,7 @@
       });
       panel.querySelector("[data-summary-label]").textContent = data.label;
       total.classList.toggle("is-partial", data.partial);
+      panel.querySelector("[data-summary-known]").hidden = true;
       badge.textContent = data.partial ? "Parcial" : "Vista previa";
       status.textContent = data.partial
         ? "Subtotal parcial: revisá el régimen y los conceptos pendientes antes de emitir."
@@ -131,6 +143,10 @@
     knownProjection = event.detail;
     showKnownProjection();
   });
+  form.addEventListener("settlement:annual", event => {
+    knownAnnual = event.detail;
+    if (!completeSummary) showPending(status.textContent,pendingField);
+  });
   form.addEventListener("reset", () => { clearTimeout(timer); ++sequence; controller?.abort(); setTimeout(changed,0); });
   form.addEventListener("invalid", event => reveal(event.target), true);
   form.addEventListener("submit", () => { clearTimeout(timer); ++sequence; controller?.abort(); });
@@ -170,4 +186,5 @@
   if (invalid) reveal(invalid);
   if (panel.dataset.hasResult !== "true") load();
   form.dispatchEvent(new Event("settlement:request-projection"));
+  form.dispatchEvent(new Event("settlement:request-annual"));
 })();

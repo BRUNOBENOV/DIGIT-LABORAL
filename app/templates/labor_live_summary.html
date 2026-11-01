@@ -4,6 +4,7 @@
     <span data-summary-label>{{ live_summary.label if live_summary else 'Total a cobrar' }}</span>
     <output data-summary-value="net">{{ 'Gs. ' ~ (live_summary.net|gs) if live_summary else '—' }}</output>
   </div>
+  <p class="dl-caption" data-summary-known hidden>Faltan conceptos y descuentos por validar. El total a cobrar y el guardado siguen pendientes.</p>
   <p class="dl-summary-status" role="status" aria-live="polite" data-summary-status>{{ 'Resultado calculado. Revisá los conceptos antes de emitir.' if result else 'Completá los datos para ver el resumen.' }}</p>
   <button type="button" class="dl-summary-link" data-review-field hidden>Revisar dato pendiente</button>
   <div class="dl-summary-actions"><button type="submit" class="dl-button" form="labor-form" data-keep-enabled="true" data-quick-calculate>{{ 'Recalcular' if result else 'Calcular liquidación' }} <kbd>F6</kbd></button>

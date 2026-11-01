@@ -27,6 +27,7 @@ from .labor_examples import example_values
 from .models import CalculationRecord, Company, Employee, EmployeeExit, FinalSettlement, Payroll, PayrollLine, PayrollComplianceDetail, User
 from .salary_history import employee_salary_history, salary_from_history, salary_for_period
 from .payroll_average import annotate_average, propose_monthly_average, verify_average_selection
+from .payroll_annual import annotate_annual, propose_annual_remuneration, verify_annual_selection
 from .settlement_presets import settlement_defaults
 
 router = APIRouter()
@@ -153,8 +154,36 @@ def page(request, kind, data=None, result=None, error=None, db=None, user=None, 
 def calculate_scoped(data, db, scoped):
     data.update(settlement_defaults(data))
     proposal = verify_average_selection(db, scoped.get("employee"), data)
-    result = annotate_average(calculate(data), proposal)
+    annual = verify_annual_selection(db, scoped.get("employee"), data)
+    result = annotate_annual(annotate_average(calculate(data), proposal), annual)
     return add_salary_period_warnings(result, db, scoped, data)
+
+
+@router.get("/api/liquidaciones/remuneracion-anual")
+def payroll_annual_proposal(
+    company_id: int, employee_id: int, end_date: date, start_date: date | None = None,
+    user: User = Depends(core.require_user), db: Session = Depends(core.get_db),
+):
+    company = core.company_allowed(db, user, company_id)
+    employee = db.get(Employee, employee_id)
+    if not employee or employee.company_id != company.id:
+        raise HTTPException(404, "Funcionario no encontrado en la empresa seleccionada.")
+    try:
+        proposal = propose_annual_remuneration(db, employee, end_date, start=start_date)
+    except CalculationError as exc:
+        raise HTTPException(422, str(exc)) from None
+    return JSONResponse(proposal, headers=HEADERS)
+
+
+@router.post("/herramientas/aguinaldo/previsualizar")
+async def annual_accrual_preview(request: Request):
+    from .labor_calculator import aguinaldo_accrual, number
+    data = await form_values(request)
+    try:
+        annual = number(data, "annual_remuneration", "remuneración anual", required=True)
+        return JSONResponse({"aguinaldo_accrued": aguinaldo_accrual(annual)}, headers=HEADERS)
+    except CalculationError as exc:
+        return JSONResponse({"error": str(exc), "field": exc.field}, status_code=422, headers=HEADERS)
 
 
 @router.get("/api/liquidaciones/promedio-salarial")
@@ -220,6 +249,14 @@ def professional_page(request: Request, tipo: str = "settlement", company_id: Op
         values.update(salary=str(effective_salary), start_date=employee.admission_date.isoformat(),
                       apply_ips="on" if employee.ips_contributor else "",
                       indefinite="on" if employee.contract_type == "Tiempo indefinido" else "")
+        if tipo == "settlement":
+            try:
+                annual = propose_annual_remuneration(db, employee, effective_on)
+            except CalculationError:
+                annual = None  # The source panel reports the interval error without blocking the form.
+            if annual and annual["is_available"]:
+                values.update(annual_remuneration=str(annual["annual_remuneration"]),
+                              annual_origin="payroll", annual_payroll_fingerprint=annual["fingerprint"])
     return page(request, tipo, values, db=db, user=user)
 
 
@@ -571,6 +608,8 @@ async def api_update_calculation_status(
     if "status" in payload:
         if payload["status"] not in {"Borrador", "Revisar", "Aprobado", "Anulado"}:
             raise HTTPException(422, "Estado no válido.")
+        if payload["status"] == "Aprobado":
+            core._revalidate_calculation_before_approval(item, db)
         item.status = payload["status"]
     if "notes" in payload:
         item.notes = clean(payload["notes"], 600)

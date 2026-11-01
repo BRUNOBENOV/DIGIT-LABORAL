@@ -1,6 +1,13 @@
-# Digit Laboral 2.6.61
+# Digit Laboral 2.6.62
 
 Plataforma de gestión y cumplimiento laboral para estudios contables paraguayos.
+
+## Novedades de la versión 2.6.62
+
+- Calcula la remuneración anual para aguinaldo desde las nóminas cerradas del año de egreso. Precarga el monto, muestra el aguinaldo devengado y permite desbloquear el ingreso manual.
+- Presenta fuentes, conceptos y cobertura por mes. Las sumas incompletas quedan como parciales; los períodos sin respaldo y los otros ingresos sin clasificación requieren revisión.
+- Mantiene el ingreso manual para históricos sin nóminas y verifica las fuentes al calcular, guardar, exportar y aprobar. El resumen muestra los haberes conocidos mientras falta completar el neto.
+
 ## Novedades de la versión 2.6.61
 
 - Propone el régimen ordinario y preaviso cumplido en cero al cambiar el motivo a despido sin causa. Renuncia y despido con causa omiten los conceptos indemnizatorios y pliegan su sección.

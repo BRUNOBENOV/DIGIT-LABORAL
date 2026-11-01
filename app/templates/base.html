@@ -182,6 +182,7 @@
 <script src="{{ url_for('static', path='labor-suite.js') }}?v={{ app_version }}" defer></script>
 {% if kind == 'settlement' %}<script src="{{ url_for('static', path='settlement-presets.js') }}?v={{ app_version }}" defer></script><script src="{{ url_for('static', path='settlement-preview.js') }}?v={{ app_version }}" defer></script>{% endif %}
 {% if kind == 'settlement' and private %}<script src="{{ url_for('static', path='payroll-average.js') }}?v={{ app_version }}" defer></script>{% endif %}
+{% if kind == 'settlement' %}<script src="{{ url_for('static', path='payroll-annual.js') }}?v={{ app_version }}" defer></script>{% endif %}
 {% if kind in ['salary','settlement'] %}<script src="{{ url_for('static', path='calculator-quick.js') }}?v={{ app_version }}" defer></script>{% endif %}
 <script src="{{ url_for('static', path='experience.js') }}?v=20261022b"></script>
 <script>

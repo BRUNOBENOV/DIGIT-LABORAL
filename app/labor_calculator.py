@@ -7,7 +7,7 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from .labor_wage_rules import minimum_wage_for_period
 from .settlement_presets import settlement_defaults
 
-VERSION = "2026.10.5"
+VERSION = "2026.11.1"
 SOURCE = "Centro laboral"
 TITLES = {"salary": "Liquidación de salario", "settlement": "Liquidación de haberes",
           "aguinaldo": "Aguinaldo", "vacation": "Vacaciones", "hours": "Horas y recargos"}
@@ -39,6 +39,10 @@ class CalculationError(ValueError):
 
 def amount(value):
     return int(Decimal(str(value)).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+
+def aguinaldo_accrual(annual):
+    return amount(Decimal(annual) / 12)
 
 
 def gs(value):
@@ -578,7 +582,7 @@ def calculate(data):
         annual = number(data, "annual_remuneration", "remuneraciones computables del año", required=True)
         if kind == "settlement" and annual < proposed_ips_base:
             raise CalculationError("La base anual debe incluir los haberes remunerativos de este egreso.", "annual_remuneration")
-        accrued = amount(annual / 12)
+        accrued = aguinaldo_accrual(annual)
         paid = number(data, "aguinaldo_paid", "aguinaldo ya abonado")
         if paid > accrued:
             raise CalculationError("El aguinaldo ya abonado supera el devengado.", "aguinaldo_paid")
