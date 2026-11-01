@@ -6,9 +6,33 @@
   const status = panel.querySelector("[data-summary-status]"), badge = panel.querySelector("[data-summary-badge]");
   const total = panel.querySelector("[data-summary-total]"), review = panel.querySelector("[data-review-field]");
   const warnings = panel.querySelector("[data-summary-warnings]"), warningList = panel.querySelector("[data-summary-warning-list]");
+  const saveCurrent = panel.querySelector("[data-save-current]");
+  const delay = form.elements.namedItem("kind")?.value === "settlement" ? 500 : 300;
   const money = value => "Gs. " + new Intl.NumberFormat("es-PY", {maximumFractionDigits:0}).format(value);
   const vacationDaysEntered = () => ["pending_days","double_days","proportional_days"].some(name => String(form.elements.namedItem(name)?.value || "").trim() !== "");
   let timer, controller, sequence = 0, pendingField = "", printWasOpen = false;
+  let knownProjection = null, completeSummary = panel.dataset.hasResult === "true";
+  const showKnownProjection = () => {
+    if (completeSummary || !knownProjection?.projection || !knownProjection.values) return;
+    const matches = Object.entries(knownProjection.values).every(([name,value]) => {
+      const input = form.elements.namedItem(name);
+      return value === (input?.type === "checkbox" ? (input.checked ? "on" : "") : input?.value || "");
+    });
+    if (!matches) return;
+    const data = knownProjection.projection;
+    if (data.status === "stability_double" && (
+      !form.elements.namedItem("stability_confirmed")?.checked || !form.elements.namedItem("stability_basis")?.value
+      || (form.elements.namedItem("stability_evidence")?.value.trim().length || 0) < 10
+    )) return;
+    for (const [key,source] of [["severance","severance"],["notice","notice"]]) {
+      const output = panel.querySelector(`[data-summary-value="${key}"]`);
+      if (output && data[source] != null) output.textContent = money(data[source]);
+    }
+    if (["ordinary_reference","review","special","probation"].includes(data.status)) {
+      panel.querySelector("[data-summary-label]").textContent = "Subtotal parcial";
+      total.classList.add("is-partial");
+    }
+  };
   const reveal = input => {
     for (let parent = input?.parentElement; parent && parent !== root; parent = parent.parentElement) {
       if (parent.tagName === "DETAILS") parent.open = true;
@@ -25,6 +49,8 @@
     warningList.replaceChildren();
     pendingField = "";
     review.hidden = true;
+    if (saveCurrent) saveCurrent.disabled = true;
+    showKnownProjection();
   };
   const invalidField = () => Array.from(form.elements).find(input => input.willValidate && !input.validity.valid);
   const showPending = (message, name = "") => {
@@ -76,7 +102,9 @@
       warnings.hidden = data.warnings.length === 0;
       warnings.querySelector("[data-summary-warning-count]").textContent = "Revisiones pendientes · " + data.warnings.length;
       pendingField = ""; review.hidden = true;
-      // Preview never enables save, print or download of an older document.
+      completeSummary = true;
+      if (saveCurrent) saveCurrent.disabled = false;
+      // Saving recalculates the current inputs on the server; old downloads stay disabled.
     } catch (error) {
       if (error.name !== "AbortError" && current === sequence) showPending("No se pudo actualizar el resumen. Podés pulsar Calcular para obtener el resultado.");
     } finally {
@@ -85,6 +113,7 @@
   };
   const changed = () => {
     clearTimeout(timer); ++sequence; controller?.abort();
+    completeSummary = false;
     if (panel.dataset.hasResult === "true") {
       document.body.classList.add("dl-form-dirty");
       root.querySelectorAll("[data-result-action]").forEach(button => { button.disabled = true; });
@@ -93,10 +122,15 @@
     }
     resetSummary("Datos modificados. Actualizando vista previa…");
     panel.setAttribute("aria-busy", "false");
-    timer = setTimeout(load,300);
+    timer = setTimeout(load,delay);
   };
   form.addEventListener("input", changed);
   form.addEventListener("change", changed);
+  form.addEventListener("settlement:projection", event => {
+    if (event.detail?.prefix) return;
+    knownProjection = event.detail;
+    showKnownProjection();
+  });
   form.addEventListener("reset", () => { clearTimeout(timer); ++sequence; controller?.abort(); setTimeout(changed,0); });
   form.addEventListener("invalid", event => reveal(event.target), true);
   form.addEventListener("submit", () => { clearTimeout(timer); ++sequence; controller?.abort(); });
@@ -135,4 +169,5 @@
   const invalid = form.querySelector(".dl-invalid input,.dl-invalid select,.dl-invalid textarea");
   if (invalid) reveal(invalid);
   if (panel.dataset.hasResult !== "true") load();
+  form.dispatchEvent(new Event("settlement:request-projection"));
 })();

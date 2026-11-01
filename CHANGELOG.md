@@ -1,3 +1,13 @@
+## 2.6.61 — Valores predeterminados por motivo de egreso
+
+- Selecciona la ordinaria y restablece el preaviso cumplido a cero al cambiar el motivo. Renuncia y despido con causa muestran indemnización y preaviso en cero sin exigir parámetros ajenos a esas causales.
+- Precarga el promedio sugerido desde el salario del legajo. Sigue al salario mientras no se haya editado a mano o aplicado una propuesta de nóminas; conserva la distinción entre sugerencia y promedio documentado.
+- Incorpora la ordinaria de referencia para vínculos de diez años o más: calcula sus días e importes y mantiene el resultado parcial, sujeto a revisión por estabilidad y bloqueado para aprobación definitiva.
+- No confirma automáticamente la doble indemnización ni equipara el fuero a ese régimen. Mantiene sus antecedentes manuales y las protecciones del servidor.
+- Actualiza el resumen tras 500 ms y conserva las proyecciones conocidas cuando faltan datos para el total, sin inventar remuneración anual, vacaciones ni bases IPS.
+- Permite guardar el borrador del cálculo actual desde una vista previa válida, con recálculo y validación al guardar. Conserva el bloqueo de documentos desactualizados.
+- Motor 2026.10.5. Los registros sin los valores predeterminados nuevos conservan su modo de revisión anterior. Sin migraciones ni dependencias nuevas.
+
 ## 2.6.60 — Liquidaciones compactas con resumen en vivo
 
 - Organiza las pantallas salarial y de liquidación final en cinco pasos. Solo abre los datos base al iniciar; la validación despliega el paso y los editores que contienen el dato a corregir.

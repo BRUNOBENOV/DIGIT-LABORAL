@@ -8,7 +8,7 @@ def quick_steps(kind):
     groups = {group["title"]: group for group in GROUPS[kind]}
     if kind == "settlement":
         relationship = groups["Relación laboral"]
-        contract_names = {"indefinite", "trial_completed", "protected"}
+        contract_names = {"indefinite", "trial_completed", "protected", "protection_basis", "protection_evidence"}
         base = dict(relationship, fields=[f for f in relationship["fields"] if f["name"] not in contract_names])
         contract = dict(relationship, title="Modalidad del vínculo", fields=[
             f for f in relationship["fields"] if f["name"] in contract_names])
@@ -38,7 +38,7 @@ def calculation_summary(result):
         key = ("salary" if label == "Salario del período" else
                "aguinaldo" if label == "Aguinaldo devengado" else
                "vacations" if label.startswith("Vacaciones ") else
-               "notice" if label == "Indemnización por preaviso no cumplido" else
+               "notice" if label.startswith("Indemnización por preaviso no cumplido") else
                "severance" if label.startswith("Indemnización ") else "other")
         values[key] += row["amount"]
     for row in result["deductions"]:

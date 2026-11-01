@@ -116,11 +116,16 @@ GROUPS = {
             field("trial_completed", "Período de prueba cumplido", "checkbox", "on",
                   help="Si no se confirmó su conclusión, el motor no agregará automáticamente la indemnización ni el preaviso ordinarios."),
             field("protected", "Existe protección especial (maternidad, fuero u otra)", "checkbox",
-                  help="Activá si existe una tutela especial. El caso quedará sujeto a revisión de su régimen.")]),
+                  help="Activá si existe una tutela especial. El caso quedará sujeto a revisión de su régimen."),
+            field("protection_basis", "Fundamento de la protección especial", "text", maxlength="300",
+                  help="Identificá el fuero o la disposición aplicable. No se equipara automáticamente a doble indemnización por estabilidad."),
+            field("protection_evidence", "Respaldo del caso protegido", "textarea", maxlength="600",
+                  help="Indicá el expediente, resolución o antecedente revisado. Este respaldo no activa una fórmula automática para el fuero.")]),
         group("Indemnización y preaviso", [
             field("severance_regime", "Régimen de indemnización", "select", "auto",
-                  help="Con diez años o más, seleccioná el régimen revisado. Los días se calculan solos; no hace falta ingresarlos manualmente.", options=[
-                      ("auto", "Automático · ordinaria o revisión por estabilidad"),
+                  help="La ordinaria calcula los días automáticamente. Desde diez años se muestra como referencia pendiente de revisión de estabilidad. La doble requiere fundamento y respaldo.", options=[
+                      ("ordinary", "Automático · ordinaria (art. 91)"),
+                      ("auto", "Revisión por estabilidad · sin sumar referencia"),
                       ("stability_double", "Doble indemnización por estabilidad · arts. 96–99")]),
             field("average_salary", "Promedio salarial para indemnización y preaviso · Gs.",
                   step="0.01", help="Promedio de los últimos seis meses o menor tiempo de servicio (art. 92). Admite dos decimales; para el mensualizado se divide entre 30, sin redondear la base diaria antes de multiplicar."),

@@ -1,6 +1,14 @@
-# Digit Laboral 2.6.60
+# Digit Laboral 2.6.61
 
 Plataforma de gestión y cumplimiento laboral para estudios contables paraguayos.
+## Novedades de la versión 2.6.61
+
+- Propone el régimen ordinario y preaviso cumplido en cero al cambiar el motivo a despido sin causa. Renuncia y despido con causa omiten los conceptos indemnizatorios y pliegan su sección.
+- Precarga el promedio con el salario sugerido del legajo y permite modificarlo o aplicar el promedio documentado de nóminas. Identifica el salario actual como sugerencia, sin presentarlo como promedio verificado.
+- Actualiza las proyecciones y el resumen a los 500 ms. Muestra indemnización y preaviso aunque falte completar la base anual, manteniendo pendiente el total y la opción de guardar.
+- Permite guardar un borrador desde un resumen válido; el servidor vuelve a calcular y validar las entradas. Las descargas anteriores siguen bloqueadas hasta recalcular su documento.
+- Desde diez años, la ordinaria se muestra como referencia parcial y no puede aprobarse como liquidación completa. La doble conserva fundamento, respaldo y confirmación expresa; el fuero mantiene revisión de su régimen.
+
 ## Novedades de la versión 2.6.60
 
 - Simplifica las liquidaciones salarial y final en cinco pasos plegables, con los datos base abiertos y un resumen lateral fijo.
