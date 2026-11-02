@@ -5720,7 +5720,11 @@ def _revalidate_calculation_before_approval(item: CalculationRecord, db: Session
                 recorded = saved_results.get("annual_provenance")
                 if not isinstance(recorded, dict) or any(recorded.get(key) != annual.get(key) for key in SNAPSHOT_KEYS):
                     raise ValueError("El respaldo de la remuneración anual no coincide con sus fuentes.")
-            current = annotate_annual(professional_calculate(saved_inputs), annual)
+            from .settlement_evidence import verify_judicial_document
+            judicial = verify_judicial_document(db, db.get(Employee, item.employee_id), saved_inputs)
+            if judicial and saved_results.get("judicial_provenance") != judicial:
+                raise ValueError("El respaldo judicial adjunto cambió.")
+            current = annotate_annual(professional_calculate(saved_inputs, judicial_evidence_verified=judicial is not None), annual)
         except (ProfessionalCalculationError, ValueError, TypeError) as exc:
             raise HTTPException(409, "No se pudo volver a validar la liquidación con sus entradas guardadas.") from exc
         if saved_inputs.get("kind") == "settlement" and current.get("partial"):

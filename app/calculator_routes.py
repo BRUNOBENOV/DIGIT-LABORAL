@@ -4,6 +4,7 @@ import io
 import json
 import re
 import unicodedata
+from copy import deepcopy
 from calendar import monthrange
 import zipfile
 from datetime import date, datetime
@@ -29,6 +30,7 @@ from .salary_history import employee_salary_history, salary_from_history, salary
 from .payroll_average import annotate_average, propose_monthly_average, verify_average_selection
 from .payroll_annual import annotate_annual, propose_annual_remuneration, verify_annual_selection
 from .settlement_presets import settlement_defaults
+from .settlement_evidence import annotate_judicial_document, judicial_document_choices, verify_judicial_document
 
 router = APIRouter()
 HEADERS = {"Cache-Control": "no-store", "X-Digit-Laboral-Version": VERSION}
@@ -42,7 +44,7 @@ def context(kind, values=None):
     defaults.update(issued_date=today.isoformat(), month=today.strftime("%Y-%m"),
                     year=str(today.year), end_date=today.isoformat())
     if kind == "settlement":
-        defaults.update(kind=kind, settlement_preset_version="1", severance_regime="ordinary")
+        defaults.update(kind=kind, settlement_preset_version="2", severance_regime="ordinary")
     if values is not None:
         defaults.update(values)
     defaults = settlement_defaults(defaults)
@@ -92,9 +94,10 @@ def private_context(db, user, data):
     salary_history = employee_salary_history(db, employee.id) if employee else []
     if employee:
         data.update(employee=employee.full_name, ci=employee.document_number, position=employee.position)
+    judicial_documents = judicial_document_choices(db, employee, data.get("judicial_document_id")) if employee and data.get("kind") == "settlement" else []
     return dict(private=True, companies=companies, employees=employees, company=company,
                 employee=employee, company_id=company_id, employee_id=employee_id, history=history,
-                salary_history=salary_history)
+                salary_history=salary_history, judicial_documents=judicial_documents)
 
 
 def add_salary_period_warnings(result, db, scoped, data):
@@ -127,6 +130,13 @@ def page(request, kind, data=None, result=None, error=None, db=None, user=None, 
     values = dict(data) if data is not None else None
     private = private_context(db, user, values if values is not None else {}) if user else {}
     ctx = context(kind, values)
+    if kind == "settlement" and private:
+        ctx["groups"], ctx["quick_steps"] = deepcopy(ctx["groups"]), deepcopy(ctx["quick_steps"])
+        options = [("", "Seleccioná un documento del funcionario"), *[(str(item["id"]),item["label"]) for item in private["judicial_documents"]]]
+        for group in ctx["groups"] + [group for step in ctx["quick_steps"] for group in step["groups"]]:
+            for field in group["fields"]:
+                if field["name"] == "judicial_document_id":
+                    field["attrs"]["options"] = options
     salary_history_data = [
         {"id": item.id, "effective_from": item.effective_from.isoformat(), "new_salary": int(item.new_salary or 0)}
         for item in private.get("salary_history", [])
@@ -155,8 +165,19 @@ def calculate_scoped(data, db, scoped):
     data.update(settlement_defaults(data))
     proposal = verify_average_selection(db, scoped.get("employee"), data)
     annual = verify_annual_selection(db, scoped.get("employee"), data)
-    result = annotate_annual(annotate_average(calculate(data), proposal), annual)
+    judicial = verify_judicial_document(db, scoped.get("employee"), data)
+    result = annotate_judicial_document(annotate_annual(annotate_average(calculate(data, judicial_evidence_verified=judicial is not None), proposal), annual), judicial)
     return add_salary_period_warnings(result, db, scoped, data)
+
+
+@router.get("/api/liquidaciones/documentos-judiciales")
+def judicial_documents_proposal(company_id: int, employee_id: int, document_id: OptionalQueryId = None,
+                               user: User = Depends(core.require_user), db: Session = Depends(core.get_db)):
+    company = core.company_allowed(db, user, company_id)
+    employee = db.get(Employee, employee_id)
+    if not employee or employee.company_id != company.id:
+        raise HTTPException(404, "Funcionario no encontrado en la empresa seleccionada.")
+    return JSONResponse({"items":judicial_document_choices(db, employee, document_id)}, headers=HEADERS)
 
 
 @router.get("/api/liquidaciones/remuneracion-anual")

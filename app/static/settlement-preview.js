@@ -4,6 +4,7 @@
   if (!form) return;
   const projectionFields = ["start_date", "end_date", "reason", "indefinite", "trial_completed",
     "protected", "average_salary", "notice_served", "severance_regime"];
+  const legalFields = ["stability_basis","stability_evidence","stability_confirmed","judicial_confirmed","judicial_date","judicial_reference","judicial_document_id"];
   const confirmationFields = new Set([...projectionFields, "stability_basis", "stability_evidence"]);
   const money = value => "Gs. " + new Intl.NumberFormat("es-PY").format(value);
 
@@ -11,6 +12,7 @@
     const prefix = panel.dataset.prefix || "";
     const field = name => form.elements.namedItem(prefix + name);
     const status = panel.querySelector("[data-settlement-status]");
+    const automaticStability = !prefix && form.elements.namedItem("settlement_preset_version")?.value === "2";
     let timer, controller, sequence = 0, projection = null, sourceValues = null;
     const emitProjection = () => form.dispatchEvent(new CustomEvent("settlement:projection", {detail:{prefix, projection, values:sourceValues}}));
     const write = (key, value) => {
@@ -23,16 +25,20 @@
       && (field("stability_evidence")?.value.trim().length || 0) >= 10;
     const syncFields = () => {
       const needed = needsConfirmation();
+      if (!automaticStability) for (const name of ["judicial_confirmed","judicial_date","judicial_reference","judicial_document_id"]) {
+        const input = field(name);
+        if (input) { input.disabled = true; input.closest(".dl-field").hidden = true; }
+      }
       ["stability_basis", "stability_evidence", "stability_confirmed"].forEach(name => {
         const input = field(name);
         if (!input) return;
         input.disabled = !needed;
-        input.required = needed;
+        input.required = needed && (!automaticStability || (name !== "stability_confirmed" && field("stability_confirmed")?.checked));
         input.closest(".dl-field").hidden = !needed;
       });
-      if (field("stability_evidence")) field("stability_evidence").minLength = needed ? 10 : 0;
+      if (field("stability_evidence")) field("stability_evidence").minLength = needed && (!automaticStability || field("stability_confirmed")?.checked) ? 10 : 0;
       const review = field("stability_basis")?.closest("[data-regime-review]");
-      if (review) { review.hidden = !needed; if (needed) review.open = true; }
+      if (review) { review.hidden = !needed; if (needed && (!automaticStability || field("stability_confirmed")?.checked)) review.open = true; }
     };
     const updateStatus = () => {
       if (!projection) return;
@@ -45,7 +51,8 @@
         ordinary_reference: "Referencia ordinaria calculada automáticamente. Con diez años o más, la estabilidad sigue pendiente de revisión antes de aprobar.",
         stability_double: hasConfirmation()
           ? "Doble indemnización confirmada para el cálculo. Pulsá Calcular o Recalcular para sumar ambos conceptos al resultado."
-          : "Proyección de doble indemnización. Completá el fundamento y el respaldo y confirmá su revisión para incluirla en el total."
+          : "Proyección de doble indemnización. Completá el fundamento y el respaldo y confirmá su revisión para incluirla en el total.",
+        stability_double_pending: "Estabilidad detectada por antigüedad. Se incluye el escenario doble en el subtotal parcial; documentá su procedencia antes de aprobar."
       };
       status.textContent = messages[projection.status] || "Revisá el régimen antes de calcular.";
       if (projection.multiplier && !(Number(projection.average) > 0)) {
@@ -73,7 +80,7 @@
       const body = new URLSearchParams({kind: "settlement"});
       const submitted = {};
       body.set("csrf_token", form.elements.namedItem("csrf_token")?.value || "");
-      projectionFields.forEach(name => {
+      [...projectionFields, ...(automaticStability ? legalFields : [])].forEach(name => {
         const input = field(name);
         submitted[name] = input?.type === "checkbox" ? (input.checked ? "on" : "") : input?.value || "";
         body.set(name, submitted[name]);
@@ -108,10 +115,10 @@
     const changed = event => {
       if (event.detail?.copiedScenario && event.detail.copiedScenario !== prefix) return;
       const name = event.target.name?.startsWith(prefix) ? event.target.name.slice(prefix.length) : "";
-      if (!confirmationFields.has(name) && name !== "stability_confirmed" && !event.detail?.copiedScenario) return;
+      if (!confirmationFields.has(name) && !legalFields.includes(name) && !event.detail?.copiedScenario) return;
       if (confirmationFields.has(name) || event.detail?.copiedScenario) field("stability_confirmed").checked = false;
       syncFields();
-      if (["stability_basis", "stability_evidence", "stability_confirmed"].includes(name)) {
+      if (["stability_basis", "stability_evidence", "stability_confirmed"].includes(name) && !automaticStability) {
         updateStatus();
         return;
       }
