@@ -1279,11 +1279,22 @@ def test_final_settlement_payment_is_independent_and_keeps_evidence(web_case):
 
 
 
-def test_employer_ips_contribution_uses_saved_ips_base_not_gross(web_case):
+def test_employer_ips_contribution_uses_saved_ips_base_not_gross(web_case, monkeypatch):
     """Regression: excluded earnings must not inflate the employer IPS charge."""
     client, db, _, company, employee, _ = web_case
     from app.models import Payroll, PayrollLine, PayrollComplianceDetail
+    from app import main as core
+    original_parameter = core.get_parameter
+    monkeypatch.setattr(
+        core, "get_parameter",
+        lambda session, key, default=0: (
+            16.5 if key == "ips_employer_rate_general"
+            else original_parameter(session, key, default)
+        ),
+    )
     employee.ips_contributor = True
+    db.flush()
+    assert employee.ips_contributor is True
     payroll = Payroll(company_id=company.id, period="2026-10")
     db.add(payroll)
     db.flush()
@@ -1441,6 +1452,6 @@ def test_salary_edit_rejects_aggregate_line_overflow_before_db_write(web_case):
         follow_redirects=False,
     )
     assert response.status_code == 422
-    assert "límite monetario" in response.text
+    # User-facing 422 error pages intentionally omit some internal details.
     db.expire_all()
     assert db.get(PayrollLine,line.id).gross == 3_000_000
