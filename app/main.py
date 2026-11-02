@@ -6047,6 +6047,10 @@ def create_certificate(
     contract_text_stale: Annotated[str, Form()] = "",
     contract_parent_id: Annotated[str, Form()] = "",
     contract_signature_acknowledged: Annotated[str, Form()] = "",
+    contract_simplified_submission: Annotated[str, Form()] = "",
+    contract_confirm_payment_frequency: Annotated[str, Form()] = "",
+    contract_confirm_weekly_rest: Annotated[str, Form()] = "",
+    contract_confirm_payment_method: Annotated[str, Form()] = "",
     previous_contract_number: Annotated[str, Form()] = "",
     workplace: Annotated[str, Form()] = "",
     job_functions: Annotated[str, Form()] = "",
@@ -6124,6 +6128,16 @@ def create_certificate(
         raise HTTPException(400, "Los estados Aprobado y Firmado están disponibles para Contrato Individual de Trabajo.")
     if intent == "signed" and contract_signature_acknowledged.strip().lower() not in {"on", "true", "1", "yes"}:
         raise HTTPException(400, "Para registrar Firmado, confirmá que se recibió la firma del documento.")
+    # Progressive contract UI: suggested terms are never accepted without consent.
+    # Legacy Jinja/API submissions remain compatible until all consumers migrate.
+    if document_type == "contrato_trabajo" and contract_simplified_submission == "1" and intent not in {"preview", "generate_contract"}:
+        confirmed = {"Frecuencia de pago": contract_confirm_payment_frequency,
+                     "Descanso semanal": contract_confirm_weekly_rest,
+                     "Forma de pago": contract_confirm_payment_method}
+        unconfirmed = [label for label, value in confirmed.items()
+                       if value.strip().lower() not in {"on", "1", "true", "yes"}]
+        if unconfirmed:
+            raise HTTPException(400, "Confirmá expresamente estas condiciones antes de emitir: " + ", ".join(unconfirmed) + ".")
     if document_type == "contrato_trabajo" and len(contract_text) > 90000:
         raise HTTPException(400, "El texto del contrato supera el límite permitido de 90.000 caracteres.")
     if document_type == "contrato_trabajo" and contract_text_stale == "1" and intent not in {"preview", "generate_contract"}:
@@ -6545,6 +6559,15 @@ def create_certificate(
             "contract_root_id": root_contract_id,
             "contract_state": document_status,
         })
+    # Las sugerencias del formulario simplificado no deben figurar como pactadas
+    # ni siquiera en una vista previa mientras no se haya marcado su confirmación.
+    if document_type == "contrato_trabajo" and contract_simplified_submission == "1" and intent == "preview":
+        if contract_confirm_payment_frequency.strip().lower() not in {"on", "1", "true", "yes"}:
+            metadata["payment_frequency"] = "sin confirmar"
+        if contract_confirm_weekly_rest.strip().lower() not in {"on", "1", "true", "yes"}:
+            metadata["weekly_rest"] = "sin confirmar"
+        if contract_confirm_payment_method.strip().lower() not in {"on", "1", "true", "yes"}:
+            metadata["contract_payment_method"] = "sin confirmar"
     title, body = build_document_body(
         document_type,
         company_name=company.legal_name,

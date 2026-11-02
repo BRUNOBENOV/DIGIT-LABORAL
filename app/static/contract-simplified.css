@@ -1,0 +1,75 @@
+/* DIGIT-LABORAL | Contrato de Trabajo | progressive disclosure v2.6.66 */
+.certificate-workspace.contract-simplified-active {
+  grid-template-columns: 190px minmax(325px, 430px) minmax(410px, 1fr);
+  align-items: start;
+}
+.contract-simple-ui { display:grid; gap:15px; min-width:0; margin:0 0 16px; }
+.contract-simple-ui[hidden], .contract-simple-actions[hidden] { display:none!important; }
+.contract-simple-card { background:#fff; border:1px solid #DFE6F1; border-radius:13px; padding:14px; box-shadow:0 2px 8px rgba(8,34,85,.025); }
+.contract-simple-card h3 { margin:0;color:#172b4d;font-size:.9rem; }
+.contract-simple-card p { margin:5px 0 0;color:#66758a;font-size:.75rem;line-height:1.5; }
+.contract-simple-heading { display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px; }
+.contract-simple-heading button { font-size:.75rem; }
+.contract-simple-grid { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px; }
+.contract-simple-fact { background:#F7F9FD; border:1px solid #E6EBF3; border-radius:10px; padding:10px;min-width:0; }
+.contract-simple-fact small { display:block;font-size:.67rem;line-height:1.4;color:#66758a;font-weight:600; }
+.contract-simple-fact strong { display:block;color:#152b4c;font-size:.83rem;line-height:1.45;overflow-wrap:anywhere;margin-top:3px; }
+.contract-simple-fact[data-missing="true"]{border-color:#E9C27D;background:#FFFBF2;}
+.contract-simple-fact[data-missing="true"] strong{color:#805411;}
+.contract-simple-fact .contract-simple-fact-source{display:block;color:#16835b;font-size:.65rem;margin-top:4px;font-weight:650;}
+.contract-simple-detail { border:1px solid #DFE6F1; border-radius:11px;background:#fff;min-width:0;overflow:clip; }
+.contract-simple-detail > summary { display:flex;align-items:center;justify-content:space-between;gap:12px;list-style:none;padding:13px 14px;cursor:pointer;font-weight:750;font-size:.81rem;color:#1a3155; }
+.contract-simple-detail > summary::-webkit-details-marker { display:none; }
+.contract-simple-detail > summary:after { content:"+";font-size:1.15rem;line-height:1;color:#2453a1; }
+.contract-simple-detail[open] > summary:after {content:"−";}
+.contract-simple-detail[open] > summary {background:#F6F9FF;border-bottom:1px solid #E6EBF3;}
+.contract-simple-detail-content { display:grid;gap:12px;padding:14px;min-width:0; }
+.contract-simple-detail-content > label {display:grid;gap:7px;}
+.contract-simple-detail-content .document-form-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;min-width:0; }
+.contract-simple-detail-content .document-form-grid > label {min-width:0;}
+.contract-simple-detail-content .dossier-identity {margin:0;}
+.contract-simple-detail-content .dossier-identity:not([open]) > .document-form-grid{display:none;}
+.contract-simple-detail-content .dossier-identity > summary {color:#2453a1;}
+.contract-simple-options {display:grid;gap:9px;}
+.contract-simple-option {display:grid;grid-template-columns:1fr auto;gap:9px;align-items:center;background:#F7F9FD;border:1px solid #E3EAF5;padding:11px 12px;border-radius:10px;}
+.contract-simple-option > div {min-width:0;}
+.contract-simple-option b {display:block;font-size:.8rem;color:#273c5d;}
+.contract-simple-option .contract-simple-suggestion{display:block;font-size:.8rem;color:#0c3b80;overflow-wrap:anywhere;margin-top:3px;}
+.contract-simple-option label {display:flex;align-items:center;gap:6px;font-size:.72rem;font-weight:650;cursor:pointer;}
+.contract-simple-option input[type=checkbox] {width:17px;height:17px;accent-color:#0B5EA8;margin:0;}
+.contract-simple-option[data-confirmed="true"] {background:#F2FCF7;border-color:#B8E2CC;}
+.contract-simple-note {color:#5B6B82;font-size:.72rem;line-height:1.5;}
+.contract-simple-actions {border-top:1px solid #DEE5EF;margin-top:18px;padding-top:16px;display:grid;gap:10px;}
+.contract-simple-actions > strong {font-size:.83rem;color:#183254;}
+.contract-simple-actions .contract-state-actions {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:0;margin:0;border:0;}
+.contract-simple-actions .contract-state-actions .btn {width:100%;min-height:43px;}
+.contract-simple-actions .certificate-actions {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
+.contract-simple-actions .certificate-actions .btn {min-width:0;width:100%;white-space:normal;}
+.contract-simple-actions .contract-state-actions .signature-ack {grid-column:1/-1;}
+.contract-simple-actions .contract-legal-note {grid-column:1/-1;}
+.contract-simple-actions button:disabled {opacity:.52;cursor:not-allowed;filter:grayscale(.25);}
+.contract-simple-alert {background:#FFF9EC;border:1px solid #E9D2A0;border-radius:9px;padding:10px;color:#885719;font-size:.74rem;line-height:1.45;}
+.contract-simple-alert[data-ready="true"] {border-color:#B5E2CB;background:#F0FCF5;color:#16704C;}
+.contract-simple-hidden {display:none!important;}
+.contract-simple-ui .document-field-section {margin:0;}
+.contract-simple-ui .specific-field.hidden {display:none!important;}
+.contract-simple-ui .dossier-field-status {font-size:.67rem;}
+.certificate-workspace.contract-simplified-active .certificate-preview-shell {position:sticky;top:12px;max-height:calc(100vh - 24px);overflow:auto;}
+@media(max-width:1250px) {
+  .certificate-workspace.contract-simplified-active {grid-template-columns:178px minmax(0,1fr);}
+  .certificate-workspace.contract-simplified-active .certificate-preview-shell {grid-column:1/-1;position:static;max-height:none;}
+}
+@media(max-width:760px) {
+  .certificate-workspace.contract-simplified-active {grid-template-columns:minmax(0,1fr);}
+  .certificate-workspace.contract-simplified-active .certificate-preview-shell {grid-column:auto;}
+  .contract-simple-grid {grid-template-columns:repeat(2,minmax(0,1fr));}
+  .contract-simple-detail-content .document-form-grid {grid-template-columns:minmax(0,1fr);}
+  .contract-simple-option {grid-template-columns:minmax(0,1fr);}
+  .contract-simple-actions .contract-state-actions,.contract-simple-actions .certificate-actions {grid-template-columns:minmax(0,1fr);}
+}
+@media(prefers-reduced-motion:reduce) {.contract-simple-detail,.contract-simple-card {transition:none}}
+
+.certificate-workspace.contract-simplified-active #documentSpecificFields {display:contents;border:0;padding:0;margin:0;min-width:0;}
+.certificate-workspace.contract-simplified-active #documentSpecificFields > legend {display:none;}
+.contract-simple-detail[data-missing="true"] > summary::before {content:"●";color:#C28B23;font-size:.65rem;margin-right:5px;}
+.contract-simple-ui .contract-simple-detail[open] .contract-simple-detail-content {background:#FFFFFF;}
