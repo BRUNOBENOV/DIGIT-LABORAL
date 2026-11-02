@@ -8061,7 +8061,11 @@ def update_payroll_line(
     employer_rate = Decimal(str(get_parameter(db, "ips_employer_rate_general", 16.5)))
     if not employer_rate.is_finite() or employer_rate < 0 or employer_rate > 100:
         raise HTTPException(422, "El parámetro de aporte patronal IPS es inválido.")
-    detail.employer_ips = round_gs(Decimal(gross) * employer_rate / Decimal("100")) if employee_is_ips else 0
+    # Both sides of the IPS contribution must use the persisted imponible
+    # base. Gross earnings can include concepts outside that base.
+    detail.employer_ips = round_gs(
+        Decimal(ips_base_value) * employer_rate / Decimal("100")
+    ) if employee_is_ips else 0
 
     recalculate_payroll(db, payroll)
     write_audit(db, user, "editar", "linea_liquidacion", str(line.id), line.employee.full_name)
