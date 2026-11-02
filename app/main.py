@@ -10245,3 +10245,7 @@ app.include_router(employee_exit_router)
 
 from .entity_select_routes import router as entity_select_router
 app.include_router(entity_select_router)
+
+# Isolated, administrator-only post-import correction wizard.
+from .post_import_reactivation_routes import router as post_import_reactivation_router
+app.include_router(post_import_reactivation_router)
