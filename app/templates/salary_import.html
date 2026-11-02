@@ -30,7 +30,13 @@
   <div style="margin-bottom:15px"><a href="/app/compliance{% if selected_company %}?company_id={{ selected_company.id }}{% endif %}" class="btn ghost">← Volver a Cumplimiento</a></div>
   <section class="import-salary-card">
     <h2>1. Seleccionar la empresa, el origen y el formato</h2>
+    {% if selected_employee %}
+      <p class="import-salary-info"><strong>Exportación individual:</strong> {{ selected_employee.full_name }} ·
+      solo se validará este legajo.
+      <a href="/app/compliance/salary-import?company_id={{ selected_company.id }}&amp;period={{ period }}&amp;authority={{ authority }}&amp;source_type=approved">Ver todos los funcionarios</a></p>
+    {% endif %}
     <form method="get" action="/app/compliance/salary-import" class="import-salary-form">
+      {% if selected_employee %}<input type="hidden" name="employee_id" value="{{ selected_employee.id }}">{% endif %}
       <div class="import-salary-grid">
         <label>Empresa
           <select name="company_id" required data-searchable-entity="company" data-entity-scope="all">
@@ -124,7 +130,9 @@
     <details class="import-salary-card" style="background:#f7faff;margin:12px 0" {% if errors %}open{% endif %}>
       <summary style="font-size:.88rem;font-weight:800;color:#17335e;cursor:pointer">Completar jornadas y horas de los cálculos aprobados ({{ diagnostics|length }})</summary>
       <p class="import-salary-info">
-        Estos campos no modifican el cálculo original. Registrá únicamente las jornadas y horas reales respaldadas
+        Los cálculos antiguos guardaban el importe salarial, pero no siempre la asistencia ni el medio de pago.
+        DIGIT reutiliza automáticamente los datos que estén guardados en ese mismo legajo y período.
+        Registrá únicamente las jornadas y horas reales respaldadas
         por el control de asistencia; los días pagados y el divisor 240 no equivalen a horas efectivamente trabajadas.
         Podés guardar los datos incluso cuando existan otras observaciones pendientes.
       </p>
@@ -141,6 +149,9 @@
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <input type="hidden" name="calculation_id" value="{{ calculation.id }}">
           <input type="hidden" name="authority" value="{{ authority }}">
+          {% if authority == 'REI' %}
+          <p class="import-salary-info">Para el archivo REI solamente se necesitan las jornadas trabajadas. No hace falta repetir horas ordinarias ni medio de pago.</p>
+          {% endif %}
           <div class="import-salary-grid">
             <label>Desde (fecha real)
               <input type="date" name="period_start" value="{{ calculation.supplement.period_start }}" required>
@@ -151,12 +162,14 @@
             <label>Jornadas trabajadas reales
               <input type="number" name="days_worked" min="0" max="31" step="1" value="{{ calculation.supplement.days_worked }}" required>
             </label>
+            {% if authority == 'REOP' %}
             <label>Horas ordinarias reales
               <input type="number" name="hours_worked" min="0" max="744" step="0.25" value="{{ calculation.supplement.hours_worked }}" required>
             </label>
             <label>Forma de pago real
               <input name="payment_method" maxlength="100" value="{{ calculation.supplement.payment_method }}" placeholder="Efectivo / transferencia" required>
             </label>
+            {% endif %}
           </div>
           <label class="import-salary-confirm">
             <input type="checkbox" name="confirmed" value="si" required>
@@ -190,6 +203,7 @@
       <input type="hidden" name="rei_category" value="{{ rei_category }}">
       <input type="hidden" name="name_order" value="{{ name_order }}">
       <input type="hidden" name="source_type" value="{{ source_type }}">
+      {% if selected_employee %}<input type="hidden" name="employee_id" value="{{ selected_employee.id }}">{% endif %}
       <label class="import-salary-confirm"><input type="checkbox" name="confirmed" value="si" required>
         <span>Revisé los datos de los trabajadores, los conceptos y el formato de importación. Comprendo que esta descarga no equivale a una presentación oficial.{% if authority == 'REI' %} Confirmé además los nombres, la categoría y la estructura TXT vigente en mi portal REI.{% endif %}</span>
       </label>
