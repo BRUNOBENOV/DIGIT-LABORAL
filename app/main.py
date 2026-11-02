@@ -7991,6 +7991,10 @@ def update_payroll_line(
             raise HTTPException(422, "Las jornadas trabajadas deben estar entre 0 y 31.")
 
     gross = base_salary + overtime + commissions + bonuses + other_income
+    if gross > 2_147_483_647:
+        raise HTTPException(
+            422, "Los haberes del trabajador superan el límite monetario de una línea salarial. Revisá los conceptos.",
+        )
     employee_is_ips = bool(line.employee.ips_contributor)
     try:
         rate = Decimal(str(ips_rate).strip()) if str(ips_rate).strip() else (
@@ -8032,6 +8036,8 @@ def update_payroll_line(
         basis_note = (ips_basis_note or "").strip()[:300] or "Sin aporte IPS: el funcionario no figura como aportante."
 
     total_discounts = ips_employee_value + absences_discount + advances + other_discount
+    if total_discounts > 2_147_483_647:
+        raise HTTPException(422, "Los descuentos del trabajador exceden el límite permitido.")
     if total_discounts > gross:
         raise HTTPException(422, "Los descuentos superan los haberes brutos; corregí los importes antes de guardar.")
     net = gross - total_discounts
