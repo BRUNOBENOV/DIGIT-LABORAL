@@ -68,3 +68,8 @@
   .contract-simple-actions .contract-state-actions,.contract-simple-actions .certificate-actions {grid-template-columns:minmax(0,1fr);}
 }
 @media(prefers-reduced-motion:reduce) {.contract-simple-detail,.contract-simple-card {transition:none}}
+
+.certificate-workspace.contract-simplified-active #documentSpecificFields {display:contents;border:0;padding:0;margin:0;min-width:0;}
+.certificate-workspace.contract-simplified-active #documentSpecificFields > legend {display:none;}
+.contract-simple-detail[data-missing="true"] > summary::before {content:"●";color:#C28B23;font-size:.65rem;margin-right:5px;}
+.contract-simple-ui .contract-simple-detail[open] .contract-simple-detail-content {background:#FFFFFF;}
