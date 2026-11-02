@@ -1,6 +1,6 @@
 # Auditoría técnica y funcional de DIGIT-LABORAL — 02/11/2026
 
-**Versión revisada:** v2.6.74 · **Versión correctiva propuesta:** v2.6.75  
+**Versión revisada:** v2.6.74 · **Versión correctiva sin migración:** v2.6.75  
 **Metodología:** inspección del código fuente, estructura de modelos y migraciones, controles de seguridad, pruebas unitarias e integración con escenarios sintéticos, y consultas SQL exclusivamente de lectura sobre el esquema de producción.
 
 > Este documento distingue **hechos verificados**, **correcciones en código** y **riesgos que todavía requieren validación externa**. No certifica el funcionamiento de la plataforma en el portal MTESS ni IPS y no reemplaza una auditoría externa de seguridad o una revisión jurídica.
@@ -59,7 +59,7 @@ La calculadora general de `main.py` había sido ampliada con `days_worked`, `hou
 ### P1-03 — Riesgo de desbordamiento en totales de nóminas masivas
 Los cuatro totales de `payrolls` usaban `INTEGER` de 32 bits en PostgreSQL. Una nómina con 1.000 salarios de G. 3.000.000 supera 2.147.483.647.
 
-**Corrección:** `Payroll.total_gross`, `total_ips_employee`, `total_discounts` y `total_net` pasan a `BigInteger`; se agregó la migración 0021, sin recálculo de historia. Las líneas siguen con importes individuales `Integer` y ahora se rechaza un total individual fuera de rango antes de guardar. La migración debe aplicarse con respaldo previo en el entorno productivo.
+**Corrección pendiente de despliegue:** se preparó por separado una migración 0021 a `BigInteger` para las cuatro columnas agregadas. **Esta versión segura v2.6.75 no incluye esa migración** porque necesita respaldo recuperable y evaluación de ventana de mantenimiento. Sí incorpora el rechazo preventivo de líneas individuales fuera de rango.
 
 ### P2-04 — Avisos duplicados de jornadas y horas
 La prevalidación de `CalculationRecord` ya indicaba ausencia de jornadas/horas, pero el exportador agregaba un segundo mensaje genérico sobre los mismos campos.
@@ -91,7 +91,7 @@ Se constataron reglas de RLS para estudios, empresas, empleados y anexos; depend
 3. Confirmación obligatoria para descarga parcial y bloqueo de acceso a legajos de otra empresa.
 4. No repetir errores de horas y jornadas.
 5. Aporte patronal IPS sobre base imponible, no bruto.
-6. Migración de `INTEGER` a `BIGINT` preservando importes y soportando totales de G. 6.000 millones.
+6. Migración `INTEGER` a `BIGINT` desarrollada y probada en una rama separada; pendiente de respaldo para ejecutarla en producción.
 7. Rechazo HTTP 422 a sumas de haberes individuales fuera del límite de almacenamiento.
 
 Las pruebas sintéticas no modifican la base de datos real. La integración en GitHub solo procederá cuando compilación, suite automatizada y comprobaciones de arranque resulten correctas.
@@ -109,3 +109,9 @@ Las pruebas sintéticas no modifican la base de datos real. La integración en G
 ## 6. Criterio de publicación
 
 No alterar `calculation_records` ni importes guardados. No forzar estados `Aprobado`. Rechazar inconsistencias contables, exigir selección y consentimiento en declaraciones parciales, registrar la fuente y hashes; **respaldar antes de migrar PostgreSQL**.
+
+## 7. Separación deliberada de publicación
+
+- **PR de correcciones seguras:** no incluye migración 0021 ni cambios de tipo a columnas agregadas; sí contiene correcciones de las rutas realmente activas, validación REOP/REI e IPS.
+- **PR de ampliación BIGINT:** se conserva separado para aplicarlo después de verificar un respaldo externo recuperable y preparar recuperación ante fallos.
+- **Riesgo de almacenamiento:** `render.yaml` declara plan `free` y `STORAGE_BACKEND=local`. Las rutas de archivos deben considerarse potencialmente efímeras; requerir un servicio de almacenamiento duradero antes de confiar en copias o recibos almacenados localmente.
