@@ -65,7 +65,7 @@ def test_reop_32_exact_columns_and_excel_dates(monkeypatch):
 
 def test_rei_2016_tabbed_text_no_headers(monkeypatch):
     company, _, _, _ = fixture_records(monkeypatch)
-    rows, errors = service.prepare_import(None, company, "2026-10", "REI",
+    rows, errors = service.prepare_import(SimpleNamespace(scalar=lambda query: None), company, "2026-10", "REI",
                                           name_order="apellido_primero", rei_category="E")
     assert errors == []
     data = service.build_rei_txt(rows)
@@ -80,7 +80,7 @@ def test_rei_2016_tabbed_text_no_headers(monkeypatch):
 
 def test_inconsistent_ips_base_is_blocked(monkeypatch):
     company, _, _, _ = fixture_records(monkeypatch, override={"ips_base": 1000000})
-    _, errors = service.prepare_import(None, company, "2026-10", "REI",
+    _, errors = service.prepare_import(SimpleNamespace(scalar=lambda query: None), company, "2026-10", "REI",
                                        name_order="apellido_primero", rei_category="E")
     assert any("base IPS" in item for item in errors)
 
