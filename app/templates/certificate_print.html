@@ -105,7 +105,7 @@ body{margin:0;background:#edf1f6;color:#202a39;font-family:"Aptos","Segoe UI","H
 {% endif %}
 {% if signature_mode == 'both' %}
 <div class="signature-pair">
-  <div class="sigline"><b>Firma / recepción del trabajador/a</b><small>{{ certificate.employee_name_snapshot }}</small><small>C.I. N.º {{ certificate.employee_document_snapshot }}</small></div>
+  <div class="sigline"><b>{{ 'Firma del trabajador/a' if certificate.document_type == 'contrato_trabajo' else 'Firma / recepción del trabajador/a' }}</b><small>{{ certificate.employee_name_snapshot }}</small><small>C.I. N.º {{ certificate.employee_document_snapshot }}</small></div>
   <div class="sigline"><b>Firma del empleador/a</b><small>{{ certificate.company.legal_representative or (certificate.company.branding.signature_name if certificate.company.branding else '') or certificate.company.responsible_name or 'Firma autorizada' }}</small><small>{{ 'Representante legal' if certificate.company.legal_representative else (certificate.company.branding.signature_title if certificate.company.branding and certificate.company.branding.signature_title and certificate.company.branding.signature_title|replace('.', '')|lower != 'representante legal' else 'Responsable autorizado') }}</small><small>{{ certificate.company_name_snapshot }}</small></div>
 </div>
 {% if receipt_mode in ['receipt_date','receipt_disclaimer'] %}
