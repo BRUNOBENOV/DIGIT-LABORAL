@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% block title %}Exportar salarios REOP / REI | DIGIT-LABORAL{% endblock %}
+{% block content %}
+<style>
+.import-salary-page{max-width:1120px;margin:0 auto;color:#172033}
+.import-salary-hero{background:linear-gradient(125deg,#071b43,#05256d 76%,#174b9b);padding:24px;border-radius:15px;color:#fff;margin-bottom:18px}
+.import-salary-hero h1{color:#fff;margin:6px 0;font-size:1.7rem}
+.import-salary-hero p{color:#e0eaff;margin:0;font-size:.82rem}
+.import-salary-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.import-salary-card{border:1px solid #d8e1ef;border-radius:12px;background:#fff;padding:17px;margin-bottom:15px}
+.import-salary-card h2{font-size:1rem;margin:0 0 13px;color:#17335e}
+.import-salary-form label{display:grid;gap:6px;font-weight:750;color:#485b77;font-size:.76rem}
+.import-salary-form select,.import-salary-form input{width:100%;padding:10px 11px;min-width:0;background:#fff;border:1px solid #cbd6e7;border-radius:8px;color:#162a46}
+.import-salary-actions{display:flex;flex-wrap:wrap;gap:9px;margin-top:15px;align-items:center}
+.import-salary-info{font-size:.76rem;color:#52637d;line-height:1.65;margin:10px 0}
+.import-salary-errors{margin:11px 0;padding:13px;border:1px solid #ebc8ab;border-radius:9px;background:#fff8ef}
+.import-salary-errors h3{font-size:.85rem;color:#85380f;margin:0 0 7px}
+.import-salary-errors li{font-size:.75rem;color:#7b3f1d;margin:5px 0}
+.import-salary-confirm{display:flex;gap:9px;align-items:flex-start;margin:10px 0;font-size:.78rem;color:#2e435f}
+.import-salary-confirm input{width:auto;margin-top:3px}
+.import-salary-ok{background:#f2faf5;color:#17603e;border:1px solid #c4e8d2;border-radius:8px;padding:11px 13px;font-size:.78rem;margin:12px 0}
+@media(max-width:800px){.import-salary-grid{grid-template-columns:1fr}.import-salary-hero{padding:18px}}
+</style>
+<div class="import-salary-page">
+  <header class="import-salary-hero">
+    <div style="font-size:.68rem;font-weight:850;letter-spacing:.13em;color:#c9daff">DIGIT-LABORAL · CUMPLIMIENTO</div>
+    <h1>Exportación de salarios REOP / REI</h1>
+    <p>Generá archivos a partir de una nómina cerrada, sin modificar ni recalcular los importes originales.</p>
+  </header>
+  <div style="margin-bottom:15px"><a href="/app/compliance{% if selected_company %}?company_id={{ selected_company.id }}{% endif %}" class="btn ghost">← Volver a Cumplimiento</a></div>
+  <section class="import-salary-card">
+    <h2>1. Seleccionar la nómina y el formato</h2>
+    <form method="get" action="/app/compliance/salary-import" class="import-salary-form">
+      <div class="import-salary-grid">
+        <label>Empresa
+          <select name="company_id" required data-searchable-entity="company" data-entity-scope="all">
+            <option value="">Seleccionar empresa</option>
+            {% for company in companies|entity_choices %}
+            <option value="{{ company.id }}" {{ 'selected' if selected_company and selected_company.id == company.id }}>{{ company.legacy_code or (company.company_code if company.company_code is not none else 'Sin código') }} - {{ company.legal_name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>Mes de liquidación
+          <input type="month" name="period" value="{{ period }}" required>
+        </label>
+        <label>Organismo
+          <select name="authority" onchange="this.form.requestSubmit()">
+            <option value="REOP" {{ 'selected' if authority == 'REOP' }}>REOP — MTESS (Excel)</option>
+            <option value="REI" {{ 'selected' if authority == 'REI' }}>REI — IPS (TXT)</option>
+          </select>
+        </label>
+      </div>
+      {% if authority == 'REOP' %}
+      <p class="import-salary-info">REOP: la planilla respetará exactamente las 32 columnas del Excel de referencia. Seleccioná el código de pago que corresponda al portal y clasificá cualquier ingreso no desglosado.</p>
+      <div class="import-salary-grid">
+        <label>Código de forma de pago (REOP)
+          <select name="payment_code" required>
+            <option value="">Seleccionar según el portal</option>
+            {% for value in ['1','2','3','4'] %}
+            <option value="{{ value }}" {{ 'selected' if payment_code == value }}>Código {{ value }} — confirmar significado en REOP</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>Concepto para ingresos residuales
+          <select name="other_category">
+            <option value="">Sin clasificación (bloquear si existen)</option>
+            {% for key, label in [('premios','Premios'),('regalias','Regalías'),('gratificaciones','Gratificaciones'),('grado','Grado Académico'),('dietas','Dietas'),('complemento','Complemento Salarial'),('antiguedad','Antigüedad')] %}
+            <option value="{{ key }}" {{ 'selected' if other_category == key }}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+      </div>
+      {% else %}
+      <p class="import-salary-info">REI: TXT tabulado basado en el procedimiento IPS de 2016. Requiere comprobación con el formato que acepte actualmente tu cuenta del REI. El sistema no tiene todavía nombres y apellidos separados en el legajo.</p>
+      <div class="import-salary-grid">
+        <label>Orden de nombres registrado
+          <select name="name_order" required>
+            <option value="">Confirmar orden</option>
+            <option value="apellido_primero" {{ 'selected' if name_order == 'apellido_primero' }}>Apellidos primero — después nombres</option>
+            <option value="nombre_primero" {{ 'selected' if name_order == 'nombre_primero' }}>Nombres primero — después apellidos</option>
+          </select>
+        </label>
+        <label>Categoría IPS de respaldo
+          <input name="rei_category" value="{{ rei_category }}" maxlength="3" placeholder="Ej.: E (verificar)">
+        </label>
+      </div>
+      {% endif %}
+      <div class="import-salary-actions"><button class="btn primary" type="submit">Verificar archivo</button></div>
+    </form>
+  </section>
+
+  {% if selected_company and preview %}
+  <section class="import-salary-card">
+    <h2>2. Resultado de validación</h2>
+    <p class="import-salary-info"><strong>{{ selected_company.legal_name }}</strong> · {{ period }} · {{ authority }} · <strong>{{ item_count }}</strong> trabajador(es) de la nómina cerrada.</p>
+    {% if preview_rows %}
+    <div style="overflow-x:auto;margin:10px 0 15px;border:1px solid #dce5f1;border-radius:9px">
+      <table style="width:100%;border-collapse:collapse;font-size:.75rem">
+        <thead><tr>{% for heading in preview_headers %}<th style="padding:9px;text-align:left;background:#edf3fb;color:#17335e;white-space:nowrap">{{ heading }}</th>{% endfor %}</tr></thead>
+        <tbody>{% for row in preview_rows %}<tr>{% for value in row %}<td style="padding:8px 9px;border-top:1px solid #e5ebf4;color:#334765;white-space:nowrap">{{ value }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+      </table>
+    </div>
+    <p class="import-salary-info">Se muestran hasta 20 registros para inspección visual. Revisá los nombres, números y montos antes de descargar.</p>
+    {% endif %}
+    {% if errors %}
+    <div class="import-salary-errors">
+      <h3>{{ errors|length }} observaciones: no se generará el archivo hasta corregirlas</h3>
+      <ul>{% for error in errors[:100] %}<li>{{ error }}</li>{% endfor %}</ul>
+      {% if errors|length > 100 %}<p>Se muestran las primeras 100 observaciones.</p>{% endif %}
+    </div>
+    <p class="import-salary-info">Corregí los datos desde Cálculo → Salarios o el perfil correspondiente. Si es necesario, generá una nueva versión de nómina; una nómina cerrada nunca se corrige silenciosamente durante la exportación.</p>
+    {% else %}
+    <div class="import-salary-ok">La validación técnica local finalizó sin observaciones. El archivo todavía requiere revisión humana y aceptación del organismo.</div>
+    <form method="post" action="/app/compliance/salary-import/export" class="import-salary-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="company_id" value="{{ selected_company.id }}">
+      <input type="hidden" name="period" value="{{ period }}">
+      <input type="hidden" name="authority" value="{{ authority }}">
+      <input type="hidden" name="payment_code" value="{{ payment_code }}">
+      <input type="hidden" name="other_category" value="{{ other_category }}">
+      <input type="hidden" name="rei_category" value="{{ rei_category }}">
+      <input type="hidden" name="name_order" value="{{ name_order }}">
+      <label class="import-salary-confirm"><input type="checkbox" name="confirmed" value="si" required>
+        <span>Revisé los datos de los trabajadores, los conceptos y el formato de importación. Comprendo que esta descarga no equivale a una presentación oficial.{% if authority == 'REI' %} Confirmé además los nombres, la categoría y la estructura TXT vigente en mi portal REI.{% endif %}</span>
+      </label>
+      <button class="btn primary" type="submit">Descargar {{ 'Excel REOP (.xlsx)' if authority == 'REOP' else 'TXT REI (.txt)' }}</button>
+    </form>
+    {% endif %}
+  </section>
+  {% endif %}
+  <section class="import-salary-card">
+    <h2>Control y responsabilidad</h2>
+    <p class="import-salary-info">Las exportaciones registran empresa, período, usuario, cantidad de trabajadores y SHA-256 del archivo. Se mantiene la distinción entre «exportado» y «presentado». Debés ingresar al organismo, importar, verificar y conservar el comprobante de aceptación.</p>
+    <p class="import-salary-info">REOP: <a href="https://www.mtess.gov.py/?page_id=31365" target="_blank" rel="noopener">modelos e instructivos MTESS</a>. REI: <a href="https://portal.ips.gov.py/sistemas/ipsportal/contenido.php?c=119" target="_blank" rel="noopener">manual y formato IPS</a>.</p>
+  </section>
+</div>
+{% endblock %}
