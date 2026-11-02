@@ -49,16 +49,17 @@ def _whole(value, label: str, errors: list[str], *, required=True) -> int:
         return 0
 
 
-def salary_source_summary(db: Session, company_id: int, period: str) -> dict:
+def salary_source_summary(db: Session, company_id: int, period: str, employee_id: int | None = None) -> dict:
     """Conteo informativo para distinguir liquidaciones individuales de nóminas."""
     payroll = db.scalar(select(Payroll).where(Payroll.company_id == company_id, Payroll.period == period))
-    records = list(db.scalars(
-        select(CalculationRecord).where(
-            CalculationRecord.company_id == company_id,
-            CalculationRecord.reference_period == period,
-            CalculationRecord.calculation_type.in_(SALARY_TYPES),
-        ).order_by(CalculationRecord.created_at.desc(), CalculationRecord.id.desc())
-    ))
+    query = select(CalculationRecord).where(
+        CalculationRecord.company_id == company_id,
+        CalculationRecord.reference_period == period,
+        CalculationRecord.calculation_type.in_(SALARY_TYPES),
+    )
+    if employee_id is not None:
+        query = query.where(CalculationRecord.employee_id == employee_id)
+    records = list(db.scalars(query.order_by(CalculationRecord.created_at.desc(), CalculationRecord.id.desc())))
     latest: dict[int, CalculationRecord] = {}
     for item in records:
         if item.employee_id is not None:
@@ -73,12 +74,12 @@ def salary_source_summary(db: Session, company_id: int, period: str) -> dict:
     }
 
 
-def choose_salary_source(db: Session, company_id: int, period: str, requested: str) -> str:
+def choose_salary_source(db: Session, company_id: int, period: str, requested: str, employee_id: int | None = None) -> str:
     if requested not in {"auto", "payroll", "approved"}:
         raise ValueError("Seleccioná un origen de salarios válido.")
     if requested != "auto":
         return requested
-    summary = salary_source_summary(db, company_id, period)
+    summary = salary_source_summary(db, company_id, period, employee_id=employee_id)
     if summary["closed_payroll"]:
         return "payroll"
     return "approved" if summary["total"] or summary["without_employee"] else "payroll"
@@ -218,13 +219,16 @@ def _review_data(inputs: dict, batch: IntegrationBatch | None,
     return values
 
 
-def approved_salary_records(db: Session, company, period: str, *, authority: str = "REOP") -> tuple[list[tuple], list[str], list[dict]]:
+def approved_salary_records(db: Session, company, period: str, *, authority: str = "REOP", employee_id: int | None = None) -> tuple[list[tuple], list[str], list[dict]]:
     """Selecciona última versión por legajo, con advertencias y sin resucitar anulados."""
-    rows = list(db.scalars(select(CalculationRecord).where(
+    query = select(CalculationRecord).where(
         CalculationRecord.company_id == company.id,
         CalculationRecord.reference_period == period,
         CalculationRecord.calculation_type.in_(SALARY_TYPES),
-    ).order_by(CalculationRecord.created_at.desc(), CalculationRecord.id.desc())))
+    )
+    if employee_id is not None:
+        query = query.where(CalculationRecord.employee_id == employee_id)
+    rows = list(db.scalars(query.order_by(CalculationRecord.created_at.desc(), CalculationRecord.id.desc())))
     if not rows:
         return [], ["No hay cálculos de Salario guardados para esta empresa y período."], []
     selected: dict[int, CalculationRecord] = {}
@@ -291,7 +295,7 @@ def approved_salary_records(db: Session, company, period: str, *, authority: str
             hours = Decimal(0)
         if authority == "REOP" and (not hours.is_finite() or hours <= 0):
             item_errors.append("faltan horas ordinarias efectivamente trabajadas (no usar divisor horario del salario)")
-        if not supplementary.get("payment_method"):
+        if authority == "REOP" and not supplementary.get("payment_method"):
             item_errors.append("falta forma de pago verificada")
         start = date.fromisoformat(period + "-01")
         end = date.fromisoformat(period + "-01")
