@@ -104,7 +104,16 @@ def test_newer_unapproved_record_blocks_old_approved_record():
     rows, errors = exporter.prepare_import(db, company, "2026-10", "REOP",
                                            source_type="approved", payment_code="1")
     assert rows == []
-    assert any("no se reutiliza una aprobación anterior" in error for error in errors)
+    # A company-wide export reports excluded latest drafts separately;
+    # it must not resurrect an earlier approved snapshot.
+    assert any("No se identificaron" in error for error in errors)
+    exclusions = source.salary_excluded_records(db, company.id, "2026-10")
+    assert exclusions == [{"employee_id": employee.id, "calculation_id": 51, "status": "Revisar"}]
+    selected, selected_errors, _ = source.approved_salary_records(
+        db, company, "2026-10", employee_id=employee.id,
+    )
+    assert not selected
+    assert any("no se reutiliza una aprobación anterior" in err for err in selected_errors)
 
 
 def test_stale_supplement_is_not_applied_when_calculation_changes():
@@ -207,3 +216,48 @@ def test_explicit_employee_scope_is_present_in_approval_query():
     )
     assert not errors and len(details) == 1
     assert any("calculation_records.employee_id =" in q for q in db.statements)
+
+
+
+def test_a_company_export_with_one_draft_and_one_approved_keeps_eligible_snapshot():
+    item, employee, company, detail = case()
+    draft = SimpleNamespace(**vars(item))
+    draft.id = 77
+    draft.employee_id = 777
+    draft.status = "Borrador"
+    draft.created_at = datetime(2026, 10, 31)
+    db = FakeSession([draft, item], employee, detail)
+    rows, errors = exporter.prepare_import(
+        db, company, "2026-10", "REOP",
+        source_type="approved", payment_code="1",
+    )
+    assert not errors
+    assert len(rows) == 1 and rows[0][9] == 3000000
+    exclusions = source.salary_excluded_records(db, company.id, "2026-10")
+    assert len(exclusions) == 1
+    assert exclusions[0]["employee_id"] == 777
+    assert exclusions[0]["status"] == "Borrador"
+
+
+def test_approved_source_reports_missing_days_and_hours_only_once():
+    item, employee, company, detail = case()
+    db = FakeSession([item], employee)
+    rows, errors = exporter.prepare_import(
+        db, company, "2026-10", "REOP",
+        source_type="approved", employee_id=employee.id, payment_code="1",
+    )
+    assert len(rows) == 1
+    assert len([e for e in errors if "jornada" in e or "días trabajad" in e]) == 1
+    assert len([e for e in errors if "horas ordinarias" in e]) == 1
+
+
+def test_latest_approved_employee_choices_exclude_drafts():
+    item, employee, company, detail = case()
+    draft = SimpleNamespace(**vars(item))
+    draft.id = 78
+    draft.employee_id = 777
+    draft.status = "Borrador"
+    draft.created_at = datetime(2026, 11, 1)
+    db = FakeSession([draft, item], employee, detail)
+    options = source.approved_employee_choices(db, company.id, "2026-10")
+    assert [e.id for e in options] == [employee.id]
