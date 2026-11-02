@@ -336,15 +336,21 @@ async def save_calculation_v24(
         # and REI can reuse it without a second manual entry.
         days_raw = _clean(form.get("days_worked"), 30)
         if days_raw:
-            days_actual = number(form, "days_worked", "jornadas reales", maximum="31")
+            try:
+                days_actual = number(form, "days_worked", "jornadas reales", maximum="31")
+            except CalculationError as exc:
+                raise HTTPException(422, str(exc)) from exc
             if days_actual != int(days_actual):
                 raise HTTPException(422, "Las jornadas trabajadas deben ser números enteros.")
             inputs["days_worked"] = int(days_actual)
         hours_raw = _clean(form.get("hours_worked"), 30)
         if hours_raw:
-            hours_actual = number(
-                form, "hours_worked", "horas ordinarias reales", maximum="744", decimals=2
-            )
+            try:
+                hours_actual = number(
+                    form, "hours_worked", "horas ordinarias reales", maximum="744", decimals=2
+                )
+            except CalculationError as exc:
+                raise HTTPException(422, str(exc)) from exc
             inputs["hours_worked"] = str(hours_actual)
         actual_method = _clean(form.get("payment_method"), 100)
         if actual_method:
