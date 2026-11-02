@@ -183,7 +183,8 @@ def _legacy_line(item: CalculationRecord, inputs: dict, saved: dict, errors: lis
         other_discount_note="",
         ips_employee=_whole(saved.get("ips_employee"), "aporte IPS", errors),
         ips_base=_whole(saved.get("ips_base"), "base IPS", errors),
-        ips_rate=saved.get("ips_rate"),
+        ips_rate=(0 if inputs.get("apply_ips") in (False, "false", "off")
+                  else saved.get("ips_rate", inputs.get("ips_rate"))),
         gross=_whole(saved.get("gross_computable"), "bruto computable", errors),
         total_discounts=_whole(saved.get("discounts"), "total de descuentos", errors),
         net=_whole(saved.get("net"), "neto", errors),
