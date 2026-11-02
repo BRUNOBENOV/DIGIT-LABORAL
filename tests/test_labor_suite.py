@@ -1455,3 +1455,46 @@ def test_salary_edit_rejects_aggregate_line_overflow_before_db_write(web_case):
     # User-facing 422 error pages intentionally omit some internal details.
     db.expire_all()
     assert db.get(PayrollLine,line.id).gross == 3_000_000
+
+
+
+def test_salary_edit_route_is_the_v24_override_not_dead_legacy_code():
+    from app.runtime import app
+    matches = [
+        route for route in app.router.routes
+        if getattr(route, "path", None) == "/app/payrolls/{payroll_id}/lines/{line_id}"
+        and "POST" in (getattr(route, "methods", set()) or set())
+    ]
+    assert len(matches) == 1
+    assert matches[0].endpoint.__module__ == "app.ux_v24"
+
+
+def test_v24_salary_edit_preserves_documented_manual_ips_base(web_case):
+    from app.models import Payroll, PayrollLine, PayrollComplianceDetail
+    client, db, _box, company, employee, _other = web_case
+    employee.ips_contributor = True
+    payroll = Payroll(company_id=company.id, period="2026-10")
+    db.add(payroll); db.flush()
+    line = PayrollLine(
+        payroll_id=payroll.id, employee_id=employee.id,
+        base_salary=3_000_000, other_income=500_000, gross=3_500_000,
+        ips_base=3_000_000, ips_rate=Decimal("9"),
+        ips_employee=270_000, total_discounts=270_000, net=3_230_000,
+        ips_basis_note="Criterio comprobado",
+    )
+    db.add(line); db.commit()
+    response=client.post(
+        f"/app/payrolls/{payroll.id}/lines/{line.id}",
+        data={"csrf_token": token(client), "base_salary": "3000000",
+              "other_income": "600000", "ips_rate": "9",
+              "other_discount_note": "", "days_worked": "22"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303, response.text
+    db.expire_all()
+    saved=db.get(PayrollLine,line.id)
+    assert saved.gross == 3_600_000
+    assert saved.ips_base == 3_000_000
+    assert saved.ips_employee == 270_000
+    assert saved.net == 3_330_000
+    assert db.query(PayrollComplianceDetail).filter_by(payroll_line_id=line.id).count() == 1
