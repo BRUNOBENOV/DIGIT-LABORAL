@@ -104,14 +104,26 @@ def _source(db: Session, company, period: str):
 
 def prepare_import(db: Session, company, period: str, authority: str, *,
                    payment_code: str = "", other_category: str = "",
-                   rei_category: str = "", name_order: str = "") -> tuple[list[list], list[str]]:
+                   rei_category: str = "", name_order: str = "",
+                   source_type: str = "payroll") -> tuple[list[list], list[str]]:
     """Preflight integral: devuelve filas y TODOS los errores; el archivo se bloquea ante cualquier error."""
     if authority not in {"REOP", "REI"}:
         raise SalaryImportError(["Sistema de destino inválido."])
-    payroll, records = _source(db, company, period)
+    from .approved_salary_import import approved_salary_records, choose_salary_source
+    if not re.fullmatch(r"20\d{2}-(0[1-9]|1[0-2])", period or ""):
+        raise SalaryImportError(["Ingresá un período válido AAAA-MM."])
+    try:
+        effective_source = choose_salary_source(db, company.id, period, source_type)
+    except ValueError as exc:
+        raise SalaryImportError([str(exc)]) from exc
+    if effective_source == "approved":
+        records, source_errors, _details = approved_salary_records(db, company, period, authority=authority)
+    else:
+        _payroll, records = _source(db, company, period)
+        source_errors = []
     start = date.fromisoformat(period + "-01")
     end = date(start.year, start.month, monthrange(start.year, start.month)[1])
-    errors: list[str] = []
+    errors: list[str] = list(source_errors)
     rows: list[list] = []
     if authority == "REOP":
         if payment_code not in {"1", "2", "3", "4"}:
@@ -184,10 +196,8 @@ def prepare_import(db: Session, company, period: str, authority: str, *,
                 err.append("el período comienza antes de la fecha de ingreso")
             if employee.termination_date and employee.termination_date < dend:
                 err.append("el período termina después del egreso")
-            if not isinstance(days, int) or not 0 <= days <= 30:
-                err.append("cantidad de días trabajados fuera del rango 0-30")
-            if "jornal" in _text(employee.payment_frequency).lower() and days > 26:
-                err.append("jornalero con más de 26 días declarados; verificar jornadas reales")
+            if not isinstance(days, int) or not 0 <= days <= 31:
+                err.append("cantidad de jornadas trabajadas fuera del rango 0-31")
             if not hours.is_finite() or not 0 <= hours <= 744:
                 err.append("cantidad de horas trabajadas inválida")
         if authority == "REI":
@@ -230,8 +240,11 @@ def prepare_import(db: Session, company, period: str, authority: str, *,
                 overtime_night = _number(detail.overtime_night, "Horas extras nocturnas", err)
                 if overtime_day + overtime_night != line.overtime:
                     err.append("las horas extras diurnas/nocturnas no concuerdan con el total guardado")
-                if line.overtime:
-                    err.append("faltan cantidades de horas extraordinarias (no solo montos) en el legajo")
+                extra_hours = getattr(detail, "extra_hours", Decimal("0"))
+                if line.overtime and not getattr(detail, "extra_hours_documented", False):
+                    err.append("faltan cantidades reales de horas extraordinarias (no solo montos) en el registro")
+                if line.overtime and (not extra_hours.is_finite() or extra_hours <= 0 or extra_hours > 744):
+                    err.append("horas extraordinarias guardadas fuera del rango válido")
                 if detail.vacation_pay:
                     err.append("el pago vacacional debe revisarse en su comunicación específica")
                 complements = [
@@ -251,7 +264,8 @@ def prepare_import(db: Session, company, period: str, authority: str, *,
                 # Las 32 columnas corresponden a la plantilla proporcionada por el usuario.
                 continue_row = [
                     patronal, ci, dstart, dend, int(payment_code) if payment_code in {"1", "2", "3", "4"} else 0,
-                    days, 0, int(hours) if hours == int(hours) else float(hours), 0,
+                    days, 0, int(hours) if hours == int(hours) else float(hours),
+                    int(extra_hours) if extra_hours == int(extra_hours) else float(extra_hours),
                     line.base_salary, line.commissions, overtime_day,
                     complements[0], overtime_night, 0, 0, 0, 0, 0,
                     complements[1], 0, complements[3], complements[2], 0,

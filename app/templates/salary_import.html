@@ -25,11 +25,11 @@
   <header class="import-salary-hero">
     <div style="font-size:.68rem;font-weight:850;letter-spacing:.13em;color:#c9daff">DIGIT-LABORAL · CUMPLIMIENTO</div>
     <h1>Exportación de salarios REOP / REI</h1>
-    <p>Generá archivos a partir de una nómina cerrada, sin modificar ni recalcular los importes originales.</p>
+    <p>Exportá desde una nómina cerrada o desde los cálculos individuales aprobados. No se recalculan importes.</p>
   </header>
   <div style="margin-bottom:15px"><a href="/app/compliance{% if selected_company %}?company_id={{ selected_company.id }}{% endif %}" class="btn ghost">← Volver a Cumplimiento</a></div>
   <section class="import-salary-card">
-    <h2>1. Seleccionar la nómina y el formato</h2>
+    <h2>1. Seleccionar la empresa, el origen y el formato</h2>
     <form method="get" action="/app/compliance/salary-import" class="import-salary-form">
       <div class="import-salary-grid">
         <label>Empresa
@@ -50,6 +50,23 @@
           </select>
         </label>
       </div>
+      <div class="import-salary-grid" style="margin-top:12px">
+        <label>Origen de los salarios
+          <select name="source_type">
+            <option value="auto" {{ 'selected' if source_type == 'auto' }}>Automático · nómina cerrada o cálculos aprobados</option>
+            <option value="payroll" {{ 'selected' if source_type == 'payroll' }}>Solo nómina mensual cerrada</option>
+            <option value="approved" {{ 'selected' if source_type == 'approved' }}>Cálculos individuales aprobados</option>
+          </select>
+        </label>
+      </div>
+      {% if source_summary %}
+      <p class="import-salary-info">
+        <strong>Nómina del período:</strong> {{ source_summary.payroll_status }}
+        · <strong>Últimos cálculos individuales aprobados:</strong> {{ source_summary.approved }}
+        · <strong>Pendientes / anulados:</strong> {{ source_summary.pending }}
+        · <strong>Origen elegido:</strong> {{ 'Cálculos aprobados' if effective_source == 'approved' else 'Nómina cerrada' }}
+      </p>
+      {% endif %}
       {% if authority == 'REOP' %}
       <p class="import-salary-info">REOP: la planilla respetará exactamente las 32 columnas del Excel de referencia. Seleccioná el código de pago que corresponda al portal y clasificá cualquier ingreso no desglosado.</p>
       <div class="import-salary-grid">
@@ -89,10 +106,11 @@
     </form>
   </section>
 
+  {% if request.query_params.get("details_saved") %}<div class="import-salary-ok">Datos complementarios guardados. Ejecutá la verificación nuevamente antes de descargar.</div>{% endif %}
   {% if selected_company and preview %}
   <section class="import-salary-card">
     <h2>2. Resultado de validación</h2>
-    <p class="import-salary-info"><strong>{{ selected_company.legal_name }}</strong> · {{ period }} · {{ authority }} · <strong>{{ item_count }}</strong> trabajador(es) de la nómina cerrada.</p>
+    <p class="import-salary-info"><strong>{{ selected_company.legal_name }}</strong> · {{ period }} · {{ authority }} · <strong>{{ item_count }}</strong> trabajador(es) · {{ 'Cálculos aprobados' if effective_source == 'approved' else 'Nómina cerrada' }}.</p>
     {% if preview_rows %}
     <div style="overflow-x:auto;margin:10px 0 15px;border:1px solid #dce5f1;border-radius:9px">
       <table style="width:100%;border-collapse:collapse;font-size:.75rem">
@@ -102,13 +120,64 @@
     </div>
     <p class="import-salary-info">Se muestran hasta 20 registros para inspección visual. Revisá los nombres, números y montos antes de descargar.</p>
     {% endif %}
+    {% if effective_source == 'approved' and diagnostics %}
+    <details class="import-salary-card" style="background:#f7faff;margin:12px 0" {% if errors %}open{% endif %}>
+      <summary style="font-size:.88rem;font-weight:800;color:#17335e;cursor:pointer">Completar jornadas y horas de los cálculos aprobados ({{ diagnostics|length }})</summary>
+      <p class="import-salary-info">
+        Estos campos no modifican el cálculo original. Registrá únicamente las jornadas y horas reales respaldadas
+        por el control de asistencia; los días pagados y el divisor 240 no equivalen a horas efectivamente trabajadas.
+        Podés guardar los datos incluso cuando existan otras observaciones pendientes.
+      </p>
+      {% for calculation in diagnostics %}
+      <details style="margin:10px 0;padding:12px;border:1px solid #d9e4f2;border-radius:9px;background:#fff">
+        <summary style="cursor:pointer;color:#203b64;font-size:.8rem;font-weight:800">
+          {{ calculation.employee }} · Cálculo #{{ calculation.id }}
+          {% if calculation.warnings %} · {{ calculation.warnings|length }} dato(s) pendiente(s){% else %} · datos presentes{% endif %}
+        </summary>
+        {% if calculation.warnings %}
+        <p class="import-salary-info">{{ calculation.warnings|join(' · ') }}</p>
+        {% endif %}
+        <form method="post" action="/app/compliance/salary-import/details" class="import-salary-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="calculation_id" value="{{ calculation.id }}">
+          <input type="hidden" name="authority" value="{{ authority }}">
+          <div class="import-salary-grid">
+            <label>Desde (fecha real)
+              <input type="date" name="period_start" value="{{ calculation.supplement.period_start }}" required>
+            </label>
+            <label>Hasta (fecha real)
+              <input type="date" name="period_end" value="{{ calculation.supplement.period_end }}" required>
+            </label>
+            <label>Jornadas trabajadas reales
+              <input type="number" name="days_worked" min="0" max="31" step="1" value="{{ calculation.supplement.days_worked }}" required>
+            </label>
+            <label>Horas ordinarias reales
+              <input type="number" name="hours_worked" min="0" max="744" step="0.25" value="{{ calculation.supplement.hours_worked }}" required>
+            </label>
+            <label>Forma de pago real
+              <input name="payment_method" maxlength="100" value="{{ calculation.supplement.payment_method }}" placeholder="Efectivo / transferencia" required>
+            </label>
+          </div>
+          <label class="import-salary-confirm">
+            <input type="checkbox" name="confirmed" value="si" required>
+            <span>Confirmo que estos datos corresponden al registro de asistencia y pago del trabajador.</span>
+          </label>
+          <div class="import-salary-actions">
+            <button type="submit" class="btn primary">Guardar datos complementarios</button>
+            <a class="btn ghost" href="/app/reports/liquidaciones-salarios/{{ calculation.id }}">Ver liquidación guardada</a>
+          </div>
+        </form>
+      </details>
+      {% endfor %}
+    </details>
+    {% endif %}
     {% if errors %}
     <div class="import-salary-errors">
       <h3>{{ errors|length }} observaciones: no se generará el archivo hasta corregirlas</h3>
       <ul>{% for error in errors[:100] %}<li>{{ error }}</li>{% endfor %}</ul>
       {% if errors|length > 100 %}<p>Se muestran las primeras 100 observaciones.</p>{% endif %}
     </div>
-    <p class="import-salary-info">Corregí los datos desde Cálculo → Salarios o el perfil correspondiente. Si es necesario, generá una nueva versión de nómina; una nómina cerrada nunca se corrige silenciosamente durante la exportación.</p>
+    <p class="import-salary-info">Revisá cada observación. Las jornadas se completan arriba sin alterar importes; si hay diferencias salariales, corregí mediante un nuevo cálculo o el procedimiento de nómina correspondiente.</p>
     {% else %}
     <div class="import-salary-ok">La validación técnica local finalizó sin observaciones. El archivo todavía requiere revisión humana y aceptación del organismo.</div>
     <form method="post" action="/app/compliance/salary-import/export" class="import-salary-form">
@@ -120,6 +189,7 @@
       <input type="hidden" name="other_category" value="{{ other_category }}">
       <input type="hidden" name="rei_category" value="{{ rei_category }}">
       <input type="hidden" name="name_order" value="{{ name_order }}">
+      <input type="hidden" name="source_type" value="{{ source_type }}">
       <label class="import-salary-confirm"><input type="checkbox" name="confirmed" value="si" required>
         <span>Revisé los datos de los trabajadores, los conceptos y el formato de importación. Comprendo que esta descarga no equivale a una presentación oficial.{% if authority == 'REI' %} Confirmé además los nombres, la categoría y la estructura TXT vigente en mi portal REI.{% endif %}</span>
       </label>
