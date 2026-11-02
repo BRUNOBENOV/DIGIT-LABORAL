@@ -9407,7 +9407,7 @@ def salary_import_page(
         raise HTTPException(422, "Origen de salarios no válido.") from exc
     diagnostics = []
     if preview and effective_source == "approved":
-        _source_rows, _source_errors, diagnostics = approved_salary_records(db, company, period)
+        _source_rows, _source_errors, diagnostics = approved_salary_records(db, company, period, authority=authority)
     errors: list[str] = []
     rows: list[list] = []
     if preview:
