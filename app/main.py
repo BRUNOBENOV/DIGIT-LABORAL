@@ -9427,6 +9427,81 @@ def salary_import_page(
     )
 
 
+@app.post("/app/compliance/salary-import/details")
+def save_salary_import_details(
+    calculation_id: Annotated[int, Form()],
+    authority: Annotated[str, Form()] = "REOP",
+    period_start: Annotated[str, Form()] = "",
+    period_end: Annotated[str, Form()] = "",
+    days_worked: Annotated[int, Form()] = 0,
+    hours_worked: Annotated[Decimal, Form()] = Decimal("0"),
+    payment_method: Annotated[str, Form()] = "",
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    """Completar jornadas reales sin alterar los importes del cálculo aprobado."""
+    from calendar import monthrange
+    from .approved_salary_import import APPROVED, SALARY_TYPES, calculation_fingerprint
+
+    item = db.get(CalculationRecord, calculation_id)
+    if item is None:
+        raise HTTPException(404, "Cálculo no encontrado.")
+    company = company_allowed(db, user, item.company_id)
+    if item.calculation_type not in SALARY_TYPES or item.status not in APPROVED or item.employee_id is None:
+        raise HTTPException(409, "Seleccioná un cálculo salarial aprobado y vinculado a un funcionario.")
+    latest = db.scalar(select(CalculationRecord).where(
+        CalculationRecord.company_id == company.id,
+        CalculationRecord.employee_id == item.employee_id,
+        CalculationRecord.reference_period == item.reference_period,
+        CalculationRecord.calculation_type.in_(SALARY_TYPES),
+    ).order_by(CalculationRecord.created_at.desc(), CalculationRecord.id.desc()).limit(1))
+    if not latest or latest.id != item.id:
+        raise HTTPException(409, "Existe una versión más reciente de la liquidación. Revisá el último cálculo.")
+    if not re.fullmatch(r"20\d{2}-(0[1-9]|1[0-2])", item.reference_period or ""):
+        raise HTTPException(422, "El período salarial no es válido.")
+    try:
+        start, end = date.fromisoformat(period_start), date.fromisoformat(period_end)
+        anchor = date.fromisoformat(item.reference_period + "-01")
+    except ValueError as exc:
+        raise HTTPException(422, "Ingresá fechas del período válidas.") from exc
+    last_day = date(anchor.year, anchor.month, monthrange(anchor.year, anchor.month)[1])
+    employee = db.get(Employee, item.employee_id)
+    if (
+        start < anchor or end > last_day or end < start or employee is None
+        or start < employee.admission_date
+        or (employee.termination_date and end > employee.termination_date)
+    ):
+        raise HTTPException(422, "El rango de pago debe pertenecer al período y al vínculo laboral.")
+    if not (0 <= days_worked <= 31):
+        raise HTTPException(422, "Las jornadas reales deben estar entre 0 y 31.")
+    if not hours_worked.is_finite() or not (Decimal("0") <= hours_worked <= Decimal("744")):
+        raise HTTPException(422, "Las horas trabajadas deben estar entre 0 y 744.")
+    payment_method = clean_text(payment_method, max_length=100)
+    if not payment_method:
+        raise HTTPException(422, "Completá la forma de pago real.")
+    detail = db.scalar(select(SalaryImportDetail).where(
+        SalaryImportDetail.calculation_record_id == item.id,
+        SalaryImportDetail.company_id == company.id,
+    ))
+    if detail is None:
+        detail = SalaryImportDetail(company_id=company.id, calculation_record_id=item.id)
+        db.add(detail)
+    detail.source_sha256 = calculation_fingerprint(item)
+    detail.period_start, detail.period_end = start, end
+    detail.days_worked, detail.hours_worked = days_worked, hours_worked
+    detail.payment_method, detail.updated_by = payment_method, user.email
+    write_audit(
+        db, user, "actualizar_jornada_declarativa", "calculo", str(item.id),
+        f"Período {item.reference_period} · {start} a {end} · jornadas {days_worked} · horas {hours_worked}",
+    )
+    db.commit()
+    system = authority if authority in {"REOP", "REI"} else "REOP"
+    return RedirectResponse(
+        f"/app/compliance/salary-import?company_id={company.id}&period={item.reference_period}"
+        f"&authority={system}&source_type=approved&details_saved=1", status_code=303,
+    )
+
+
 @app.post("/app/compliance/salary-import/export")
 def salary_import_export(
     company_id: Annotated[int, Form()],
