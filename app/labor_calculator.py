@@ -220,10 +220,20 @@ def calculate(data, *, judicial_evidence_verified=False):
             except ValueError:
                 raise CalculationError("Seleccioná el mes liquidado.", "month")
             result["period"] = period
+            if data.get("period_start") or data.get("period_end"):
+                try:
+                    actual_start = date.fromisoformat(str(data.get("period_start") or ""))
+                    actual_end = date.fromisoformat(str(data.get("period_end") or ""))
+                    if actual_start.strftime("%Y-%m") != period or actual_end.strftime("%Y-%m") != period or actual_end < actual_start:
+                        raise ValueError
+                except ValueError:
+                    raise CalculationError("Completá ambas fechas reales dentro del mes liquidado, en orden de inicio y fin.", "period_start")
             if str(data.get("days_worked", "")).strip():
                 fact("Jornadas trabajadas", number(data, "days_worked", maximum="31"))
             else:
                 result["warnings"].append("Completá las jornadas trabajadas antes de firmar el recibo (art. 235).")
+            if str(data.get("hours_worked", "")).strip():
+                fact("Horas ordinarias trabajadas", number(data, "hours_worked", maximum="744", decimals=2))
         if kind == "salary":
             period_categories = str(data.get("minimum_wage_category") or "general_day")
             overtime_components = (

@@ -1,6 +1,13 @@
-# Digit Laboral 2.6.76
+# Digit Laboral 2.6.77
 
 Plataforma de gestión y cumplimiento laboral para estudios contables paraguayos.
+
+## Novedades de la versión 2.6.77
+
+- Comparte la asistencia del cálculo aprobado entre Salario, Liquidación de haberes, el recibo y las exportaciones REOP/REI. La liquidación carga jornadas, horas ordinarias y forma de pago disponibles; permite una modificación explícita y conserva la referencia al origen.
+- Conserva una aprobación vigente mientras se prepara otro borrador. Una anulación posterior bloquea las aprobaciones anteriores. La exportación muestra jornadas, horas, legajos reales, incluidos, excluidos y borradores en preparación.
+- El origen automático usa aprobados para un legajo y cuando cubren todos los funcionarios de una nómina cerrada; mantiene el origen explícito y la nómina completa en los demás casos. Guardar jornadas REI conserva horas y pago ya registrados para REOP.
+- Verifica empresa, funcionario, mes y vigencia del origen al calcular, guardar y aprobar. Sin migraciones ni dependencias nuevas de producción.
 
 ## Novedades de la versión 2.6.76
 

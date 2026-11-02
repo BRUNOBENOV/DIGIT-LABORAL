@@ -75,15 +75,18 @@
             <option value="payroll" {{ 'selected' if source_type == 'payroll' }}>Solo nómina mensual cerrada</option>
             <option value="approved" {{ 'selected' if source_type == 'approved' }}>Cálculos individuales aprobados</option>
           </select>
+          <small>Si existe una nómina cerrada, el modo automático usa cálculos aprobados solo cuando cubren todos sus funcionarios. Para un legajo individual se prioriza su aprobación vigente.</small>
         </label>
       </div>
       {% if source_summary %}
       <p class="import-salary-info">
         <strong>Nómina del período:</strong> {{ source_summary.payroll_status }}
-        · <strong>Últimos cálculos individuales aprobados:</strong> {{ source_summary.approved }}
-        · <strong>Pendientes / anulados:</strong> {{ source_summary.pending }}
+        · <strong>Aprobaciones vigentes:</strong> {{ source_summary.approved }}
+        · <strong>Sin aprobación vigente:</strong> {{ source_summary.pending }}
+        · <strong>Borradores en preparación:</strong> {{ source_summary.drafts_in_progress }}
         · <strong>Origen elegido:</strong> {{ 'Cálculos aprobados' if effective_source == 'approved' else 'Nómina cerrada' }}
       </p>
+      {% if effective_source == 'payroll' and source_summary.approved %}<p class="import-salary-info">La vista usa los datos de la nómina cerrada. Para usar la asistencia de los cálculos individuales, elegí Cálculos individuales aprobados en Origen de los salarios.</p>{% endif %}
       {% endif %}
       {% if authority == 'REOP' %}
       <p class="import-salary-info">REOP: la planilla respetará exactamente las 32 columnas del Excel de referencia. Seleccioná el código de pago que corresponda al portal y clasificá cualquier ingreso no desglosado.</p>
@@ -129,6 +132,7 @@
   <section class="import-salary-card">
     <h2>2. Resultado de validación</h2>
     <p class="import-salary-info"><strong>{{ selected_company.legal_name }}</strong> · {{ period }} · {{ authority }} · <strong>{{ item_count }}</strong> trabajador(es) · {{ 'Cálculos aprobados' if effective_source == 'approved' else 'Nómina cerrada' }}.</p>
+    <p class="import-salary-info"><strong>{{ item_count }}</strong> incluidos en la vista previa · <strong>{{ excluded_salary|length }}</strong> excluidos por estado · <strong>{{ evaluated_count }}</strong> legajos evaluados. Los errores de validación se resuelven antes de descargar.</p>
     {% if preview_rows %}
     <div style="overflow-x:auto;margin:10px 0 15px;border:1px solid #dce5f1;border-radius:9px">
       <table style="width:100%;border-collapse:collapse;font-size:.75rem">
@@ -141,9 +145,9 @@
     {% if excluded_salary %}
     <div class="import-salary-errors" role="status">
       <h3>{{ excluded_salary|length }} legajo(s) excluidos por estado — no se incorporarán al archivo</h3>
-      <p class="import-salary-info">Se conserva únicamente la última versión por trabajador. Los cálculos en borrador, revisión o anulados no se sustituyen por aprobaciones antiguas. Si necesitás un archivo completo, aprobá los registros que correspondan antes de exportar.</p>
+      <p class="import-salary-info">Se usa una aprobación vigente por trabajador. Preparar otro borrador no elimina esa aprobación. Una anulación posterior bloquea las aprobaciones anteriores. Revisá estos registros antes de emitir una declaración completa.</p>
       <ul>{% for excluded in excluded_salary[:30] %}
-        <li>Legajo {{ excluded.employee_id }} · cálculo #{{ excluded.calculation_id }}: {{ excluded.status }}</li>
+        <li>{% if excluded.employee_code is not none %}Legajo {{ excluded.employee_code }}{% else %}Funcionario ID {{ excluded.employee_id }}{% endif %} · {{ excluded.employee_name }} · cálculo #{{ excluded.calculation_id }}: {{ excluded.status }}</li>
       {% endfor %}</ul>
     </div>
     {% endif %}
@@ -166,29 +170,31 @@
         {% if calculation.warnings %}
         <p class="import-salary-info">{{ calculation.warnings|join(' · ') }}</p>
         {% endif %}
-        <form method="post" action="/app/compliance/salary-import/details" class="import-salary-form">
+        <form method="post" action="/app/compliance/salary-import/details" class="import-salary-form" data-salary-import-details>
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <input type="hidden" name="calculation_id" value="{{ calculation.id }}">
           <input type="hidden" name="authority" value="{{ authority }}">
           {% if authority == 'REI' %}
           <p class="import-salary-info">Para el archivo REI solamente se necesitan las jornadas trabajadas. No hace falta repetir horas ordinarias ni medio de pago.</p>
           {% endif %}
+          <label class="import-salary-confirm"><input type="checkbox" name="override_existing" value="on" data-edit-attendance> Modificar datos registrados para esta exportación</label>
+          <p class="import-salary-info">Los valores cargados provienen del cálculo o del anexo revisado. Completá los faltantes; activá Modificar para reemplazar un dato existente.</p>
           <div class="import-salary-grid">
             <label>Desde (fecha real)
-              <input type="date" name="period_start" value="{{ calculation.supplement.period_start }}" required>
+              <input type="date" name="period_start" value="{{ calculation.supplement.period_start }}" {% if 'period_start' in calculation.attendance_origins %}readonly data-attendance-inherited{% endif %} required>
             </label>
             <label>Hasta (fecha real)
-              <input type="date" name="period_end" value="{{ calculation.supplement.period_end }}" required>
+              <input type="date" name="period_end" value="{{ calculation.supplement.period_end }}" {% if 'period_end' in calculation.attendance_origins %}readonly data-attendance-inherited{% endif %} required>
             </label>
             <label>Jornadas trabajadas reales
-              <input type="number" name="days_worked" min="0" max="31" step="1" value="{{ calculation.supplement.days_worked }}" required>
+              <input type="number" name="days_worked" min="0" max="31" step="1" value="{{ calculation.supplement.days_worked }}" {% if 'days_worked' in calculation.attendance_origins %}readonly data-attendance-inherited{% endif %} required>
             </label>
             {% if authority == 'REOP' %}
             <label>Horas ordinarias reales
-              <input type="number" name="hours_worked" min="0" max="744" step="0.25" value="{{ calculation.supplement.hours_worked }}" required>
+              <input type="number" name="hours_worked" min="0" max="744" step="0.25" value="{{ calculation.supplement.hours_worked }}" {% if 'hours_worked' in calculation.attendance_origins %}readonly data-attendance-inherited{% endif %} required>
             </label>
             <label>Forma de pago real
-              <input name="payment_method" maxlength="100" value="{{ calculation.supplement.payment_method }}" placeholder="Efectivo / transferencia" required>
+              <input name="payment_method" maxlength="100" value="{{ calculation.supplement.payment_method }}" {% if 'payment_method' in calculation.attendance_origins %}readonly data-attendance-inherited{% endif %} placeholder="Efectivo / transferencia" required>
             </label>
             {% endif %}
           </div>
@@ -245,4 +251,5 @@
     <p class="import-salary-info">REOP: <a href="https://www.mtess.gov.py/?page_id=31365" target="_blank" rel="noopener">modelos e instructivos MTESS</a>. REI: <a href="https://portal.ips.gov.py/sistemas/ipsportal/contenido.php?c=119" target="_blank" rel="noopener">manual y formato IPS</a>.</p>
   </section>
 </div>
+<script src="{{ url_for('static', path='salary-attendance.js') }}?v={{ app_version }}" defer></script>
 {% endblock %}

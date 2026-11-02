@@ -5,7 +5,6 @@ Ante un concepto ambiguo o jornada no documentada, devuelve un bloqueo explicati
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import re
 from datetime import date
@@ -15,11 +14,10 @@ from types import SimpleNamespace
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .models import CalculationRecord, Employee, IntegrationBatch, Payroll, SalaryImportDetail
+from .models import CalculationRecord, Employee, IntegrationBatch, Payroll, PayrollLine, SalaryImportDetail
 
 
-SALARY_TYPES = ("salary", "suite_salary")
-APPROVED = {"Aprobado", "Validado"}
+from .salary_data import (SALARY_TYPES, APPROVED, select_salary_versions, calculation_fingerprint, merge_attendance)
 
 
 def _obj(text: str | None) -> dict:
@@ -60,17 +58,20 @@ def salary_source_summary(db: Session, company_id: int, period: str, employee_id
     if employee_id is not None:
         query = query.where(CalculationRecord.employee_id == employee_id)
     records = list(db.scalars(query.order_by(CalculationRecord.created_at.desc(), CalculationRecord.id.desc())))
-    latest: dict[int, CalculationRecord] = {}
+    latest = select_salary_versions(records)
+    newest = {}
     for item in records:
         if item.employee_id is not None:
-            latest.setdefault(item.employee_id, item)
+            newest.setdefault(item.employee_id, item)
     return {
         "closed_payroll": bool(payroll and payroll.status == "Cerrada" and payroll.closed_at),
         "payroll_status": payroll.status if payroll else "No existe",
         "approved": sum(x.status in APPROVED for x in latest.values()),
         "pending": sum(x.status not in APPROVED for x in latest.values()),
+        "drafts_in_progress": sum(newest[eid].id != item.id for eid, item in latest.items()),
         "total": len(latest),
         "without_employee": sum(x.employee_id is None and x.status in APPROVED for x in records),
+        "approved_employee_ids": [eid for eid, item in latest.items() if item.status in APPROVED],
     }
 
 
@@ -80,7 +81,15 @@ def choose_salary_source(db: Session, company_id: int, period: str, requested: s
     if requested != "auto":
         return requested
     summary = salary_source_summary(db, company_id, period, employee_id=employee_id)
+    if employee_id is not None and summary["approved"]:
+        return "approved"
     if summary["closed_payroll"]:
+        if summary["approved"]:
+            payroll_employees = set(db.scalars(select(PayrollLine.employee_id).join(
+                Payroll, Payroll.id == PayrollLine.payroll_id
+            ).where(Payroll.company_id == company_id, Payroll.period == period)))
+            if payroll_employees and payroll_employees.issubset(set(summary["approved_employee_ids"])):
+                return "approved"
         return "payroll"
     return "approved" if summary["total"] or summary["without_employee"] else "payroll"
 
@@ -192,36 +201,13 @@ def _legacy_line(item: CalculationRecord, inputs: dict, saved: dict, errors: lis
     return line, dict(overtime_day=0, overtime_night=0, night_surcharge=0, holidays=0, family_allowance=0, extra_hours=Decimal("0"), extra_hours_documented=False)
 
 
-def calculation_fingerprint(item: CalculationRecord) -> str:
-    return hashlib.sha256(
-        (item.input_json or "{}").encode("utf-8")
-        + b"\\n"
-        + (item.result_json or "{}").encode("utf-8")
-    ).hexdigest()
-
-
 def _review_data(inputs: dict, batch: IntegrationBatch | None,
                  detail: SalaryImportDetail | None, item: CalculationRecord) -> dict:
-    # REOP individual preparado y validado registra jornadas sin alterar el cálculo.
-    values = dict(inputs)
-    if batch and batch.status in {"Validado", "Presentado", "Aceptado"}:
-        additional = _obj(batch.payload_json)
-        for key in ("days_worked", "hours_worked", "payment_method", "period_start", "period_end"):
-            if key in additional and additional[key] not in (None, ""):
-                values[key] = additional[key]
-    if detail and detail.source_sha256 == calculation_fingerprint(item):
-        values.update({
-            "days_worked": detail.days_worked,
-            "hours_worked": str(detail.hours_worked),
-            "payment_method": detail.payment_method,
-            "period_start": detail.period_start.isoformat(),
-            "period_end": detail.period_end.isoformat(),
-        })
-    return values
+    return merge_attendance(inputs, batch, detail, item)
 
 
 def approved_employee_choices(db: Session, company_id: int, period: str) -> list[Employee]:
-    """Only the latest status per employee counts as eligible for selection."""
+    """Use the current approval, preserving it while a new draft is prepared."""
     records = list(db.scalars(
         select(CalculationRecord).where(
             CalculationRecord.company_id == company_id,
@@ -230,9 +216,7 @@ def approved_employee_choices(db: Session, company_id: int, period: str) -> list
             CalculationRecord.employee_id.is_not(None),
         ).order_by(CalculationRecord.created_at.desc(), CalculationRecord.id.desc())
     ))
-    latest = {}
-    for item in records:
-        latest.setdefault(item.employee_id, item)
+    latest = select_salary_versions(records)
     eligible = [eid for eid, item in latest.items() if item.status in APPROVED]
     if not eligible:
         return []
@@ -244,12 +228,7 @@ def approved_employee_choices(db: Session, company_id: int, period: str) -> list
 
 
 def salary_excluded_records(db: Session, company_id: int, period: str) -> list[dict]:
-    """Latest non-approved salary snapshots per employee, for explicit partial-export consent.
-
-    Informational only. Older approved snapshots are NEVER revived over a
-    newer draft or annulment. The caller must show this list and require a
-    positive acknowledgement before exporting the approved subset.
-    """
+    """Employees without a current approval; annulments remain a barrier."""
     rows = list(db.scalars(
         select(CalculationRecord).where(
             CalculationRecord.company_id == company_id,
@@ -258,9 +237,7 @@ def salary_excluded_records(db: Session, company_id: int, period: str) -> list[d
             CalculationRecord.employee_id.is_not(None),
         ).order_by(CalculationRecord.created_at.desc(), CalculationRecord.id.desc())
     ))
-    latest = {}
-    for row in rows:
-        latest.setdefault(row.employee_id, row)
+    latest = select_salary_versions(rows)
     return [
         {"employee_id": row.employee_id, "calculation_id": row.id, "status": row.status}
         for row in latest.values() if row.status not in APPROVED
@@ -268,7 +245,7 @@ def salary_excluded_records(db: Session, company_id: int, period: str) -> list[d
 
 
 def approved_salary_records(db: Session, company, period: str, *, authority: str = "REOP", employee_id: int | None = None) -> tuple[list[tuple], list[str], list[dict]]:
-    """Selecciona última versión por legajo, con advertencias y sin resucitar anulados."""
+    """Selecciona la aprobación vigente por legajo, sin resucitar anulaciones."""
     query = select(CalculationRecord).where(
         CalculationRecord.company_id == company.id,
         CalculationRecord.reference_period == period,
@@ -286,7 +263,7 @@ def approved_salary_records(db: Session, company, period: str, *, authority: str
             if item.status in APPROVED:
                 errors.append(f"Cálculo #{item.id}: no tiene funcionario asociado; debe identificarse antes de exportar.")
             continue
-        selected.setdefault(item.employee_id, item)
+    selected = select_salary_versions(rows)
     if not selected:
         return [], list(dict.fromkeys([*errors, "No hay cálculos de Salario vinculados a legajos."])), []
     employee_map = {e.id: e for e in db.scalars(select(Employee).where(
@@ -314,7 +291,7 @@ def approved_salary_records(db: Session, company, period: str, *, authority: str
         employee = employee_map.get(id_)
         if item.status not in APPROVED:
             if employee_id is not None:
-                errors.append(f"Legajo {id_}: el cálculo más reciente #{item.id} está «{item.status}»; no se reutiliza una aprobación anterior.")
+                errors.append(f"Funcionario ID {id_}: no hay aprobación vigente; el registro #{item.id} está «{item.status}». No se reutiliza una aprobación anterior a una anulación.")
             # Company-level exports show excluded drafts separately and
             # enforce consent for the reduced selection at the download gate.
             continue
@@ -335,16 +312,25 @@ def approved_salary_records(db: Session, company, period: str, *, authority: str
         days_raw = supplementary.get("days_worked")
         hours_raw = supplementary.get("hours_worked")
         try:
-            days = int(days_raw) if days_raw not in (None, "") else -1
-        except (TypeError, ValueError):
+            days_number = Decimal(str(days_raw))
+            if isinstance(days_raw, bool) or not days_number.is_finite() or days_number != days_number.to_integral_value():
+                raise ValueError
+            days = int(days_number)
+        except (TypeError, ValueError, ArithmeticError):
             days = -1
         if days < 0:
             item_errors.append("falta registrar jornadas trabajadas reales; no equivale automáticamente a días remunerados")
         try:
             hours = Decimal(str(hours_raw)) if hours_raw not in (None, "") else Decimal(0)
-        except (TypeError, ValueError):
+            invalid_hours = not hours.is_finite() or hours < 0 or hours > 744
+        except (TypeError, ValueError, ArithmeticError):
             hours = Decimal(0)
-        if authority == "REOP" and (not hours.is_finite() or hours <= 0):
+            invalid_hours = True
+        if invalid_hours:
+            hours = Decimal(0)
+            if authority == "REOP":
+                item_errors.append("las horas ordinarias guardadas son inválidas (rango 0-744)")
+        elif authority == "REOP" and hours <= 0:
             item_errors.append("faltan horas ordinarias efectivamente trabajadas (no usar divisor horario del salario)")
         if authority == "REOP" and not supplementary.get("payment_method"):
             item_errors.append("falta forma de pago verificada")
@@ -381,6 +367,7 @@ def approved_salary_records(db: Session, company, period: str, *, authority: str
         source.append((line, employee, detail))
         diagnostics.append(dict(id=item.id, employee=employee.full_name, status=item.status,
                                 warnings=item_errors, origin=item.source or item.calculation_type,
+                                attendance_origins=supplementary.get("attendance_origins", {}),
                                 supplement={
                                     "days_worked": supplementary.get("days_worked", ""),
                                     "hours_worked": supplementary.get("hours_worked", ""),

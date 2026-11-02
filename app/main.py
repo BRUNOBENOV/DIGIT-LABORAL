@@ -5690,6 +5690,14 @@ def _revalidate_calculation_before_approval(item: CalculationRecord, db: Session
     except (TypeError, ValueError, json.JSONDecodeError) as exc:
         raise HTTPException(409, "El cálculo guardado no contiene entradas y resultados válidos. Volvé a calcularlo.") from exc
 
+    if item.calculation_type == "suite_salary" and item.status not in {"Aprobado", "Validado"}:
+        from .salary_data import verify_attendance_inheritance
+        from .labor_calculator import CalculationError
+        try:
+            verify_attendance_inheritance(db, db.get(Employee, item.employee_id), saved_inputs)
+        except CalculationError as exc:
+            raise HTTPException(409, str(exc)) from None
+
     legacy_general_sources = {"Cálculo automático", "Calculadora", "Calculadora v2.4"}
     if (item.source or "").strip() in legacy_general_sources:
         # Los registros históricos con fuentes conocidas (incluida la variante
@@ -5832,6 +5840,8 @@ def calculation_status(
     write_audit(db, user, "actualizar_estado", "calculo", str(item.id), status_value)
     db.commit()
     target = f"/app/calculations?tipo={quote(item.calculation_type)}" if item.calculation_type in CALCULATION_MODULES else "/app/calculations"
+    if item.calculation_type == "suite_salary" and item.source == "Centro laboral":
+        target = f"/app/liquidaciones/{item.id}"
     return RedirectResponse(target, status_code=303)
 
 
@@ -9469,6 +9479,14 @@ def salary_import_page(
         if company and effective_source == "approved" and employee_id is None
         else []
     )
+    if excluded_salary:
+        excluded_employees = {item.id: item for item in db.scalars(select(Employee).where(
+            Employee.company_id == company.id, Employee.id.in_([row["employee_id"] for row in excluded_salary])
+        ))}
+        for row in excluded_salary:
+            worker = excluded_employees.get(row["employee_id"])
+            row["employee_code"] = worker.employee_code if worker else None
+            row["employee_name"] = worker.full_name if worker else "Registro no disponible"
     diagnostics = []
     if preview and effective_source == "approved":
         _source_rows, _source_errors, diagnostics = approved_salary_records(db, company, period, authority=authority, employee_id=employee_id)
@@ -9484,21 +9502,22 @@ def salary_import_page(
         except SalaryImportError as exc:
             errors = exc.errors
     if authority == "REOP":
-        preview_headers = ["N.º patronal", "Documento", "Desde", "Hasta", "Sueldo básico", "IPS"]
+        preview_headers = ["N.º patronal", "Documento", "Desde", "Hasta", "Jornadas", "Horas ordinarias", "Sueldo básico", "IPS"]
         preview_rows = [
             [item[0], item[1], item[2].strftime("%d/%m/%Y"), item[3].strftime("%d/%m/%Y"),
-             item[9], item[25]]
+             item[5], item[7], item[9], item[25]]
             for item in rows[:20] if isinstance(item[2], date) and isinstance(item[3], date)
         ]
     else:
-        preview_headers = ["N.º patronal", "Cédula", "Apellidos", "Nombres", "Categoría", "Base IPS"]
-        preview_rows = [[item[0], item[2], item[3], item[4], item[5], item[7]] for item in rows[:20]]
+        preview_headers = ["N.º patronal", "Cédula", "Apellidos", "Nombres", "Categoría", "Jornadas", "Base IPS"]
+        preview_rows = [[item[0], item[2], item[3], item[4], item[5], item[6], item[7]] for item in rows[:20]]
     return render(
         request, "salary_import.html", db, user, companies=companies,
         selected_company=company, period=period, authority=authority,
         payment_code=payment_code, other_category=other_category,
         rei_category=rei_category, name_order=name_order, preview=preview,
         item_count=len(rows), errors=errors,
+        evaluated_count=(source_summary["total"] if effective_source == "approved" and source_summary else len(rows)),
         source_type=source_type, effective_source=effective_source,
         source_summary=source_summary, diagnostics=diagnostics,
         employee_id=employee_id, selected_employee=selected_employee,
@@ -9517,12 +9536,14 @@ def save_salary_import_details(
     hours_worked: Annotated[Decimal, Form()] = Decimal("0"),
     payment_method: Annotated[str, Form()] = "",
     confirmed: Annotated[str, Form()] = "",
+    override_existing: Annotated[str, Form()] = "",
     user: User = Depends(require_roles("administrador", "contador")),
     db: Session = Depends(get_db),
 ):
     """Completar jornadas reales sin alterar los importes del cálculo aprobado."""
     from calendar import monthrange
     from .approved_salary_import import APPROVED, SALARY_TYPES, calculation_fingerprint
+    from .salary_data import approved_salary, attendance_data
 
     if confirmed != "si":
         raise HTTPException(400, "Confirmá que los datos de asistencia y pago son reales.")
@@ -9532,12 +9553,7 @@ def save_salary_import_details(
     company = company_allowed(db, user, item.company_id)
     if item.calculation_type not in SALARY_TYPES or item.status not in APPROVED or item.employee_id is None:
         raise HTTPException(409, "Seleccioná un cálculo salarial aprobado y vinculado a un funcionario.")
-    latest = db.scalar(select(CalculationRecord).where(
-        CalculationRecord.company_id == company.id,
-        CalculationRecord.employee_id == item.employee_id,
-        CalculationRecord.reference_period == item.reference_period,
-        CalculationRecord.calculation_type.in_(SALARY_TYPES),
-    ).order_by(CalculationRecord.created_at.desc(), CalculationRecord.id.desc()).limit(1))
+    latest = approved_salary(db, company.id, item.employee_id, item.reference_period)
     if not latest or latest.id != item.id:
         raise HTTPException(409, "Existe una versión más reciente de la liquidación. Revisá el último cálculo.")
     if not re.fullmatch(r"20\d{2}-(0[1-9]|1[0-2])", item.reference_period or ""):
@@ -9564,16 +9580,33 @@ def save_salary_import_details(
         SalaryImportDetail.calculation_record_id == item.id,
         SalaryImportDetail.company_id == company.id,
     ))
+    current = attendance_data(db, item)
+    if authority not in {"REOP", "REI"}:
+        raise HTTPException(422, "Organismo no válido.")
     if authority == "REI":
-        # REI no requiere horario ni medio de pago. No destruir datos REOP
-        # ya verificados cuando el usuario guarda solo las jornadas IPS.
-        if detail is not None:
-            if not payment_method:
-                payment_method = detail.payment_method
-            if hours_worked == 0:
-                hours_worked = detail.hours_worked
+        # Preserve attendance already recorded even when no annex exists yet.
+        try:
+            hours_worked = Decimal(str(current.get("hours_worked") or "0"))
+            if not hours_worked.is_finite() or not Decimal("0") <= hours_worked <= Decimal("744"):
+                raise ValueError
+        except (ValueError, ArithmeticError):
+            raise HTTPException(409, "Las horas guardadas son inválidas. Revisá el cálculo antes de completar el anexo.") from None
+        payment_method = str(current.get("payment_method") or "")
     elif not payment_method:
         raise HTTPException(422, "Completá la forma de pago real para REOP.")
+    changes = dict(days_worked=days_worked, period_start=start.isoformat(), period_end=end.isoformat())
+    if authority == "REOP":
+        changes.update(hours_worked=hours_worked, payment_method=payment_method)
+    for key, value in changes.items():
+        previous = current.get(key)
+        if previous in (None, "") or override_existing == "on":
+            continue
+        try:
+            changed = Decimal(str(previous)) != Decimal(str(value)) if key in {"days_worked", "hours_worked"} else str(previous) != str(value)
+        except (ValueError, ArithmeticError):
+            changed = True
+        if changed:
+            raise HTTPException(409, "Activá Modificar datos registrados para reemplazar la asistencia existente.")
     if detail is None:
         detail = SalaryImportDetail(company_id=company.id, calculation_record_id=item.id)
         db.add(detail)

@@ -94,7 +94,7 @@ def test_missing_hours_are_blocking_not_invented_from_divisor():
     assert any("falta registrar jornadas trabajadas reales" in error for error in errors)
 
 
-def test_newer_unapproved_record_blocks_old_approved_record():
+def test_newer_draft_preserves_current_approval_until_review():
     item, employee, company, detail = case()
     more_recent = SimpleNamespace(**vars(item))
     more_recent.id = 51
@@ -103,17 +103,13 @@ def test_newer_unapproved_record_blocks_old_approved_record():
     db = FakeSession([more_recent, item], employee, detail)
     rows, errors = exporter.prepare_import(db, company, "2026-10", "REOP",
                                            source_type="approved", payment_code="1")
-    assert rows == []
-    # A company-wide export reports excluded latest drafts separately;
-    # it must not resurrect an earlier approved snapshot.
-    assert any("No se identificaron" in error for error in errors)
-    exclusions = source.salary_excluded_records(db, company.id, "2026-10")
-    assert exclusions == [{"employee_id": employee.id, "calculation_id": 51, "status": "Revisar"}]
-    selected, selected_errors, _ = source.approved_salary_records(
+    assert len(rows) == 1 and not errors
+    assert not source.salary_excluded_records(db, company.id, "2026-10")
+    selected, selected_errors, details = source.approved_salary_records(
         db, company, "2026-10", employee_id=employee.id,
     )
-    assert not selected
-    assert any("no se reutiliza una aprobación anterior" in err for err in selected_errors)
+    assert len(selected) == 1 and not selected_errors and details[0]["id"] == item.id
+    assert source.salary_source_summary(db, company.id, "2026-10")["drafts_in_progress"] == 1
 
 
 def test_stale_supplement_is_not_applied_when_calculation_changes():

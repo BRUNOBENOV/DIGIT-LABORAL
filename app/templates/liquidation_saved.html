@@ -10,6 +10,20 @@
 <button type="button" class="dl-button dl-outline" data-print>Imprimir</button>
 <a class="dl-button dl-outline" href="/app/liquidaciones/{{ item.id }}/copiar">Usar como base de otro cálculo</a>
 </div>
+{% if item.calculation_type == 'suite_salary' %}
+<section class="dl-alert">
+  <p><strong>Estado: {{ item.status }}</strong>. Revisá la asistencia, los haberes y los descuentos antes de aprobar. Guardar un borrador conserva la aprobación anterior del período.</p>
+  {% if item.status in ['Aprobado','Validado'] %}
+  <a class="dl-button" href="/app/compliance/salary-import?company_id={{ item.company_id }}&amp;employee_id={{ item.employee_id }}&amp;period={{ item.reference_period }}&amp;source_type=approved">Exportar REOP / REI</a>
+  {% endif %}
+  {% if user.role in ['administrador','contador'] and item.status not in ['Aprobado','Validado','Anulado'] %}
+  <form method="post" action="/app/calculations/{{ item.id }}/status" class="dl-output-actions">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button class="dl-button" name="status" value="Aprobado">Aprobar salario revisado</button>
+  </form>
+  {% endif %}
+</section>
+{% endif %}
 {% include "liquidation_result.html" %}
 </div>
 {% endblock %}
