@@ -46,6 +46,11 @@ La edición de nómina calculaba `employer_ips` sobre `gross` incluso cuando `ip
 
 **Corrección:** ambos cálculos utilizan la **base imponible guardada**, con tasa configurable, sin modificar importes históricos. Se añadió una regresión explícita con bruto de G. 3.500.000 y base de G. 3.000.000.
 
+### P1-02b — Ruta efectiva de edición salarial diferente de la ruta principal
+En el arranque `app.runtime` carga `app.ux_v24`, cuyo `_take_route` elimina la ruta `POST /app/payrolls/{payroll_id}/lines/{line_id}` de `main.py` y registra otra implementación. Esto explica por qué las correcciones anteriores del aporte patronal en `main.py` no cambiaban el comportamiento de la aplicación.
+
+**Corrección:** se actualizó también la ruta activa `update_payroll_line_v24`: ahora conserva bases imponibles manuales documentadas, actualiza siempre el detalle de aporte patronal y utiliza la base IPS grabada. Se añadió una prueba de enrutamiento para detectar futuras sustituciones no previstas.
+
 ### P1-03 — Riesgo de desbordamiento en totales de nóminas masivas
 Los cuatro totales de `payrolls` usaban `INTEGER` de 32 bits en PostgreSQL. Una nómina con 1.000 salarios de G. 3.000.000 supera 2.147.483.647.
 
