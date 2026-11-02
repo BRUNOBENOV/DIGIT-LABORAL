@@ -9394,12 +9394,23 @@ def salary_import_page(
             )
         except SalaryImportError as exc:
             errors = exc.errors
+    if authority == "REOP":
+        preview_headers = ["N.º patronal", "Documento", "Desde", "Hasta", "Sueldo básico", "IPS"]
+        preview_rows = [
+            [item[0], item[1], item[2].strftime("%d/%m/%Y"), item[3].strftime("%d/%m/%Y"),
+             item[9], item[25]]
+            for item in rows[:20] if isinstance(item[2], date) and isinstance(item[3], date)
+        ]
+    else:
+        preview_headers = ["N.º patronal", "Cédula", "Apellidos", "Nombres", "Categoría", "Base IPS"]
+        preview_rows = [[item[0], item[2], item[3], item[4], item[5], item[7]] for item in rows[:20]]
     return render(
         request, "salary_import.html", db, user, companies=companies,
         selected_company=company, period=period, authority=authority,
         payment_code=payment_code, other_category=other_category,
         rei_category=rei_category, name_order=name_order, preview=preview,
         item_count=len(rows), errors=errors,
+        preview_headers=preview_headers, preview_rows=preview_rows,
     )
 
 
