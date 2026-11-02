@@ -198,9 +198,13 @@ def prepare_import(db: Session, company, period: str, authority: str, *,
                 err.append("el período comienza antes de la fecha de ingreso")
             if employee.termination_date and employee.termination_date < dend:
                 err.append("el período termina después del egreso")
-            if not isinstance(days, int) or not 0 <= days <= 31:
+            if not isinstance(days, int) or days > 31:
                 err.append("cantidad de jornadas trabajadas fuera del rango 0-31")
-            if not hours.is_finite() or not 0 <= hours <= 744:
+            elif days < 0 and effective_source != "approved":
+                err.append("cantidad de jornadas trabajadas fuera del rango 0-31")
+            # For approved individual calculations, an absent day count (-1)
+            # has already been reported in the source preflight.
+            if not hours.is_finite() or hours < 0 or hours > 744:
                 err.append("cantidad de horas trabajadas inválida")
         if authority == "REI":
             if not employee.ips_contributor:
@@ -261,7 +265,9 @@ def prepare_import(db: Session, company, period: str, authority: str, *,
                     err.append("los beneficios detallados superan bonos y otros ingresos del cálculo")
                 if remainder > 0 and not other_category:
                     err.append("hay otros ingresos no clasificados: elegí su concepto oficial")
-                if not 0 < hours <= 744:
+                if not 0 < hours <= 744 and effective_source != "approved":
+                    # Approved-source preflight already emits this same issue
+                    # with the calculation ID and worker context.
                     err.append("faltan horas ordinarias efectivamente trabajadas")
                 # Las 32 columnas corresponden a la plantilla proporcionada por el usuario.
                 continue_row = [

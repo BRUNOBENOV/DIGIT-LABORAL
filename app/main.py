@@ -7991,6 +7991,10 @@ def update_payroll_line(
             raise HTTPException(422, "Las jornadas trabajadas deben estar entre 0 y 31.")
 
     gross = base_salary + overtime + commissions + bonuses + other_income
+    if gross > 2_147_483_647:
+        raise HTTPException(
+            422, "Los haberes del trabajador superan el límite monetario de una línea salarial. Revisá los conceptos.",
+        )
     employee_is_ips = bool(line.employee.ips_contributor)
     try:
         rate = Decimal(str(ips_rate).strip()) if str(ips_rate).strip() else (
@@ -8032,6 +8036,8 @@ def update_payroll_line(
         basis_note = (ips_basis_note or "").strip()[:300] or "Sin aporte IPS: el funcionario no figura como aportante."
 
     total_discounts = ips_employee_value + absences_discount + advances + other_discount
+    if total_discounts > 2_147_483_647:
+        raise HTTPException(422, "Los descuentos del trabajador exceden el límite permitido.")
     if total_discounts > gross:
         raise HTTPException(422, "Los descuentos superan los haberes brutos; corregí los importes antes de guardar.")
     net = gross - total_discounts
@@ -8061,7 +8067,11 @@ def update_payroll_line(
     employer_rate = Decimal(str(get_parameter(db, "ips_employer_rate_general", 16.5)))
     if not employer_rate.is_finite() or employer_rate < 0 or employer_rate > 100:
         raise HTTPException(422, "El parámetro de aporte patronal IPS es inválido.")
-    detail.employer_ips = round_gs(Decimal(gross) * employer_rate / Decimal("100")) if employee_is_ips else 0
+    # Both sides of the IPS contribution must use the persisted imponible
+    # base. Gross earnings can include concepts outside that base.
+    detail.employer_ips = round_gs(
+        Decimal(ips_base_value) * employer_rate / Decimal("100")
+    ) if employee_is_ips else 0
 
     recalculate_payroll(db, payroll)
     write_audit(db, user, "editar", "linea_liquidacion", str(line.id), line.employee.full_name)
@@ -9432,7 +9442,7 @@ def salary_import_page(
 ):
     """Vista previa de importación salarial; no modifica nóminas."""
     from .official_salary_import import SalaryImportError, prepare_import
-    from .approved_salary_import import salary_source_summary, choose_salary_source, approved_salary_records
+    from .approved_salary_import import salary_source_summary, choose_salary_source, approved_salary_records, salary_excluded_records, approved_employee_choices
 
     ids = company_ids_for_user(db, user)
     companies = seed_choices(
@@ -9447,12 +9457,18 @@ def salary_import_page(
         raise HTTPException(404, "El funcionario no pertenece a la empresa seleccionada.")
     period = period or current_paraguay_date().strftime("%Y-%m")
     authority = authority if authority in {"REOP", "REI"} else "REOP"
+    approved_choices = approved_employee_choices(db, company.id, period) if company else []
     preview = bool(company and request.query_params.get("period"))
     source_summary = salary_source_summary(db, company.id, period, employee_id=employee_id) if company else None
     try:
         effective_source = choose_salary_source(db, company.id, period, source_type, employee_id=employee_id) if company else "payroll"
     except ValueError as exc:
         raise HTTPException(422, "Origen de salarios no válido.") from exc
+    excluded_salary = (
+        salary_excluded_records(db, company.id, period)
+        if company and effective_source == "approved" and employee_id is None
+        else []
+    )
     diagnostics = []
     if preview and effective_source == "approved":
         _source_rows, _source_errors, diagnostics = approved_salary_records(db, company, period, authority=authority, employee_id=employee_id)
@@ -9486,6 +9502,7 @@ def salary_import_page(
         source_type=source_type, effective_source=effective_source,
         source_summary=source_summary, diagnostics=diagnostics,
         employee_id=employee_id, selected_employee=selected_employee,
+        excluded_salary=excluded_salary, approved_choices=approved_choices,
         preview_headers=preview_headers, preview_rows=preview_rows,
     )
 
@@ -9588,6 +9605,7 @@ def salary_import_export(
     source_type: Annotated[str, Form()] = "auto",
     employee_id: Annotated[int | None, Form()] = None,
     confirmed: Annotated[str, Form()] = "",
+    accept_partial: Annotated[str, Form()] = "",
     user: User = Depends(require_roles("administrador", "contador")),
     db: Session = Depends(get_db),
 ):
@@ -9614,6 +9632,18 @@ def salary_import_export(
         raise HTTPException(409, detail=" | ".join(exc.errors[:12])) from exc
     if errors:
         raise HTTPException(409, detail="Hay datos pendientes: " + " | ".join(errors[:12]))
+    from .approved_salary_import import choose_salary_source, salary_excluded_records
+    effective_source = choose_salary_source(db, company.id, period, source_type, employee_id=employee_id)
+    exclusions = (
+        salary_excluded_records(db, company.id, period)
+        if effective_source == "approved" and employee_id is None else []
+    )
+    if exclusions and accept_partial != "si":
+        raise HTTPException(
+            409,
+            f"Hay {len(exclusions)} legajo(s) sin cálculo aprobado que se excluirán. "
+            "Confirmá explícitamente la declaración parcial o exportá un trabajador individual.",
+        )
     if authority == "REI" and name_order not in {"apellido_primero", "nombre_primero"}:
         raise HTTPException(409, "Se requiere confirmar el orden de nombres del REI.")
     content = build_reop_xlsx(rows) if authority == "REOP" else build_rei_txt(rows)
@@ -9628,11 +9658,11 @@ def salary_import_export(
     )
     batch.file_name = file_name
     batch.item_count = len(rows)
-    from .approved_salary_import import choose_salary_source
-    effective_source = choose_salary_source(db, company.id, period, source_type, employee_id=employee_id)
     batch.payload_json = json.dumps({
         "source_type": effective_source,
         "employee_scope_id": employee_id,
+        "excluded_calculation_ids": [item["calculation_id"] for item in exclusions],
+        "partial_export_confirmed": bool(exclusions),
         "format": "REOP-32-col-2025" if authority == "REOP" else "REI-txt-referencia-2016",
         "payment_code": payment_code if authority == "REOP" else None,
         "other_category": other_category if authority == "REOP" else None,
