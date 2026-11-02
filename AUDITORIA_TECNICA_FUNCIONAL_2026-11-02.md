@@ -51,6 +51,11 @@ En el arranque `app.runtime` carga `app.ux_v24`, cuyo `_take_route` elimina la r
 
 **Corrección:** se actualizó también la ruta activa `update_payroll_line_v24`: ahora conserva bases imponibles manuales documentadas, actualiza siempre el detalle de aporte patronal y utiliza la base IPS grabada. Se añadió una prueba de enrutamiento para detectar futuras sustituciones no previstas.
 
+### P1-02c — Campos del formulario Salarios descartados por la ruta efectiva
+La calculadora general de `main.py` había sido ampliada con `days_worked`, `hours_worked` y `payment_method`. Sin embargo, `ux_v24.py` reemplaza también la ruta `POST /app/calculations`; su implementación no guardaba esos campos aunque el formulario los enviara. Este es un motivo directo por el que el exportador solicitaba información previamente introducida.
+
+**Corrección:** la ruta efectiva guarda los tres campos cuando se proporcionan, valida rangos y deja los registros antiguos intactos. No se imputan jornadas o medios de pago faltantes a snapshots históricos. Se añadieron pruebas HTTP de persistencia e invalidación.
+
 ### P1-03 — Riesgo de desbordamiento en totales de nóminas masivas
 Los cuatro totales de `payrolls` usaban `INTEGER` de 32 bits en PostgreSQL. Una nómina con 1.000 salarios de G. 3.000.000 supera 2.147.483.647.
 
