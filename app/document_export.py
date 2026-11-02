@@ -1458,7 +1458,8 @@ def build_pdf_bytes(data: ExportData) -> bytes:
         story.append(Spacer(1, 8 * mm))
 
     if _requires_both_signatures(data.document_type):
-        left = "______________________________<br/><b>Firma / recepción del trabajador/a</b>"
+        worker_label = "Firma del trabajador/a" if data.document_type == "contrato_trabajo" else "Firma / recepción del trabajador/a"
+        left = f"______________________________<br/><b>{worker_label}</b>"
         if data.employee_name:
             left += f"<br/>{escape(data.employee_name)}"
         if data.employee_document:
