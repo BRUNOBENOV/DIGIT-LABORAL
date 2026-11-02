@@ -5,6 +5,7 @@ Ante un concepto ambiguo o jornada no documentada, devuelve un bloqueo explicati
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from datetime import date
@@ -14,7 +15,7 @@ from types import SimpleNamespace
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .models import CalculationRecord, Employee, IntegrationBatch, Payroll
+from .models import CalculationRecord, Employee, IntegrationBatch, Payroll, SalaryImportDetail
 
 
 SALARY_TYPES = ("salary", "suite_salary")
@@ -180,7 +181,16 @@ def _legacy_line(item: CalculationRecord, inputs: dict, saved: dict, errors: lis
     return line, dict(overtime_day=0, overtime_night=0, night_surcharge=0, holidays=0, family_allowance=0)
 
 
-def _review_data(inputs: dict, batch: IntegrationBatch | None) -> dict:
+def calculation_fingerprint(item: CalculationRecord) -> str:
+    return hashlib.sha256(
+        (item.input_json or "{}").encode("utf-8")
+        + b"\\n"
+        + (item.result_json or "{}").encode("utf-8")
+    ).hexdigest()
+
+
+def _review_data(inputs: dict, batch: IntegrationBatch | None,
+                 detail: SalaryImportDetail | None, item: CalculationRecord) -> dict:
     # REOP individual preparado y validado registra jornadas sin alterar el cálculo.
     values = dict(inputs)
     if batch and batch.status in {"Validado", "Presentado", "Aceptado"}:
@@ -188,6 +198,14 @@ def _review_data(inputs: dict, batch: IntegrationBatch | None) -> dict:
         for key in ("days_worked", "hours_worked", "payment_method", "period_start", "period_end"):
             if key in additional and additional[key] not in (None, ""):
                 values[key] = additional[key]
+    if detail and detail.source_sha256 == calculation_fingerprint(item):
+        values.update({
+            "days_worked": detail.days_worked,
+            "hours_worked": str(detail.hours_worked),
+            "payment_method": detail.payment_method,
+            "period_start": detail.period_start.isoformat(),
+            "period_end": detail.period_end.isoformat(),
+        })
     return values
 
 
@@ -223,6 +241,12 @@ def approved_salary_records(db: Session, company, period: str) -> tuple[list[tup
     ).order_by(IntegrationBatch.created_at.desc(), IntegrationBatch.id.desc())))
     for batch in batches:
         batch_map.setdefault(batch.calculation_record_id, batch)
+    detail_map = {d.calculation_record_id: d for d in db.scalars(
+        select(SalaryImportDetail).where(
+            SalaryImportDetail.company_id == company.id,
+            SalaryImportDetail.calculation_record_id.in_([x.id for x in selected.values()])
+        )
+    )}
     source: list[tuple] = []
     diagnostics: list[dict] = []
     for id_, item in sorted(selected.items(), key=lambda pair: pair[0]):
@@ -243,7 +267,7 @@ def approved_salary_records(db: Session, company, period: str) -> tuple[list[tup
             line, complements = _legacy_line(item, inputs, saved, item_errors)
         if line.net != item.amount:
             item_errors.append("el neto guardado no coincide con el importe aprobado")
-        supplementary = _review_data(inputs, batch_map.get(item.id))
+        supplementary = _review_data(inputs, batch_map.get(item.id), detail_map.get(item.id), item)
         days_raw = supplementary.get("days_worked")
         hours_raw = supplementary.get("hours_worked")
         try:
@@ -290,5 +314,12 @@ def approved_salary_records(db: Session, company, period: str) -> tuple[list[tup
             errors.append(f"{employee.full_name} (cálculo #{item.id}): {error}.")
         source.append((line, employee, detail))
         diagnostics.append(dict(id=item.id, employee=employee.full_name, status=item.status,
-                                warnings=item_errors, origin=item.source or item.calculation_type))
+                                warnings=item_errors, origin=item.source or item.calculation_type,
+                                supplement={
+                                    "days_worked": supplementary.get("days_worked", ""),
+                                    "hours_worked": supplementary.get("hours_worked", ""),
+                                    "payment_method": supplementary.get("payment_method", ""),
+                                    "period_start": supplementary.get("period_start", start.isoformat()),
+                                    "period_end": supplementary.get("period_end", end.isoformat()),
+                                }))
     return source, list(dict.fromkeys(errors)), diagnostics
