@@ -9543,12 +9543,20 @@ def save_salary_import_details(
     if not hours_worked.is_finite() or not (Decimal("0") <= hours_worked <= Decimal("744")):
         raise HTTPException(422, "Las horas trabajadas deben estar entre 0 y 744.")
     payment_method = clean_text(payment_method, max_length=100)
-    if not payment_method:
-        raise HTTPException(422, "Completá la forma de pago real.")
     detail = db.scalar(select(SalaryImportDetail).where(
         SalaryImportDetail.calculation_record_id == item.id,
         SalaryImportDetail.company_id == company.id,
     ))
+    if authority == "REI":
+        # REI no requiere horario ni medio de pago. No destruir datos REOP
+        # ya verificados cuando el usuario guarda solo las jornadas IPS.
+        if detail is not None:
+            if not payment_method:
+                payment_method = detail.payment_method
+            if hours_worked == 0:
+                hours_worked = detail.hours_worked
+    elif not payment_method:
+        raise HTTPException(422, "Completá la forma de pago real para REOP.")
     if detail is None:
         detail = SalaryImportDetail(company_id=company.id, calculation_record_id=item.id)
         db.add(detail)
@@ -9564,7 +9572,7 @@ def save_salary_import_details(
     system = authority if authority in {"REOP", "REI"} else "REOP"
     return RedirectResponse(
         f"/app/compliance/salary-import?company_id={company.id}&period={item.reference_period}"
-        f"&authority={system}&source_type=approved&details_saved=1", status_code=303,
+        f"&authority={system}&source_type=approved&employee_id={item.employee_id}&details_saved=1", status_code=303,
     )
 
 
