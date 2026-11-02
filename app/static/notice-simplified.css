@@ -1,0 +1,68 @@
+/* Notificación de Preaviso: entrada compacta y vista previa del documento. */
+.certificate-workspace.notice-simplified-active{grid-template-columns:170px minmax(330px,.9fr) minmax(390px,1.1fr);align-items:start;gap:16px}
+.notice-simple-ui{display:grid;gap:13px;margin-top:14px;min-width:0}
+.notice-simple-ui[hidden],.notice-simple-actions[hidden],.notice-preview-empty[hidden]{display:none!important}
+.notice-simple-ui [hidden]{display:none!important}
+.notice-simple-card,.notice-simple-detail,.notice-simple-actions{border:1px solid #dfe6f1;border-radius:12px;background:#fff;padding:14px;min-width:0}
+.notice-simple-heading{display:flex;justify-content:space-between;align-items:center;gap:9px;margin-bottom:10px}
+.notice-simple-heading h3,.notice-simple-card h3,.notice-simple-actions h3{font-size:.88rem;color:#172b4d;margin:0}
+.notice-simple-heading .btn{font-size:.74rem;padding:7px 10px;white-space:normal}
+.notice-simple-facts,.notice-simple-dates{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.notice-simple-fact{padding:9px 10px;background:#f6f8fc;border:1px solid #e5ebf4;border-radius:8px;min-width:0}
+.notice-simple-fact:first-child{grid-column:1/-1}
+.notice-simple-fact small{display:block;color:#66758a;font-size:.68rem;line-height:1.4}
+.notice-simple-fact strong{display:block;color:#152b4c;font-size:.82rem;line-height:1.5;overflow-wrap:anywhere;margin-top:3px}
+.notice-simple-fact[data-missing="true"]{background:#fffbf2;border-color:#e9c27d}
+.notice-simple-caption{font-size:.74rem;line-height:1.5;color:#66758a;margin:8px 0 0}
+.notice-simple-alert{border:1px solid #dce5f2;background:#f5f8ff;border-radius:9px;padding:10px;font-size:.77rem;line-height:1.5;color:#405575;margin:0 0 11px}
+.notice-simple-alert[data-state="ready"]{background:#effaf4;border-color:#b5dfc8;color:#216542}
+.notice-simple-alert[data-state="review"],.notice-simple-alert[data-state="error"]{background:#fff9ec;border-color:#e9d2a0;color:#805411}
+.notice-simple-empty{padding:12px;background:#f6f9ff;border:1px dashed #bdcfe9;border-radius:9px}
+.notice-simple-empty p{font-size:.76rem;line-height:1.55;color:#526078;margin:7px 0 10px}
+.notice-simple-empty .btn{width:100%;white-space:normal}
+.notice-simple-refresh{margin-top:10px;display:flex;justify-content:flex-end}
+.notice-simple-refresh .btn{font-size:.74rem;white-space:normal}
+.notice-simple-detail{padding:0;overflow:clip}
+.notice-simple-detail>summary{display:flex;justify-content:space-between;gap:10px;cursor:pointer;list-style:none;padding:13px 14px;font-weight:700;font-size:.8rem;color:#1a3155}
+.notice-simple-detail>summary::-webkit-details-marker{display:none}
+.notice-simple-detail>summary:after{content:"+";color:#2453a1;font-size:1.1rem}
+.notice-simple-detail[open]>summary{background:#f6f9ff;border-bottom:1px solid #e6ebf3}
+.notice-simple-detail[open]>summary:after{content:"−"}
+.notice-simple-content{display:grid;gap:12px;padding:14px;min-width:0}
+.notice-simple-content .document-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.notice-simple-content .document-form-grid>label,.notice-simple-dates>label{min-width:0}
+.notice-simple-content .dossier-identity{margin:0}
+.notice-simple-content .document-field-section{margin:0}
+.notice-simple-ui[data-state="selection"] .notice-simple-empty,.notice-simple-ui[data-state="loading"] .notice-simple-empty,.notice-simple-ui[data-state="error"] .notice-simple-empty,.notice-simple-ui[data-state="ready"] .notice-simple-empty,.notice-simple-ui[data-state="review"] .notice-simple-empty{display:none}
+.notice-simple-ui[data-has-record="false"] .notice-period-field{display:none}
+.notice-simple-ui[data-has-record="false"] .notice-simple-dates-card{display:none}
+.notice-simplified-active .notice-source-hidden,.notice-simplified-active #certificateAutofillStatus,.notice-simplified-active .document-auto-note,.notice-simplified-active #refreshCertificatePreview{display:none!important}
+.notice-simplified-active #documentSpecificFields{display:contents;border:0;padding:0;margin:0;min-width:0}
+.notice-simplified-active #documentSpecificFields>legend{display:none}
+.notice-simplified-active .preaviso-calculation-summary.hidden{display:none!important}
+.notice-simple-active-label{display:inline-block;padding:4px 7px;background:#edf4ff;color:#2453a1;border-radius:6px;font-size:.68rem;line-height:1.4}
+.notice-simple-active-label[data-missing="true"]{background:#fff7e7;color:#805411}
+.notice-simplified-active .certificate-preview-shell{position:sticky;top:88px;min-height:0;max-height:calc(100vh - 100px);overflow:auto}
+.notice-simple-actions{margin-bottom:12px;position:sticky;top:0;z-index:2;box-shadow:0 3px 12px #173b860c}
+.notice-simple-actions .certificate-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px}
+.notice-simple-actions .certificate-actions .btn{min-width:0;width:100%;white-space:normal}
+.notice-simple-actions .notice-simple-caption{margin:0}
+.notice-preview-empty{padding:38px 24px;border:1px dashed #bdcfe9;border-radius:12px;background:#f7faff;text-align:center;color:#405575}
+.notice-preview-empty h3{font-size:1rem;margin:0 0 10px}
+.notice-preview-empty p{font-size:.82rem;line-height:1.6;max-width:350px;margin:auto}
+.notice-simplified-active[data-notice-preview="false"] #certificatePreview{display:none}
+.notice-simplified-active[data-notice-preview="true"] .notice-preview-empty{display:none!important}
+.notice-simple-ui .specific-field.hidden{display:none!important}
+.notice-simple-ui :is(button,a,summary):focus-visible{outline:3px solid #80a8ed;outline-offset:3px}
+@media(max-width:1250px){
+ .certificate-workspace.notice-simplified-active{grid-template-columns:160px minmax(0,1fr)}
+ .notice-simplified-active .certificate-preview-shell{grid-column:1/-1;position:static;max-height:none}
+ .notice-simple-actions{position:static}
+}
+@media(max-width:760px){
+ .certificate-workspace.notice-simplified-active{grid-template-columns:minmax(0,1fr)}
+ .notice-simplified-active .certificate-preview-shell{grid-column:auto}
+ .notice-simple-dates,.notice-simple-content .document-form-grid{grid-template-columns:minmax(0,1fr)}
+ .notice-simple-heading{align-items:flex-start}
+ .notice-simple-actions .certificate-actions{grid-template-columns:minmax(0,1fr)}
+}
