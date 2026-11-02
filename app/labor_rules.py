@@ -62,14 +62,8 @@ def preaviso_days(admission_date: date, as_of: date, *, trial_completed: bool = 
     if not trial_completed:
         return RuleResult(0, "Código del Trabajo, arts. 58 y 87", "Revisar primero si el período de prueba sigue vigente.")
     months = months_of_service(admission_date, as_of)
-    if as_of <= anniversary(admission_date, 1):
-        days = 30
-    elif as_of <= anniversary(admission_date, 5):
-        days = 45
-    elif as_of <= anniversary(admission_date, 10):
-        days = 60
-    else:
-        days = 90
+    from .notice_scale import scale_days
+    days = scale_days(admission_date, as_of)
     return RuleResult(days, "Código del Trabajo, art. 87", f"Antigüedad aproximada: {months} mes(es).")
 
 

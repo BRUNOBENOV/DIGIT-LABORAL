@@ -1,0 +1,31 @@
+<form method="post" action="/app/calculations" class="calculator-panel active notice-calculator" data-calculator-panel="notice" data-notice-auto data-company="{{ default_company }}" data-employee="{{ default_employee }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="calculation_type" value="notice">
+  <input type="hidden" name="company_id" value="{{ default_company }}" data-sync-company>
+  <input type="hidden" name="employee_id" value="{{ default_employee }}" data-sync-employee>
+  <input type="hidden" name="notice_automation_version" value="1">
+  <input type="hidden" name="notice_fingerprint" value="{{ notice_proposal.fingerprint if notice_proposal else '' }}">
+  <input type="hidden" name="reference_period" value="{{ notice_reference.strftime('%Y-%m') }}">
+  <script id="noticeInitialProposal" type="application/json">{{ notice_proposal|tojson }}</script>
+  <div class="calculator-copy"><span class="eyebrow">PREAVISO · ARTS. 87/90/92</span><h2>Estimación económica</h2><p>Aplicá la selección del funcionario. Los días se calculan desde su ingreso hasta la fecha de referencia.</p></div>
+  <div class="calculator-form-grid">
+    <label>Fecha de referencia<input name="reference_date" id="calcNoticeReference" type="date" min="1900-01-01" max="2100-12-31" value="{{ notice_reference.isoformat() }}" required><small>Fecha completa utilizada para calcular la antigüedad.</small></label>
+    <label>Promedio mensual base revisado (Gs.)<input name="salary" id="calcNoticeSalary" type="number" min="0" max="2147483647" step="0.01" value="{{ calculation_salary_default|int if default_employee else '' }}" required><small>Sugerido del legajo. Modificar si es necesario: el salario registrado no acredita el promedio computable del art. 92.</small></label>
+    <label>Días de preaviso <span class="notice-auto-badge">Automático</span><input name="days" id="calcNoticeDays" type="number" min="0" max="365" step="1" value="{{ notice_proposal.days if notice_proposal else '' }}" readonly aria-describedby="noticeTenure"><small id="noticeTenure" aria-live="polite">{% if notice_proposal %}Calculado automáticamente según una antigüedad de {{ notice_proposal.tenure.years }} años y {{ notice_proposal.tenure.months }} meses ({{ notice_proposal.tenure.days }} días adicionales).{% else %}Seleccioná un funcionario y aplicá la selección.{% endif %}</small></label>
+  </div>
+  <p id="noticeProposalStatus" class="notice-proposal-status" role="status" aria-live="polite">{{ notice_error or ('Escala vigente: ' ~ notice_proposal.rule.code ~ '. Días verificados en el servidor.' if notice_proposal else '') }}</p>
+  <div id="noticeProposalWarnings">{% if notice_proposal %}{% for warning in notice_proposal.warnings %}<p class="legal-warning">{{ warning }}</p>{% endfor %}{% endif %}</div>
+  <details class="notice-rule-detail"><summary>Alcance de la referencia y escala aplicada</summary><p>{{ notice_proposal.scope_note if notice_proposal else 'Referencia ordinaria para contrato indefinido y período de prueba cumplido. Revisá la procedencia y el promedio computable antes de aprobar.' }}</p><p id="noticeScaleText">{% if notice_proposal %}{% for band in notice_proposal.rule.bands %}{% if band.max_service_months is not none %}Hasta {{ band.max_service_months }} meses: {{ band.notice_days }} días{% else %}Tramo siguiente: {{ band.notice_days }} días{% endif %}{{ ' · ' if not loop.last }}{% endfor %}. Límites inclusivos por aniversario.{% endif %}</p><p>La fecha de referencia no inicia una notificación ni registra un egreso.</p></details>
+  {% if user.role == 'administrador' %}
+  <details class="notice-rule-detail"><summary>Excepción legal · Solo administrador</summary>
+    <label class="check-field"><input type="checkbox" name="notice_override" id="noticeOverride"> Ingresar días excepcionales con fundamento</label>
+    <div id="noticeOverrideFields" hidden><label>Fundamento de la excepción<textarea name="notice_override_reason" id="noticeOverrideReason" minlength="10" maxlength="2000" rows="2" disabled></textarea><small>Se registrarán el plazo automático, los días ingresados, el fundamento y el administrador responsable.</small></label></div>
+  </details>
+  {% endif %}
+  <div class="calculator-result-grid two-results" aria-live="polite">
+    <div><small>VALOR DIARIO</small><b id="calcNoticeDailyResult">{% if notice_proposal %}Gs. {{ notice_proposal.initial_results.daily_value|gs }}{% else %}—{% endif %}</b></div>
+    <div class="primary-result"><small>TOTAL ESTIMADO</small><b id="calcNoticeResult">{% if notice_proposal %}Gs. {{ notice_proposal.initial_results.total|gs }}{% else %}—{% endif %}</b></div>
+  </div>
+  <label>Observaciones<input name="notes" maxlength="3000" placeholder="Causa, promedio utilizado y revisión profesional"></label>
+  <button class="btn primary" type="submit" id="noticeSave" {% if not notice_proposal %}disabled{% endif %}>Guardar para revisar</button>
+</form>

@@ -105,10 +105,8 @@ def completed_years(start, end):
 def notice_days(start, end):
     if end < start:
         raise CalculationError("El egreso no puede ser anterior al ingreso.", "end_date")
-    for years, days in ((1, 30), (5, 45), (10, 60)):
-        if end <= anniversary(start, years):
-            return days
-    return 90
+    from .notice_scale import scale_days
+    return scale_days(start, end)
 
 
 def vacation_days(start, end):

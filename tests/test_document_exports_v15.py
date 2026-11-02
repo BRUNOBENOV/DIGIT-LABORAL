@@ -285,7 +285,11 @@ def test_notification_preaviso_uses_requested_letter_model_and_daily_leave():
 def test_preaviso_calculation_api_exposes_employee_period_amount_and_empty_state():
     with TestClient(app) as client:
         csrf = login(client)
-        period = "PREAVISO-API-45"
+        from app.labor_calculator import anniversary
+        with SessionLocal() as db:
+            admission = db.get(Employee, 1).admission_date
+        reference = anniversary(admission, years=2)
+        period = reference.strftime("%Y-%m")
         saved = client.post(
             "/app/calculations",
             data={
@@ -294,8 +298,9 @@ def test_preaviso_calculation_api_exposes_employee_period_amount_and_empty_state
                 "company_id": "1",
                 "employee_id": "1",
                 "reference_period": period,
+                "reference_date": reference.isoformat(),
                 "salary": "3600000",
-                "days": "45",
+                "days": "0",  # calculated by the server from admission + reference
                 "notes": "Promedio revisado para prueba de integración",
             },
             follow_redirects=False,

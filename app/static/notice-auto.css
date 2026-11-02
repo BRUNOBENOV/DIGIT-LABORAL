@@ -1,0 +1,15 @@
+.notice-calculator .calculator-form-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+.notice-calculator input[readonly]{background:#f1f6ff;color:#173c80;border-color:#bdcff0;font-weight:700}
+.notice-auto-badge{font-size:.65rem;font-weight:600;color:#2859aa}
+.notice-proposal-status{font-size:.8rem;line-height:1.5;color:#2859aa;margin:0}
+.notice-proposal-status[data-error="true"]{color:#a13e22}
+.notice-rule-detail{padding:11px 13px;border:1px solid #dce5f2;border-radius:10px;background:#f8faff;font-size:.78rem;line-height:1.5}
+.notice-rule-detail summary{cursor:pointer;font-weight:700;color:#254574}
+.notice-rule-detail p{margin:9px 0 0}
+.notice-rule-detail label{display:grid;gap:7px;margin-top:10px}
+.notice-rule-detail label.check-field{display:flex;align-items:center}
+.notice-rule-detail textarea{width:100%;box-sizing:border-box;border:1px solid #bdcde7;border-radius:8px;padding:9px;font:inherit}
+.notice-calculator [hidden]{display:none!important}
+.notice-calculator button:disabled{opacity:.55;cursor:not-allowed}
+@media(max-width:1000px){.notice-calculator .calculator-form-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:650px){.notice-calculator .calculator-form-grid{grid-template-columns:minmax(0,1fr)}}

@@ -14,7 +14,6 @@ from sqlalchemy.orm import Session
 from . import main as core
 from .labor_rules import (
     aguinaldo_amount,
-    preaviso_days,
     validate_date_range,
     validate_vacation_usage,
     vacation_amount,
@@ -291,10 +290,22 @@ async def save_calculation_v24(
     if employee and employee.company_id != company.id:
         raise HTTPException(400, "El funcionario no pertenece a la empresa seleccionada.")
 
+    notice_inputs = notice_result = None
+    if calculation_type == "notice":
+        from .notice_service import NoticeError, prepare_notice
+        try:
+            notice_inputs, notice_result = prepare_notice(db, employee, user, form)
+        except PermissionError as exc:
+            raise HTTPException(403, str(exc)) from None
+        except NoticeError as exc:
+            raise HTTPException(exc.status_code, str(exc)) from None
+
     try:
-        for key in ("gross", "other_income", "other_discount", "salary", "total_remunerations", "ips_base"):
+        for key in ("gross", "other_income", "other_discount", "total_remunerations", "ips_base") + (() if calculation_type == "notice" else ("salary",)):
             number(form, key, maximum="2147483647")
         for key in ("monthly_hours", "hours_quantity", "multiplier", "days"):
+            if calculation_type == "notice" and key == "days":
+                continue  # Automatic days are server-calculated, never trusted from the form.
             if _clean(form.get(key)):
                 number(form, key, maximum="10000", decimals=4)
         if _clean(form.get("monthly_hours")) and number(form, "monthly_hours", decimals=4) == 0:
@@ -304,7 +315,7 @@ async def save_calculation_v24(
     gross = int(number(form, "gross", maximum="2147483647"))
     other_income = int(number(form, "other_income", maximum="2147483647"))
     other_discount = int(number(form, "other_discount", maximum="2147483647"))
-    salary = int(number(form, "salary", maximum="2147483647"))
+    salary = int(number(form, "salary", maximum="2147483647")) if calculation_type != "notice" else 0
     monthly_hours = max(1.0, _float(form.get("monthly_hours"), 240))
     hours_quantity = max(0.0, _float(form.get("hours_quantity"), 0))
     multiplier = max(0.0, _float(form.get("multiplier"), 1))
@@ -374,11 +385,9 @@ async def save_calculation_v24(
         inputs.update({"salary": salary, "minimum_salary_reference": minimum, "days": days})
         results.update({"base_monthly": max(salary, int(minimum)), "daily_value": round_gs(max(salary, int(minimum)) / 30), "days": days, "total": amount, "legal_basis": rule.legal_basis})
     else:
-        if employee and not _clean(form.get("days")):
-            days = float(preaviso_days(employee.admission_date, date.today()).value)
-        amount = round_gs(salary / 30 * days)
-        inputs.update({"monthly_average_base": salary, "days": days})
-        results.update({"daily_value": round_gs(salary / 30), "days": days, "total": amount, "legal_basis": "Código del Trabajo, arts. 87, 90 y 92"})
+        inputs.update(notice_inputs)
+        results.update(notice_result)
+        amount = results["total"]
 
     if amount > 2147483647:
         raise HTTPException(422, "El resultado supera el límite del historial.")
@@ -386,7 +395,7 @@ async def save_calculation_v24(
         company_id=company.id,
         employee_id=employee.id if employee else None,
         calculation_type=calculation_type,
-        reference_period=_clean(form.get("reference_period"), 20),
+        reference_period=inputs["reference_date"][:7] if calculation_type == "notice" else _clean(form.get("reference_period"), 20),
         input_json=json.dumps(inputs, ensure_ascii=False, separators=(",", ":")),
         result_json=json.dumps(results, ensure_ascii=False, separators=(",", ":")),
         amount=amount,
@@ -398,7 +407,17 @@ async def save_calculation_v24(
     db.add(item)
     db.flush()
     core.write_audit(db, user, "crear", "calculo", str(item.id), f"{calculation_type}: {amount}")
+    if calculation_type == "notice" and inputs.get("notice_override"):
+        override = inputs["notice_override"]
+        core.write_audit(db, user, "excepcion_preaviso", "calculo", str(item.id),
+                         f"Referencia {inputs['reference_date']}; escala {inputs['notice_proposal']['rule']['code']}; "
+                         f"automático {inputs['notice_proposal']['days']} días; excepción {override['days']} días; {override['reason']}")
     db.commit()
+    if calculation_type == "notice":
+        return RedirectResponse(
+            f"/app/calculations?tipo=notice&saved={item.id}&company_id={company.id}&employee_id={employee.id}"
+            f"&reference_date={inputs['reference_date']}", status_code=303,
+        )
     return RedirectResponse(f"/app/calculations?saved=1&company_id={company.id}", status_code=303)
 
 

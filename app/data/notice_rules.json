@@ -1,0 +1,14 @@
+{
+  "code": "PY_CT87_1993_V1",
+  "jurisdiction": "PY",
+  "effective_from": "1993-10-30",
+  "legal_basis": "Código del Trabajo, arts. 87, 90 y 92",
+  "source_url": "https://www.csj.gov.py/cache/lederes/G-105%28bis%29-29101993-L-213.pdf",
+  "source_notes": "Ley 213/93, publicada el 29/10/1993. Vigencia desde el día siguiente por la regla general del art. 1 del Código Civil. Art. 87: límites inclusivos de uno, cinco y diez años; luego noventa días. Referencia ordinaria para contrato indefinido, una vez cumplido el período de prueba; revisar excepciones y base económica del art. 92.",
+  "bands": [
+    {"position": 1, "max_service_months": 12, "notice_days": 30},
+    {"position": 2, "max_service_months": 60, "notice_days": 45},
+    {"position": 3, "max_service_months": 120, "notice_days": 60},
+    {"position": 4, "max_service_months": null, "notice_days": 90}
+  ]
+}

@@ -534,6 +534,45 @@ class LaborParameter(Base):
     active: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
+class NoticeRuleSet(Base):
+    __tablename__ = "notice_rule_sets"
+    __table_args__ = (
+        CheckConstraint("effective_to IS NULL OR effective_to >= effective_from", name="ck_notice_rule_dates"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    code: Mapped[str] = mapped_column(String(80), unique=True)
+    jurisdiction: Mapped[str] = mapped_column(String(10), default="PY")
+    effective_from: Mapped[date] = mapped_column(Date, index=True)
+    effective_to: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    legal_basis: Mapped[str] = mapped_column(String(240))
+    source_url: Mapped[str] = mapped_column(String(500))
+    source_notes: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+    bands: Mapped[list["NoticeRuleBand"]] = relationship(
+        back_populates="rule_set", cascade="all, delete-orphan", order_by="NoticeRuleBand.position"
+    )
+
+
+class NoticeRuleBand(Base):
+    __tablename__ = "notice_rule_bands"
+    __table_args__ = (
+        UniqueConstraint("rule_set_id", "position", name="uq_notice_band_position"),
+        UniqueConstraint("rule_set_id", "max_service_months", name="uq_notice_band_upper"),
+        CheckConstraint("position > 0", name="ck_notice_band_position"),
+        CheckConstraint("max_service_months IS NULL OR max_service_months > 0", name="ck_notice_band_upper"),
+        CheckConstraint("notice_days > 0 AND notice_days <= 365", name="ck_notice_band_days"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    rule_set_id: Mapped[int] = mapped_column(ForeignKey("notice_rule_sets.id"), index=True)
+    position: Mapped[int] = mapped_column(Integer)
+    max_service_months: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    notice_days: Mapped[int] = mapped_column(Integer)
+    rule_set: Mapped["NoticeRuleSet"] = relationship(back_populates="bands")
+
+
 class AuditLog(Base):
     __tablename__ = "audit_logs"
 

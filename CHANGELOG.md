@@ -1,3 +1,10 @@
+## 2.6.78 — Preaviso automático por antigüedad y fecha
+
+- Corrige el cero enviado por el formulario y el uso de la fecha actual al calcular períodos anteriores. El servidor consulta el ingreso, selecciona la escala vigente y compara aniversarios exactos; ignora días enviados en modo automático.
+- Al aplicar un funcionario muestra días, antigüedad y total sin depender de JavaScript. Cambiar la fecha consulta nuevamente con debounce y descarta respuestas tardías; mientras tanto impide guardar resultados desactualizados. Calcula los importes sin multiplicar un valor diario previamente redondeado.
+- Días bloqueados por defecto y excepción exclusiva de administrador con motivo, autor y auditoría. Conserva una copia de las fuentes por cálculo y las verifica al aprobar. Mantiene la revisión de modalidad, prueba, estabilidad y promedio salarial.
+- Alembic 0021: tablas de versiones y tramos de preaviso, semilla idempotente y RLS de lectura para configuración legal. Instala también en bases nuevas que se inicializan desde los modelos. Prueba adicional de arranque y actualización con PostgreSQL 17 en CI.
+
 ## 2.6.77 — Asistencia compartida y aprobación salarial vigente
 
 - Usa una selección común por empresa, funcionario y mes: los borradores no desplazan una aprobación; las anulaciones y estados desconocidos impiden reutilizar aprobaciones anteriores. Alinea exportación, selector de funcionarios y contadores.

@@ -440,7 +440,7 @@ async def http_exception_handler(request: Request, exc: HTTPException):
     location = (exc.headers or {}).get("Location")
     if location and 300 <= exc.status_code < 400:
         return RedirectResponse(location, status_code=exc.status_code)
-    if request.url.path.startswith(("/health", "/api/certificates/")) or (
+    if request.url.path.startswith(("/health", "/api/certificates/", "/api/calculations/preaviso-proposal")) or (
         request.url.path == "/app/certificates" and "application/json" in request.headers.get("accept", "")
     ):
         return JSONResponse({"detail": exc.detail}, status_code=exc.status_code, headers=exc.headers)
@@ -5503,6 +5503,24 @@ def calculation_period_coverage(
     )
 
 
+@app.get("/api/calculations/preaviso-proposal")
+def notice_proposal_api(
+    company_id: int, employee_id: int, reference_date: str,
+    user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
+    db: Session = Depends(get_db),
+):
+    from .notice_service import NoticeError, notice_proposal, reference_date_from
+    company = company_allowed(db, user, company_id)
+    employee = db.get(Employee, employee_id)
+    if not employee or employee.company_id != company.id:
+        raise HTTPException(404, "Funcionario no encontrado en la empresa seleccionada.")
+    try:
+        proposal = notice_proposal(db, employee, reference_date_from({"reference_date": reference_date}))
+    except NoticeError as exc:
+        raise HTTPException(422, str(exc)) from None
+    return JSONResponse(proposal, headers={"Cache-Control": "no-store"})
+
+
 @app.get("/app/calculations", response_class=HTMLResponse)
 def calculations_page(
     request: Request,
@@ -5511,6 +5529,8 @@ def calculations_page(
     tipo: str | None = None,
     reuse_history: bool = False,
     year: int | None = None,
+    reference_date: str | None = None,
+    reference_period: str | None = None,
     user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
     db: Session = Depends(get_db),
 ):
@@ -5520,9 +5540,9 @@ def calculations_page(
     company_id, employee_id = default_labor_context(
         request, db, user, company_ids, company_id, employee_id
     )
-    companies = seed_choices(db, select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name), Company, request=request) if company_ids else []
+    companies = seed_choices(db, select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name), Company, request=request, selected_ids=[company_id]) if company_ids else []
     employees_query = select(Employee).where(Employee.company_id.in_(company_ids), Employee.status == "Activo") if company_ids else select(Employee).where(False)
-    employees = seed_choices(db, employees_query.order_by(Employee.full_name), Employee, request=request)
+    employees = seed_choices(db, employees_query.order_by(Employee.full_name), Employee, request=request, selected_ids=[employee_id])
     recent_query = select(CalculationRecord).where(CalculationRecord.company_id.in_(company_ids), CalculationRecord.source != "Centro laboral") if company_ids else select(CalculationRecord).where(False)
     if company_id and company_id in company_ids:
         recent_query = recent_query.where(CalculationRecord.company_id == company_id)
@@ -5550,11 +5570,27 @@ def calculations_page(
             f"Gs. {format_gs(prefill_total_remunerations)}; cobertura {coverage['closed_count']}/"
             f"{coverage['expected_count']} periodos esperados. Revisar conceptos computables, ajustes y anticipos."
         )
-    selected_employee_record = next((item for item in employees if item.id == employee_id), None)
+    selected_employee_record = db.get(Employee, employee_id) if employee_id else None
+    if selected_employee_record and (
+        selected_employee_record.company_id not in company_ids
+        or (company_id and selected_employee_record.company_id != company_id)
+    ):
+        raise HTTPException(404, "Funcionario no encontrado en la empresa seleccionada.")
     minimum_salary = get_parameter(db, "minimum_monthly_salary_general", 0)
     calculation_salary_default = (
         int(selected_employee_record.base_salary or 0) if selected_employee_record else int(minimum_salary or 0)
     )
+    notice_data, notice_error = None, ""
+    notice_reference = current_paraguay_date()
+    if tipo == "notice":
+        from .notice_service import NoticeError, notice_proposal, notice_results, reference_date_from
+        try:
+            if reference_date or reference_period:
+                notice_reference = reference_date_from({"reference_date": reference_date, "reference_period": reference_period})
+            notice_data = notice_proposal(db, selected_employee_record, notice_reference)
+            notice_data["initial_results"] = notice_results(Decimal(calculation_salary_default), notice_data["days"], notice_data["rule"]["legal_basis"])
+        except NoticeError as exc:
+            notice_error = str(exc)
     return render(
         request,
         "calculations.html",
@@ -5568,6 +5604,9 @@ def calculations_page(
         ips_rate=get_parameter(db, "ips_employee_rate_general", 9),
         minimum_salary=minimum_salary,
         calculation_salary_default=calculation_salary_default,
+        notice_proposal=notice_data,
+        notice_error=notice_error,
+        notice_reference=notice_reference,
         hourly_reference=get_parameter(db, "minimum_hourly_wage_general", 0),
         calculation_labels={key: calculation_label(key) for key in ("salary", "hours", "aguinaldo", "vacation", "notice")},
         active_calculation_type=tipo or "",
@@ -5689,6 +5728,14 @@ def _revalidate_calculation_before_approval(item: CalculationRecord, db: Session
             raise ValueError("Entradas y resultados deben ser objetos")
     except (TypeError, ValueError, json.JSONDecodeError) as exc:
         raise HTTPException(409, "El cálculo guardado no contiene entradas y resultados válidos. Volvé a calcularlo.") from exc
+
+    if item.calculation_type == "notice" and "notice_automation_version" in saved_inputs:
+        from .notice_service import NoticeError, verify_notice_snapshot
+        try:
+            verify_notice_snapshot(db, item, saved_inputs, saved_results)
+        except NoticeError as exc:
+            raise HTTPException(409, str(exc)) from None
+        return
 
     if item.calculation_type == "suite_salary" and item.status not in {"Aprobado", "Validado"}:
         from .salary_data import verify_attendance_inheritance
@@ -5919,7 +5966,7 @@ def preaviso_calculations_api(
         except (TypeError, ValueError):
             days_value = 0
         try:
-            salary_value = int(float(inputs.get("salary", 0) or 0))
+            salary_value = int(float(inputs.get("monthly_average_base", inputs.get("salary", 0)) or 0))
         except (TypeError, ValueError):
             salary_value = 0
         try:
