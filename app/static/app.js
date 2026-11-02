@@ -682,6 +682,11 @@ if (certificateForm) {
     const calculationId = calculationIdInput?.value || '';
     return preavisoCalculations.find(item => String(item.id) === String(calculationId) && item.reference_period === period) || null;
   };
+  const clearPreavisoDates = () => {
+    if (noticeStartInput) { noticeStartInput.value = ''; noticeStartInput.dataset.preavisoAuto = 'true'; }
+    if (effectiveDateInput) { effectiveDateInput.value = ''; effectiveDateInput.dataset.preavisoAuto = 'true'; }
+    if (noticeDaysInput) noticeDaysInput.value = '';
+  };
   const setPreavisoStatus = (message, kind = '') => {
     if (!noticeStatus) return;
     noticeStatus.textContent = message;
@@ -770,11 +775,7 @@ if (certificateForm) {
     const previousPeriod = noticePeriodSelect?.value || '';
     preavisoCalculations = [];
     if (calculationIdInput) calculationIdInput.value = '';
-    if (changedContext) {
-      if (noticeStartInput) { noticeStartInput.value = ''; noticeStartInput.dataset.preavisoAuto = 'true'; }
-      if (effectiveDateInput) { effectiveDateInput.value = ''; effectiveDateInput.dataset.preavisoAuto = 'true'; }
-      if (noticeDaysInput) noticeDaysInput.value = '';
-    }
+    if (changedContext) clearPreavisoDates();
     if (!companyId || !employeeId) {
       if (calculationIdInput) calculationIdInput.value = '';
       noticePeriodSelect.innerHTML = '<option value="">Seleccioná una empresa y un funcionario</option>';
@@ -801,6 +802,7 @@ if (certificateForm) {
       noticePeriodSelect.replaceChildren();
       if (!preavisoCalculations.length) {
         if (calculationIdInput) calculationIdInput.value = '';
+        clearPreavisoDates();
         const option = document.createElement('option');
         option.value = '';
         option.textContent = 'No hay registro para imprimir';
@@ -831,6 +833,7 @@ if (certificateForm) {
       if (requestSequence !== preavisoRequestSequence) return;
       if (calculationIdInput) calculationIdInput.value = '';
       preavisoCalculations = [];
+      clearPreavisoDates();
       noticePeriodSelect.replaceChildren();
       const option = document.createElement('option');
       option.value = '';
@@ -840,6 +843,7 @@ if (certificateForm) {
       setPreavisoStatus('No se pudieron consultar los cálculos. Verificá tu conexión o volvé a intentar.', 'error');
       updatePreavisoSummary(null);
       updatePreavisoActionAvailability();
+      updatePreview();
     }
   };
   noticePeriodSelect?.addEventListener('change', () => {
