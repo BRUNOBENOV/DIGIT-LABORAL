@@ -95,6 +95,7 @@ from .models import (
     Payroll,
     PayrollLine,
     PayrollComplianceDetail,
+    SalaryImportDetail,
     PasswordResetToken,
     RequestAttachment,
     RequestComment,
@@ -9368,11 +9369,13 @@ def salary_import_page(
     other_category: str = "",
     rei_category: str = "",
     name_order: str = "",
+    source_type: str = "auto",
     user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ):
     """Vista previa de importación salarial; no modifica nóminas."""
     from .official_salary_import import SalaryImportError, prepare_import
+    from .approved_salary_import import salary_source_summary, choose_salary_source, approved_salary_records
 
     ids = company_ids_for_user(db, user)
     companies = seed_choices(
@@ -9383,6 +9386,14 @@ def salary_import_page(
     period = period or current_paraguay_date().strftime("%Y-%m")
     authority = authority if authority in {"REOP", "REI"} else "REOP"
     preview = bool(company and request.query_params.get("period"))
+    source_summary = salary_source_summary(db, company.id, period) if company else None
+    try:
+        effective_source = choose_salary_source(db, company.id, period, source_type) if company else "payroll"
+    except ValueError as exc:
+        raise HTTPException(422, "Origen de salarios no válido.") from exc
+    diagnostics = []
+    if preview and effective_source == "approved":
+        _source_rows, _source_errors, diagnostics = approved_salary_records(db, company, period)
     errors: list[str] = []
     rows: list[list] = []
     if preview:
@@ -9390,7 +9401,7 @@ def salary_import_page(
             rows, errors = prepare_import(
                 db, company, period, authority, payment_code=payment_code,
                 other_category=other_category, rei_category=rei_category,
-                name_order=name_order,
+                name_order=name_order, source_type=source_type,
             )
         except SalaryImportError as exc:
             errors = exc.errors
@@ -9410,6 +9421,8 @@ def salary_import_page(
         payment_code=payment_code, other_category=other_category,
         rei_category=rei_category, name_order=name_order, preview=preview,
         item_count=len(rows), errors=errors,
+        source_type=source_type, effective_source=effective_source,
+        source_summary=source_summary, diagnostics=diagnostics,
         preview_headers=preview_headers, preview_rows=preview_rows,
     )
 
@@ -9423,6 +9436,7 @@ def salary_import_export(
     other_category: Annotated[str, Form()] = "",
     rei_category: Annotated[str, Form()] = "",
     name_order: Annotated[str, Form()] = "",
+    source_type: Annotated[str, Form()] = "auto",
     confirmed: Annotated[str, Form()] = "",
     user: User = Depends(require_roles("administrador", "contador")),
     db: Session = Depends(get_db),
@@ -9440,7 +9454,7 @@ def salary_import_export(
         rows, errors = prepare_import(
             db, company, period, authority, payment_code=payment_code,
             other_category=other_category, rei_category=rei_category,
-            name_order=name_order,
+            name_order=name_order, source_type=source_type,
         )
     except SalaryImportError as exc:
         raise HTTPException(409, detail=" | ".join(exc.errors[:12])) from exc
@@ -9459,7 +9473,10 @@ def salary_import_export(
     )
     batch.file_name = file_name
     batch.item_count = len(rows)
+    from .approved_salary_import import choose_salary_source
+    effective_source = choose_salary_source(db, company.id, period, source_type)
     batch.payload_json = json.dumps({
+        "source_type": effective_source,
         "format": "REOP-32-col-2025" if authority == "REOP" else "REI-txt-referencia-2016",
         "payment_code": payment_code if authority == "REOP" else None,
         "other_category": other_category if authority == "REOP" else None,
