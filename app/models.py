@@ -4,7 +4,7 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Optional
 
-from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, ForeignKey, Integer, JSON, LargeBinary, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, Date, DateTime, ForeignKey, Integer, JSON, LargeBinary, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -262,10 +262,10 @@ class Payroll(Base):
     period: Mapped[str] = mapped_column(String(7), index=True)  # YYYY-MM
     status: Mapped[str] = mapped_column(String(30), default="Borrador")
     notes: Mapped[str] = mapped_column(Text, default="")
-    total_gross: Mapped[int] = mapped_column(Integer, default=0)
-    total_ips_employee: Mapped[int] = mapped_column(Integer, default=0)
-    total_discounts: Mapped[int] = mapped_column(Integer, default=0)
-    total_net: Mapped[int] = mapped_column(Integer, default=0)
+    total_gross: Mapped[int] = mapped_column(BigInteger, default=0)
+    total_ips_employee: Mapped[int] = mapped_column(BigInteger, default=0)
+    total_discounts: Mapped[int] = mapped_column(BigInteger, default=0)
+    total_net: Mapped[int] = mapped_column(BigInteger, default=0)
     created_by: Mapped[str] = mapped_column(String(180), default="")
     reviewed_by: Mapped[str] = mapped_column(String(180), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
