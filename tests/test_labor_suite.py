@@ -1276,3 +1276,252 @@ def test_final_settlement_payment_is_independent_and_keeps_evidence(web_case):
         follow_redirects=False,
     )
     assert duplicate.status_code == 409
+
+
+
+def test_employer_ips_contribution_uses_saved_ips_base_not_gross(web_case, monkeypatch):
+    """Regression: excluded earnings must not inflate the employer IPS charge."""
+    client, db, _, company, employee, _ = web_case
+    from app.models import Payroll, PayrollLine, PayrollComplianceDetail
+    from app import main as core
+    original_parameter = core.get_parameter
+    monkeypatch.setattr(
+        core, "get_parameter",
+        lambda session, key, default=0: (
+            16.5 if key == "ips_employer_rate_general"
+            else original_parameter(session, key, default)
+        ),
+    )
+    employee.ips_contributor = True
+    db.flush()
+    assert employee.ips_contributor is True
+    payroll = Payroll(company_id=company.id, period="2026-10")
+    db.add(payroll)
+    db.flush()
+    line = PayrollLine(
+        payroll_id=payroll.id, employee_id=employee.id,
+        base_salary=3_000_000, other_income=500_000,
+        gross=3_500_000, ips_base=3_000_000, ips_rate=Decimal("9.00"),
+        ips_employee=270_000, total_discounts=270_000, net=3_230_000,
+        ips_basis_note="500.000 no integra la base imponible, comprobado",
+    )
+    db.add(line)
+    db.commit()
+
+    response = client.post(
+        f"/app/payrolls/{payroll.id}/lines/{line.id}",
+        data={
+            "csrf_token": token(client), "base_salary": "3000000",
+            "other_income": "500000", "ips_base": "3000000",
+            "ips_rate": "9", "ips_basis_note": "Base documentada",
+            "days_worked": "22",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303, response.text
+    db.expire_all()
+    refreshed = db.get(PayrollLine, line.id)
+    detail = db.query(PayrollComplianceDetail).filter_by(payroll_line_id=line.id).one()
+    assert refreshed.ips_base == 3_000_000
+    assert refreshed.gross == 3_500_000
+    assert refreshed.ips_employee == 270_000
+    assert detail.employer_ips == 495_000  # 16.5% of 3,000,000; not 3,500,000
+
+
+def test_salary_export_shows_draft_exclusions_and_requires_partial_consent(web_case):
+    """HTTP regression: draft from another legajo cannot silently enter a file."""
+    import json
+    from datetime import UTC, datetime
+    from app.approved_salary_import import calculation_fingerprint
+    from app.models import CalculationRecord, Employee, SalaryImportDetail
+
+    client, db, _box, company, employee, _outsider = web_case
+    company.mtess_employer_number = "123456"
+    employee.admission_date = date(2024, 1, 1)
+    employee.ips_contributor = True
+    second = Employee(
+        company_id=company.id, full_name="Segundo trabajador sintético",
+        document_number="2222222", base_salary=2_500_000,
+        admission_date=date(2024, 1, 1),
+    )
+    db.add(second); db.flush()
+    approved = CalculationRecord(
+        company_id=company.id, employee_id=employee.id, reference_period="2026-10",
+        calculation_type="salary", source="Calculadora v2.4", status="Aprobado",
+        input_json=json.dumps({
+            "gross": 3_000_000, "other_income": 0, "other_discount": 0,
+            "ips_base": 3_000_000, "ips_rate": 9, "apply_ips": True,
+        }),
+        result_json=json.dumps({
+            "gross_computable": 3_000_000, "ips_base": 3_000_000,
+            "ips_employee": 270_000, "discounts": 270_000, "net": 2_730_000,
+        }),
+        amount=2_730_000,
+    )
+    draft = CalculationRecord(
+        company_id=company.id, employee_id=second.id, reference_period="2026-10",
+        calculation_type="salary", source="Calculadora v2.4", status="Borrador",
+        input_json="{}", result_json="{}", amount=0,
+        created_at=datetime(2026, 11, 2, tzinfo=UTC),
+    )
+    db.add_all([approved, draft]);db.flush()
+    db.add(SalaryImportDetail(
+        company_id=company.id, calculation_record_id=approved.id,
+        source_sha256=calculation_fingerprint(approved),
+        period_start=date(2026, 10, 1), period_end=date(2026, 10, 31),
+        days_worked=22, hours_worked=Decimal("176"),
+        payment_method="Transferencia",
+    ))
+    db.commit()
+
+    params={
+        "company_id": company.id, "period": "2026-10",
+        "authority": "REOP", "source_type": "approved", "payment_code": "1",
+    }
+    preview = client.get("/app/compliance/salary-import", params=params)
+    assert preview.status_code == 200, preview.text[:500]
+    assert "legajo(s) excluidos" in preview.text
+    assert "accept_partial" in preview.text
+    assert str(approved.id) in preview.text
+
+    form={
+        "csrf_token": token(client), **params,
+        "confirmed": "si",
+    }
+    blocked=client.post("/app/compliance/salary-import/export", data=form)
+    assert blocked.status_code == 409
+    assert "parcial" in blocked.text.lower()
+    by_employee=client.get(
+        "/app/compliance/salary-import",
+        params={**params, "employee_id": employee.id},
+    )
+    assert by_employee.status_code == 200, by_employee.text[:400]
+    assert "Exportación individual" in by_employee.text
+    assert "legajo(s) excluidos" not in by_employee.text
+
+    # No tenant may request an employee attached to another company.
+    outsider=client.get(
+        "/app/compliance/salary-import",
+        params={**params, "employee_id": _outsider.id},
+    )
+    assert outsider.status_code == 404
+
+
+
+def test_salary_edit_rejects_aggregate_line_overflow_before_db_write(web_case):
+    from app.models import Payroll, PayrollLine
+    client, db, _box, company, employee, _other = web_case
+    payroll = Payroll(company_id=company.id, period="2026-11")
+    db.add(payroll);db.flush()
+    line=PayrollLine(
+        payroll_id=payroll.id, employee_id=employee.id,
+        base_salary=3_000_000, gross=3_000_000, net=3_000_000,
+        ips_employee=0, total_discounts=0,
+    )
+    db.add(line);db.commit()
+    response=client.post(
+        f"/app/payrolls/{payroll.id}/lines/{line.id}",
+        data={"csrf_token": token(client),
+              "base_salary": "2000000000", "other_income": "500000000"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 422
+    # User-facing 422 error pages intentionally omit some internal details.
+    db.expire_all()
+    assert db.get(PayrollLine,line.id).gross == 3_000_000
+
+
+
+def test_salary_edit_route_is_the_v24_override_not_dead_legacy_code():
+    from app.runtime import app
+    matches = [
+        route for route in app.router.routes
+        if getattr(route, "path", None) == "/app/payrolls/{payroll_id}/lines/{line_id}"
+        and "POST" in (getattr(route, "methods", set()) or set())
+    ]
+    assert len(matches) == 1
+    assert matches[0].endpoint.__module__ == "app.ux_v24"
+
+
+def test_v24_salary_edit_preserves_documented_manual_ips_base(web_case):
+    from app.models import Payroll, PayrollLine, PayrollComplianceDetail
+    client, db, _box, company, employee, _other = web_case
+    employee.ips_contributor = True
+    payroll = Payroll(company_id=company.id, period="2026-10")
+    db.add(payroll); db.flush()
+    line = PayrollLine(
+        payroll_id=payroll.id, employee_id=employee.id,
+        base_salary=3_000_000, other_income=500_000, gross=3_500_000,
+        ips_base=3_000_000, ips_rate=Decimal("9"),
+        ips_employee=270_000, total_discounts=270_000, net=3_230_000,
+        ips_basis_note="Criterio comprobado",
+    )
+    db.add(line); db.commit()
+    response=client.post(
+        f"/app/payrolls/{payroll.id}/lines/{line.id}",
+        data={"csrf_token": token(client), "base_salary": "3000000",
+              "other_income": "600000", "ips_rate": "9",
+              "other_discount_note": "", "days_worked": "22"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303, response.text
+    db.expire_all()
+    saved=db.get(PayrollLine,line.id)
+    assert saved.gross == 3_600_000
+    assert saved.ips_base == 3_000_000
+    assert saved.ips_employee == 270_000
+    assert saved.net == 3_330_000
+    assert db.query(PayrollComplianceDetail).filter_by(payroll_line_id=line.id).count() == 1
+
+
+
+def test_live_salary_calculator_saves_attendance_and_payment_for_reop(web_case):
+    """The active ux_v24 POST, not dead core handler, must retain these fields."""
+    import json
+    from sqlalchemy import select
+    from app.models import CalculationRecord
+    client, db, _, company, employee, _other = web_case
+    response=client.post(
+        "/app/calculations",
+        data={
+            "csrf_token": token(client), "calculation_type": "salary",
+            "company_id": str(company.id), "employee_id": str(employee.id),
+            "reference_period": "2026-10", "gross": "3500000",
+            "ips_base": "3500000", "apply_ips": "on",
+            "days_worked": "22", "hours_worked": "176.5",
+            "payment_method": "Transferencia",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303, response.text
+    db.expire_all()
+    item=db.scalar(select(CalculationRecord).where(
+        CalculationRecord.company_id == company.id,
+        CalculationRecord.employee_id == employee.id,
+        CalculationRecord.reference_period == "2026-10",
+        CalculationRecord.calculation_type == "salary",
+    ))
+    assert item is not None
+    saved=json.loads(item.input_json)
+    assert saved["days_worked"] == 22
+    assert Decimal(saved["hours_worked"]) == Decimal("176.5")
+    assert saved["payment_method"] == "Transferencia"
+
+
+def test_live_salary_calculator_rejects_invalid_actual_workdays(web_case):
+    from sqlalchemy import select, func
+    from app.models import CalculationRecord
+    client, db, _, company, employee, _other = web_case
+    response=client.post(
+        "/app/calculations",
+        data={
+            "csrf_token": token(client), "calculation_type": "salary",
+            "company_id": str(company.id), "employee_id": str(employee.id),
+            "reference_period": "2026-10", "gross": "3500000",
+            "ips_base": "3500000", "apply_ips": "on",
+            "days_worked": "32", "hours_worked": "176",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 422
+    assert db.scalar(select(func.count()).select_from(CalculationRecord)) == 0

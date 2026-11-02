@@ -1,8 +1,8 @@
-# Digit Laboral 2.6.69
+# Digit Laboral 2.6.76
 
 Plataforma de gestión y cumplimiento laboral para estudios contables paraguayos.
 
-## Novedades de la versión 2.6.69
+## Novedades de la versión 2.6.76
 
 - Simplifica Notificación de Preaviso con datos del legajo en un resumen, fechas a la vista y edición de datos, número, observaciones y criterios de revisión en desplegables. Las acciones acompañan la vista previa en escritorio y se reorganizan en pantallas pequeñas.
 - Cuando falta un cálculo guardado, permite abrir Cálculo → Preaviso con la empresa y el funcionario seleccionados y actualizar los registros al volver. Respeta los permisos del usuario y mantiene bloqueada la emisión hasta vincular un cálculo vigente con fechas válidas.

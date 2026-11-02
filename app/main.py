@@ -95,6 +95,7 @@ from .models import (
     Payroll,
     PayrollLine,
     PayrollComplianceDetail,
+    SalaryImportDetail,
     PasswordResetToken,
     RequestAttachment,
     RequestComment,
@@ -5597,6 +5598,9 @@ def save_calculation(
     total_remunerations: Annotated[int, Form()] = 0,
     days: Annotated[float, Form()] = 0,
     notes: Annotated[str, Form()] = "",
+    days_worked: Annotated[int | None, Form()] = None,
+    hours_worked: Annotated[Decimal | None, Form()] = None,
+    payment_method: Annotated[str, Form()] = "",
     user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
     db: Session = Depends(get_db),
 ):
@@ -5645,6 +5649,17 @@ def save_calculation(
                 if minimum_scale.get("effective_from") else None
             ),
         })
+    if calculation_type == "salary":
+        if days_worked is not None:
+            if not (0 <= days_worked <= 31):
+                raise HTTPException(422, "Días trabajados fuera del rango 0-31.")
+            inputs["days_worked"] = days_worked
+        if hours_worked is not None:
+            if not hours_worked.is_finite() or not Decimal("0") <= hours_worked <= Decimal("744"):
+                raise HTTPException(422, "Horas ordinarias reales fuera del rango 0-744.")
+            inputs["hours_worked"] = str(hours_worked)
+        if payment_method.strip():
+            inputs["payment_method"] = clean_text(payment_method, max_length=100)
     item = CalculationRecord(
         company_id=company.id,
         employee_id=employee.id if employee else None,
@@ -5675,13 +5690,29 @@ def _revalidate_calculation_before_approval(item: CalculationRecord, db: Session
     except (TypeError, ValueError, json.JSONDecodeError) as exc:
         raise HTTPException(409, "El cálculo guardado no contiene entradas y resultados válidos. Volvé a calcularlo.") from exc
 
-    if item.source == "Cálculo automático":
-        # Historical general calculations did not persist their IPS rate. Replay
-        # them with the current configured rate, but only approve if every stored
-        # component and the main amount still reproduce exactly.
+    legacy_general_sources = {"Cálculo automático", "Calculadora", "Calculadora v2.4"}
+    if (item.source or "").strip() in legacy_general_sources:
+        # Los registros históricos con fuentes conocidas (incluida la variante
+        # exacta "Calculadora v2.4") solo se aprueban si el motor general
+        # reproduce todos sus resultados e importe, sin alterar el snapshot.
+        if (item.source or "").strip() in {"Calculadora", "Calculadora v2.4"} and item.calculation_type not in {
+            "salary", "hours", "aguinaldo", "vacation", "notice",
+        }:
+            raise HTTPException(
+                409,
+                "El cálculo histórico tiene un tipo que la calculadora general no puede reproducir. "
+                "Se mantiene sin aprobar; revisá sus datos originales.",
+            )
+        # Older snapshots omitted the IPS rate from inputs. Prefer the rate
+        # saved in their result rather than silently using a potentially newer
+        # configuration. Every persisted result field and the main amount must
+        # still reproduce exactly; this is not a bypass of approval validation.
         legacy_inputs = "ips_rate" not in saved_inputs
         if legacy_inputs:
-            saved_inputs["ips_rate"] = get_parameter(db, "ips_employee_rate_general", 9)
+            historic_rate = saved_results.get("ips_rate")
+            if historic_rate is None:
+                historic_rate = get_parameter(db, "ips_employee_rate_general", 9)
+            saved_inputs["ips_rate"] = historic_rate
         try:
             _inputs, current_results, current_amount = calculate_values(
                 calculation_type=item.calculation_type,
@@ -5702,14 +5733,40 @@ def _revalidate_calculation_before_approval(item: CalculationRecord, db: Session
             )
         except HTTPException as exc:
             raise HTTPException(409, "Las entradas del cálculo guardado ya no superan las validaciones actuales. Recalculá antes de aprobar.") from exc
-        results_match = (
-            all(current_results.get(key) == value for key, value in saved_results.items())
-            if legacy_inputs else current_results == saved_results
+        # Calculadora v2.4 guardaba la tasa IPS en input_json, pero no
+        # repetía el campo ips_rate dentro de result_json (cinco campos
+        # salariales históricos). La versión actual sí lo incorpora.
+        # Se permiten EXCLUSIVAMENTE esos dos esquemas conocidos: nunca se
+        # omite verificar un concepto económico ni se toleran campos
+        # inesperados. La compatibilidad no altera registros históricos.
+        historic_salary_schema = {
+            "gross_computable", "ips_base", "ips_employee", "discounts", "net",
+        }
+        is_v24_salary = (
+            (item.source or "").strip() == "Calculadora v2.4"
+            and item.calculation_type == "salary"
         )
+        compatible_v24_schema = (
+            is_v24_salary
+            and set(saved_results) == historic_salary_schema
+            and set(current_results) == historic_salary_schema | {"ips_rate"}
+        )
+        if compatible_v24_schema:
+            results_match = all(
+                current_results[key] == saved_results[key]
+                for key in historic_salary_schema
+            )
+        else:
+            results_match = (
+                all(key in current_results and current_results[key] == value
+                    for key, value in saved_results.items())
+                if legacy_inputs else current_results == saved_results
+            )
         if not results_match or current_amount != item.amount:
             raise HTTPException(
                 409,
-                "El importe guardado no coincide con la fórmula reproducida. No se aprobó; revisá o recreá el cálculo.",
+                "El importe o algún concepto guardado no coincide con la fórmula reproducida. "
+                "No se aprobó; revisá o recreá el cálculo.",
             )
         return
 
@@ -5752,7 +5809,7 @@ def _revalidate_calculation_before_approval(item: CalculationRecord, db: Session
             raise HTTPException(409, "El monto principal no coincide con el neto reproducido. Volvé a calcular antes de aprobar.")
         return
 
-    raise HTTPException(409, "No se puede validar el motor que generó este registro. Recreá el cálculo antes de aprobar.")
+    raise HTTPException(409, "Este cálculo tiene un origen histórico no reconocido por la validación (" + (item.source or "Sin origen") + "). Se conserva sin cambios; verificá los datos originales y recreá una versión si no puede reproducirse.")
 
 
 @app.post("/app/calculations/{calculation_id}/status")
@@ -7934,6 +7991,10 @@ def update_payroll_line(
             raise HTTPException(422, "Las jornadas trabajadas deben estar entre 0 y 31.")
 
     gross = base_salary + overtime + commissions + bonuses + other_income
+    if gross > 2_147_483_647:
+        raise HTTPException(
+            422, "Los haberes del trabajador superan el límite monetario de una línea salarial. Revisá los conceptos.",
+        )
     employee_is_ips = bool(line.employee.ips_contributor)
     try:
         rate = Decimal(str(ips_rate).strip()) if str(ips_rate).strip() else (
@@ -7975,6 +8036,8 @@ def update_payroll_line(
         basis_note = (ips_basis_note or "").strip()[:300] or "Sin aporte IPS: el funcionario no figura como aportante."
 
     total_discounts = ips_employee_value + absences_discount + advances + other_discount
+    if total_discounts > 2_147_483_647:
+        raise HTTPException(422, "Los descuentos del trabajador exceden el límite permitido.")
     if total_discounts > gross:
         raise HTTPException(422, "Los descuentos superan los haberes brutos; corregí los importes antes de guardar.")
     net = gross - total_discounts
@@ -8004,7 +8067,11 @@ def update_payroll_line(
     employer_rate = Decimal(str(get_parameter(db, "ips_employer_rate_general", 16.5)))
     if not employer_rate.is_finite() or employer_rate < 0 or employer_rate > 100:
         raise HTTPException(422, "El parámetro de aporte patronal IPS es inválido.")
-    detail.employer_ips = round_gs(Decimal(gross) * employer_rate / Decimal("100")) if employee_is_ips else 0
+    # Both sides of the IPS contribution must use the persisted imponible
+    # base. Gross earnings can include concepts outside that base.
+    detail.employer_ips = round_gs(
+        Decimal(ips_base_value) * employer_rate / Decimal("100")
+    ) if employee_is_ips else 0
 
     recalculate_payroll(db, payroll)
     write_audit(db, user, "editar", "linea_liquidacion", str(line.id), line.employee.full_name)
@@ -9358,6 +9425,266 @@ def export_compliance_events(
     )
 
 
+@app.get("/app/compliance/salary-import", response_class=HTMLResponse)
+def salary_import_page(
+    request: Request,
+    company_id: OptionalQueryId = None,
+    period: str = "",
+    authority: str = "REOP",
+    payment_code: str = "",
+    other_category: str = "",
+    rei_category: str = "",
+    name_order: str = "",
+    source_type: str = "auto",
+    employee_id: OptionalQueryId = None,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    """Vista previa de importación salarial; no modifica nóminas."""
+    from .official_salary_import import SalaryImportError, prepare_import
+    from .approved_salary_import import salary_source_summary, choose_salary_source, approved_salary_records, salary_excluded_records, approved_employee_choices
+
+    ids = company_ids_for_user(db, user)
+    companies = seed_choices(
+        db, select(Company).where(Company.id.in_(ids)).order_by(Company.legal_name),
+        Company, request=request
+    ) if ids else []
+    company = company_allowed(db, user, company_id) if company_id else None
+    selected_employee = db.get(Employee, employee_id) if employee_id is not None else None
+    if employee_id is not None and (
+        selected_employee is None or company is None or selected_employee.company_id != company.id
+    ):
+        raise HTTPException(404, "El funcionario no pertenece a la empresa seleccionada.")
+    period = period or current_paraguay_date().strftime("%Y-%m")
+    authority = authority if authority in {"REOP", "REI"} else "REOP"
+    approved_choices = approved_employee_choices(db, company.id, period) if company else []
+    preview = bool(company and request.query_params.get("period"))
+    source_summary = salary_source_summary(db, company.id, period, employee_id=employee_id) if company else None
+    try:
+        effective_source = choose_salary_source(db, company.id, period, source_type, employee_id=employee_id) if company else "payroll"
+    except ValueError as exc:
+        raise HTTPException(422, "Origen de salarios no válido.") from exc
+    excluded_salary = (
+        salary_excluded_records(db, company.id, period)
+        if company and effective_source == "approved" and employee_id is None
+        else []
+    )
+    diagnostics = []
+    if preview and effective_source == "approved":
+        _source_rows, _source_errors, diagnostics = approved_salary_records(db, company, period, authority=authority, employee_id=employee_id)
+    errors: list[str] = []
+    rows: list[list] = []
+    if preview:
+        try:
+            rows, errors = prepare_import(
+                db, company, period, authority, payment_code=payment_code,
+                other_category=other_category, rei_category=rei_category,
+                name_order=name_order, source_type=source_type, employee_id=employee_id,
+            )
+        except SalaryImportError as exc:
+            errors = exc.errors
+    if authority == "REOP":
+        preview_headers = ["N.º patronal", "Documento", "Desde", "Hasta", "Sueldo básico", "IPS"]
+        preview_rows = [
+            [item[0], item[1], item[2].strftime("%d/%m/%Y"), item[3].strftime("%d/%m/%Y"),
+             item[9], item[25]]
+            for item in rows[:20] if isinstance(item[2], date) and isinstance(item[3], date)
+        ]
+    else:
+        preview_headers = ["N.º patronal", "Cédula", "Apellidos", "Nombres", "Categoría", "Base IPS"]
+        preview_rows = [[item[0], item[2], item[3], item[4], item[5], item[7]] for item in rows[:20]]
+    return render(
+        request, "salary_import.html", db, user, companies=companies,
+        selected_company=company, period=period, authority=authority,
+        payment_code=payment_code, other_category=other_category,
+        rei_category=rei_category, name_order=name_order, preview=preview,
+        item_count=len(rows), errors=errors,
+        source_type=source_type, effective_source=effective_source,
+        source_summary=source_summary, diagnostics=diagnostics,
+        employee_id=employee_id, selected_employee=selected_employee,
+        excluded_salary=excluded_salary, approved_choices=approved_choices,
+        preview_headers=preview_headers, preview_rows=preview_rows,
+    )
+
+
+@app.post("/app/compliance/salary-import/details")
+def save_salary_import_details(
+    calculation_id: Annotated[int, Form()],
+    authority: Annotated[str, Form()] = "REOP",
+    period_start: Annotated[str, Form()] = "",
+    period_end: Annotated[str, Form()] = "",
+    days_worked: Annotated[int, Form()] = 0,
+    hours_worked: Annotated[Decimal, Form()] = Decimal("0"),
+    payment_method: Annotated[str, Form()] = "",
+    confirmed: Annotated[str, Form()] = "",
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    """Completar jornadas reales sin alterar los importes del cálculo aprobado."""
+    from calendar import monthrange
+    from .approved_salary_import import APPROVED, SALARY_TYPES, calculation_fingerprint
+
+    if confirmed != "si":
+        raise HTTPException(400, "Confirmá que los datos de asistencia y pago son reales.")
+    item = db.get(CalculationRecord, calculation_id)
+    if item is None:
+        raise HTTPException(404, "Cálculo no encontrado.")
+    company = company_allowed(db, user, item.company_id)
+    if item.calculation_type not in SALARY_TYPES or item.status not in APPROVED or item.employee_id is None:
+        raise HTTPException(409, "Seleccioná un cálculo salarial aprobado y vinculado a un funcionario.")
+    latest = db.scalar(select(CalculationRecord).where(
+        CalculationRecord.company_id == company.id,
+        CalculationRecord.employee_id == item.employee_id,
+        CalculationRecord.reference_period == item.reference_period,
+        CalculationRecord.calculation_type.in_(SALARY_TYPES),
+    ).order_by(CalculationRecord.created_at.desc(), CalculationRecord.id.desc()).limit(1))
+    if not latest or latest.id != item.id:
+        raise HTTPException(409, "Existe una versión más reciente de la liquidación. Revisá el último cálculo.")
+    if not re.fullmatch(r"20\d{2}-(0[1-9]|1[0-2])", item.reference_period or ""):
+        raise HTTPException(422, "El período salarial no es válido.")
+    try:
+        start, end = date.fromisoformat(period_start), date.fromisoformat(period_end)
+        anchor = date.fromisoformat(item.reference_period + "-01")
+    except ValueError as exc:
+        raise HTTPException(422, "Ingresá fechas del período válidas.") from exc
+    last_day = date(anchor.year, anchor.month, monthrange(anchor.year, anchor.month)[1])
+    employee = db.get(Employee, item.employee_id)
+    if (
+        start < anchor or end > last_day or end < start or employee is None
+        or start < employee.admission_date
+        or (employee.termination_date and end > employee.termination_date)
+    ):
+        raise HTTPException(422, "El rango de pago debe pertenecer al período y al vínculo laboral.")
+    if not (0 <= days_worked <= 31):
+        raise HTTPException(422, "Las jornadas reales deben estar entre 0 y 31.")
+    if not hours_worked.is_finite() or not (Decimal("0") <= hours_worked <= Decimal("744")):
+        raise HTTPException(422, "Las horas trabajadas deben estar entre 0 y 744.")
+    payment_method = clean_text(payment_method, max_length=100)
+    detail = db.scalar(select(SalaryImportDetail).where(
+        SalaryImportDetail.calculation_record_id == item.id,
+        SalaryImportDetail.company_id == company.id,
+    ))
+    if authority == "REI":
+        # REI no requiere horario ni medio de pago. No destruir datos REOP
+        # ya verificados cuando el usuario guarda solo las jornadas IPS.
+        if detail is not None:
+            if not payment_method:
+                payment_method = detail.payment_method
+            if hours_worked == 0:
+                hours_worked = detail.hours_worked
+    elif not payment_method:
+        raise HTTPException(422, "Completá la forma de pago real para REOP.")
+    if detail is None:
+        detail = SalaryImportDetail(company_id=company.id, calculation_record_id=item.id)
+        db.add(detail)
+    detail.source_sha256 = calculation_fingerprint(item)
+    detail.period_start, detail.period_end = start, end
+    detail.days_worked, detail.hours_worked = days_worked, hours_worked
+    detail.payment_method, detail.updated_by = payment_method, user.email
+    write_audit(
+        db, user, "actualizar_jornada_declarativa", "calculo", str(item.id),
+        f"Período {item.reference_period} · {start} a {end} · jornadas {days_worked} · horas {hours_worked}",
+    )
+    db.commit()
+    system = authority if authority in {"REOP", "REI"} else "REOP"
+    return RedirectResponse(
+        f"/app/compliance/salary-import?company_id={company.id}&period={item.reference_period}"
+        f"&authority={system}&source_type=approved&employee_id={item.employee_id}&details_saved=1", status_code=303,
+    )
+
+
+@app.post("/app/compliance/salary-import/export")
+def salary_import_export(
+    company_id: Annotated[int, Form()],
+    period: Annotated[str, Form()],
+    authority: Annotated[str, Form()],
+    payment_code: Annotated[str, Form()] = "",
+    other_category: Annotated[str, Form()] = "",
+    rei_category: Annotated[str, Form()] = "",
+    name_order: Annotated[str, Form()] = "",
+    source_type: Annotated[str, Form()] = "auto",
+    employee_id: Annotated[int | None, Form()] = None,
+    confirmed: Annotated[str, Form()] = "",
+    accept_partial: Annotated[str, Form()] = "",
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    """Descarga auditada; nunca realiza envío directo a REOP o REI."""
+    from .official_salary_import import (
+        MIME_REI, MIME_REOP, SalaryImportError, build_rei_txt,
+        build_reop_xlsx, prepare_import,
+    )
+
+    if confirmed != "si":
+        raise HTTPException(400, "Confirmá la revisión antes de descargar.")
+    company = company_allowed(db, user, company_id)
+    if employee_id is not None:
+        chosen = db.get(Employee, employee_id)
+        if chosen is None or chosen.company_id != company.id:
+            raise HTTPException(404, "Funcionario ajeno a la empresa.")
+    try:
+        rows, errors = prepare_import(
+            db, company, period, authority, payment_code=payment_code,
+            other_category=other_category, rei_category=rei_category,
+            name_order=name_order, source_type=source_type, employee_id=employee_id,
+        )
+    except SalaryImportError as exc:
+        raise HTTPException(409, detail=" | ".join(exc.errors[:12])) from exc
+    if errors:
+        raise HTTPException(409, detail="Hay datos pendientes: " + " | ".join(errors[:12]))
+    from .approved_salary_import import choose_salary_source, salary_excluded_records
+    effective_source = choose_salary_source(db, company.id, period, source_type, employee_id=employee_id)
+    exclusions = (
+        salary_excluded_records(db, company.id, period)
+        if effective_source == "approved" and employee_id is None else []
+    )
+    if exclusions and accept_partial != "si":
+        raise HTTPException(
+            409,
+            f"Hay {len(exclusions)} legajo(s) sin cálculo aprobado que se excluirán. "
+            "Confirmá explícitamente la declaración parcial o exportá un trabajador individual.",
+        )
+    if authority == "REI" and name_order not in {"apellido_primero", "nombre_primero"}:
+        raise HTTPException(409, "Se requiere confirmar el orden de nombres del REI.")
+    content = build_reop_xlsx(rows) if authority == "REOP" else build_rei_txt(rows)
+    media = MIME_REOP if authority == "REOP" else MIME_REI
+    extension = "xlsx" if authority == "REOP" else "txt"
+    safe_ruc = re.sub(r"[^A-Za-z0-9_-]+", "-", company.ruc or str(company.id))
+    scope = f"_legajo-{employee_id}" if employee_id is not None else ""
+    file_name = f"{authority.lower()}_salarios_{safe_ruc}_{period}{scope}.{extension}"
+    batch = register_batch(
+        db, company=company, authority=authority, batch_type="Importación de salarios",
+        period=period, content=content, created_by=user.email,
+    )
+    batch.file_name = file_name
+    batch.item_count = len(rows)
+    batch.payload_json = json.dumps({
+        "source_type": effective_source,
+        "employee_scope_id": employee_id,
+        "excluded_calculation_ids": [item["calculation_id"] for item in exclusions],
+        "partial_export_confirmed": bool(exclusions),
+        "format": "REOP-32-col-2025" if authority == "REOP" else "REI-txt-referencia-2016",
+        "payment_code": payment_code if authority == "REOP" else None,
+        "other_category": other_category if authority == "REOP" else None,
+        "name_order": name_order if authority == "REI" else None,
+        "status_note": "Exportación local para revisión; no presentación oficial.",
+    }, ensure_ascii=False)
+    key = f"integrations/{company.id}/salary-import/batch-{batch.id}.{extension}"
+    storage.put(key, content, media)
+    batch.storage_key = key
+    batch.file_bytes = content if settings.storage_backend == "local" else None
+    write_audit(
+        db, user, "exportar_importacion_salarios", "lote_integracion", str(batch.id),
+        f"{authority} · {period} · {len(rows)} empleados · SHA-256 {batch.file_sha256}",
+    )
+    db.commit()
+    return StreamingResponse(
+        io.BytesIO(content), media_type=media,
+        headers={"Content-Disposition": f'attachment; filename="{file_name}"',
+                 "Cache-Control": "no-store"},
+    )
+
+
 @app.get("/app/compliance/export/reop-annual.xlsx")
 def export_reop_annual(
     company_id: int,
@@ -9418,7 +9745,7 @@ def download_integration_batch(
     db.commit()
     return StreamingResponse(
         io.BytesIO(content),
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        media_type=("text/plain; charset=windows-1252" if batch.file_name.lower().endswith(".txt") else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
         headers={"Content-Disposition": f'attachment; filename="{batch.file_name}"'},
     )
 

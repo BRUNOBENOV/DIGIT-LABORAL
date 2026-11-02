@@ -461,6 +461,26 @@ class CalculationRecord(Base):
     employee: Mapped[Optional[Employee]] = relationship(back_populates="calculations")
 
 
+class SalaryImportDetail(Base):
+    """Datos declarativos anexos a un cálculo aprobado; no modifican importes."""
+    __tablename__ = "salary_import_details"
+    __table_args__ = (UniqueConstraint("calculation_record_id", name="uq_salary_import_detail_calculation"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    calculation_record_id: Mapped[int] = mapped_column(ForeignKey("calculation_records.id"), index=True)
+    source_sha256: Mapped[str] = mapped_column(String(64), default="")
+    period_start: Mapped[date] = mapped_column(Date)
+    period_end: Mapped[date] = mapped_column(Date)
+    days_worked: Mapped[int] = mapped_column(Integer)
+    hours_worked: Mapped[Decimal] = mapped_column(Numeric(10, 2))
+    payment_method: Mapped[str] = mapped_column(String(100), default="")
+    updated_by: Mapped[str] = mapped_column(String(180), default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
+
+    calculation_record: Mapped[CalculationRecord] = relationship()
+
+
 class AIInteraction(Base):
     __tablename__ = "ai_interactions"
 

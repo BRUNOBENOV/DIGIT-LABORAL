@@ -1,4 +1,4 @@
-## 2.6.69 — Notificación de Preaviso con entrada compacta
+## 2.6.76 — Notificación de Preaviso con entrada compacta
 
 - Agrupa los datos precargados del legajo en un resumen editable. Mantiene emisión, inicio, terminación y plazo visibles cuando hay un cálculo vinculado; número, observaciones, datos adicionales y revisión del cálculo quedan en desplegables.
 - Lleva guardar, imprimir, Word y PDF junto a la vista previa, con disposición adaptable a escritorio y tablet. Conserva los controles originales, su validación y sus valores al cambiar entre contrato, preaviso y otros certificados.
