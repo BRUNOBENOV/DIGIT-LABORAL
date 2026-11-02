@@ -220,6 +220,29 @@ def _review_data(inputs: dict, batch: IntegrationBatch | None,
     return values
 
 
+def approved_employee_choices(db: Session, company_id: int, period: str) -> list[Employee]:
+    """Only the latest status per employee counts as eligible for selection."""
+    records = list(db.scalars(
+        select(CalculationRecord).where(
+            CalculationRecord.company_id == company_id,
+            CalculationRecord.reference_period == period,
+            CalculationRecord.calculation_type.in_(SALARY_TYPES),
+            CalculationRecord.employee_id.is_not(None),
+        ).order_by(CalculationRecord.created_at.desc(), CalculationRecord.id.desc())
+    ))
+    latest = {}
+    for item in records:
+        latest.setdefault(item.employee_id, item)
+    eligible = [eid for eid, item in latest.items() if item.status in APPROVED]
+    if not eligible:
+        return []
+    return list(db.scalars(
+        select(Employee).where(
+            Employee.company_id == company_id, Employee.id.in_(eligible),
+        ).order_by(Employee.full_name, Employee.id)
+    ))
+
+
 def salary_excluded_records(db: Session, company_id: int, period: str) -> list[dict]:
     """Latest non-approved salary snapshots per employee, for explicit partial-export consent.
 
