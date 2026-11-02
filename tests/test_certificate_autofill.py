@@ -363,7 +363,7 @@ def test_existing_contract_single_signature_pair_in_pdf_word_and_print(dossier_c
     pdf_text = "\n".join(p.extract_text() or "" for p in PdfReader(io.BytesIO(pdf.content)).pages)
     assert "EL EMPLEADOR / REPRESENTANTE LEGAL" not in pdf_text
     assert "Aclaración: " not in pdf_text
-    assert pdf_text.count("Firma / recepción del trabajador/a") == 1
+    assert pdf_text.count("Firma del trabajador/a") == 1
     assert "Observación legítima posterior." in pdf_text
 
     doc = Document(io.BytesIO(word.content))
