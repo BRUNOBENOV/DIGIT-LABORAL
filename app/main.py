@@ -5690,13 +5690,28 @@ def _revalidate_calculation_before_approval(item: CalculationRecord, db: Session
     except (TypeError, ValueError, json.JSONDecodeError) as exc:
         raise HTTPException(409, "El cálculo guardado no contiene entradas y resultados válidos. Volvé a calcularlo.") from exc
 
-    if item.source == "Cálculo automático":
-        # Historical general calculations did not persist their IPS rate. Replay
-        # them with the current configured rate, but only approve if every stored
-        # component and the main amount still reproduce exactly.
+    if item.source in {"Cálculo automático", "Calculadora"}:
+        # "Calculadora" is the original database default for historical records.
+        # Legacy imports and calculations may lack an engine identifier, but
+        # these two known sources can be replayed with the general calculator.
+        if item.source == "Calculadora" and item.calculation_type not in {
+            "salary", "hours", "aguinaldo", "vacation", "notice",
+        }:
+            raise HTTPException(
+                409,
+                "El cálculo histórico tiene un tipo que la calculadora general no puede reproducir. "
+                "Se mantiene sin aprobar; revisá sus datos originales.",
+            )
+        # Older snapshots omitted the IPS rate from inputs. Prefer the rate
+        # saved in their result rather than silently using a potentially newer
+        # configuration. Every persisted result field and the main amount must
+        # still reproduce exactly; this is not a bypass of approval validation.
         legacy_inputs = "ips_rate" not in saved_inputs
         if legacy_inputs:
-            saved_inputs["ips_rate"] = get_parameter(db, "ips_employee_rate_general", 9)
+            historic_rate = saved_results.get("ips_rate")
+            if historic_rate is None:
+                historic_rate = get_parameter(db, "ips_employee_rate_general", 9)
+            saved_inputs["ips_rate"] = historic_rate
         try:
             _inputs, current_results, current_amount = calculate_values(
                 calculation_type=item.calculation_type,
@@ -5767,7 +5782,7 @@ def _revalidate_calculation_before_approval(item: CalculationRecord, db: Session
             raise HTTPException(409, "El monto principal no coincide con el neto reproducido. Volvé a calcular antes de aprobar.")
         return
 
-    raise HTTPException(409, "No se puede validar el motor que generó este registro. Recreá el cálculo antes de aprobar.")
+    raise HTTPException(409, "Este cálculo tiene un origen histórico no reconocido por la validación (" + (item.source or "Sin origen") + "). Se conserva sin cambios; verificá los datos originales y recreá una versión si no puede reproducirse.")
 
 
 @app.post("/app/calculations/{calculation_id}/status")
