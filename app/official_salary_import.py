@@ -104,14 +104,26 @@ def _source(db: Session, company, period: str):
 
 def prepare_import(db: Session, company, period: str, authority: str, *,
                    payment_code: str = "", other_category: str = "",
-                   rei_category: str = "", name_order: str = "") -> tuple[list[list], list[str]]:
+                   rei_category: str = "", name_order: str = "",
+                   source_type: str = "auto") -> tuple[list[list], list[str]]:
     """Preflight integral: devuelve filas y TODOS los errores; el archivo se bloquea ante cualquier error."""
     if authority not in {"REOP", "REI"}:
         raise SalaryImportError(["Sistema de destino inválido."])
-    payroll, records = _source(db, company, period)
+    from .approved_salary_import import approved_salary_records, choose_salary_source
+    if not re.fullmatch(r"20\\d{2}-(0[1-9]|1[0-2])", period or ""):
+        raise SalaryImportError(["Ingresá un período válido AAAA-MM."])
+    try:
+        effective_source = choose_salary_source(db, company.id, period, source_type)
+    except ValueError as exc:
+        raise SalaryImportError([str(exc)]) from exc
+    if effective_source == "approved":
+        records, source_errors, _details = approved_salary_records(db, company, period)
+    else:
+        _payroll, records = _source(db, company, period)
+        source_errors = []
     start = date.fromisoformat(period + "-01")
     end = date(start.year, start.month, monthrange(start.year, start.month)[1])
-    errors: list[str] = []
+    errors: list[str] = list(source_errors)
     rows: list[list] = []
     if authority == "REOP":
         if payment_code not in {"1", "2", "3", "4"}:
