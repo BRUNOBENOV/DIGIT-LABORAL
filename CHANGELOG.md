@@ -1,3 +1,11 @@
+## 2.6.69 — Notificación de Preaviso con entrada compacta
+
+- Agrupa los datos precargados del legajo en un resumen editable. Mantiene emisión, inicio, terminación y plazo visibles cuando hay un cálculo vinculado; número, observaciones, datos adicionales y revisión del cálculo quedan en desplegables.
+- Lleva guardar, imprimir, Word y PDF junto a la vista previa, con disposición adaptable a escritorio y tablet. Conserva los controles originales, su validación y sus valores al cambiar entre contrato, preaviso y otros certificados.
+- Sustituye el bloqueo sin salida por instrucciones breves, acceso contextual a Cálculo → Preaviso en otra pestaña para los roles autorizados y actualización de registros al regresar. Distingue consulta en curso, falta de registros, error y cálculo vinculado.
+- Mantiene los controles del servidor sobre empresa, funcionario, período, anulación y vigencia del cálculo. No crea cálculos ni emite documentos automáticamente. Evita incluir el importe interno del cálculo en observaciones de nuevas cartas vinculadas.
+- Sin migraciones ni nuevas dependencias de producción.
+
 ## 2.6.68 — Modelo de carta y precarga para Notificación de Preaviso
 
 - Adapta las nuevas notificaciones al modelo solicitado: saludo, texto de comunicación con fecha corta, licencia diaria/semanal y «Muy atentamente». El cuerpo no agrega cargo, cédula, importe ni desglose del plazo; esos datos quedan en el panel o las firmas.

@@ -687,10 +687,11 @@ if (certificateForm) {
     if (effectiveDateInput) { effectiveDateInput.value = ''; effectiveDateInput.dataset.preavisoAuto = 'true'; }
     if (noticeDaysInput) noticeDaysInput.value = '';
   };
-  const setPreavisoStatus = (message, kind = '') => {
+  const setPreavisoStatus = (message, kind = '', state = '') => {
     if (!noticeStatus) return;
     noticeStatus.textContent = message;
     noticeStatus.className = 'preaviso-calculation-status' + (kind ? ' ' + kind : '');
+    noticeStatus.dataset.state = state || (kind === 'success' ? 'ready' : kind ? 'review' : 'selection');
   };
   const updatePreavisoSummary = record => {
     if (!noticeSummary) return;
@@ -733,6 +734,7 @@ if (certificateForm) {
       setPreavisoStatus('Cálculo encontrado y vinculado. Revisá los datos y el plazo legal antes de emitir.', 'success');
     }
     updatePreavisoSummary(record);
+    certificateForm.dispatchEvent(new Event('certificate:notice-state'));
   };
   const applyPreavisoCalculation = (record, resetDates = false) => {
     if (!record) {
@@ -787,7 +789,7 @@ if (certificateForm) {
     }
     noticePeriodSelect.disabled = true;
     noticePeriodSelect.innerHTML = '<option value="">Buscando cálculos guardados…</option>';
-    setPreavisoStatus('Buscando cálculos de Preaviso para el funcionario y sus períodos…');
+    setPreavisoStatus('Buscando cálculos de Preaviso para el funcionario y sus períodos…', '', 'loading');
     updatePreavisoSummary(null);
     updatePreavisoActionAvailability();
     try {
@@ -808,7 +810,7 @@ if (certificateForm) {
         option.textContent = 'No hay registro para imprimir';
         noticePeriodSelect.appendChild(option);
         noticePeriodSelect.disabled = true;
-        setPreavisoStatus('No hay registro para imprimir. Guardá primero un cálculo en Cálculo → Preaviso para este funcionario y período.', 'error');
+        setPreavisoStatus('No hay registro para imprimir. Guardá primero un cálculo en Cálculo → Preaviso para este funcionario y período.', 'error', 'empty');
         updatePreavisoSummary(null);
         updatePreavisoActionAvailability();
         updatePreview();
@@ -840,12 +842,13 @@ if (certificateForm) {
       option.textContent = 'No se pudo consultar';
       noticePeriodSelect.appendChild(option);
       noticePeriodSelect.disabled = true;
-      setPreavisoStatus('No se pudieron consultar los cálculos. Verificá tu conexión o volvé a intentar.', 'error');
+      setPreavisoStatus('No se pudieron consultar los cálculos. Verificá tu conexión o volvé a intentar.', 'error', 'error');
       updatePreavisoSummary(null);
       updatePreavisoActionAvailability();
       updatePreview();
     }
   };
+  certificateForm.addEventListener('certificate:notice-refresh', refreshPreavisoCalculations);
   noticePeriodSelect?.addEventListener('change', () => {
     const record = preavisoCalculations.find(item => item.reference_period === noticePeriodSelect.value);
     applyPreavisoCalculation(record || null, true);

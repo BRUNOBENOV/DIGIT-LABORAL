@@ -71,7 +71,7 @@
 {% set initial_type = selected_document_type or certificate_types.keys()|list|first %}
 {% set document_values = certificate_autofill_data.fields if certificate_autofill_data else {} %}
 {% if editing_contract %}{% set document_values = dict(editing_metadata, employee_name=editing_contract.employee_name_snapshot, employee_document=editing_contract.employee_document_snapshot, position=editing_contract.position_snapshot, admission_date=editing_contract.admission_date_snapshot.isoformat() if editing_contract.admission_date_snapshot else '', salary=editing_contract.salary_snapshot, city=editing_contract.city) %}{% endif %}
-<form method="post" action="/app/certificates" class="certificate-workspace" id="certificateForm" data-contract-enhance="progressive" data-module-selection data-employee-autofill data-editing-contract="{{ 'true' if editing_contract else 'false' }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+<form method="post" action="/app/certificates" class="certificate-workspace" id="certificateForm" data-contract-enhance="progressive" data-notice-can-register="{{ 'true' if user.role in ['administrador','contador','auxiliar'] else 'false' }}" data-module-selection data-employee-autofill data-editing-contract="{{ 'true' if editing_contract else 'false' }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <input type="hidden" name="dossier_submission" value="1">
   <input type="hidden" name="contract_text_stale" value="">
   <script type="application/json" id="certificateAutofillData">{{ certificate_autofill_data|tojson }}</script>
@@ -258,7 +258,7 @@
       </div>
       <label class="specific-field" data-specific="permiso_paternidad">Fecha de nacimiento o hecho generador del permiso<input type="date" name="birth_event_date" id="certificateBirthEventDate"></label>
 
-      <div class="document-field-section specific-field" data-specific="notificacion_preaviso"><b>Datos de la notificación</b><span>Empresa, funcionario y firmante se cargan desde sus registros. El plazo y la base se toman de Cálculo → Preaviso. La fecha final guardada tiene prioridad; si falta, se propone desde el inicio y el plazo. Revisá las fechas antes de emitir. El número se asigna al guardar o puede ingresarse en Número interno.</span></div>
+      <div class="document-field-section specific-field" data-notice-intro data-specific="notificacion_preaviso"><b>Datos de la notificación</b><span>Empresa, funcionario y firmante se cargan desde sus registros. El plazo y la base se toman de Cálculo → Preaviso. La fecha final guardada tiene prioridad; si falta, se propone desde el inicio y el plazo. Revisá las fechas antes de emitir. El número se asigna al guardar o puede ingresarse en Número interno.</span></div>
       <div class="document-form-grid specific-field" data-specific="notificacion_preaviso">
         <label>Período del cálculo
           <select name="notice_reference_period" id="certificateNoticeReferencePeriod" required disabled>
@@ -277,7 +277,7 @@
           <button class="btn ghost" type="button" id="cancelPreaviso">Cancelar</button>
         </div>
       </div>
-      <div class="document-field-section specific-field" data-specific="notificacion_preaviso"><b>Control legal</b><span>Para contratos por tiempo indefinido, el artículo 87 contempla plazos de 30, 45, 60 o 90 días según la antigüedad, una vez cumplido el período de prueba, con las excepciones legales. El sistema no determina automáticamente que el plazo sea suficiente.</span></div>
+      <div class="document-field-section specific-field" data-notice-legal data-specific="notificacion_preaviso"><b>Control legal</b><span>Para contratos por tiempo indefinido, el artículo 87 contempla plazos de 30, 45, 60 o 90 días según la antigüedad, una vez cumplido el período de prueba, con las excepciones legales. El sistema no determina automáticamente que el plazo sea suficiente.</span></div>
       <div class="document-field-section specific-field" data-specific="renuncia despido amonestacion cambio_salarial baja_funcionario"><b>Terminación, comunicaciones y medidas disciplinarias</b><span>Las causas y fechas deben registrarse de forma específica y ser revisadas antes de emitir el documento.</span></div>
       <label class="specific-field" data-specific="renuncia despido baja_funcionario">Motivo / causa a consignar (opcional)<textarea name="termination_reason" id="certificateTerminationReason" rows="2" placeholder="Solo se incorporará si completás el campo."></textarea></label>
       <div class="document-form-grid specific-field" data-specific="notificacion_preaviso despido baja_funcionario">
@@ -314,7 +314,7 @@
         <label>Detalle de otros descuentos<input name="settlement_other_deduction_description" id="certificateSettlementOtherDeductionDescription"></label>
       </div>
     </fieldset>
-    <label>Observaciones<textarea name="observations" id="certificateObservations" rows="4" placeholder="Texto adicional, fechas, condiciones o aclaraciones">{% if selected_calculation %}Cálculo N.º {{ selected_calculation.id }} vinculado: {{ selected_calculation.calculation_type|capitalize }}, monto estimado Gs. {{ selected_calculation.amount|gs }}.{% endif %}</textarea></label>
+    <label>Observaciones<textarea name="observations" id="certificateObservations" rows="4" placeholder="Texto adicional, fechas, condiciones o aclaraciones">{% if selected_calculation and initial_type != 'notificacion_preaviso' %}Cálculo N.º {{ selected_calculation.id }} vinculado: {{ selected_calculation.calculation_type|capitalize }}, monto estimado Gs. {{ selected_calculation.amount|gs }}.{% endif %}</textarea></label>
     <div class="document-auto-note"><b>Automatización activa</b><span>El sistema asignará numeración, membrete, firma, datos del funcionario y relación con el cálculo.</span></div>
     <button class="btn ghost full" type="button" id="refreshCertificatePreview">Actualizar vista previa</button>
     <div class="certificate-actions four-actions"><button class="btn ghost" type="submit" name="intent" value="save">Guardar borrador</button><button class="btn ghost" type="submit" name="intent" value="print">Imprimir</button><button class="btn word-button" type="submit" name="intent" value="docx">Descargar Word</button><button class="btn pdf-button" type="submit" name="intent" value="pdf">Descargar PDF</button></div>
