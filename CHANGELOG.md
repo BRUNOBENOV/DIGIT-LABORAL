@@ -1,3 +1,11 @@
+## 2.6.68 — Modelo de carta y precarga para Notificación de Preaviso
+
+- Adapta las nuevas notificaciones al modelo solicitado: saludo, texto de comunicación con fecha corta, licencia diaria/semanal y «Muy atentamente». El cuerpo no agrega cargo, cédula, importe ni desglose del plazo; esos datos quedan en el panel o las firmas.
+- Presenta número a la izquierda, ciudad y fecha a la derecha, párrafos con sangría y una pareja de firmas en impresión, Word y PDF. Identifica la versión del modelo en el documento para conservar las reimpresiones anteriores.
+- Precarga datos del legajo y firmante actual de la empresa. Usa fechas explícitas del cálculo guardado cuando existen; de otro modo presenta una propuesta desde la emisión/inicio y los días registrados. Permite revisar las fechas y calcula el intervalo desde ellas.
+- Evita que una respuesta tardía del legajo reemplace la base del cálculo vinculado. Limpia fechas y vinculación al cambiar de funcionario; conserva controles de empresa, funcionario, período, anulación y versión vigente.
+- Sin migraciones ni nuevas dependencias de producción.
+
 ## 2.6.64 — Contratos y certificados desde el legajo
 
 - Consulta autorizada de un único funcionario y su empresa para precargar identidad, domicilio, profesión, sección, cargo, ingreso, modalidad, periodicidad, horario registrado y salario vigente a la fecha del documento. Calcula la edad a esa fecha; no usa cambios salariales futuros.

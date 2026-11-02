@@ -99,11 +99,19 @@ def certificate_dossier_data(db: Session, company: Company, employee: Employee, 
     put("city", company.city, "Empresa seleccionada")
     put("nationality", fields["contract_worker_nationality"], "Datos personales del legajo")
     put("civil_status", fields["contract_worker_civil_status"], "Datos personales del legajo")
+    branding = company.branding
+    signatory = company.legal_representative or (branding.signature_name if branding else "") or company.responsible_name or ""
+    signature_title = "Representante legal" if company.legal_representative else (
+        branding.signature_title if branding and branding.signature_title and branding.signature_title.replace(".", "").casefold() != "representante legal" else "Responsable autorizado"
+    )
     return {
         "company_id": company.id, "employee_id": employee.id, "issue_date": issued_on.isoformat(),
         "fields": fields, "sources": sources,
         "company": {"name": company.legal_name, "ruc": company.ruc, "address": company.address,
-                    "phone": company.phone, "city": company.city, "representative": company.legal_representative},
+                    "phone": company.phone, "city": company.city, "representative": company.legal_representative,
+                    "signature": signatory, "signatureTitle": signature_title,
+                    "logoUrl": f"/app/companies/{company.id}/logo/print" if branding and branding.logo_bytes else "",
+                    "primary": branding.primary_color if branding else "#173B86"},
         "missing_fields": missing_contract_fields(fields, company),
     }
 

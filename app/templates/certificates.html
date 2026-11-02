@@ -38,6 +38,11 @@
 .dossier-status[data-error="true"]{border-color:#d8a63d;color:#805c15;background:#fffdf6}
 .dossier-identity{margin:12px 0;border:1px solid #d7e2f1;border-radius:8px;padding:10px}
 .dossier-identity summary{cursor:pointer;color:#173b86;font-weight:600;margin-bottom:8px}
+.notice-letter .certificate-preview-kicker,.notice-letter #certificatePreviewTitle{display:none}
+.notice-letter #certificatePreviewNumber{display:block;margin:0 0 18px;padding:0;border:0;text-align:left;background:none;font-size:.85rem}
+.notice-letter .notice-paragraph{margin:0 0 20px;white-space:pre-line;text-indent:2em;text-align:justify}
+.notice-letter .notice-recipient{margin-bottom:26px;text-indent:0;text-align:left}
+.notice-letter .notice-closing{margin-top:22px;text-indent:0;text-align:right}
 @media(max-width:760px){.certificate-type-menu{max-height:42vh;overflow:auto}}
 </style>
 <div class="page-header certificates-header">
@@ -253,7 +258,7 @@
       </div>
       <label class="specific-field" data-specific="permiso_paternidad">Fecha de nacimiento o hecho generador del permiso<input type="date" name="birth_event_date" id="certificateBirthEventDate"></label>
 
-      <div class="document-field-section specific-field" data-specific="notificacion_preaviso"><b>Vinculación con Cálculo → Preaviso</b><span>Se consultan los cálculos guardados del funcionario seleccionado. El importe y el plazo calculados son datos de referencia; verificá que las fechas y el plazo legal del caso coincidan antes de emitir.</span></div>
+      <div class="document-field-section specific-field" data-specific="notificacion_preaviso"><b>Datos de la notificación</b><span>Empresa, funcionario y firmante se cargan desde sus registros. El plazo y la base se toman de Cálculo → Preaviso. La fecha final guardada tiene prioridad; si falta, se propone desde el inicio y el plazo. Revisá las fechas antes de emitir. El número se asigna al guardar o puede ingresarse en Número interno.</span></div>
       <div class="document-form-grid specific-field" data-specific="notificacion_preaviso">
         <label>Período del cálculo
           <select name="notice_reference_period" id="certificateNoticeReferencePeriod" required disabled>
@@ -274,7 +279,7 @@
       </div>
       <div class="document-field-section specific-field" data-specific="notificacion_preaviso"><b>Control legal</b><span>Para contratos por tiempo indefinido, el artículo 87 contempla plazos de 30, 45, 60 o 90 días según la antigüedad, una vez cumplido el período de prueba, con las excepciones legales. El sistema no determina automáticamente que el plazo sea suficiente.</span></div>
       <div class="document-field-section specific-field" data-specific="renuncia despido amonestacion cambio_salarial baja_funcionario"><b>Terminación, comunicaciones y medidas disciplinarias</b><span>Las causas y fechas deben registrarse de forma específica y ser revisadas antes de emitir el documento.</span></div>
-      <label class="specific-field" data-specific="notificacion_preaviso renuncia despido baja_funcionario">Motivo / causa a consignar (opcional)<textarea name="termination_reason" id="certificateTerminationReason" rows="2" placeholder="Solo se incorporará si completás el campo."></textarea></label>
+      <label class="specific-field" data-specific="renuncia despido baja_funcionario">Motivo / causa a consignar (opcional)<textarea name="termination_reason" id="certificateTerminationReason" rows="2" placeholder="Solo se incorporará si completás el campo."></textarea></label>
       <div class="document-form-grid specific-field" data-specific="notificacion_preaviso despido baja_funcionario">
         <label>Último día trabajado<input type="date" name="last_worked_date" id="certificateLastWorkedDate"></label>
         <label>Inicio del preaviso<input type="date" name="notice_start_date" id="certificateNoticeStartDate"></label>
