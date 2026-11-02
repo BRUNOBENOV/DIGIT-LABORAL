@@ -91,7 +91,7 @@
       {% else %}
         <a class="workspace-home-link {{ 'active' if active_path == '/app' else '' }} {{ 'home-in-section-context' if active_path.startswith('/app/') else '' }}" href="/app"><span class="workspace-home-symbol">⌂</span><span class="workspace-home-label">Inicio</span></a>
 
-        <details class="workspace-nav-group" {% if active_path.startswith('/app/companies') or active_path.startswith('/app/employees') or active_path.startswith('/app/users') or active_path.startswith('/app/parameters') or active_path.startswith('/app/sections') or active_path.startswith('/app/medical-exams') %}open{% endif %}>
+        <details class="workspace-nav-group" {% if active_path.startswith('/app/companies') or active_path.startswith('/app/employees') or active_path.startswith('/app/users') or active_path.startswith('/app/parameters') or active_path.startswith('/app/sections') or active_path.startswith('/app/medical-exams') or active_path.startswith('/app/maintenance/post-import') %}open{% endif %}>
           <summary><span class="workspace-group-symbol">01</span><span class="workspace-group-name">Mantenimientos</span><span class="workspace-group-chevron">⌄</span></summary>
           <div class="workspace-submenu">
             <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/companies') else '' }}" href="/app/companies">{{ 'Mi empresa' if user.role == 'empresa' else 'Empresas' }}</a>
@@ -101,6 +101,7 @@
               <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/medical-exams') else '' }}" href="/app/medical-exams">Exámenes Médicos</a>
             {% endif %}
             {% if user.role == 'administrador' %}
+              {% if post_import_reactivation_enabled %}<a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/maintenance/post-import') else '' }}" href="/app/maintenance/post-import">Herramientas de mantenimiento · Post-importación</a>{% endif %}
               <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/users') else '' }}" href="/app/users">Usuarios y permisos</a>
               <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/parameters') else '' }}" href="/app/parameters">Parámetros</a>
             {% endif %}
