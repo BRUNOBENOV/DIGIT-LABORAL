@@ -121,6 +121,7 @@
   };
   const docNumberLabel = labelOf('document_number');
   const fieldset = document.getElementById('documentSpecificFields');
+  if (!fieldset) return;
   const sectionHeadings = [...fieldset.querySelectorAll('.document-field-section.specific-field')]
     .filter(node => (node.dataset.specific || '').includes('contrato_trabajo'));
   const conditionalEnd = labelOf('contract_end_date');
@@ -155,13 +156,12 @@
     contract_payment_method: 'Medio de pago'
   };
   let active = false;
-  let employeeContext = '';
   let loadedContext = '';
   let previousModality = '';
   const valid = value => {
     const raw = String(value == null ? '' : value).trim();
-    return Boolean(raw) && !/^(sin datos|no especificad[oa]|no consignad[oa]|n\\/?a|-)$/i.test(raw)
-      && !/\\[\\s*(?:COMPLETAR|PENDIENTE)/i.test(raw);
+    return Boolean(raw) && !/^(sin datos|no especificad[oa]|no consignad[oa]|n\/?a|-)$/i.test(raw)
+      && !/\[\s*(?:COMPLETAR|PENDIENTE)/i.test(raw);
   };
   const displayValue = name => {
     const input = source(name);
@@ -170,7 +170,7 @@
       const amount = Number(input.value);
       return amount > 0 ? 'Gs. ' + new Intl.NumberFormat('es-PY').format(amount) : 'Por completar';
     }
-    if (['admission_date', 'issue_date'].includes(name) && /^\\d{4}-\\d{2}-\\d{2}$/.test(input.value)) {
+    if (['admission_date', 'issue_date'].includes(name) && /^\d{4}-\d{2}-\d{2}$/.test(input.value)) {
       const [y, m, d] = input.value.split('-');
       return d + '/' + m + '/' + y;
     }
@@ -393,8 +393,8 @@
   for (const button of document.querySelectorAll('[data-certificate-type]')) {
     button.addEventListener('click', syncType);
   }
-  company.addEventListener('change', () => { employeeContext = ''; loadedContext = ''; resetSuggestions(); refresh(); });
-  employee.addEventListener('change', () => { employeeContext = ''; loadedContext = ''; resetSuggestions(); refresh(); });
+  company.addEventListener('change', () => { loadedContext = ''; resetSuggestions(); refresh(); });
+  employee.addEventListener('change', () => { loadedContext = ''; resetSuggestions(); refresh(); });
   const issue = source('issue_date');
   issue?.addEventListener('change', () => {refresh();});
   form.addEventListener('submit', event => {
