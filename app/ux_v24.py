@@ -3,6 +3,7 @@ from __future__ import annotations
 import inspect
 import json
 from datetime import date
+from decimal import Decimal, InvalidOperation
 from urllib.parse import quote
 
 from fastapi import Depends, HTTPException, Request
@@ -398,9 +399,21 @@ async def update_payroll_line_v24(
         gross = sum(inputs[k] for k in ("base_salary", "overtime", "commissions", "bonuses", "other_income"))
         default_rate = str(line.ips_rate if line.ips_rate is not None else core.get_parameter(db, "ips_employee_rate_general", 9))
         rate = number(form, "ips_rate", "tasa IPS", default=default_rate, maximum="100", decimals=2)
-        base = int(number(form, "ips_base", "base IPS", default=str(gross), maximum="2147483647"))
-        basis_note = _clean(form.get("ips_basis_note"), 300)
-        discount_note = _clean(form.get("other_discount_note"), 300)
+        submitted = _clean(form.get("ips_base"), 30)
+        if submitted:
+            submitted_base = int(number(form, "ips_base", "base IPS", maximum="2147483647"))
+            # Unchanged default from previous gross follows new earnings.
+            # A deliberately adjusted base must remain fixed and documented.
+            if line.ips_base is None or (line.ips_base == line.gross and submitted_base == line.ips_base):
+                base = gross
+            else:
+                base = submitted_base
+        elif line.ips_base is None or line.ips_base == line.gross:
+            base = gross
+        else:
+            base = line.ips_base
+        basis_note = _clean(form.get("ips_basis_note"), 300) or line.ips_basis_note or ""
+        discount_note = _clean(form.get("other_discount_note"), 300) or line.other_discount_note or ""
         if line.employee.ips_contributor and base != gross and not basis_note:
             raise CalculationError("Explicá el criterio de la base IPS ajustada.")
         if inputs["other_discount"] and not discount_note:
@@ -420,12 +433,24 @@ async def update_payroll_line_v24(
     line.ips_rate = rate if line.employee.ips_contributor else 0
     line.ips_basis_note, line.other_discount_note = basis_note, discount_note
     line.total_discounts, line.net = discounts, gross - discounts
+    detail = db.scalar(select(PayrollComplianceDetail).where(PayrollComplianceDetail.payroll_line_id == line.id))
+    if detail is None:
+        detail = PayrollComplianceDetail(payroll_line_id=line.id)
+        db.add(detail)
     if days_worked is not None:
-        detail = db.scalar(select(PayrollComplianceDetail).where(PayrollComplianceDetail.payroll_line_id == line.id))
-        if detail is None:
-            detail = PayrollComplianceDetail(payroll_line_id=line.id)
-            db.add(detail)
         detail.days_worked = days_worked
+    # This is the live v2.4 route, which replaces the route in main.py.
+    # Employer and employee IPS must use the SAME saved imponible base.
+    try:
+        employer_rate = Decimal(str(core.get_parameter(db, "ips_employer_rate_general", 16.5)))
+    except (InvalidOperation, ValueError, TypeError) as exc:
+        raise HTTPException(422, "Tasa patronal IPS inválida.") from exc
+    if not employer_rate.is_finite() or employer_rate < 0 or employer_rate > 100:
+        raise HTTPException(422, "Tasa patronal IPS fuera del rango 0 a 100.")
+    detail.employer_ips = (
+        round_gs(Decimal(line.ips_base) * employer_rate / Decimal("100"))
+        if line.employee.ips_contributor else 0
+    )
     ips_base = line.ips_base
     core.recalculate_payroll(db, payroll)
     core.write_audit(db, user, "editar", "linea_liquidacion", str(line.id), f"{line.employee.full_name} · base IPS Gs. {ips_base}")
