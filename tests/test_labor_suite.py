@@ -1315,3 +1315,82 @@ def test_employer_ips_contribution_uses_saved_ips_base_not_gross(web_case):
     assert refreshed.gross == 3_500_000
     assert refreshed.ips_employee == 270_000
     assert detail.employer_ips == 495_000  # 16.5% of 3,000,000; not 3,500,000
+
+
+def test_salary_export_shows_draft_exclusions_and_requires_partial_consent(web_case):
+    """HTTP regression: draft from another legajo cannot silently enter a file."""
+    import json
+    from datetime import UTC, datetime
+    from app.approved_salary_import import calculation_fingerprint
+    from app.models import CalculationRecord, Employee, SalaryImportDetail
+
+    client, db, _box, company, employee, _outsider = web_case
+    company.mtess_employer_number = "123456"
+    employee.admission_date = date(2024, 1, 1)
+    employee.ips_contributor = True
+    second = Employee(
+        company_id=company.id, full_name="Segundo trabajador sintético",
+        document_number="2222222", base_salary=2_500_000,
+        admission_date=date(2024, 1, 1),
+    )
+    db.add(second); db.flush()
+    approved = CalculationRecord(
+        company_id=company.id, employee_id=employee.id, reference_period="2026-10",
+        calculation_type="salary", source="Calculadora v2.4", status="Aprobado",
+        input_json=json.dumps({
+            "gross": 3_000_000, "other_income": 0, "other_discount": 0,
+            "ips_base": 3_000_000, "ips_rate": 9, "apply_ips": True,
+        }),
+        result_json=json.dumps({
+            "gross_computable": 3_000_000, "ips_base": 3_000_000,
+            "ips_employee": 270_000, "discounts": 270_000, "net": 2_730_000,
+        }),
+        amount=2_730_000,
+    )
+    draft = CalculationRecord(
+        company_id=company.id, employee_id=second.id, reference_period="2026-10",
+        calculation_type="salary", source="Calculadora v2.4", status="Borrador",
+        input_json="{}", result_json="{}", amount=0,
+        created_at=datetime(2026, 11, 2, tzinfo=UTC),
+    )
+    db.add_all([approved, draft]);db.flush()
+    db.add(SalaryImportDetail(
+        company_id=company.id, calculation_record_id=approved.id,
+        source_sha256=calculation_fingerprint(approved),
+        period_start=date(2026, 10, 1), period_end=date(2026, 10, 31),
+        days_worked=22, hours_worked=Decimal("176"),
+        payment_method="Transferencia",
+    ))
+    db.commit()
+
+    params={
+        "company_id": company.id, "period": "2026-10",
+        "authority": "REOP", "source_type": "approved", "payment_code": "1",
+    }
+    preview = client.get("/app/compliance/salary-import", params=params)
+    assert preview.status_code == 200, preview.text[:500]
+    assert "legajo(s) excluidos" in preview.text
+    assert "accept_partial" in preview.text
+    assert str(approved.id) in preview.text
+
+    form={
+        "csrf_token": token(client), **params,
+        "confirmed": "si",
+    }
+    blocked=client.post("/app/compliance/salary-import/export", data=form)
+    assert blocked.status_code == 409
+    assert "parcial" in blocked.text.lower()
+    by_employee=client.get(
+        "/app/compliance/salary-import",
+        params={**params, "employee_id": employee.id},
+    )
+    assert by_employee.status_code == 200, by_employee.text[:400]
+    assert "Exportación individual" in by_employee.text
+    assert "legajo(s) excluidos" not in by_employee.text
+
+    # No tenant may request an employee attached to another company.
+    outsider=client.get(
+        "/app/compliance/salary-import",
+        params={**params, "employee_id": _outsider.id},
+    )
+    assert outsider.status_code == 404
