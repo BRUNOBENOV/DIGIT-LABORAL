@@ -54,6 +54,7 @@ from .document_export import (
     document_receipt_mode,
     build_docx_bytes,
     build_pdf_bytes,
+    contract_body_for_display,
     decode_metadata,
     encode_metadata,
     export_data_from_certificate,
@@ -6652,6 +6653,7 @@ def print_certificate(certificate_id: int, request: Request, user: User = Depend
     return render(
         request, "certificate_print.html", db, user,
         certificate=item, metadata=metadata, detail_table=detail_table,
+        display_body=contract_body_for_display(item.document_type, item.body),
         signature_mode=document_signature_mode(item.document_type),
         receipt_mode=document_receipt_mode(item.document_type),
     )

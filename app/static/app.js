@@ -509,6 +509,25 @@ if (certificateForm) {
     }, 300);
   }
 
+  // Contratos antiguos guardaron las dos firmas también dentro del texto.
+  // El layout ya dibuja una única pareja al pie: no duplicarlas en vista previa.
+  const oldContractSignatures = [
+    'EL TRABAJADOR/A',
+    'Firma: ____________________________________',
+    'Aclaración: _________________________________',
+    'C.I. N.º: ___________________________________',
+    '',
+    'EL EMPLEADOR / REPRESENTANTE LEGAL',
+    'Firma: ____________________________________',
+    'Aclaración: _________________________________',
+    'Cargo: _____________________________________',
+    '',
+    ''
+  ].join('\n');
+  const contractPreviewText = body => String(body || '')
+    .replace(oldContractSignatures, '')
+    .replace(oldContractSignatures.replace(/\n/g, '\r\n'), '');
+
   function updatePreview() {
     const type = typeInput.value;
     const title = labels[type] || 'Documento laboral';
@@ -531,7 +550,7 @@ if (certificateForm) {
     previewDate.style.display = '';
     const contractTextValue = contractFullEditor?.value?.trim() || '';
     const bodyText = type === 'contrato_trabajo' && contractTextValue ? contractFullEditor.value : buildBody();
-    renderCertificatePreviewBody(type, bodyText);
+    renderCertificatePreviewBody(type, type === 'contrato_trabajo' ? contractPreviewText(bodyText) : bodyText);
     document.querySelector('#certificatePreviewHeaderCompany').textContent = company;
     document.querySelector('#certificatePreviewHeaderDetails').textContent = [
       companyOption?.dataset.ruc ? `RUC ${companyOption.dataset.ruc}` : '',
@@ -596,6 +615,9 @@ if (certificateForm) {
     if (previewAddress) previewAddress.textContent = '';
 
     if (usePair) {
+      const workerSignatureLabel = document.querySelector('#certificatePreviewEmployeeSignatureLabel');
+      if (workerSignatureLabel) workerSignatureLabel.textContent = type === 'contrato_trabajo'
+        ? 'Firma del trabajador/a' : 'Firma / recepción del trabajador/a';
       document.querySelector('#certificatePreviewEmployeeName').textContent = employee;
       document.querySelector('#certificatePreviewEmployeeDocument').textContent = `C.I. N.º ${employeeDocument}`;
       document.querySelector('#certificatePreviewPairedSignature').textContent = signature;
