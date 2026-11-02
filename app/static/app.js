@@ -615,6 +615,9 @@ if (certificateForm) {
     if (previewAddress) previewAddress.textContent = '';
 
     if (usePair) {
+      const workerSignatureLabel = document.querySelector('#certificatePreviewEmployeeSignatureLabel');
+      if (workerSignatureLabel) workerSignatureLabel.textContent = type === 'contrato_trabajo'
+        ? 'Firma del trabajador/a' : 'Firma / recepción del trabajador/a';
       document.querySelector('#certificatePreviewEmployeeName').textContent = employee;
       document.querySelector('#certificatePreviewEmployeeDocument').textContent = `C.I. N.º ${employeeDocument}`;
       document.querySelector('#certificatePreviewPairedSignature').textContent = signature;
