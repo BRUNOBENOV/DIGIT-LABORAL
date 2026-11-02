@@ -128,11 +128,11 @@
     {% endif %}
     {% if effective_source == 'approved' and diagnostics %}
     <details class="import-salary-card" style="background:#f7faff;margin:12px 0" {% if errors %}open{% endif %}>
-      <summary style="font-size:.88rem;font-weight:800;color:#17335e;cursor:pointer">Completar jornadas y horas de los cálculos aprobados ({{ diagnostics|length }})</summary>
+      <summary style="font-size:.88rem;font-weight:800;color:#17335e;cursor:pointer">{{ "Completar jornadas para REI" if authority == "REI" else "Completar jornadas y horas para REOP" }} ({{ diagnostics|length }})</summary>
       <p class="import-salary-info">
         Los cálculos antiguos guardaban el importe salarial, pero no siempre la asistencia ni el medio de pago.
-        DIGIT reutiliza automáticamente los datos que estén guardados en ese mismo legajo y período.
-        Registrá únicamente las jornadas y horas reales respaldadas
+        DIGIT reutiliza automáticamente los datos que estén guardados en el cálculo seleccionado o en su anexo declarativo.
+        Registrá únicamente las jornadas y horas reales que correspondan al organismo y estén respaldadas
         por el control de asistencia; los días pagados y el divisor 240 no equivalen a horas efectivamente trabajadas.
         Podés guardar los datos incluso cuando existan otras observaciones pendientes.
       </p>
