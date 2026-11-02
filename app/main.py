@@ -6559,6 +6559,15 @@ def create_certificate(
             "contract_root_id": root_contract_id,
             "contract_state": document_status,
         })
+    # Las sugerencias del formulario simplificado no deben figurar como pactadas
+    # ni siquiera en una vista previa mientras no se haya marcado su confirmación.
+    if document_type == "contrato_trabajo" and contract_simplified_submission == "1" and intent == "preview":
+        if contract_confirm_payment_frequency.strip().lower() not in {"on", "1", "true", "yes"}:
+            metadata["payment_frequency"] = "sin confirmar"
+        if contract_confirm_weekly_rest.strip().lower() not in {"on", "1", "true", "yes"}:
+            metadata["weekly_rest"] = "sin confirmar"
+        if contract_confirm_payment_method.strip().lower() not in {"on", "1", "true", "yes"}:
+            metadata["contract_payment_method"] = "sin confirmar"
     title, body = build_document_body(
         document_type,
         company_name=company.legal_name,
