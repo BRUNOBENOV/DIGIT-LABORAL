@@ -41,6 +41,7 @@ from .labor_calculator import amount as round_gs, anniversary as labor_anniversa
 from .labor_wage_rules import minimum_wage_for_period
 from .salary_history import salary_for_period
 from .certificate_autofill import certificate_dossier_data, missing_contract_fields, has_pending_marker
+from .notice_documents import saved_notice_dates, notice_date_defaults, is_notice_letter
 from .pagination import Pagination, normalize_page_size
 from .entity_selects import entity_choices, seed_choices
 from .config import settings
@@ -5870,6 +5871,7 @@ def preaviso_calculations_api(
             "daily_value": max(0, daily_value),
             "notes": (item.notes or "").strip(),
             "created_at": item.created_at.isoformat() if item.created_at else "",
+            **saved_notice_dates(inputs),
         })
 
     return JSONResponse(
@@ -6169,18 +6171,6 @@ def create_certificate(
     calculation_id = optional_int(calculation_id, field="identificador de cálculo")
     contract_parent_id = optional_int(contract_parent_id, field="versión de contrato anterior")
 
-    if document_type == "notificacion_preaviso" and intent != "preview":
-        if not effective_date:
-            raise HTTPException(400, "La Notificación de Preaviso requiere la fecha efectiva de terminación.")
-        notice_start_value = notice_start_date or issue_date
-        if notice_start_value > effective_date:
-            raise HTTPException(400, "El inicio del preaviso no puede ser posterior a la fecha efectiva de terminación.")
-        notice_duration = (effective_date - notice_start_value).days
-        if notice_duration < 1:
-            raise HTTPException(400, "El período de preaviso debe abarcar al menos un día calendario.")
-        # La duración emitida proviene del intervalo entre fechas, no de un dato libre modificable.
-        notice_days = str(notice_duration)
-
     def nonnegative_amount(raw: str | int | None, label: str) -> int:
         value = str(raw if raw is not None else "").strip().replace(" ", "")
         if not value:
@@ -6314,6 +6304,29 @@ def create_certificate(
         raise HTTPException(400, "El cálculo vinculado corresponde a otro funcionario.")
     calc_inputs = json_dict(calculation.input_json) if calculation else {}
     calc_results = json_dict(calculation.result_json) if calculation else {}
+    notice_date_source = "Fechas revisadas en el formulario"
+    if document_type == "notificacion_preaviso":
+        if not calculation and intent != "preview":
+            raise HTTPException(400, "No hay registro para imprimir. Guardá primero el cálculo de Preaviso para ese funcionario y período.")
+        try:
+            saved_days = float(calc_results.get("days", calc_inputs.get("days", 0)) or 0)
+        except (ValueError, TypeError):
+            saved_days = 0.0
+        date_inputs = dict(calc_inputs)
+        if notice_start_date:
+            date_inputs["notice_start_date"] = notice_start_date.isoformat()
+        defaults = notice_date_defaults(date_inputs, issue_date, saved_days)
+        if not notice_start_date:
+            notice_start_date = date.fromisoformat(defaults["notice_start_date"])
+        if not effective_date and defaults["effective_date"]:
+            effective_date = date.fromisoformat(defaults["effective_date"])
+            notice_date_source = defaults["date_source"]
+        if effective_date and effective_date > notice_start_date:
+            notice_days = str((effective_date-notice_start_date).days)
+        elif intent != "preview":
+            raise HTTPException(400, "La fecha efectiva de terminación debe ser posterior al inicio del preaviso.")
+        if intent != "preview" and (not employee_name_value or not company.legal_name.strip()):
+            raise HTTPException(400, "Completá el nombre del funcionario y la razón social de la empresa.")
     if document_type == "notificacion_preaviso" and intent != "preview":
         if not calculation:
             raise HTTPException(400, "No hay registro para imprimir. Guardá primero el cálculo de Preaviso para ese funcionario y período.")
@@ -6517,6 +6530,8 @@ def create_certificate(
         "calculation_type": calculation.calculation_type if calculation else "",
         "calculation_results": calc_results,
         "notice_reference_period": notice_reference_period.strip(),
+        "notice_template_version": "1" if document_type == "notificacion_preaviso" else "",
+        "notice_date_source": notice_date_source if document_type == "notificacion_preaviso" else "",
         "notice_calculation_amount": int(calculation.amount or 0) if calculation and document_type == "notificacion_preaviso" else 0,
         "notice_calculation_salary": int(calc_inputs.get("salary", 0) or 0) if calculation and document_type == "notificacion_preaviso" else 0,
         "notice_calculation_days": calc_results.get("days", calc_inputs.get("days", 0)) if calculation and document_type == "notificacion_preaviso" else 0,
@@ -6656,6 +6671,7 @@ def print_certificate(certificate_id: int, request: Request, user: User = Depend
         display_body=contract_body_for_display(item.document_type, item.body),
         signature_mode=document_signature_mode(item.document_type),
         receipt_mode=document_receipt_mode(item.document_type),
+        notice_letter=is_notice_letter(item.document_type, metadata),
     )
 
 

@@ -408,15 +408,12 @@ if (certificateForm) {
         '\nDías consignados: ' + (value('vacation_days') || 'A completar') + '\nFecha de pago: ' + shortDate(value('vacation_payment_date')) +
         '\nImporte realmente abonado: ' + money(num('vacation_amount')) +
         '\n\nLa firma acredita recepción del importe efectivamente pagado; conservar original firmado y entregar duplicado al trabajador/a.',
-      notificacion_preaviso: 'Señor/a\n' + identity +
-        '\n\nRef.: Notificación de preaviso\n\n' + company +
-        ' comunica formalmente que ha resuelto prescindir de sus servicios, con fecha efectiva de terminación el ' + longDate(effectiveDateInput?.value) + '.' +
-        '\n\nCargo registrado: ' + role + '.' +
-        (value('termination_reason').trim() ? '\n\nMotivo comunicado: ' + value('termination_reason').trim() + '.' : '') +
-        '\n\nEl preaviso se computa desde el ' + longDate(noticeStartInput?.value || issueDateInput.value) +
-        ' hasta el ' + longDate(effectiveDateInput?.value) + ', por un período de ' + (value('notice_days') || 'A completar') + ' días calendario.' +
-        '\n\nDurante este período y sin disminución de su salario, podrá disponer, a su elección, de una licencia diaria de dos horas dentro de la jornada legal o de un día a la semana para buscar otra ocupación. A su opción, podrá utilizar en forma continuada todo el tiempo de licencia que le corresponda, conforme al artículo 89 de la Ley N.º 213/93, Código del Trabajo.' +
-        '\n\nSírvase firmar al pie de la presente como constancia de recepción.\n\nAtentamente.',
+      notificacion_preaviso: 'Señor(a)\n' + employee +
+        '\n\nMe dirijo a usted para notificarle que la Firma Comercial ' + company +
+        ' ha resuelto prescindir de sus servicios a partir del ' +
+        (effectiveDateInput?.value ? shortDate(effectiveDateInput.value).replace(/\/\d{2}(\d{2})$/, '/$1') : '[FECHA DE TERMINACIÓN]') + '.' +
+        '\n\nPor tanto, y de conformidad con las normas laborales vigentes, queda usted preavisado. Podrá, pues, disponer de una licencia diaria de dos horas dentro de la jornada legal o de un día a la semana, para buscar otra ocupación.' +
+        '\n\nSe servirá darse por notificado del contenido de la presente, firmando al pie de la misma.\n\nMuy atentamente.',
       renuncia: 'NOTA DE RENUNCIA\n\nA: ' + recipient + '\nEmpresa: ' + company + '\n\nYo, ' + identity +
         ', comunico mi decisión de renunciar al cargo de ' + role + ', con fecha efectiva ' + longDate(effectiveDateInput?.value) +
         '. Solicito que se practique la liquidación y se entreguen los documentos de cierre. Dejar constancia de la fecha de recepción.',
@@ -469,6 +466,13 @@ if (certificateForm) {
       heading.className = 'certificate-a-certify';
       heading.textContent = 'C E R T I F I C O:';
       previewBody.replaceChildren(heading, document.createTextNode('\n\n' + bodyText.slice(certifyHeading.length)));
+    } else if (type === 'notificacion_preaviso') {
+      previewBody.replaceChildren(...bodyText.split('\n\n').map((block, index) => {
+        const paragraph = document.createElement('p');
+        paragraph.className = 'notice-paragraph' + (index === 0 ? ' notice-recipient' : block === 'Muy atentamente.' ? ' notice-closing' : '');
+        paragraph.textContent = block;
+        return paragraph;
+      }));
     } else {
       previewBody.textContent = bodyText;
     }
@@ -479,7 +483,7 @@ if (certificateForm) {
   function scheduleCanonicalCertificatePreview(type) {
     const sequence = ++canonicalCertificatePreviewSequence;
     if (canonicalCertificatePreviewTimer !== null) window.clearTimeout(canonicalCertificatePreviewTimer);
-    if (!['certificado_trabajo_a', 'certificado_trabajo_b', 'constancia', 'contrato_trabajo'].includes(type)) return;
+    if (!['certificado_trabajo_a', 'certificado_trabajo_b', 'constancia', 'contrato_trabajo', 'notificacion_preaviso'].includes(type)) return;
     if (type === 'contrato_trabajo' && contractFullEditor?.value.trim()) return;
     // Sin empresa y funcionario no existe un documento canónico; mantener el modelo local con marcadores claros.
     if (!companySelect.value || !employeeSelect.value) return;
@@ -530,6 +534,7 @@ if (certificateForm) {
 
   function updatePreview() {
     const type = typeInput.value;
+    [positionInput, admissionInput, salaryInput].forEach(input => { if (input) input.required = type !== 'notificacion_preaviso'; });
     const title = labels[type] || 'Documento laboral';
     const companyOption = selectedOption(companySelect);
     const employeeOption = selectedOption(employeeSelect);
@@ -557,11 +562,15 @@ if (certificateForm) {
       companyOption?.dataset.address || '',
       companyOption?.dataset.phone ? 'Tel. ' + companyOption.dataset.phone : ''
     ].filter(Boolean).join(' · ') || 'Datos de la empresa pendientes de selección';
-    document.querySelector('#certificatePreviewNumber').textContent = documentNumberInput?.value
-      ? `Documento N.º ${documentNumberInput.value}`
+    const previewNumber = document.querySelector('#certificatePreviewNumber');
+    previewNumber.textContent = documentNumberInput?.value
+      ? `${type === 'notificacion_preaviso' ? 'N.º' : 'Documento N.º'} ${documentNumberInput.value}`
       : 'Numeración automática';
+    if (type === 'notificacion_preaviso') previewDate.before(previewNumber);
+    else document.querySelector('#certificatePreviewBody').before(previewNumber);
 
     const preview = document.querySelector('#certificatePreview');
+    preview?.classList.toggle('notice-letter', type === 'notificacion_preaviso');
     if (preview) preview.style.setProperty('--company-primary', companyColor);
 
     const logo = document.querySelector('#certificatePreviewLogo');
@@ -657,6 +666,7 @@ if (certificateForm) {
 
   let preavisoCalculations = [];
   let preavisoRequestSequence = 0;
+  let preavisoContext = '';
   const preavisoActionButtons = [...certificateForm.querySelectorAll('.certificate-actions button[type="submit"]')];
   const preavisoGs = amount => 'Gs. ' + new Intl.NumberFormat('es-PY', {maximumFractionDigits: 0}).format(Number(amount || 0));
   const datePlusDays = (rawDate, days) => {
@@ -692,9 +702,10 @@ if (certificateForm) {
         ' · Plazo registrado: ' + record.days + ' días · Importe estimado: ' + preavisoGs(record.amount) +
         ' · Estado: ' + record.status;
     }
-    if (noticeSummaryNotes) noticeSummaryNotes.textContent = record.notes ?
+    const dateHint = record.effective_date ? 'Fechas del cálculo guardado; revisalas antes de emitir. ' : 'La salida se propone desde el inicio y los días guardados; revisá la fecha. ';
+    if (noticeSummaryNotes) noticeSummaryNotes.textContent = dateHint + (record.notes ?
       'Observaciones del cálculo: ' + record.notes :
-      'Importe referencial del cálculo guardado; no se imprime como rubro de la notificación.';
+      'El importe de referencia no se imprime en esta carta.');
   };
   const updatePreavisoActionAvailability = () => {
     const isPreaviso = typeInput.value === 'notificacion_preaviso';
@@ -728,15 +739,16 @@ if (certificateForm) {
     }
     if (calculationIdInput) calculationIdInput.value = String(record.id);
     if (salaryInput && Number(record.salary) > 0) salaryInput.value = String(record.salary);
+    certificateForm.dispatchEvent(new CustomEvent('certificate:notice-applied', {detail: {salary: record.salary}}));
     const startNeedsDefault = resetDates || !noticeStartInput?.value;
     if (noticeStartInput && startNeedsDefault) {
-      noticeStartInput.value = issueDateInput.value || '';
-      noticeStartInput.dataset.preavisoAuto = 'true';
+      noticeStartInput.value = record.notice_start_date || issueDateInput.value || '';
+      noticeStartInput.dataset.preavisoAuto = record.notice_start_date ? 'false' : 'true';
     }
     const effectiveNeedsDefault = resetDates || !effectiveDateInput?.value || effectiveDateInput.dataset.preavisoAuto === 'true';
     if (effectiveDateInput && effectiveNeedsDefault && noticeStartInput?.value && Number(record.days) > 0) {
-      effectiveDateInput.value = datePlusDays(noticeStartInput.value, record.days);
-      effectiveDateInput.dataset.preavisoAuto = 'true';
+      effectiveDateInput.value = record.effective_date || datePlusDays(noticeStartInput.value, record.days);
+      effectiveDateInput.dataset.preavisoAuto = record.effective_date ? 'false' : 'true';
     }
     if (noticeDaysInput) noticeDaysInput.value = String(Math.max(0, Number(record.days) || 0));
     updateNoticeDays();
@@ -752,9 +764,17 @@ if (certificateForm) {
     const requestSequence = ++preavisoRequestSequence;
     const companyId = companySelect.value;
     const employeeId = employeeSelect.value;
+    const changedContext = preavisoContext !== companyId + ':' + employeeId;
+    preavisoContext = companyId + ':' + employeeId;
     const previousId = calculationIdInput?.value || '';
     const previousPeriod = noticePeriodSelect?.value || '';
     preavisoCalculations = [];
+    if (calculationIdInput) calculationIdInput.value = '';
+    if (changedContext) {
+      if (noticeStartInput) { noticeStartInput.value = ''; noticeStartInput.dataset.preavisoAuto = 'true'; }
+      if (effectiveDateInput) { effectiveDateInput.value = ''; effectiveDateInput.dataset.preavisoAuto = 'true'; }
+      if (noticeDaysInput) noticeDaysInput.value = '';
+    }
     if (!companyId || !employeeId) {
       if (calculationIdInput) calculationIdInput.value = '';
       noticePeriodSelect.innerHTML = '<option value="">Seleccioná una empresa y un funcionario</option>';

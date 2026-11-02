@@ -75,7 +75,7 @@ def test_certificate_a_preview_uses_model_text_and_uncached_static_asset():
         assert "[NOMBRE DE LA EMPRESA]" in script.text
         assert "[NOMBRE COMPLETO DEL FUNCIONARIO]" in script.text
         assert "certificado_trabajo_b: 'Certificado de Trabajo B'" in script.text
-        assert "if (!['certificado_trabajo_a', 'certificado_trabajo_b', 'constancia', 'contrato_trabajo'].includes(type)) return;" in script.text
+        assert "if (!['certificado_trabajo_a', 'certificado_trabajo_b', 'constancia', 'contrato_trabajo', 'notificacion_preaviso'].includes(type)) return;" in script.text
         assert 'data-address="' in page.text
         assert 'data-vacation-days=' not in page.text
         assert 'id="certificatePreviewPhone"' in page.text
@@ -250,7 +250,7 @@ def test_signature_policy_is_consistent_for_certificates_and_employee_requests()
     assert document_receipt_mode("notificacion_vacaciones") == "receipt_date"
 
 
-def test_notification_preaviso_uses_formal_text_dates_and_article_89_rights():
+def test_notification_preaviso_uses_requested_letter_model_and_daily_leave():
     title, body = build_document_body(
         "notificacion_preaviso",
         company_name="OMA GROUP",
@@ -269,15 +269,16 @@ def test_notification_preaviso_uses_formal_text_dates_and_article_89_rights():
         },
     )
     assert title == "Notificación de Preaviso"
-    assert "Señor/a\nALBINO HERMES, FRANCO, C.I. N.º 1.234.567" in body
+    assert body.startswith("Señor(a)\nALBINO HERMES, FRANCO\n\n")
     assert "ha resuelto prescindir de sus servicios" in body
-    assert "desde el 17 de julio de 2026" in body
-    assert "hasta el 31 de agosto de 2026" in body
-    assert "45 días calendario" in body
+    assert "Me dirijo a usted para notificarle que la Firma Comercial OMA GROUP" in body
+    assert "a partir del 31/08/26." in body
     assert "dos horas dentro de la jornada legal" in body
     assert "un día a la semana" in body
-    assert "artículo 89 de la Ley N.º 213/93" in body
-    assert "Motivo comunicado: Reorganización operativa." in body
+    assert "firmando al pie de la misma." in body
+    assert body.endswith("Muy atentamente.")
+    assert "Cargo registrado" not in body and "C.I." not in body
+    assert "Motivo comunicado" not in body and "días calendario" not in body
     assert "no implica necesariamente conformidad" not in body
 
 
@@ -336,8 +337,9 @@ def test_preaviso_calculation_api_exposes_employee_period_amount_and_empty_state
         certificate_id = int(parse_qs(urlparse(issued.headers["location"]).query)["created"][0])
         print_page = client.get(f"/app/certificates/{certificate_id}/print")
         assert print_page.status_code == 200
-        assert "Motivo comunicado: Reorganización operativa." in print_page.text
-        assert "Cargo registrado: Auxiliar." in print_page.text
+        assert "Me dirijo a usted para notificarle" in print_page.text
+        assert "Motivo comunicado" not in print_page.text
+        assert "Cargo registrado" not in print_page.text
         assert "Cálculo vinculado N.º" not in print_page.text
 
         empty = client.get(

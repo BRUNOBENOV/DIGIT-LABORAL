@@ -64,7 +64,7 @@
       hint.title = 'Esta edición no modifica el legajo.';
     } else {
       input.dataset.dossierState = 'sourced';
-      hint.textContent = source === 'Versión guardada' ? '✓ Versión guardada' : name === 'salary' ? '✓ Salario a la fecha' : name === 'contract_worker_age' ? '✓ Según nacimiento' : name === 'city' ? '✓ Empresa' : '✓ Del legajo';
+      hint.textContent = source === 'Versión guardada' ? '✓ Versión guardada' : source === 'Cálculo de Preaviso guardado' ? '✓ Cálculo de Preaviso' : name === 'salary' ? '✓ Salario a la fecha' : name === 'contract_worker_age' ? '✓ Según nacimiento' : name === 'city' ? '✓ Empresa' : '✓ Del legajo';
       hint.title = `${source || 'Versión guardada'}. Podés modificarlo solo para este documento.`;
     }
   }
@@ -80,6 +80,10 @@
     for (const name of names) {
       const input = field(name);
       if (!input || edited.has(name)) continue;
+      if (name === 'salary' && type.value === 'notificacion_preaviso' && field('calculation_id')?.value) {
+        mark(name, 'Cálculo de Preaviso guardado');
+        continue;
+      }
       const value = String(data.fields[name] ?? '');
       if (input instanceof HTMLSelectElement && value && ![...input.options].some(option => option.value === value)) {
         input.add(new Option(value, value));
@@ -191,6 +195,7 @@
     if (event.target.name && !names.includes(event.target.name) && event.target !== company && event.target !== employee && event.target.type !== 'checkbox') invalidateText();
   });
   form.addEventListener('certificate:context', load);
+  form.addEventListener('certificate:notice-applied', () => { edited.delete('salary'); mark('salary', 'Cálculo de Preaviso guardado'); });
   issuedOn.addEventListener('change', load);
   form.addEventListener('certificate:validate', validate);
   form.addEventListener('submit', validate, true);

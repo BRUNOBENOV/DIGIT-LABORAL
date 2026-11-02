@@ -22,6 +22,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from .logo_presentation import prepare_company_logo
+from .notice_documents import is_notice_letter
 
 from reportlab.platypus import (
     Image,
@@ -452,10 +453,6 @@ def build_document_body(
     period_start = optional_date(metadata.get("period_start"))
     period_end = optional_date(metadata.get("period_end"))
     effective_date = optional_date(metadata.get("effective_date"))
-    notice_start = optional_date(metadata.get("notice_start_date")) or issue_date
-    notice_days_raw = str(metadata.get("notice_days") or "").strip()
-    notice_date_span = (effective_date - notice_start).days if effective_date and effective_date >= notice_start else 0
-    notice_days_display = notice_days_raw or (str(notice_date_span) if notice_date_span > 0 else "A completar")
     leave_start = optional_date(metadata.get("leave_start"))
     leave_end = optional_date(metadata.get("leave_end"))
     amount = _metadata_money(metadata, "amount", salary)
@@ -508,7 +505,6 @@ def build_document_body(
     vacation_start = format_date_short(leave_start) or "A completar"
     vacation_end = format_date_short(leave_end) or "A completar"
     termination_reason = str(metadata.get("termination_reason") or "").strip() or "COMPLETAR: indicar el motivo específico y la documentación de respaldo"
-    notice_reason = str(metadata.get("termination_reason") or "").strip()
     incident_details = str(metadata.get("incident_details") or "").strip() or notes or "COMPLETAR: describir los hechos concretos, fecha, lugar y antecedentes"
     disciplinary_action = str(metadata.get("disciplinary_action") or "Amonestación escrita").strip()
     sanction_start = format_date_short(optional_date(metadata.get("sanction_start_date"))) or "No aplica / completar"
@@ -710,19 +706,14 @@ def build_document_body(
             f"Fecha de pago consignada: {payment_date}. El recibo debe reflejar el importe realmente abonado y entregarse en ejemplares para ambas partes."
         ),
         "notificacion_preaviso": (
-            f"Señor/a\n{employee_detail}\n\n"
-            "Ref.: Notificación de preaviso\n\n"
-            f"La firma {company_name} le comunica formalmente que ha resuelto prescindir de sus servicios, con fecha efectiva de terminación el "
-            f"{format_date_long_es(effective_date) or 'A completar'}.\n\n"
-            f"Cargo registrado: {role}.\n\n"
-            f"El preaviso se computa desde el {format_date_long_es(notice_start) or 'A completar'} "
-            f"hasta el {format_date_long_es(effective_date) or 'A completar'}, por un período de {notice_days_display} días calendario."
-            + (f"\n\nMotivo comunicado: {notice_reason}." if notice_reason else "")
-            + "\n\nDurante este período y sin disminución de su salario, podrá disponer, a su elección, de una licencia diaria de dos horas dentro de la jornada legal "
-            "o de un día a la semana para buscar otra ocupación. A su opción, podrá utilizar en forma continuada todo el tiempo de licencia que le corresponda, "
-            "conforme al artículo 89 de la Ley N.º 213/93, Código del Trabajo.\n\n"
-            "Sírvase firmar al pie de la presente como constancia de recepción.\n\n"
-            "Atentamente."
+            f"Señor(a)\n{employee_name}\n\n"
+            f"Me dirijo a usted para notificarle que la Firma Comercial {company_name} "
+            f"ha resuelto prescindir de sus servicios a partir del {effective_date.strftime('%d/%m/%y') if effective_date else '[FECHA DE TERMINACIÓN]'}.\n\n"
+            "Por tanto, y de conformidad con las normas laborales vigentes, queda usted preavisado. "
+            "Podrá, pues, disponer de una licencia diaria de dos horas dentro de la jornada legal "
+            "o de un día a la semana, para buscar otra ocupación.\n\n"
+            "Se servirá darse por notificado del contenido de la presente, firmando al pie de la misma.\n\n"
+            "Muy atentamente."
         ),
         "renuncia": (
             f"Señor/a\n{recipient}\n{company_name}\n\nRef.: Comunicación de renuncia\n\n"
@@ -1183,6 +1174,12 @@ def build_docx_bytes(data: ExportData) -> bytes:
     _docx_header(document, data)
 
     certificate_model = data.document_type in {"certificado_trabajo_a", "certificado_trabajo_b", "constancia", "notificacion_preaviso"}
+    notice_letter = is_notice_letter(data.document_type, data.metadata)
+    document_number = str((data.metadata or {}).get("document_number") or "").strip()
+    if notice_letter and document_number:
+        number_p = document.add_paragraph(f"N.º {document_number}")
+        number_p.paragraph_format.space_after = Pt(16)
+        number_p.runs[0].font.size = Pt(10)
     date_text = f"{data.city.upper()}, {format_date_long_es(data.issue_date)}" if certificate_model else f"{data.city}, {format_date_long_es(data.issue_date)}"
     show_issue_date = data.document_type != "constancia" or "Se expide la presente constancia en " not in data.body
     if show_issue_date:
@@ -1192,28 +1189,29 @@ def build_docx_bytes(data: ExportData) -> bytes:
         date_p.runs[0].font.name = "Aptos"
         date_p.runs[0].font.size = Pt(10.5)
 
-    kicker = document.add_paragraph()
-    kicker.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    kicker.paragraph_format.space_before = Pt(0)
-    kicker.paragraph_format.space_after = Pt(4)
-    kicker_run = kicker.add_run("DOCUMENTO LABORAL")
-    kicker_run.bold = True
-    kicker_run.font.name = "Aptos"
-    kicker_run.font.size = Pt(8)
-    kicker_run.font.color.rgb = RGBColor.from_string(data.primary_color.lstrip("#") or "173B86")
+    if not notice_letter:
+        kicker = document.add_paragraph()
+        kicker.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        kicker.paragraph_format.space_before = Pt(0)
+        kicker.paragraph_format.space_after = Pt(4)
+        kicker_run = kicker.add_run("DOCUMENTO LABORAL")
+        kicker_run.bold = True
+        kicker_run.font.name = "Aptos"
+        kicker_run.font.size = Pt(8)
+        kicker_run.font.color.rgb = RGBColor.from_string(data.primary_color.lstrip("#") or "173B86")
 
-    title = document.add_paragraph()
-    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    title.paragraph_format.space_after = Pt(18)
-    run = title.add_run(data.title.upper())
-    run.bold = True
-    run.font.name = "Aptos Display"
-    run.font.size = Pt(17)
-    run.font.color.rgb = RGBColor.from_string(data.secondary_color.lstrip("#") or "0B1F48")
+        title = document.add_paragraph()
+        title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        title.paragraph_format.space_after = Pt(18)
+        run = title.add_run(data.title.upper())
+        run.bold = True
+        run.font.name = "Aptos Display"
+        run.font.size = Pt(17)
+        run.font.color.rgb = RGBColor.from_string(data.secondary_color.lstrip("#") or "0B1F48")
 
     meta = data.metadata or {}
     document_number = str(meta.get("document_number") or "").strip()
-    if document_number:
+    if document_number and not notice_letter:
         number_p = document.add_paragraph(f"Documento N.º {document_number}")
         number_p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
         number_p.paragraph_format.space_after = Pt(10)
@@ -1225,6 +1223,10 @@ def build_docx_bytes(data: ExportData) -> bytes:
         is_certify_heading = certificate_model and block.strip() == "C E R T I F I C O:"
         p = document.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER if is_certify_heading else (WD_ALIGN_PARAGRAPH.JUSTIFY if len(lines) == 1 else WD_ALIGN_PARAGRAPH.LEFT)
+        if notice_letter and block.strip() == "Muy atentamente.":
+            p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        elif notice_letter and len(lines) == 1:
+            p.paragraph_format.first_line_indent = Cm(1)
         p.paragraph_format.space_after = Pt(10 if not is_certify_heading else 14)
         for index, line in enumerate(lines):
             if index:
@@ -1313,6 +1315,7 @@ def build_pdf_bytes(data: ExportData) -> bytes:
         textColor=colors.HexColor("#556174"),
     )
     certificate_model = data.document_type in {"certificado_trabajo_a", "certificado_trabajo_b", "constancia", "notificacion_preaviso"}
+    notice_letter = is_notice_letter(data.document_type, data.metadata)
     date_style = ParagraphStyle("Date", parent=styles["Normal"], fontName="Helvetica", fontSize=10.5, leading=14, textColor=colors.HexColor("#4E5B70"), alignment=TA_RIGHT, spaceAfter=12)
     certify_style = ParagraphStyle("CertificateACertify", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=12, leading=16, alignment=TA_CENTER, spaceAfter=14)
     kicker_style = ParagraphStyle(
@@ -1390,14 +1393,18 @@ def build_pdf_bytes(data: ExportData) -> bytes:
         )
     )
     story.extend([header, Spacer(1, 10 * mm)])
+    document_number = str((data.metadata or {}).get("document_number") or "").strip()
+    if notice_letter and document_number:
+        story.append(Paragraph(f"N.º {escape(document_number)}", ParagraphStyle("NoticeNumber", parent=small_style, fontSize=10, spaceAfter=16)))
     date_text = f"{data.city.upper()}, {format_date_long_es(data.issue_date)}" if certificate_model else f"{data.city}, {format_date_long_es(data.issue_date)}"
     show_issue_date = data.document_type != "constancia" or "Se expide la presente constancia en " not in data.body
     if show_issue_date:
         story.append(Paragraph(escape(date_text), date_style))
-    story.append(Paragraph("DOCUMENTO LABORAL", kicker_style))
-    story.append(Paragraph(escape(data.title.upper()), title_style))
+    if not notice_letter:
+        story.append(Paragraph("DOCUMENTO LABORAL", kicker_style))
+        story.append(Paragraph(escape(data.title.upper()), title_style))
     document_number = str((data.metadata or {}).get("document_number") or "").strip()
-    if document_number:
+    if document_number and not notice_letter:
         story.append(Paragraph(f"Documento N.º {escape(document_number)}", ParagraphStyle("Number", parent=small_style, alignment=TA_RIGHT, spaceAfter=8)))
 
     for block in body_for_output.split("\n\n"):
@@ -1406,7 +1413,12 @@ def build_pdf_bytes(data: ExportData) -> bytes:
             continue
         lines = block.split("\n")
         content = "<br/>".join(escape(line) for line in lines)
-        story.append(Paragraph(content, left_style if len(lines) > 1 else body_style))
+        paragraph_style = left_style if len(lines) > 1 else body_style
+        if notice_letter and block.strip() == "Muy atentamente.":
+            paragraph_style = ParagraphStyle("NoticeClosing", parent=body_style, alignment=TA_RIGHT)
+        elif notice_letter and len(lines) == 1:
+            paragraph_style = ParagraphStyle("NoticeParagraph", parent=body_style, firstLineIndent=10*mm)
+        story.append(Paragraph(content, paragraph_style))
 
     story.append(Spacer(1, 8 * mm))
     detail = document_detail_table_data(data.document_type, data.metadata, data.salary)
