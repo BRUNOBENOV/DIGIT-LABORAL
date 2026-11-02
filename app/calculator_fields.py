@@ -123,7 +123,7 @@ GROUPS = {
                   help="Indicá el expediente, resolución o antecedente revisado. Este respaldo no activa una fórmula automática para el fuero.")]),
         group("Indemnización y preaviso", [
             field("severance_regime", "Régimen de indemnización", "select", "auto",
-                  help="La ordinaria calcula los días automáticamente. Desde diez años se muestra como referencia pendiente de revisión de estabilidad. La doble requiere fundamento y respaldo.", options=[
+                  help="Con diez años o más se propone el escenario doble según las fechas y la modalidad declaradas. Su aprobación exige documentar la procedencia; otras protecciones conservan revisión propia.", options=[
                       ("ordinary", "Automático · ordinaria (art. 91)"),
                       ("auto", "Revisión por estabilidad · sin sumar referencia"),
                       ("stability_double", "Doble indemnización por estabilidad · arts. 96–99")]),
@@ -138,7 +138,14 @@ GROUPS = {
                   help="Para la doble indemnización, identificá la resolución, acta o antecedente y la revisión profesional que sustenta el supuesto elegido.",
                   maxlength="600"),
             field("stability_confirmed", "Confirmo que revisé el fundamento y el respaldo de la doble indemnización", "checkbox",
-                  help="Esta confirmación permite sumar el concepto al cálculo; no acredita por sí sola los hechos, la validez del despido ni el pago.")]),
+                  help="Confirma la procedencia declarada para el cálculo. El escenario sin confirmar permanece parcial y no puede aprobarse como definitivo."),
+            field("judicial_confirmed", "Declaro causa justa comprobada judicialmente antes del despido", "checkbox",
+                  help="Para trabajadores estables: revisá la sentencia firme y ejecutoriada previa al despido. La causa justa no activa indemnización ni preaviso por despido injustificado."),
+            field("judicial_date", "Fecha de la sentencia", "date"),
+            field("judicial_reference", "Juzgado, expediente, sentencia y firmeza", "text", maxlength="300"),
+            field("judicial_document_id", "Sentencia adjunta en el expediente", "select", "",
+                  help="En el centro profesional, adjuntá PDF o imagen en Documentos y seleccioná el archivo del funcionario. El sistema registra el respaldo; su contenido requiere revisión profesional.",
+                  options=[("", "Seleccioná un documento del funcionario")])]),
         EXTRAS, group("Vacaciones pendientes", [
             field("pending_days", "Días pendientes con pago simple", max="365", step="0.01"),
             field("double_days", "Días pendientes con pago doble", max="365", step="0.01",

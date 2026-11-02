@@ -7,7 +7,7 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from .labor_wage_rules import minimum_wage_for_period
 from .settlement_presets import settlement_defaults
 
-VERSION = "2026.11.1"
+VERSION = "2026.11.2"
 SOURCE = "Centro laboral"
 TITLES = {"salary": "Liquidación de salario", "settlement": "Liquidación de haberes",
           "aguinaldo": "Aguinaldo", "vacation": "Vacaciones", "hours": "Horas y recargos"}
@@ -155,18 +155,21 @@ def settlement_projection(data):
     elif not checked(data, "trial_completed"):
         status = "probation"
     elif regime == "stability_double":
-        status = "stability_double"
+        documented = (checked(data, "stability_confirmed") and data.get("stability_basis") in STABILITY_BASES
+                      and len(clean(data.get("stability_evidence"), 600)) >= 10)
+        status = ("stability_double_pending" if str(data.get("settlement_preset_version")) == "2" and not documented
+                  else "stability_double")
     elif years >= 10 and regime == "ordinary":
         status = "ordinary_reference"
     elif years >= 10:
         status = "review"
     else:
         status = "ordinary"
-    multiplier = 2 if status == "stability_double" else 1 if status in {"ordinary", "ordinary_reference"} else 0
+    multiplier = 2 if status in {"stability_double", "stability_double_pending"} else 1 if status in {"ordinary", "ordinary_reference"} else 0
     days = 15 * units * multiplier if multiplier else 0 if not applicable else None
     payable = int(Decimal(due) - served)
     return dict(
-        years=years, units=units, ordinary_days=15 * units, days=days,
+        years=years, stability_detected=years >= 10, units=units, ordinary_days=15 * units, days=days,
         multiplier=multiplier, status=status, notice_due=due,
         notice_served=int(served), notice_payable=payable if multiplier else 0 if not applicable else None,
         average=str(average), daily_base=f"{average / 30:,.2f}".translate(str.maketrans(",.", ".,")),
@@ -175,7 +178,7 @@ def settlement_projection(data):
     )
 
 
-def calculate(data):
+def calculate(data, *, judicial_evidence_verified=False):
     data = settlement_defaults(data)
     kind = data.get("kind", "salary")
     if kind not in TITLES:
@@ -426,8 +429,10 @@ def calculate(data):
 
         projection = settlement_projection(data)
         double_confirmed = projection["status"] == "stability_double"
+        double_pending = projection["status"] == "stability_double_pending"
+        judicial_reviewed = False
         ordinary_reference = projection["status"] == "ordinary_reference"
-        if double_confirmed:
+        if double_confirmed or (double_pending and checked(data, "stability_confirmed")):
             basis = str(data.get("stability_basis") or "")
             if basis not in STABILITY_BASES:
                 raise CalculationError("Seleccioná el fundamento documentado de la doble indemnización.", "stability_basis")
@@ -443,11 +448,32 @@ def calculate(data):
                 "La doble indemnización se incluye según el fundamento y respaldo confirmados por el liquidador. "
                 "El cálculo no acredita esos hechos ni sustituye la revisión del procedimiento de los artículos 94–99."
             )
+        if years >= 10:
+            fact("Estabilidad por antigüedad", "Diez años o más según fechas declaradas · art. 94; revisar continuidad con el mismo empleador")
+        if double_pending:
+            fact("Régimen propuesto", "Doble indemnización por estabilidad · escenario condicionado")
+            result["warnings"].append(
+                "Trabajador con antigüedad de diez años o más. Se muestra el escenario de doble indemnización, "
+                "pendiente de documentar la opción del trabajador u otro supuesto de los artículos 94–99. "
+                "La antigüedad no acredita esos hechos; este subtotal no puede aprobarse como liquidación definitiva."
+            )
+        if checked(data, "judicial_confirmed"):
+            if years < 10 or reason != "justified":
+                raise CalculationError("La declaración judicial corresponde al despido con causa de un trabajador con diez años o más.", "judicial_confirmed")
+            if len(clean(data.get("judicial_reference"), 300)) < 10:
+                raise CalculationError("Identificá juzgado, expediente, sentencia y su firmeza (al menos 10 caracteres).", "judicial_reference")
+            judicial_date = read_date(data, "judicial_date")
+            if not start <= judicial_date <= end:
+                raise CalculationError("La sentencia debe corresponder a este vínculo y ser anterior o del día del egreso; verificá su firmeza previa al despido.", "judicial_date")
+            fact("Causa justa judicial declarada", "Procedimiento y sentencia firme previos al despido, según revisión del liquidador")
+            fact("Fecha de sentencia declarada", judicial_date.strftime("%d/%m/%Y"))
+            result["notes"].append("Referencia judicial declarada: " + clean(data.get("judicial_reference"), 300))
+            judicial_reviewed = judicial_evidence_verified
         result["settlement_projection"] = projection
         # An unresolved special regime remains a subtotal, with a visible path
         # to resolve stability. Confirmation cannot bypass other protections.
         special_severance_regime = (
-            (years >= 10 and not double_confirmed)
+            (years >= 10 and not double_confirmed and not judicial_reviewed)
             or checked(data, "protected") or not checked(data, "indefinite")
         )
         within_probation = (
@@ -456,23 +482,32 @@ def calculate(data):
         result["partial"] = (
             special_severance_regime
             or within_probation
-            or reason in {"justified", "worker_justified", "fixed_term_expiration", "mutual_consent", "death", "other"}
+            or (reason in {"justified", "worker_justified", "fixed_term_expiration", "mutual_consent", "death", "other"}
+                and not (reason == "justified" and judicial_reviewed))
         )
 
-        if special_severance_regime and not ordinary_reference:
+        if special_severance_regime and not ordinary_reference and not double_pending:
             result["warnings"].append(
                 "Subtotal parcial: el caso activa estabilidad de diez años, protección especial o contrato no indefinido. "
                 "No se agrega automáticamente indemnización ordinaria ni preaviso; verificá el régimen aplicable y la documentación."
             )
             if years >= 10:
-                result["warnings"].append(
-                    "Con diez años de antigüedad o más debe revisarse la estabilidad laboral (artículo 94). "
-                    "En «Indemnización y preaviso», elegí doble indemnización si corresponde, indicá su fundamento "
-                    "y respaldo y confirmá la revisión para que el motor calcule y sume los días automáticamente."
-                )
+                if reason == "justified":
+                    result["warnings"].append(
+                        "Trabajador con diez años o más: la causa justa debe haberse probado judicialmente antes del despido "
+                        "(arts. 94–95). Revisá sentencia firme, fecha y expediente. Adjuntar un archivo no acredita su contenido."
+                    )
+                elif reason == "resignation":
+                    result["warnings"].append("La estabilidad no genera automáticamente doble indemnización ante una renuncia; revisá la causal y el artículo 100.")
+                else:
+                    result["warnings"].append(
+                        "Con diez años de antigüedad o más debe revisarse la estabilidad laboral (artículo 94). "
+                        "En «Indemnización y preaviso», documentá el supuesto de los artículos 96–99 antes de confirmar la procedencia de la doble."
+                    )
                 fact("Años computables para indemnización", projection["units"])
-                fact("Días de indemnización doble por confirmar", projection["ordinary_days"] * 2)
-                fact("Preaviso de referencia por confirmar", f"{projection['notice_due']} días")
+                if reason in {"dismissal", "worker_justified"}:
+                    fact("Días de indemnización doble por confirmar", projection["ordinary_days"] * 2)
+                    fact("Preaviso de referencia por confirmar", f"{projection['notice_due']} días")
             if checked(data, "protected"):
                 result["warnings"].append(
                     "Se declaró protección laboral especial. Revisá la tutela aplicable; este motor no determina si el despido es válido."
@@ -503,11 +538,11 @@ def calculate(data):
             severance = projection["severance"] or 0
             average_label = (gs(average) if average == average.to_integral_value() else
                              f"{average:,.2f}".translate(str.maketrans(",.", ".,")))
-            severance_legal = ("Arts. 91, 92 y 94–99; fundamento declarado y confirmado" if double_confirmed
+            severance_legal = ("Arts. 91, 92 y 94–99; procedencia pendiente de revisión" if double_pending else "Arts. 91, 92 y 94–99; fundamento declarado y confirmado" if double_confirmed
                                else "Arts. 85, 91 y 92" if reason == "worker_justified" else "Arts. 91 y 92")
             add(
-                "Indemnización doble por estabilidad" if double_confirmed else "Indemnización ordinaria de referencia" if ordinary_reference else "Indemnización ordinaria por antigüedad", severance,
-                f"Gs. {average_label} / 30 × 15 × {units}" + (" × 2" if double_confirmed else ""), severance_legal
+                "Indemnización doble por estabilidad · escenario condicionado" if double_pending else "Indemnización doble por estabilidad" if double_confirmed else "Indemnización ordinaria de referencia" if ordinary_reference else "Indemnización ordinaria por antigüedad", severance,
+                f"Gs. {average_label} / 30 × 15 × {units}" + (" × 2" if double_confirmed or double_pending else ""), severance_legal
             )
             due, served = projection["notice_due"], projection["notice_served"]
             notice = projection["notice"] or 0
@@ -545,8 +580,9 @@ def calculate(data):
             )
         elif reason == "justified":
             result["warnings"].append(
-                "El empleador invoca una causa de despido. El motor no declara probada esa causa ni resuelve controversias; "
-                "el resultado es un subtotal sujeto a revisión del artículo 82 y del expediente."
+                "Causa justa judicial previa declarada por el liquidador y vinculada al archivo adjunto. Se excluyen indemnización y preaviso por despido injustificado; el sistema no acredita autenticidad, firmeza ni contenido de la sentencia."
+                if judicial_reviewed else
+                "El empleador invoca una causa de despido. El motor no declara probada esa causa ni resuelve controversias; el resultado es un subtotal sujeto a revisión del artículo 82 y del expediente."
             )
         elif reason == "fixed_term_expiration":
             result["warnings"].append(

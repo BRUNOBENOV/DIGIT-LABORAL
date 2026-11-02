@@ -1,3 +1,12 @@
+## 2.6.63 — Estabilidad detectada y escenario doble automático
+
+- Detecta diez años completos por las fechas declaradas, con aniversarios de 29 de febrero coherentes. Identifica la estabilidad y la revisión de continuidad con el mismo empleador de forma independiente de otras protecciones.
+- En los formularios nuevos, propone el escenario doble para despido sin causa con diez años o más, contrato indefinido y prueba cumplida. Muestra sus días y montos en un subtotal parcial, bloqueado para aprobación hasta documentar y confirmar la procedencia de los arts. 94–99. No inventa opción del trabajador, incompatibilidad, actas ni sentencias.
+- Conserva revisión del régimen para modalidad pendiente, otras protecciones y causales distintas. Los cálculos guardados mantienen sus valores originales y los formularios anteriores conservan sus reglas.
+- Permite declarar causa justa judicial previa con fecha, referencia y un PDF o imagen del expediente del funcionario. Mantiene indemnización y preaviso por despido injustificado en cero; solo el servidor puede validar la vinculación del archivo para resolver ese pendiente, conservando las demás revisiones y la aprobación profesional.
+- Vincula el respaldo al mismo funcionario y empresa, guarda su huella y la verifica al recalcular, guardar, exportar y aprobar. Permite adjuntar desde Documentos y actualizar la lista sin recargar el cálculo.
+- Motor 2026.11.2. Sin migraciones ni nuevas dependencias.
+
 ## 2.6.62 — Remuneración anual desde nóminas cerradas
 
 - Precarga las remuneraciones computables y el aguinaldo devengado al seleccionar el funcionario. Consulta desde el 1 de enero del año de egreso o el ingreso posterior, hasta el egreso, con fuentes por mes y opción de desbloquear el ingreso manual.

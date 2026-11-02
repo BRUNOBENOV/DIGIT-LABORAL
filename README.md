@@ -1,6 +1,12 @@
-# Digit Laboral 2.6.62
+# Digit Laboral 2.6.63
 
 Plataforma de gestión y cumplimiento laboral para estudios contables paraguayos.
+
+## Novedades de la versión 2.6.63
+
+- Detecta estabilidad por antigüedad y propone automáticamente el escenario doble para despido sin causa desde diez años, sujeto a modalidad, prueba y otras protecciones. El subtotal permanece parcial hasta documentar y confirmar su procedencia.
+- Separa la detección del art. 94 de los hechos que habilitan la doble de los arts. 96–99. La causa justa judicial se registra con sentencia adjunta, fecha y referencia; no activa indemnización ni preaviso por despido injustificado.
+- Conserva trazabilidad del respaldo, alcance por empresa y funcionario, aprobación protegida y reimpresiones originales.
 
 ## Novedades de la versión 2.6.62
 

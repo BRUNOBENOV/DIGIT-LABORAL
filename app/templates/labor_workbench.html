@@ -40,7 +40,7 @@
 <div class="dl-calculator-layout">
 <form id="labor-form" method="post" action="{{ '/app/liquidaciones/calcular' if private else '/herramientas/calcular' }}">
 <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="kind" value="{{ kind }}">
-{% if kind == 'settlement' %}<input type="hidden" name="settlement_preset_version" value="1"><input type="hidden" name="average_from_salary" value="{{ values.get('average_from_salary','') }}">{% endif %}
+{% if kind == 'settlement' %}<input type="hidden" name="settlement_preset_version" value="{{ values.get('settlement_preset_version','2') }}"><input type="hidden" name="average_from_salary" value="{{ values.get('average_from_salary','') }}"><input type="hidden" name="judicial_document_sha256" value="{{ values.get('judicial_document_sha256','') }}">{% endif %}
 {% if private and values.get("employee_exit_id") %}<input type="hidden" name="employee_exit_id" value="{{ values.employee_exit_id }}"><p class="dl-alert" role="status">Cálculo vinculado a un procedimiento de egreso. La fecha y la causal deben coincidir con el expediente. El registro del pago se realiza por separado.</p>{% endif %}
 {% if private %}<input type="hidden" name="company_id" value="{{ company_id }}"><input type="hidden" name="employee_id" value="{{ employee_id }}">{% endif %}
 {% if not quick_steps %}<div class="dl-form-title"><span class="dl-step">01</span><h2>{{ titles[kind] }}</h2></div>{% endif %}

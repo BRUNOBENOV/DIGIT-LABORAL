@@ -13,16 +13,19 @@
     {% endif %}
     <fieldset class="dl-quick-group"><legend>{{ group.title }}</legend><div class="dl-fields">
       {% for field in group.fields %}
-        {% if field.name not in ['stability_basis','stability_evidence','stability_confirmed'] %}{{ input_field(field) }}{% endif %}
+        {% if field.name not in ['stability_basis','stability_evidence','stability_confirmed','judicial_confirmed','judicial_date','judicial_reference','judicial_document_id'] %}{{ input_field(field) }}{% endif %}
       {% endfor %}
     </div>
     {% if group.title == 'Indemnización y preaviso' %}
-      <details class="dl-inline-editor" data-regime-review {% if values.get('severance_regime') == 'stability_double' %}open{% endif %}><summary>Fundamento y respaldo del régimen</summary><div class="dl-fields">{% for field in group.fields %}{% if field.name in ['stability_basis','stability_evidence','stability_confirmed'] %}{{ input_field(field) }}{% endif %}{% endfor %}</div></details>
+      <details class="dl-inline-editor" data-regime-review {% if values.get('stability_confirmed') in ['on','true','1',True] or (values.get('settlement_preset_version') != '2' and values.get('severance_regime') == 'stability_double') %}open{% endif %}><summary>Confirmar procedencia y respaldo de la doble</summary><div class="dl-fields">{% for field in group.fields %}{% if field.name in ['stability_basis','stability_evidence','stability_confirmed'] %}{{ input_field(field) }}{% endif %}{% endfor %}</div></details>
+      <div class="dl-inline-editor" data-judicial-review hidden><div class="dl-fields">{% for field in group.fields %}{% if field.name in ['judicial_confirmed','judicial_date','judicial_reference','judicial_document_id'] %}{{ input_field(field) }}{% endif %}{% endfor %}</div>
+        {% if private and company_id and employee_id %}<div class="dl-actions" data-judicial-files hidden><a class="dl-button dl-outline" href="/app/documents?company_id={{ company_id }}&amp;employee_id={{ employee_id }}" target="_blank" rel="noopener">Adjuntar sentencia en Documentos</a><button type="button" class="dl-button dl-outline" data-refresh-judicial>Actualizar documentos</button></div><p class="dl-caption" role="status" data-judicial-status></p>{% endif %}
+      </div>
     {% endif %}
     </fieldset>
     {% if concept or group.advanced %}</details>{% endif %}
   {% endfor %}
-  {% if step.number == 1 %}{{ salary_hint() }}{% endif %}
+  {% if step.number == 1 %}{{ salary_hint() }}{% if kind == 'settlement' %}<p class="dl-alert" role="status" data-stability-detected hidden></p>{% endif %}{% endif %}
   {% if kind == 'settlement' and step.number == 2 %}
     {{ settlement_preview() }}
     {% if private %}<details class="dl-inline-editor dl-average-disclosure"><summary>Buscar promedio en nóminas cerradas</summary>{% include 'payroll_average_panel.html' %}</details>{% endif %}
