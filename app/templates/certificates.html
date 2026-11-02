@@ -66,7 +66,7 @@
 {% set initial_type = selected_document_type or certificate_types.keys()|list|first %}
 {% set document_values = certificate_autofill_data.fields if certificate_autofill_data else {} %}
 {% if editing_contract %}{% set document_values = dict(editing_metadata, employee_name=editing_contract.employee_name_snapshot, employee_document=editing_contract.employee_document_snapshot, position=editing_contract.position_snapshot, admission_date=editing_contract.admission_date_snapshot.isoformat() if editing_contract.admission_date_snapshot else '', salary=editing_contract.salary_snapshot, city=editing_contract.city) %}{% endif %}
-<form method="post" action="/app/certificates" class="certificate-workspace" id="certificateForm" data-module-selection data-employee-autofill data-editing-contract="{{ 'true' if editing_contract else 'false' }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+<form method="post" action="/app/certificates" class="certificate-workspace" id="certificateForm" data-contract-enhance="progressive" data-module-selection data-employee-autofill data-editing-contract="{{ 'true' if editing_contract else 'false' }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <input type="hidden" name="dossier_submission" value="1">
   <input type="hidden" name="contract_text_stale" value="">
   <script type="application/json" id="certificateAutofillData">{{ certificate_autofill_data|tojson }}</script>
@@ -109,7 +109,7 @@
       <div class="document-form-grid specific-field" data-specific="constancia"><label>Nacionalidad<input name="nationality" id="certificateNationality" value="paraguaya"></label><label>Estado civil (opcional)<input name="civil_status" id="certificateCivilStatus"></label></div>
       <label class="specific-field" data-specific="permiso_paternidad permiso_laboral renuncia solicitud_vacacion amonestacion">Destinatario<input name="recipient" id="certificateRecipient" value="Encargado/a de Recursos Humanos"></label>
 
-      <div class="document-field-section specific-field" data-specific="contrato_trabajo"><b>Plantilla breve — datos esenciales del contrato</b><span>Completá los datos clave de las partes, funciones, duración, horario, remuneración y condiciones particulares. Después pulsá «Generar contrato completo» para revisar y editar el documento extendido.</span></div>
+      <div class="document-field-section specific-field" data-specific="contrato_trabajo"><b>Datos contractuales</b><span>Verificá las condiciones antes de aprobar.</span></div>
       <div class="document-field-section specific-field" data-specific="contrato_trabajo contrato_tiempo_parcial contrato_mipymes_plazo_determinado contrato_mipymes_80 adenda_prorroga_contrato"><b>Condiciones del contrato</b><span>Completá estos campos para que el instrumento no salga con cláusulas genéricas.</span></div>
       <div class="document-form-grid specific-field" data-specific="contrato_trabajo contrato_tiempo_parcial contrato_mipymes_plazo_determinado contrato_mipymes_80 adenda_prorroga_contrato">
         <label>Modalidad contractual
