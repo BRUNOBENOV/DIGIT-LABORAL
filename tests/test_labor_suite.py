@@ -1394,3 +1394,53 @@ def test_salary_export_shows_draft_exclusions_and_requires_partial_consent(web_c
         params={**params, "employee_id": _outsider.id},
     )
     assert outsider.status_code == 404
+
+
+
+def test_payroll_aggregates_exceeding_signed_int32_are_preserved(web_case):
+    """Large employers legitimately exceed 2.147 billion in monthly totals."""
+    from app.models import Employee, Payroll, PayrollLine
+    from app import main as core
+    _client, db, _box, company, employee, _other = web_case
+    extra = Employee(
+        company_id=company.id, full_name="Segundo trabajador sintético",
+        document_number="2222333", admission_date=date(2024, 1, 1),
+        base_salary=1_600_000_000,
+    )
+    db.add(extra);db.flush()
+    payroll = Payroll(company_id=company.id, period="2026-11")
+    db.add(payroll);db.flush()
+    for worker in (employee, extra):
+        db.add(PayrollLine(
+            payroll_id=payroll.id, employee_id=worker.id,
+            base_salary=1_600_000_000, gross=1_600_000_000,
+            ips_employee=0, total_discounts=0, net=1_600_000_000,
+        ))
+    db.flush()
+    core.recalculate_payroll(db, payroll)
+    db.commit();db.refresh(payroll)
+    assert payroll.total_gross == 3_200_000_000
+    assert payroll.total_net == 3_200_000_000
+
+
+def test_salary_edit_rejects_aggregate_line_overflow_before_db_write(web_case):
+    from app.models import Payroll, PayrollLine
+    client, db, _box, company, employee, _other = web_case
+    payroll = Payroll(company_id=company.id, period="2026-11")
+    db.add(payroll);db.flush()
+    line=PayrollLine(
+        payroll_id=payroll.id, employee_id=employee.id,
+        base_salary=3_000_000, gross=3_000_000, net=3_000_000,
+        ips_employee=0, total_discounts=0,
+    )
+    db.add(line);db.commit()
+    response=client.post(
+        f"/app/payrolls/{payroll.id}/lines/{line.id}",
+        data={"csrf_token": token(client),
+              "base_salary": "2000000000", "other_income": "500000000"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 422
+    assert "límite monetario" in response.text
+    db.expire_all()
+    assert db.get(PayrollLine,line.id).gross == 3_000_000
