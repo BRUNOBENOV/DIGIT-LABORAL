@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+{% block title %}Corrección post-importación | Digit Laboral{% endblock %}
+{% block page_name %}Herramientas de mantenimiento{% endblock %}
+{% block content %}
+<style>
+.postfix{max-width:1190px;margin:0 auto;color:var(--text-primary,#162339)}
+.postfix *{box-sizing:border-box}
+.postfix .pf-eyebrow{font-size:.74rem;font-weight:850;letter-spacing:.12em;text-transform:uppercase;color:#3572b8}
+.postfix .pf-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap;margin:16px 0 22px}
+.postfix .pf-heading h1{font-size:clamp(1.45rem,2.6vw,2rem);margin:5px 0 8px;line-height:1.2}
+.postfix .pf-heading p{max-width:690px;opacity:.82;line-height:1.55}
+.postfix .pf-meta{padding:9px 12px;border:1px solid #ced8e7;border-radius:11px;background:#edf3fb;color:#144181;font-weight:800;font-size:.78rem}
+.postfix .pf-steps{display:flex;list-style:none;padding:0;margin:0 0 20px;gap:10px;flex-wrap:wrap}
+.postfix .pf-steps li{flex:1;min-width:170px;display:flex;align-items:center;gap:10px;border:1px solid #d6dfeb;border-radius:12px;padding:12px 14px;background:var(--card-bg,#fff)}
+.postfix .pf-steps li b{width:27px;height:27px;border-radius:50%;display:grid;place-items:center;background:#dae6f5;color:#0f376b}
+.postfix .pf-steps li.current{border-color:#3572b8;box-shadow:inset 0 0 0 1px #3572b8}
+.postfix .pf-steps li.current b{background:#05256d;color:#fff}
+.postfix .pf-card{border:1px solid #d9e2ed;border-radius:16px;background:var(--card-bg,#fff);padding:24px;box-shadow:0 10px 28px rgba(10,35,80,.045);margin-bottom:16px}
+.postfix .pf-card h2{font-size:1.17rem;margin:0 0 8px}
+.postfix .pf-card p{line-height:1.55}
+.postfix .pf-drop{display:block;cursor:pointer;border:2px dashed #8da8cf;background:#f2f6fc;border-radius:16px;text-align:center;padding:34px 22px;margin:22px 0 14px;transition:background .15s,border-color .15s}
+.postfix .pf-drop.is-dragging,.postfix .pf-drop:focus-within{border-color:#1d4ed8;background:#e7f0ff}
+.postfix .pf-drop strong{display:block;font-size:1.1rem;color:#0b2c63}
+.postfix .pf-drop span{display:block;color:#456080;font-size:.89rem;margin-top:8px}
+.postfix .pf-drop input{margin-top:16px;max-width:100%;color:#123e7a}
+.postfix .pf-list{margin:14px 0;padding-left:22px;line-height:1.8}
+.postfix .pf-actions{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin-top:18px}
+.postfix .pf-actions button[disabled]{cursor:not-allowed;opacity:.48}
+.postfix .pf-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:12px 0 16px}
+.postfix .pf-metric{border:1px solid #dae4f0;background:#f4f7fc;border-radius:12px;padding:16px}
+.postfix .pf-metric b{display:block;color:#092e72;font-size:2rem;line-height:1.15;font-variant-numeric:tabular-nums}
+.postfix .pf-metric small{display:block;margin-top:6px;color:#4b5e7b;font-weight:750}
+.postfix .pf-warning{border-left:4px solid #ce8529;background:#fff7e8;color:#5b380b;border-radius:9px;padding:15px 18px;margin:17px 0;line-height:1.6}
+.postfix .pf-warning strong{display:block}
+.postfix .pf-table-scroll{overflow:auto;max-height:540px;border:1px solid #d7e1ee;border-radius:11px}
+.postfix table{width:100%;border-collapse:collapse;min-width:970px;font-size:.84rem}
+.postfix table th,.postfix table td{padding:12px 11px;text-align:left;border-bottom:1px solid #dce4ef;vertical-align:top}
+.postfix table th{position:sticky;top:0;background:#092e69;color:#fff;font-weight:750;z-index:2}
+.postfix table tbody tr:nth-child(2n){background:rgba(94,139,192,.045)}
+.postfix .pf-tag{display:inline-block;font-size:.73rem;font-weight:800;padding:5px 8px;border-radius:7px;white-space:nowrap}
+.postfix .pf-tag.ready{color:#16643b;background:#e1f5e9}
+.postfix .pf-tag.excluded{color:#8d3c14;background:#fff0e5}
+.postfix .pf-ellipsis{max-width:270px;word-break:break-word}
+.postfix .pf-confirm{display:flex;align-items:flex-start;gap:12px;padding:17px;border:1px solid #b7cce6;border-radius:12px;background:#edf4fc;line-height:1.5;font-weight:700}
+.postfix .pf-confirm input{width:20px;height:20px;flex-shrink:0;accent-color:#05256d;margin-top:2px}
+.postfix .pf-alert{padding:14px;border-radius:10px;background:#fff0e8;color:#883d1b;margin:14px 0}
+.postfix .pf-small{font-size:.82rem;color:#536780}
+@media(max-width:720px){.postfix .pf-card{padding:17px}.postfix .pf-grid{grid-template-columns:1fr}.postfix .pf-actions{justify-content:stretch}.postfix .pf-actions>*{flex:1;text-align:center}}
+</style>
+<div class="postfix">
+  <a class="back-link dark" href="/app/employees">← Volver a Funcionarios</a>
+  <div class="pf-heading">
+    <div>
+      <div class="pf-eyebrow">Mantenimientos · Herramienta excepcional</div>
+      <h1>Corrección masiva post-importación</h1>
+      <p>Reactivación controlada de legajos históricos, con validación individual y auditoría. No forma parte de las acciones cotidianas sobre empleados.</p>
+    </div>
+    <span class="pf-meta">Acceso exclusivo de administradores</span>
+  </div>
+  <ol class="pf-steps" aria-label="Pasos del asistente">
+    <li class="{{ 'current' if step == 'upload' }}"><b>1</b><span>Cargar archivo</span></li>
+    <li class="{{ 'current' if step == 'preview' }}"><b>2</b><span>Validar registros</span></li>
+    <li class="{{ 'current' if step == 'preview' and preview.summary.ready > 0 }}"><b>3</b><span>Confirmar corrección</span></li>
+  </ol>
+  {% if step == 'upload' %}
+    {% if request.query_params.get('error') %}
+    <div class="pf-alert" role="alert">{{ request.query_params.get('error') }}</div>
+    {% endif %}
+    <section class="pf-card" aria-labelledby="upload-heading">
+      <h2 id="upload-heading">1. Cargar identificadores de trabajadores</h2>
+      <p>Subí un archivo de una sola columna. El encabezado debe ser exactamente <code>employee_id</code> o <code>CODTRA</code>. No incluya nombres, cédulas ni otras columnas.</p>
+      <form action="/app/maintenance/post-import/preview" method="post" enctype="multipart/form-data" id="pf-upload-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label class="pf-drop" id="pf-drop">
+          <strong>Arrastrá aquí el Excel o CSV</strong>
+          <span>o seleccioná el archivo desde tu equipo · .xlsx / .csv · máximo 2 MB</span>
+          <input type="file" name="file" id="pf-file" accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
+          <span id="pf-filename" aria-live="polite">Todavía no se seleccionó ningún archivo</span>
+        </label>
+        <p class="pf-small">Ejemplo: una columna denominada <code>employee_id</code>, seguida de una fila por ID interno. Para <code>CODTRA</code>, se utiliza la referencia histórica del archivo original, no el código de legajo reasignado.</p>
+        <div class="pf-actions">
+          <a href="/app/employees" class="btn ghost">Cancelar</a>
+          <button type="submit" class="btn primary">Analizar sin modificar datos</button>
+        </div>
+      </form>
+    </section>
+    <section class="pf-card">
+      <h2>Qué hará este asistente</h2>
+      <ul class="pf-list">
+        <li>Comprobará los identificadores y separará los registros aptos de los excluidos.</li>
+        <li>Excluirá trabajadores ya activos, inexistentes, ambiguos, con liquidación final o egreso formal vigente.</li>
+        <li>Preservará la fecha de ingreso original y todos los antecedentes laborales.</li>
+        <li>Solo después de la confirmación actualizará el estado a <b>Activo</b> y limpiará la fecha de egreso.</li>
+      </ul>
+    </section>
+  {% else %}
+    <section class="pf-card">
+      <h2>2. Vista previa y validación</h2>
+      <p><b>{{ preview.filename }}</b> · Identificación por {{ 'ID interno del registro' if preview.kind == 'employee_id' else 'código histórico CODTRA' }} · La base de datos todavía no se modificó.</p>
+      <div class="pf-grid" aria-label="Resumen">
+        <div class="pf-metric"><b>{{ preview.summary.detected }}</b><small>Identificadores detectados</small></div>
+        <div class="pf-metric"><b>{{ preview.summary.ready }}</b><small>Listos para activar</small></div>
+        <div class="pf-metric"><b>{{ preview.summary.excluded }}</b><small>Excluidos por seguridad</small></div>
+      </div>
+      <div class="pf-warning" role="note">
+        <strong>Protección de datos laborales</strong>
+        La fecha de ingreso original NO se modificará. La fecha de egreso se pondrá en blanco (NULL) únicamente para los trabajadores aptos. Los registros excluidos permanecerán intactos; los salarios, liquidaciones e historial tampoco cambiarán.
+      </div>
+      <div class="pf-table-scroll" role="region" aria-label="Detalle de registros detectados" tabindex="0">
+        <table>
+          <thead><tr><th>Fila / ID archivo</th><th>ID interno</th><th>Funcionario / empresa</th><th>Código legajo</th><th>Ingreso original</th><th>Estado actual</th><th>Resultado / Estado nuevo</th></tr></thead>
+          <tbody>
+          {% for row in preview.rows %}
+            <tr>
+              <td>#{{ row.source_row }}<div class="pf-small">{{ row.identifier }}</div></td>
+              <td>{{ row.employee_id if row.employee_id is not none else '—' }}</td>
+              <td class="pf-ellipsis"><b>{{ row.name }}</b><div class="pf-small">{{ row.company_name }}</div></td>
+              <td>{{ row.code if row.code is not none else '—' }}</td>
+              <td>{{ row.admission_date or '—' }}</td>
+              <td>{{ row.current_status }}</td>
+              <td>{% if row.eligible %}
+                <span class="pf-tag ready">→ Activo</span>
+                <div class="pf-small">Egreso → NULL</div>
+                {% else %}
+                <span class="pf-tag excluded">Excluido</span>
+                <div class="pf-small">{{ row.reason }}</div>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <p class="pf-small">Las exclusiones se informan por fila. Ningún excluido será actualizado. Si hubo cambios posteriores a la vista previa, la confirmación se rechazará antes de modificar los legajos.</p>
+    </section>
+    <section class="pf-card">
+      <h2>3. Confirmación de la corrección</h2>
+      <p>La reactivación de <strong>{{ preview.summary.ready }} funcionarios</strong> será una única operación transaccional. Cada legajo generará su propia entrada en el historial y la auditoría.</p>
+      <form action="/app/maintenance/post-import/{{ token }}/confirm" method="post" id="pf-confirm-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label class="pf-confirm">
+          <input type="checkbox" name="confirmation" id="pf-consent" value="true" {{ 'disabled' if preview.summary.ready == 0 }}>
+          <span>Confirmo que estos empleados pertenecen a la plantilla actual y deben volver a estado Activo.</span>
+        </label>
+        <div class="pf-actions">
+          <a class="btn ghost" href="/app/maintenance/post-import">Cancelar y subir otro archivo</a>
+          <button class="btn primary" id="pf-submit" type="submit" disabled>
+            Confirmar reactivación de {{ preview.summary.ready }} funcionarios
+          </button>
+        </div>
+      </form>
+    </section>
+  {% endif %}
+</div>
+<script>
+(() => {
+  const file = document.getElementById('pf-file');
+  const drop = document.getElementById('pf-drop');
+  const filename = document.getElementById('pf-filename');
+  if (file && drop) {
+    const showName = () => { filename.textContent = file.files && file.files.length ? file.files[0].name : 'Todavía no se seleccionó ningún archivo'; };
+    file.addEventListener('change', showName);
+    ['dragenter', 'dragover'].forEach(name => drop.addEventListener(name, event => {
+      event.preventDefault(); drop.classList.add('is-dragging');
+    }));
+    ['dragleave', 'drop'].forEach(name => drop.addEventListener(name, event => {
+      event.preventDefault(); drop.classList.remove('is-dragging');
+    }));
+    drop.addEventListener('drop', event => {
+      if (!event.dataTransfer || !event.dataTransfer.files.length) return;
+      file.files = event.dataTransfer.files;
+      showName();
+    });
+  }
+  const consent = document.getElementById('pf-consent');
+  const submit = document.getElementById('pf-submit');
+  const form = document.getElementById('pf-confirm-form');
+  if (consent && submit && form) {
+    consent.addEventListener('change', () => { submit.disabled = !consent.checked; });
+    form.addEventListener('submit', event => {
+      if (!consent.checked) { event.preventDefault(); return; }
+      submit.disabled = true;
+      submit.textContent = 'Aplicando corrección…';
+    });
+  }
+})();
+</script>
+{% endblock %}
