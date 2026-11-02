@@ -331,6 +331,25 @@ async def save_calculation_v24(
         if amount < 0:
             raise HTTPException(422, "Los descuentos superan los haberes. Revisá los importes.")
         inputs.update({"gross": gross, "other_income": other_income, "other_discount": other_discount, "apply_ips": apply_ips, "ips_base": ips_base, "ips_rate": rate})
+        # The active v2.4 route replaces core.save_calculation. Preserve the
+        # same attendance metadata already exposed by the Salary form, so REOP
+        # and REI can reuse it without a second manual entry.
+        days_raw = _clean(form.get("days_worked"), 30)
+        if days_raw:
+            days_actual = number(form, "days_worked", "jornadas reales", maximum="31")
+            if days_actual != int(days_actual):
+                raise HTTPException(422, "Las jornadas trabajadas deben ser números enteros.")
+            inputs["days_worked"] = int(days_actual)
+        hours_raw = _clean(form.get("hours_worked"), 30)
+        if hours_raw:
+            hours_actual = number(
+                form, "hours_worked", "horas ordinarias reales", maximum="744", decimals=2
+            )
+            inputs["hours_worked"] = str(hours_actual)
+        actual_method = _clean(form.get("payment_method"), 100)
+        if actual_method:
+            inputs["payment_method"] = actual_method
+
         results.update({"gross_computable": computable, "ips_base": ips_base, "ips_employee": ips, "discounts": discounts, "net": amount})
     elif calculation_type == "hours":
         base = salary / monthly_hours
