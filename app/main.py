@@ -5765,8 +5765,8 @@ def _revalidate_calculation_before_approval(item: CalculationRecord, db: Session
         if not results_match or current_amount != item.amount:
             raise HTTPException(
                 409,
-                "El cálculo guardado presenta diferencias en sus componentes económicos "
-                "o en el importe final. No se aprobó; revisá o recreá el cálculo.",
+                "El importe o algún concepto guardado no coincide con la fórmula reproducida. "
+                "No se aprobó; revisá o recreá el cálculo.",
             )
         return
 
