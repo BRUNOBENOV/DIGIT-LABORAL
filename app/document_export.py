@@ -36,6 +36,30 @@ from reportlab.platypus import (
 
 META_PREFIX = "__DIGIT_META_V1__"
 
+# Firmas duplicadas de los contratos generados hasta v2.6.66. El texto
+# se mantiene intacto en los registros históricos; se depura solo al imprimir
+# o exportar, sin alterar cláusulas personalizadas ni firmas distintas.
+_LEGACY_CONTRACT_SIGNATURE_BLOCK = (
+    "EL TRABAJADOR/A\n"
+    "Firma: ____________________________________\n"
+    "Aclaración: _________________________________\n"
+    "C.I. N.º: ___________________________________\n\n"
+    "EL EMPLEADOR / REPRESENTANTE LEGAL\n"
+    "Firma: ____________________________________\n"
+    "Aclaración: _________________________________\n"
+    "Cargo: _____________________________________\n\n"
+)
+
+
+def contract_body_for_display(document_type: str, body: str) -> str:
+    """Quita solo el bloque antiguo idéntico al generado; la firma final es del layout."""
+    if document_type != "contrato_trabajo" or not body:
+        return body
+    return body.replace(_LEGACY_CONTRACT_SIGNATURE_BLOCK, "").replace(
+        _LEGACY_CONTRACT_SIGNATURE_BLOCK.replace("\n", "\r\n"), ""
+    )
+
+
 MONTHS_ES = (
     "enero",
     "febrero",
@@ -605,8 +629,6 @@ def build_document_body(
             "ninguna de las partes renuncia anticipadamente a derechos, acciones o garantías legales.\n\n"
             "DECIMOTERCERA — LECTURA, EJEMPLARES Y FIRMAS. Las partes manifiestan que leyeron el instrumento y que el contenido refleja las condiciones que acuerdan, sujeto a la legislación vigente. "
             "Se extienden dos ejemplares de idéntico tenor, uno para cada parte, sin perjuicio de los trámites de registro, comunicación u homologación que correspondan.\n\n"
-            "EL TRABAJADOR/A\nFirma: ____________________________________\nAclaración: _________________________________\nC.I. N.º: ___________________________________\n\n"
-            "EL EMPLEADOR / REPRESENTANTE LEGAL\nFirma: ____________________________________\nAclaración: _________________________________\nCargo: _____________________________________\n\n"
             "Antes de firmar, verificar los datos, la modalidad, salario, jornada, período de prueba y requisitos específicos con el modelo oficial vigente del MTESS."
         ),
         "contrato_tiempo_parcial": (
@@ -1143,6 +1165,7 @@ def _add_signature_table_docx(document: Document, data: ExportData) -> None:
 
 
 def build_docx_bytes(data: ExportData) -> bytes:
+    body_for_output = contract_body_for_display(data.document_type, data.body)
     document = Document()
     section = document.sections[0]
     section.page_width = Cm(21)
@@ -1197,7 +1220,7 @@ def build_docx_bytes(data: ExportData) -> bytes:
         number_p.runs[0].font.size = Pt(9)
         number_p.runs[0].italic = True
 
-    for block in data.body.split("\n\n"):
+    for block in body_for_output.split("\n\n"):
         lines = block.split("\n")
         is_certify_heading = certificate_model and block.strip() == "C E R T I F I C O:"
         p = document.add_paragraph()
@@ -1259,6 +1282,7 @@ def _pdf_footer(canvas, doc, data: ExportData) -> None:
 
 
 def build_pdf_bytes(data: ExportData) -> bytes:
+    body_for_output = contract_body_for_display(data.document_type, data.body)
     stream = io.BytesIO()
     doc = SimpleDocTemplate(
         stream,
@@ -1376,7 +1400,7 @@ def build_pdf_bytes(data: ExportData) -> bytes:
     if document_number:
         story.append(Paragraph(f"Documento N.º {escape(document_number)}", ParagraphStyle("Number", parent=small_style, alignment=TA_RIGHT, spaceAfter=8)))
 
-    for block in data.body.split("\n\n"):
+    for block in body_for_output.split("\n\n"):
         if certificate_model and block.strip() == "C E R T I F I C O:":
             story.append(Paragraph("C E R T I F I C O:", certify_style))
             continue
