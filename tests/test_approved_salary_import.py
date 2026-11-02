@@ -91,7 +91,7 @@ def test_missing_hours_are_blocking_not_invented_from_divisor():
                                            source_type="approved", payment_code="1")
     assert len(rows) == 1
     assert any("faltan horas ordinarias" in error for error in errors)
-    assert any("faltan jornadas" in error for error in errors)
+    assert any("falta registrar jornadas trabajadas reales" in error for error in errors)
 
 
 def test_newer_unapproved_record_blocks_old_approved_record():
