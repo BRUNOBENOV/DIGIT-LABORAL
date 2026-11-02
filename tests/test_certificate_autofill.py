@@ -264,7 +264,7 @@ def test_progressive_contract_rejects_unconfirmed_suggestions_without_writes(dos
     client, db, _, company, employee, _ = dossier_case
     data = contract_data(client, company, employee)
     data.update(intent="approve", contract_simplified_submission="1")
-    response = client.post("/app/certificates", data=data)
+    response = client.post("/app/certificates", data=data, headers={"Accept": "application/json"})
     assert response.status_code == 400, response.text
     assert "Confirmá expresamente" in response.json()["detail"]
     assert not db.scalar(select(GeneratedCertificate.id))
