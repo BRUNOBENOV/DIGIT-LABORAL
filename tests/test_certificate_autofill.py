@@ -313,3 +313,80 @@ def test_progressive_contract_stale_text_still_blocks_approval(dossier_case):
     response = client.post("/app/certificates", data=data)
     assert response.status_code == 400, response.text
     assert not db.scalar(select(GeneratedCertificate.id))
+
+
+def test_contract_new_template_does_not_repeat_manual_signature_lines(dossier_case):
+    client, _, _, company, employee, _ = dossier_case
+    data = contract_data(client, company, employee)
+    response = client.post("/app/certificates", data=data)
+    assert response.status_code == 200, response.text
+    body = response.json()["body"]
+    assert "DECIMOTERCERA — LECTURA, EJEMPLARES Y FIRMAS." in body
+    assert "EL TRABAJADOR/A\nFirma:" not in body
+    assert "EL EMPLEADOR / REPRESENTANTE LEGAL\nFirma:" not in body
+    assert "Aclaración: _________________________________" not in body
+
+
+def test_existing_contract_single_signature_pair_in_pdf_word_and_print(dossier_case):
+    client, db, _, company, employee, _ = dossier_case
+    data = contract_data(client, company, employee)
+    data["intent"] = "approve"
+    saved_response = client.post("/app/certificates", data=data, follow_redirects=False)
+    assert saved_response.status_code == 303, saved_response.text
+    contract_id = int(re.search(r"created=(\d+)", saved_response.headers["location"]).group(1))
+    saved = db.get(GeneratedCertificate, contract_id)
+    legacy_lines = (
+        "EL TRABAJADOR/A\n"
+        "Firma: ____________________________________\n"
+        "Aclaración: _________________________________\n"
+        "C.I. N.º: ___________________________________\n\n"
+        "EL EMPLEADOR / REPRESENTANTE LEGAL\n"
+        "Firma: ____________________________________\n"
+        "Aclaración: _________________________________\n"
+        "Cargo: _____________________________________\n\n"
+    )
+    # Simula un documento anterior que contiene ambos espacios manuales.
+    saved.body += "\n\n" + legacy_lines + "Observación legítima posterior."
+    historical_body = saved.body
+    db.commit()
+
+    html = client.get(f"/app/certificates/{contract_id}/print")
+    pdf = client.get(f"/app/certificates/{contract_id}/download.pdf")
+    word = client.get(f"/app/certificates/{contract_id}/download.docx")
+    assert html.status_code == pdf.status_code == word.status_code == 200
+
+    assert "EL EMPLEADOR / REPRESENTANTE LEGAL" not in html.text
+    assert "Firma: ____________________________________" not in html.text
+    assert html.text.count('class="sigline"') == 2
+    assert "Observación legítima posterior." in html.text
+
+    pdf_text = "\n".join(p.extract_text() or "" for p in PdfReader(io.BytesIO(pdf.content)).pages)
+    assert "EL EMPLEADOR / REPRESENTANTE LEGAL" not in pdf_text
+    assert "Aclaración: " not in pdf_text
+    assert pdf_text.count("Firma / recepción del trabajador/a") == 1
+    assert "Observación legítima posterior." in pdf_text
+
+    doc = Document(io.BytesIO(word.content))
+    doc_text = "\n".join(
+        [p.text for p in doc.paragraphs] +
+        [cell.text for table in doc.tables for row in table.rows for cell in row.cells]
+    )
+    assert "EL EMPLEADOR / REPRESENTANTE LEGAL" not in doc_text
+    assert "Aclaración: _________________________________" not in doc_text
+    assert doc_text.count("Firma del trabajador/a") == 1
+    assert "Observación legítima posterior." in doc_text
+
+    db.refresh(saved)
+    assert saved.body == historical_body
+
+
+def test_custom_signature_text_is_not_removed_by_legacy_cleanup():
+    from app.document_export import contract_body_for_display
+
+    custom = (
+        "Cláusula final.\n\n"
+        "EL TRABAJADOR/A\nFirma: ______________\n"
+        "Texto propio para autorización especial."
+    )
+    assert contract_body_for_display("contrato_trabajo", custom) == custom
+    assert contract_body_for_display("constancia", custom) == custom
