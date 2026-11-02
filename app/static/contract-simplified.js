@@ -145,7 +145,7 @@
   };
   const candidates = {...defaults};
   const required = {
-    employee_name: 'Nombre', employee_document: 'Cédula', employee_address: 'Domicilio',
+    employee_name: 'Nombre', employee_document: 'Cédula', employee_address: 'Domicilio', city: 'Ciudad', issue_date: 'Fecha de emisión',
     position: 'Cargo', admission_date: 'Ingreso', salary: 'Salario',
     contract_worker_age: 'Edad', contract_worker_gender: 'Sexo',
     contract_worker_civil_status: 'Estado civil',
