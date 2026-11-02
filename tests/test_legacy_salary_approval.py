@@ -73,3 +73,37 @@ def test_old_calculator_rejects_records_without_replayable_inputs():
     with pytest.raises(HTTPException) as caught:
         _revalidate_calculation_before_approval(item, db=None)
     assert caught.value.status_code == 409
+
+
+@pytest.mark.parametrize("without_input_rate", [False, True])
+def test_calculadora_v24_exact_source_approved_only_after_replay(without_input_rate):
+    item = _historic_salary(source="Calculadora v2.4", without_input_rate=without_input_rate)
+    _revalidate_calculation_before_approval(item, db=None)
+    assert item.source == "Calculadora v2.4"
+
+
+@pytest.mark.parametrize("change", [
+    {"amount_delta": 1},
+    {"altered_result": True},
+])
+def test_calculadora_v24_never_bypasses_financial_validation(change):
+    item = _historic_salary(source="Calculadora v2.4", **change)
+    with pytest.raises(HTTPException) as caught:
+        _revalidate_calculation_before_approval(item, db=None)
+    assert caught.value.status_code == 409
+
+
+def test_calculadora_v24_rejects_incompatible_unreplayable_snapshot():
+    item = _historic_salary(source="Calculadora v2.4")
+    item.input_json = '{"gross":"texto inválido"}'
+    with pytest.raises(HTTPException) as caught:
+        _revalidate_calculation_before_approval(item, db=None)
+    assert caught.value.status_code == 409
+
+
+def test_calculadora_unknown_version_is_not_automatically_trusted():
+    item = _historic_salary(source="Calculadora v2.5")
+    with pytest.raises(HTTPException) as caught:
+        _revalidate_calculation_before_approval(item, db=None)
+    assert caught.value.status_code == 409
+    assert "no reconocido" in caught.value.detail

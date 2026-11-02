@@ -5690,11 +5690,12 @@ def _revalidate_calculation_before_approval(item: CalculationRecord, db: Session
     except (TypeError, ValueError, json.JSONDecodeError) as exc:
         raise HTTPException(409, "El cálculo guardado no contiene entradas y resultados válidos. Volvé a calcularlo.") from exc
 
-    if item.source in {"Cálculo automático", "Calculadora"}:
-        # "Calculadora" is the original database default for historical records.
-        # Legacy imports and calculations may lack an engine identifier, but
-        # these two known sources can be replayed with the general calculator.
-        if item.source == "Calculadora" and item.calculation_type not in {
+    legacy_general_sources = {"Cálculo automático", "Calculadora", "Calculadora v2.4"}
+    if (item.source or "").strip() in legacy_general_sources:
+        # Los registros históricos con fuentes conocidas (incluida la variante
+        # exacta "Calculadora v2.4") solo se aprueban si el motor general
+        # reproduce todos sus resultados e importe, sin alterar el snapshot.
+        if (item.source or "").strip() in {"Calculadora", "Calculadora v2.4"} and item.calculation_type not in {
             "salary", "hours", "aguinaldo", "vacation", "notice",
         }:
             raise HTTPException(
