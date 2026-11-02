@@ -10,7 +10,7 @@ import io
 import re
 import zipfile
 from calendar import monthrange
-from datetime import date, timedelta
+from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
 from xml.sax.saxutils import escape
 
@@ -118,6 +118,12 @@ def prepare_import(db: Session, company, period: str, authority: str, *,
             errors.append("REOP: seleccioná el código de forma de pago que corresponda al modelo vigente (1-4).")
         if other_category and other_category not in REOP_OTHER_COLUMNS:
             errors.append("REOP: clasificación de otros ingresos inválida.")
+        methods = {_text(d.payment_method).casefold() for _, _, d in records
+                   if d is not None and _text(d.payment_method)}
+        if len(methods) > 1:
+            errors.append("REOP: la nómina contiene distintas formas de pago. No se puede usar un único código para todos; revisá cada detalle.")
+        elif methods and next(iter(methods)).isdigit() and payment_code != next(iter(methods)):
+            errors.append("REOP: el código de forma de pago elegido difiere del registrado en la nómina.")
     else:
         if name_order not in {"apellido_primero", "nombre_primero"}:
             errors.append("REI: confirmá cómo están ordenados los nombres en el legajo.")
@@ -244,7 +250,7 @@ def prepare_import(db: Session, company, period: str, authority: str, *,
                     err.append("faltan horas ordinarias efectivamente trabajadas")
                 # Las 32 columnas corresponden a la plantilla proporcionada por el usuario.
                 continue_row = [
-                    patronal, ci, dstart, dend, int(payment_code or "0"),
+                    patronal, ci, dstart, dend, int(payment_code) if payment_code in {"1", "2", "3", "4"} else 0,
                     days, 0, int(hours) if hours == int(hours) else float(hours), 0,
                     line.base_salary, line.commissions, overtime_day,
                     complements[0], overtime_night, 0, 0, 0, 0, 0,
