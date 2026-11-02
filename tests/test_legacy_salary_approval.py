@@ -107,3 +107,75 @@ def test_calculadora_unknown_version_is_not_automatically_trusted():
         _revalidate_calculation_before_approval(item, db=None)
     assert caught.value.status_code == 409
     assert "no reconocido" in caught.value.detail
+
+
+@pytest.mark.parametrize("apply_ips,expected_ips,expected_net", [
+    (True, 273960, 2770040),
+    (False, 0, 3044000),
+])
+def test_calculadora_v24_real_legacy_result_schema_can_be_approved(
+    apply_ips, expected_ips, expected_net,
+):
+    """v2.4 stored five economic result fields and ips_rate only in inputs."""
+    item = SimpleNamespace(
+        id=88,
+        source="Calculadora v2.4",
+        calculation_type="salary",
+        input_json=json.dumps({
+            "calculation_type": "salary",
+            "gross": 3044000,
+            "other_income": 0,
+            "other_discount": 0,
+            "ips_base": 3044000,
+            "ips_rate": 9.0,
+            "apply_ips": apply_ips,
+        }),
+        result_json=json.dumps({
+            "gross_computable": 3044000,
+            "ips_base": 3044000,
+            "ips_employee": expected_ips,
+            "discounts": expected_ips,
+            "net": expected_net,
+        }),
+        amount=expected_net,
+    )
+    _revalidate_calculation_before_approval(item, db=None)
+    assert set(json.loads(item.result_json)) == {
+        "gross_computable", "ips_base", "ips_employee", "discounts", "net"
+    }
+
+
+@pytest.mark.parametrize("tampering", [
+    "net",
+    "ips_employee",
+    "ips_base",
+    "missing_discounts",
+    "extra_unknown",
+    "amount",
+])
+def test_calculadora_v24_rejects_numeric_discrepancies_and_unknown_schemas(tampering):
+    item = _historic_salary(source="Calculadora v2.4")
+    historic_results = json.loads(item.result_json)
+    historic_results.pop("ips_rate")
+    if tampering == "amount":
+        item.amount += 1
+    elif tampering == "missing_discounts":
+        historic_results.pop("discounts")
+    elif tampering == "extra_unknown":
+        historic_results["unexpected_field"] = 1
+    else:
+        historic_results[tampering] += 1
+    item.result_json = json.dumps(historic_results)
+    with pytest.raises(HTTPException) as error:
+        _revalidate_calculation_before_approval(item, db=None)
+    assert error.value.status_code == 409
+
+
+def test_non_v24_source_cannot_omit_ips_rate_from_results():
+    item = _historic_salary(source="Cálculo automático")
+    historical = json.loads(item.result_json)
+    historical.pop("ips_rate")
+    item.result_json = json.dumps(historical)
+    with pytest.raises(HTTPException) as error:
+        _revalidate_calculation_before_approval(item, db=None)
+    assert error.value.status_code == 409
