@@ -117,7 +117,7 @@ def prepare_import(db: Session, company, period: str, authority: str, *,
     except ValueError as exc:
         raise SalaryImportError([str(exc)]) from exc
     if effective_source == "approved":
-        records, source_errors, _details = approved_salary_records(db, company, period)
+        records, source_errors, _details = approved_salary_records(db, company, period, authority=authority)
     else:
         _payroll, records = _source(db, company, period)
         source_errors = []
@@ -242,8 +242,11 @@ def prepare_import(db: Session, company, period: str, authority: str, *,
                 overtime_night = _number(detail.overtime_night, "Horas extras nocturnas", err)
                 if overtime_day + overtime_night != line.overtime:
                     err.append("las horas extras diurnas/nocturnas no concuerdan con el total guardado")
-                if line.overtime:
-                    err.append("faltan cantidades de horas extraordinarias (no solo montos) en el legajo")
+                extra_hours = getattr(detail, "extra_hours", Decimal("0"))
+                if line.overtime and not getattr(detail, "extra_hours_documented", False):
+                    err.append("faltan cantidades reales de horas extraordinarias (no solo montos) en el registro")
+                if line.overtime and (not extra_hours.is_finite() or extra_hours <= 0 or extra_hours > 744):
+                    err.append("horas extraordinarias guardadas fuera del rango válido")
                 if detail.vacation_pay:
                     err.append("el pago vacacional debe revisarse en su comunicación específica")
                 complements = [
@@ -263,7 +266,8 @@ def prepare_import(db: Session, company, period: str, authority: str, *,
                 # Las 32 columnas corresponden a la plantilla proporcionada por el usuario.
                 continue_row = [
                     patronal, ci, dstart, dend, int(payment_code) if payment_code in {"1", "2", "3", "4"} else 0,
-                    days, 0, int(hours) if hours == int(hours) else float(hours), 0,
+                    days, 0, int(hours) if hours == int(hours) else float(hours),
+                    int(extra_hours) if extra_hours == int(extra_hours) else float(extra_hours),
                     line.base_salary, line.commissions, overtime_day,
                     complements[0], overtime_night, 0, 0, 0, 0, 0,
                     complements[1], 0, complements[3], complements[2], 0,
