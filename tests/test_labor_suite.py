@@ -1276,3 +1276,42 @@ def test_final_settlement_payment_is_independent_and_keeps_evidence(web_case):
         follow_redirects=False,
     )
     assert duplicate.status_code == 409
+
+
+
+def test_employer_ips_contribution_uses_saved_ips_base_not_gross(web_case):
+    """Regression: excluded earnings must not inflate the employer IPS charge."""
+    client, db, _, company, employee, _ = web_case
+    from app.models import Payroll, PayrollLine, PayrollComplianceDetail
+    employee.ips_contributor = True
+    payroll = Payroll(company_id=company.id, period="2026-10")
+    db.add(payroll)
+    db.flush()
+    line = PayrollLine(
+        payroll_id=payroll.id, employee_id=employee.id,
+        base_salary=3_000_000, other_income=500_000,
+        gross=3_500_000, ips_base=3_000_000, ips_rate=Decimal("9.00"),
+        ips_employee=270_000, total_discounts=270_000, net=3_230_000,
+        ips_basis_note="500.000 no integra la base imponible, comprobado",
+    )
+    db.add(line)
+    db.commit()
+
+    response = client.post(
+        f"/app/payrolls/{payroll.id}/lines/{line.id}",
+        data={
+            "csrf_token": token(client), "base_salary": "3000000",
+            "other_income": "500000", "ips_base": "3000000",
+            "ips_rate": "9", "ips_basis_note": "Base documentada",
+            "days_worked": "22",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303, response.text
+    db.expire_all()
+    refreshed = db.get(PayrollLine, line.id)
+    detail = db.query(PayrollComplianceDetail).filter_by(payroll_line_id=line.id).one()
+    assert refreshed.ips_base == 3_000_000
+    assert refreshed.gross == 3_500_000
+    assert refreshed.ips_employee == 270_000
+    assert detail.employer_ips == 495_000  # 16.5% of 3,000,000; not 3,500,000
