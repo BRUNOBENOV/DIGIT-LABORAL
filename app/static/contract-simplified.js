@@ -336,7 +336,11 @@
     conditionalEnd?.classList.remove('contract-simple-hidden');
     conditionalCause?.classList.remove('contract-simple-hidden');
     probationLabel?.classList.remove('contract-simple-hidden');
-    for (const btn of originalNodes.standardActions?.querySelectorAll('button[type="submit"]') || []) btn.disabled = false;
+    // Preaviso tiene su propio control de disponibilidad calculado por app.js.
+    // No modificarlo al salir del contrato.
+    if (typeField.value !== 'notificacion_preaviso') {
+      for (const btn of originalNodes.standardActions?.querySelectorAll('button[type="submit"]') || []) btn.disabled = false;
+    }
     for (const btn of originalNodes.stateActions?.querySelectorAll('button[type="submit"]') || []) btn.disabled = false;
   }
   function syncType() {
