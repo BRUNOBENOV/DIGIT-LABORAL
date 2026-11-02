@@ -429,7 +429,11 @@ async def update_payroll_line_v24(
             submitted_base = int(number(form, "ips_base", "base IPS", maximum="2147483647"))
             # Unchanged default from previous gross follows new earnings.
             # A deliberately adjusted base must remain fixed and documented.
-            if line.ips_base is None or (line.ips_base == line.gross and submitted_base == line.ips_base):
+            documented_base = bool(_clean(form.get("ips_basis_note"), 300) or line.ips_basis_note)
+            # A user who supplies a documented base is explicitly overriding
+            # the default gross, even when it equals the previous gross.
+            if (line.ips_base == line.gross and submitted_base == line.ips_base
+                    and not documented_base):
                 base = gross
             else:
                 base = submitted_base
