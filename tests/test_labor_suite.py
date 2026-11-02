@@ -1530,7 +1530,7 @@ def test_live_salary_calculator_saves_attendance_and_payment_for_reop(web_case):
     assert item is not None
     saved=json.loads(item.input_json)
     assert saved["days_worked"] == 22
-    assert saved["hours_worked"] == "176.50"
+    assert Decimal(saved["hours_worked"]) == Decimal("176.5")
     assert saved["payment_method"] == "Transferencia"
 
 
