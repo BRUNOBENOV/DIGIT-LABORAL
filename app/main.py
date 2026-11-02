@@ -9358,6 +9358,119 @@ def export_compliance_events(
     )
 
 
+@app.get("/app/compliance/salary-import", response_class=HTMLResponse)
+def salary_import_page(
+    request: Request,
+    company_id: OptionalQueryId = None,
+    period: str = "",
+    authority: str = "REOP",
+    payment_code: str = "",
+    other_category: str = "",
+    rei_category: str = "",
+    name_order: str = "",
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    """Vista previa de importación salarial; no modifica nóminas."""
+    from .official_salary_import import SalaryImportError, prepare_import
+
+    ids = company_ids_for_user(db, user)
+    companies = seed_choices(
+        db, select(Company).where(Company.id.in_(ids)).order_by(Company.legal_name),
+        Company, request=request
+    ) if ids else []
+    company = company_allowed(db, user, company_id) if company_id else None
+    period = period or current_paraguay_date().strftime("%Y-%m")
+    authority = authority if authority in {"REOP", "REI"} else "REOP"
+    preview = bool(company and request.query_params.get("period"))
+    errors: list[str] = []
+    rows: list[list] = []
+    if preview:
+        try:
+            rows, errors = prepare_import(
+                db, company, period, authority, payment_code=payment_code,
+                other_category=other_category, rei_category=rei_category,
+                name_order=name_order,
+            )
+        except SalaryImportError as exc:
+            errors = exc.errors
+    return render(
+        request, "salary_import.html", db, user, companies=companies,
+        selected_company=company, period=period, authority=authority,
+        payment_code=payment_code, other_category=other_category,
+        rei_category=rei_category, name_order=name_order, preview=preview,
+        item_count=len(rows), errors=errors,
+    )
+
+
+@app.post("/app/compliance/salary-import/export")
+def salary_import_export(
+    company_id: Annotated[int, Form()],
+    period: Annotated[str, Form()],
+    authority: Annotated[str, Form()],
+    payment_code: Annotated[str, Form()] = "",
+    other_category: Annotated[str, Form()] = "",
+    rei_category: Annotated[str, Form()] = "",
+    name_order: Annotated[str, Form()] = "",
+    confirmed: Annotated[str, Form()] = "",
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    """Descarga auditada; nunca realiza envío directo a REOP o REI."""
+    from .official_salary_import import (
+        MIME_REI, MIME_REOP, SalaryImportError, build_rei_txt,
+        build_reop_xlsx, prepare_import,
+    )
+
+    if confirmed != "si":
+        raise HTTPException(400, "Confirmá la revisión antes de descargar.")
+    company = company_allowed(db, user, company_id)
+    try:
+        rows, errors = prepare_import(
+            db, company, period, authority, payment_code=payment_code,
+            other_category=other_category, rei_category=rei_category,
+            name_order=name_order,
+        )
+    except SalaryImportError as exc:
+        raise HTTPException(409, detail=" | ".join(exc.errors[:12])) from exc
+    if errors:
+        raise HTTPException(409, detail="Hay datos pendientes: " + " | ".join(errors[:12]))
+    if authority == "REI" and name_order not in {"apellido_primero", "nombre_primero"}:
+        raise HTTPException(409, "Se requiere confirmar el orden de nombres del REI.")
+    content = build_reop_xlsx(rows) if authority == "REOP" else build_rei_txt(rows)
+    media = MIME_REOP if authority == "REOP" else MIME_REI
+    extension = "xlsx" if authority == "REOP" else "txt"
+    safe_ruc = re.sub(r"[^A-Za-z0-9_-]+", "-", company.ruc or str(company.id))
+    file_name = f"{authority.lower()}_salarios_{safe_ruc}_{period}.{extension}"
+    batch = register_batch(
+        db, company=company, authority=authority, batch_type="Importación de salarios",
+        period=period, content=content, created_by=user.email,
+    )
+    batch.file_name = file_name
+    batch.item_count = len(rows)
+    batch.payload_json = json.dumps({
+        "format": "REOP-32-col-2025" if authority == "REOP" else "REI-txt-referencia-2016",
+        "payment_code": payment_code if authority == "REOP" else None,
+        "other_category": other_category if authority == "REOP" else None,
+        "name_order": name_order if authority == "REI" else None,
+        "status_note": "Exportación local para revisión; no presentación oficial.",
+    }, ensure_ascii=False)
+    key = f"integrations/{company.id}/salary-import/batch-{batch.id}.{extension}"
+    storage.put(key, content, media)
+    batch.storage_key = key
+    batch.file_bytes = content if settings.storage_backend == "local" else None
+    write_audit(
+        db, user, "exportar_importacion_salarios", "lote_integracion", str(batch.id),
+        f"{authority} · {period} · {len(rows)} empleados · SHA-256 {batch.file_sha256}",
+    )
+    db.commit()
+    return StreamingResponse(
+        io.BytesIO(content), media_type=media,
+        headers={"Content-Disposition": f'attachment; filename="{file_name}"',
+                 "Cache-Control": "no-store"},
+    )
+
+
 @app.get("/app/compliance/export/reop-annual.xlsx")
 def export_reop_annual(
     company_id: int,
@@ -9418,7 +9531,7 @@ def download_integration_batch(
     db.commit()
     return StreamingResponse(
         io.BytesIO(content),
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        media_type=("text/plain; charset=windows-1252" if batch.file_name.lower().endswith(".txt") else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
         headers={"Content-Disposition": f'attachment; filename="{batch.file_name}"'},
     )
 
