@@ -196,10 +196,8 @@ def prepare_import(db: Session, company, period: str, authority: str, *,
                 err.append("el período comienza antes de la fecha de ingreso")
             if employee.termination_date and employee.termination_date < dend:
                 err.append("el período termina después del egreso")
-            if not isinstance(days, int) or not 0 <= days <= 30:
-                err.append("cantidad de días trabajados fuera del rango 0-30")
-            if "jornal" in _text(employee.payment_frequency).lower() and days > 26:
-                err.append("jornalero con más de 26 días declarados; verificar jornadas reales")
+            if not isinstance(days, int) or not 0 <= days <= 31:
+                err.append("cantidad de jornadas trabajadas fuera del rango 0-31")
             if not hours.is_finite() or not 0 <= hours <= 744:
                 err.append("cantidad de horas trabajadas inválida")
         if authority == "REI":
