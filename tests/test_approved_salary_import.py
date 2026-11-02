@@ -1,0 +1,128 @@
+"""Regresión: cálculo aprobado visible sin nómina y sin perder validaciones."""
+from __future__ import annotations
+
+import json
+from datetime import date, datetime
+from decimal import Decimal
+from types import SimpleNamespace
+
+from app import approved_salary_import as source
+from app import official_salary_import as exporter
+from app.models import CalculationRecord, Employee, IntegrationBatch, Payroll, SalaryImportDetail
+
+
+class FakeSession:
+    def __init__(self, records, employee, supplement=None, payroll=None):
+        self.records = records
+        self.employee = employee
+        self.supplement = supplement
+        self.payroll = payroll
+
+    def scalar(self, stmt):
+        entity = stmt.column_descriptions[0]["entity"]
+        if entity is Payroll:
+            return self.payroll
+        return None
+
+    def scalars(self, stmt):
+        entity = stmt.column_descriptions[0]["entity"]
+        if entity is CalculationRecord:
+            return self.records
+        if entity is Employee:
+            return [self.employee]
+        if entity is IntegrationBatch:
+            return []
+        if entity is SalaryImportDetail:
+            return [self.supplement] if self.supplement else []
+        raise AssertionError(f"Unexpected query: {entity}")
+
+
+def case():
+    item = SimpleNamespace(
+        id=50, company_id=7, employee_id=8, reference_period="2026-10",
+        calculation_type="salary", source="Cálculo automático", status="Aprobado",
+        input_json=json.dumps({
+            "gross": 3000000, "other_income": 0, "other_discount": 0,
+            "apply_ips": True, "reference_period": "2026-10",
+        }),
+        result_json=json.dumps({
+            "gross_computable": 3000000, "ips_base": 3000000,
+            "ips_rate": 9, "ips_employee": 270000, "discounts": 270000, "net": 2730000,
+        }),
+        amount=2730000,
+        created_at=datetime(2026, 10, 28, 13),
+    )
+    employee = SimpleNamespace(
+        id=8, company_id=7, branch_id=None, employee_code=8,
+        full_name="PEREZ GOMEZ JUAN LUIS", document_number="1234567",
+        admission_date=date(2024, 1, 1), termination_date=None,
+        ips_contributor=True, payment_frequency="Mensual",
+    )
+    company = SimpleNamespace(id=7, ruc="80000000-1",
+                              ips_employer_number="654321", mtess_employer_number="123456")
+    detail = SimpleNamespace(
+        company_id=7, calculation_record_id=50, source_sha256=source.calculation_fingerprint(item),
+        period_start=date(2026, 10, 1), period_end=date(2026, 10, 31),
+        days_worked=22, hours_worked=Decimal("176"),
+        payment_method="Transferencia",
+    )
+    return item, employee, company, detail
+
+
+def test_approved_saved_calculation_replaces_missing_payroll_error():
+    item, employee, company, detail = case()
+    db = FakeSession([item], employee, detail)
+    summary = source.salary_source_summary(db, company.id, "2026-10")
+    assert summary["approved"] == 1 and not summary["closed_payroll"]
+    assert source.choose_salary_source(db, company.id, "2026-10", "auto") == "approved"
+    rows, errors = exporter.prepare_import(db, company, "2026-10", "REOP",
+                                           source_type="auto", payment_code="1")
+    assert errors == []
+    assert len(rows) == 1 and len(rows[0]) == 32
+    assert rows[0][9] == 3000000
+    assert rows[0][5] == 22 and rows[0][7] == 176
+    assert rows[0][25] == 270000
+
+
+def test_missing_hours_are_blocking_not_invented_from_divisor():
+    item, employee, company, _detail = case()
+    db = FakeSession([item], employee)
+    rows, errors = exporter.prepare_import(db, company, "2026-10", "REOP",
+                                           source_type="approved", payment_code="1")
+    assert len(rows) == 1
+    assert any("faltan horas ordinarias" in error for error in errors)
+    assert any("faltan jornadas" in error for error in errors)
+
+
+def test_newer_unapproved_record_blocks_old_approved_record():
+    item, employee, company, detail = case()
+    more_recent = SimpleNamespace(**vars(item))
+    more_recent.id = 51
+    more_recent.status = "Revisar"
+    more_recent.created_at = datetime(2026, 10, 30, 10)
+    db = FakeSession([more_recent, item], employee, detail)
+    rows, errors = exporter.prepare_import(db, company, "2026-10", "REOP",
+                                           source_type="approved", payment_code="1")
+    assert rows == []
+    assert any("no se reutiliza una aprobación anterior" in error for error in errors)
+
+
+def test_stale_supplement_is_not_applied_when_calculation_changes():
+    item, employee, company, detail = case()
+    detail.source_sha256 = "0" * 64
+    db = FakeSession([item], employee, detail)
+    _, errors = exporter.prepare_import(db, company, "2026-10", "REOP",
+                                        source_type="approved", payment_code="1")
+    assert any("faltan horas ordinarias" in error for error in errors)
+
+
+def test_rei_uses_preserved_ips_base_from_approved_calculation():
+    item, employee, company, detail = case()
+    db = FakeSession([item], employee, detail)
+    rows, errors = exporter.prepare_import(db, company, "2026-10", "REI",
+                                           source_type="approved", name_order="apellido_primero",
+                                           rei_category="E")
+    assert errors == []
+    assert rows[0][7] == 3000000
+    assert rows[0][3] == "PEREZ GOMEZ"
+    assert rows[0][4] == "JUAN LUIS"
