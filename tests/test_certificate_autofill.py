@@ -245,3 +245,71 @@ def test_server_render_bootstrap_escapes_personal_text(dossier_case):
     match = re.search(r'id="certificateAutofillData">(.*?)</script>', page.text, re.S)
     assert json.loads(match.group(1))["fields"]["employee_name"] == employee.full_name
     assert "<script>alert('x')</script>" not in page.text
+
+
+def test_contract_screen_loads_progressive_jinja_assets_without_react(dossier_case):
+    client, _, _, company, employee, _ = dossier_case
+    response = client.get("/app/certificates", params={
+        "company_id": company.id, "employee_id": employee.id, "document_type": "contrato_trabajo"
+    })
+    assert response.status_code == 200
+    assert 'data-contract-enhance="progressive"' in response.text
+    assert "contract-simplified.css" in response.text
+    assert "contract-simplified.js" in response.text
+    assert 'id="certificatePreview"' in response.text
+    assert 'id="certificateForm"' in response.text
+
+
+def test_progressive_contract_rejects_unconfirmed_suggestions_without_writes(dossier_case):
+    client, db, _, company, employee, _ = dossier_case
+    data = contract_data(client, company, employee)
+    data.update(intent="approve", contract_simplified_submission="1")
+    response = client.post("/app/certificates", data=data)
+    assert response.status_code == 400, response.text
+    assert "Confirmá expresamente" in response.json()["detail"]
+    assert not db.scalar(select(GeneratedCertificate.id))
+
+
+@pytest.mark.parametrize("missing", [
+    "contract_confirm_payment_frequency",
+    "contract_confirm_weekly_rest",
+    "contract_confirm_payment_method",
+])
+def test_progressive_contract_requires_each_explicit_confirmation(dossier_case, missing):
+    client, db, _, company, employee, _ = dossier_case
+    data = contract_data(client, company, employee)
+    data.update(intent="approve", contract_simplified_submission="1",
+                contract_confirm_payment_frequency="on",
+                contract_confirm_weekly_rest="on",
+                contract_confirm_payment_method="on")
+    data.pop(missing)
+    response = client.post("/app/certificates", data=data)
+    assert response.status_code == 400, response.text
+    assert not db.scalar(select(GeneratedCertificate.id))
+
+
+def test_progressive_contract_preview_is_read_only_and_confirmed_approval_succeeds(dossier_case):
+    client, db, _, company, employee, _ = dossier_case
+    data = contract_data(client, company, employee)
+    data.update(contract_simplified_submission="1")
+    preview = client.post("/app/certificates", data={**data, "intent": "preview"})
+    assert preview.status_code == 200, preview.text
+    assert not db.scalar(select(GeneratedCertificate.id))
+    data.update(intent="approve", contract_confirm_payment_frequency="on",
+                contract_confirm_weekly_rest="on", contract_confirm_payment_method="on")
+    response = client.post("/app/certificates", data=data, follow_redirects=False)
+    assert response.status_code == 303, response.text
+    item = db.scalar(select(GeneratedCertificate).where(GeneratedCertificate.document_type == "contrato_trabajo"))
+    assert item is not None and item.status == "Aprobado"
+
+
+def test_progressive_contract_stale_text_still_blocks_approval(dossier_case):
+    client, db, _, company, employee, _ = dossier_case
+    data = contract_data(client, company, employee)
+    data.update(intent="approve", contract_simplified_submission="1",
+                contract_confirm_payment_frequency="on", contract_confirm_weekly_rest="on",
+                contract_confirm_payment_method="on", contract_text="Texto manual",
+                contract_text_stale="1")
+    response = client.post("/app/certificates", data=data)
+    assert response.status_code == 400, response.text
+    assert not db.scalar(select(GeneratedCertificate.id))
