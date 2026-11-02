@@ -75,7 +75,7 @@ def test_certificate_a_preview_uses_model_text_and_uncached_static_asset():
         assert "[NOMBRE DE LA EMPRESA]" in script.text
         assert "[NOMBRE COMPLETO DEL FUNCIONARIO]" in script.text
         assert "certificado_trabajo_b: 'Certificado de Trabajo B'" in script.text
-        assert "if (!['certificado_trabajo_a', 'certificado_trabajo_b', 'constancia'].includes(type)) return;" in script.text
+        assert "if (!['certificado_trabajo_a', 'certificado_trabajo_b', 'constancia', 'contrato_trabajo'].includes(type)) return;" in script.text
         assert 'data-address="' in page.text
         assert 'data-vacation-days=' not in page.text
         assert 'id="certificatePreviewPhone"' in page.text

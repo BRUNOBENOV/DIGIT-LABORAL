@@ -174,6 +174,7 @@
 {% endif %}
 <script src="{{ url_for('static', path='entity-selects.js') }}?v={{ app_version }}"></script>
 <script src="{{ url_for('static', path='app.js') }}?v={{ app_version }}"></script>
+{% if certificate_autofill_data is defined %}<script src="{{ url_for('static', path='certificate-autofill.js') }}?v={{ app_version }}" defer></script>{% endif %}
 <script src="{{ url_for('static', path='v17.js') }}"></script>
 <script src="{{ url_for('static', path='v20.js') }}"></script>
 <script src="{{ url_for('static', path='v22-dashboard.js') }}"></script>

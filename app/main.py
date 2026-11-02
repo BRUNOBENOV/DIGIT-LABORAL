@@ -40,6 +40,7 @@ from .auth import hash_password, verify_password
 from .labor_calculator import amount as round_gs, anniversary as labor_anniversary
 from .labor_wage_rules import minimum_wage_for_period
 from .salary_history import salary_for_period
+from .certificate_autofill import certificate_dossier_data, missing_contract_fields, has_pending_marker
 from .pagination import Pagination, normalize_page_size
 from .entity_selects import entity_choices, seed_choices
 from .config import settings
@@ -408,6 +409,11 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "app" / "templates"))
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    if request.url.path == "/app/certificates" and "application/json" in request.headers.get("accept", ""):
+        return JSONResponse({"detail": "Revisá los datos del formulario: " + "; ".join(
+            " → ".join(str(part) for part in error.get("loc", []) if part != "body") + ": " + error.get("msg", "Valor inválido")
+            for error in exc.errors()
+        )}, status_code=422)
     content_type = request.headers.get("content-type", "")
     is_form = content_type.startswith(("application/x-www-form-urlencoded", "multipart/form-data"))
     if is_form:
@@ -431,7 +437,9 @@ async def http_exception_handler(request: Request, exc: HTTPException):
     location = (exc.headers or {}).get("Location")
     if location and 300 <= exc.status_code < 400:
         return RedirectResponse(location, status_code=exc.status_code)
-    if request.url.path.startswith("/health"):
+    if request.url.path.startswith(("/health", "/api/certificates/")) or (
+        request.url.path == "/app/certificates" and "application/json" in request.headers.get("accept", "")
+    ):
         return JSONResponse({"detail": exc.detail}, status_code=exc.status_code, headers=exc.headers)
     body = templates.get_template("http_error.html").render(
         request=request,
@@ -5869,6 +5877,24 @@ def preaviso_calculations_api(
     )
 
 
+@app.get("/api/certificates/autofill")
+def certificate_autofill(
+    company_id: int,
+    employee_id: int,
+    issue_date: date | None = None,
+    user: User = Depends(require_roles("administrador", "contador", "auxiliar", "abogado")),
+    db: Session = Depends(get_db),
+):
+    company = company_allowed(db, user, company_id)
+    employee = db.get(Employee, employee_id)
+    if not employee or employee.company_id != company.id:
+        raise HTTPException(404, "Funcionario no encontrado en la empresa seleccionada.")
+    return JSONResponse(
+        certificate_dossier_data(db, company, employee, issue_date or date.today()),
+        headers={"Cache-Control": "no-store, max-age=0"},
+    )
+
+
 @app.get("/app/certificates", response_class=HTMLResponse)
 def certificates_page(
     request: Request,
@@ -5950,6 +5976,9 @@ def certificates_page(
         generated_metadata={item.id: decode_metadata(item.observations) for item in generated},
         editing_contract=editing_contract,
         editing_metadata=editing_metadata,
+        certificate_autofill_data=certificate_dossier_data(
+            db, selected_company, selected_employee, editing_contract.issue_date if editing_contract else date.today()
+        ) if selected_company and selected_employee else None,
         certificate_types=CERTIFICATE_TYPES,
         signature_modes={key: document_signature_mode(key) for key in CERTIFICATE_TYPES},
         receipt_modes={key: document_receipt_mode(key) for key in CERTIFICATE_TYPES},
@@ -5985,6 +6014,12 @@ def create_certificate(
     position: Annotated[str, Form()] = "",
     admission_date: Annotated[str, Form()] = "",
     salary: Annotated[int, Form()] = 0,
+    dossier_submission: Annotated[str, Form()] = "",
+    employee_name: Annotated[str | None, Form(max_length=220)] = None,
+    employee_document: Annotated[str | None, Form(max_length=60)] = None,
+    employee_address: Annotated[str | None, Form(max_length=240)] = None,
+    employee_section: Annotated[str | None, Form(max_length=140)] = None,
+    employee_profession: Annotated[str | None, Form(max_length=160)] = None,
     observations: Annotated[str, Form()] = "",
     document_number: Annotated[str, Form()] = "",
     period_start: Annotated[str, Form()] = "",
@@ -6009,6 +6044,7 @@ def create_certificate(
     contract_payment_method: Annotated[str, Form()] = "",
     contract_additional_terms: Annotated[str, Form()] = "",
     contract_text: Annotated[str, Form()] = "",
+    contract_text_stale: Annotated[str, Form()] = "",
     contract_parent_id: Annotated[str, Form()] = "",
     contract_signature_acknowledged: Annotated[str, Form()] = "",
     previous_contract_number: Annotated[str, Form()] = "",
@@ -6082,12 +6118,16 @@ def create_certificate(
 ):
     if document_type not in CERTIFICATE_TYPES:
         raise HTTPException(400, "Tipo de documento inválido.")
+    if intent == "generate_contract" and document_type != "contrato_trabajo":
+        raise HTTPException(400, "Seleccioná Contrato de Trabajo para generar el texto completo.")
     if intent in {"approve", "signed"} and document_type != "contrato_trabajo":
         raise HTTPException(400, "Los estados Aprobado y Firmado están disponibles para Contrato Individual de Trabajo.")
     if intent == "signed" and contract_signature_acknowledged.strip().lower() not in {"on", "true", "1", "yes"}:
         raise HTTPException(400, "Para registrar Firmado, confirmá que se recibió la firma del documento.")
     if document_type == "contrato_trabajo" and len(contract_text) > 90000:
         raise HTTPException(400, "El texto del contrato supera el límite permitido de 90.000 caracteres.")
+    if document_type == "contrato_trabajo" and contract_text_stale == "1" and intent not in {"preview", "generate_contract"}:
+        raise HTTPException(400, "Actualizá el texto del contrato después de cambiar sus datos: volvé a generarlo o revisá y editá su texto.")
     if contract_worker_age.strip():
         if not contract_worker_age.strip().isdigit() or not 0 <= int(contract_worker_age.strip()) <= 120:
             raise HTTPException(400, "La edad debe ser un número entre 0 y 120.")
@@ -6177,7 +6217,57 @@ def create_certificate(
         "adenda_prorroga_contrato": "prorroga",
     }.get(document_type, "")
     contract_modality_value = contract_modality.strip() or default_modality
-    if document_type in contract_types:
+    company = company_allowed(db, user, company_id)
+    employee = db.get(Employee, employee_id)
+    if not employee or employee.company_id != company.id:
+        raise HTTPException(400, "El funcionario no pertenece a la empresa seleccionada.")
+    dossier = certificate_dossier_data(db, company, employee, issue_date)
+    suggestions = dossier["fields"]
+    # New forms submit explicit document values, including deliberately cleared
+    # fields. Legacy callers can still request defaults by omitting a field.
+    use_defaults = dossier_submission != "1"
+    def document_text(value: str | None, key: str) -> str:
+        return (suggestions[key] if value is None and use_defaults else value or "").strip()
+
+    employee_name_value = document_text(employee_name, "employee_name")
+    employee_document_value = document_text(employee_document, "employee_document")
+    employee_address_value = document_text(employee_address, "employee_address")
+    employee_section_value = document_text(employee_section, "employee_section")
+    employee_profession_value = document_text(employee_profession, "employee_profession")
+    if use_defaults:
+        position = position or suggestions["position"]
+        salary = salary or int(suggestions["salary"] or 0)
+        admission_date = admission_date or employee.admission_date
+        contract_worker_age = contract_worker_age or suggestions["contract_worker_age"]
+        contract_worker_gender = contract_worker_gender or suggestions["contract_worker_gender"]
+        contract_worker_civil_status = contract_worker_civil_status or suggestions["contract_worker_civil_status"]
+        contract_worker_nationality = contract_worker_nationality or suggestions["contract_worker_nationality"]
+        workplace = workplace or suggestions["workplace"]
+        work_schedule = work_schedule or suggestions["work_schedule"]
+        payment_frequency = payment_frequency or suggestions["payment_frequency"]
+        contract_modality = contract_modality or suggestions["contract_modality"] or default_modality
+    contract_modality_value = contract_modality.strip() or default_modality
+    document_fields = {
+        **suggestions, "employee_name": employee_name_value, "employee_document": employee_document_value,
+        "employee_address": employee_address_value, "employee_section": employee_section_value,
+        "employee_profession": employee_profession_value, "position": position.strip(),
+        "salary": str(salary), "admission_date": admission_date.isoformat() if admission_date else "",
+        "contract_worker_age": contract_worker_age.strip(), "contract_worker_gender": contract_worker_gender.strip(),
+        "contract_worker_civil_status": contract_worker_civil_status.strip(),
+        "contract_worker_nationality": contract_worker_nationality.strip(),
+        "contract_modality": contract_modality.strip() or (default_modality if use_defaults else ""),
+        "workplace": workplace.strip(), "job_functions": job_functions.strip(),
+        "work_schedule": work_schedule.strip(), "weekly_rest": weekly_rest.strip(),
+        "payment_frequency": payment_frequency.strip(), "contract_payment_method": contract_payment_method.strip(),
+    }
+    missing_document_fields = missing_contract_fields(document_fields, company)
+    if document_type == "contrato_trabajo" and intent != "preview" and missing_document_fields:
+        raise HTTPException(400, "Faltan datos obligatorios: " + ", ".join(missing_document_fields.values()) + ". Completalos en el formulario o en el legajo del funcionario / empresa.")
+    if document_type == "contrato_trabajo" and intent != "preview" and contract_modality_value not in {
+        "indefinido", "plazo_fijo", "tiempo_parcial", "mipyme_plazo_fijo", "mipyme_80", "prorroga",
+    }:
+        raise HTTPException(400, "Seleccioná una modalidad de contrato válida.")
+    if document_type in contract_types and intent != "preview":
         if not workplace.strip() or not job_functions.strip() or not work_schedule.strip():
             raise HTTPException(400, "Para emitir un contrato, completá el lugar de trabajo, las funciones y la jornada/horario.")
         if document_type in {"contrato_mipymes_plazo_determinado", "contrato_mipymes_80", "adenda_prorroga_contrato"}:
@@ -6193,10 +6283,6 @@ def create_certificate(
         raise HTTPException(400, "El recibo de salario requiere el período de liquidación desde/hasta.")
     if document_type == "recibo_salario" and period_end < period_start:
         raise HTTPException(400, "El fin del período de liquidación no puede ser anterior al inicio.")
-    company = company_allowed(db, user, company_id)
-    employee = db.get(Employee, employee_id)
-    if not employee or employee.company_id != company.id:
-        raise HTTPException(400, "El funcionario no pertenece a la empresa seleccionada.")
     contract_parent = db.get(GeneratedCertificate, contract_parent_id) if contract_parent_id else None
     if contract_parent_id and (
         not contract_parent
@@ -6244,14 +6330,14 @@ def create_certificate(
             source_notice_days = 0
         if source_notice_days <= 0:
             raise HTTPException(400, "El cálculo vinculado no tiene un plazo de preaviso válido. Revisá y guardá nuevamente el cálculo.")
-    position_value = position.strip() or employee.position
-    admission_value = admission_date or employee.admission_date
+    position_value = position.strip()
+    admission_value = admission_date
     if document_type in {"certificado_trabajo_a", "certificado_trabajo_b", "constancia"} and not effective_date:
         if (employee.status or "").strip().lower() not in {"activo", "active"} and employee.termination_date:
             effective_date = employee.termination_date
     if document_type in {"certificado_trabajo_a", "certificado_trabajo_b", "constancia"} and effective_date and field_amounts["last_period_salary_amount"] <= 0 and intent != "preview":
         raise HTTPException(400, "Para un certificado al término de la relación, consigná el salario efectivamente devengado en el último período de pago, según nómina o recibo.")
-    salary_value = max(0, salary or employee.base_salary)
+    salary_value = max(0, salary)
     if calculation:
         if document_type in {"aguinaldo_anual", "aguinaldo_proporcional", "usufructo_vacaciones", "notificacion_preaviso"}:
             amount = amount or calculation.amount
@@ -6330,9 +6416,9 @@ def create_certificate(
         "adenda_prorroga_contrato": "prorroga",
     }.get(document_type, "")
     contract_modality_value = contract_modality.strip() or default_modality
-    branding = get_or_create_branding(db, company) if intent != "preview" else None
+    branding = get_or_create_branding(db, company) if intent not in {"preview", "generate_contract"} else None
     document_number_value = document_number.strip() or (
-        "Vista previa" if intent == "preview" else next_document_number(db, company, document_type, branding)
+        "Vista previa" if intent in {"preview", "generate_contract"} else next_document_number(db, company, document_type, branding)
     )
     metadata = {
         "notes": observations.strip(),
@@ -6363,7 +6449,7 @@ def create_certificate(
         "job_functions": job_functions.strip(),
         "work_schedule": work_schedule.strip(),
         "weekly_rest": weekly_rest.strip(),
-        "payment_frequency": (payment_frequency.strip() or employee.payment_frequency or "Mensual"),
+        "payment_frequency": payment_frequency.strip(),
         "probation_period": probation_period.strip(),
         "payment_date": (vacation_payment_date or payment_date).isoformat() if (vacation_payment_date or payment_date) else "",
         "payment_method": payment_method.strip(),
@@ -6405,7 +6491,10 @@ def create_certificate(
         "settlement_other_deduction": field_amounts["settlement_other_deduction"],
         "settlement_other_deduction_description": settlement_other_deduction_description.strip(),
         "contract_type": employee.contract_type,
-        "employee_address": employee.address or "",
+        "employee_address": employee_address_value,
+        "employee_section": employee_section_value,
+        "employee_profession": employee_profession_value,
+        "autofill_sources": {key: source for key, source in dossier["sources"].items() if str(document_fields.get(key, "")) == suggestions.get(key)},
         "employee_phone": employee.phone or "",
         "employee_email": employee.email or "",
         "employee_birth_date": employee.birth_date.isoformat() if employee.birth_date else "",
@@ -6459,8 +6548,8 @@ def create_certificate(
     title, body = build_document_body(
         document_type,
         company_name=company.legal_name,
-        employee_name=employee.full_name,
-        employee_document=employee.document_number,
+        employee_name=employee_name_value,
+        employee_document=employee_document_value,
         position=position_value,
         admission_date=admission_value,
         salary=salary_value,
@@ -6472,17 +6561,20 @@ def create_certificate(
         company_phone=company.phone or "",
         company_email=company.email or "",
         legal_representative=company.legal_representative or "",
-        employee_address=employee.address or "",
+        employee_address=employee_address_value,
         employee_phone=employee.phone or "",
         employee_email=employee.email or "",
         employee_birth_date=employee.birth_date,
     )
-    if document_type == "contrato_trabajo" and contract_text.strip():
+    if document_type == "contrato_trabajo" and contract_text.strip() and intent != "generate_contract":
         body = contract_text.replace("\x00", "").strip()
+    if document_type == "contrato_trabajo" and intent != "preview" and has_pending_marker(body):
+        raise HTTPException(400, "El texto del contrato todavía contiene datos pendientes. Completalos o volvé a generar el contrato con los datos revisados.")
 
-    if intent == "preview":
+    if intent in {"preview", "generate_contract"}:
         return JSONResponse(
-            {"title": title, "body": body, "document_type": document_type},
+            {"title": title, "body": body, "document_type": document_type,
+             "missing_fields": missing_document_fields if document_type == "contrato_trabajo" else {}},
             headers={"Cache-Control": "no-store, max-age=0"},
         )
 
@@ -6494,8 +6586,8 @@ def create_certificate(
         city=city.strip() or company.city or "Ciudad del Este",
         issue_date=issue_date,
         company_name_snapshot=company.legal_name,
-        employee_name_snapshot=employee.full_name,
-        employee_document_snapshot=employee.document_number,
+        employee_name_snapshot=employee_name_value,
+        employee_document_snapshot=employee_document_value,
         position_snapshot=position_value,
         admission_date_snapshot=admission_value,
         salary_snapshot=salary_value,

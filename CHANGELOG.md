@@ -1,3 +1,11 @@
+## 2.6.64 — Contratos y certificados desde el legajo
+
+- Consulta autorizada de un único funcionario y su empresa para precargar identidad, domicilio, profesión, sección, cargo, ingreso, modalidad, periodicidad, horario registrado y salario vigente a la fecha del documento. Calcula la edad a esa fecha; no usa cambios salariales futuros.
+- Identifica datos sugeridos, editados y pendientes con texto accesible e indicadores discretos. Permite corregir los valores del documento sin escribir en el legajo. No convierte notas de migración, horas predeterminadas o el domicilio legal en funciones o condiciones contractuales.
+- Actualiza la vista previa con el generador del servidor. Generar el contrato completo exige los datos críticos y devuelve el texto sin guardar; guardar, aprobar y emitir vuelven a validar y rechazan marcadores pendientes. Conserva confirmación de firma recibida y versiones anteriores.
+- Conserva la versión al editar un contrato guardado, descarta respuestas tardías y limpia texto y referencias al cambiar de funcionario. Si cambian los datos de un contrato ya generado, exige actualizar su texto antes de aprobar.
+- Sin migraciones ni nuevas dependencias.
+
 ## 2.6.63 — Estabilidad detectada y escenario doble automático
 
 - Detecta diez años completos por las fechas declaradas, con aniversarios de 29 de febrero coherentes. Identifica la estabilidad y la revisión de continuidad con el mismo empleador de forma independiente de otras protecciones.

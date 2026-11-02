@@ -1,6 +1,12 @@
-# Digit Laboral 2.6.63
+# Digit Laboral 2.6.64
 
 Plataforma de gestión y cumplimiento laboral para estudios contables paraguayos.
+
+## Novedades de la versión 2.6.64
+
+- Precarga contratos y certificados con los datos disponibles del legajo: identidad, cargo, ingreso, salario vigente a la fecha de emisión, sección, datos personales y horario registrado. Cada dato sugerido se identifica y puede editarse solo para ese documento.
+- Señala los datos faltantes y bloquea generar, aprobar o emitir contratos incompletos. No deduce funciones, descansos ni medios de pago ausentes del legajo.
+- Actualiza la vista previa, conserva los documentos guardados y evita mezclar datos al cambiar de funcionario o recibir respuestas fuera de orden. Sin migraciones ni dependencias nuevas.
 
 ## Novedades de la versión 2.6.63
 

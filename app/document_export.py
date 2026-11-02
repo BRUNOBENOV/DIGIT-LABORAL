@@ -462,12 +462,12 @@ def build_document_body(
     schedule = str(metadata.get("work_schedule") or "").strip() or "COMPLETAR: indicar días, horario y descansos aplicables"
     weekly_rest = str(metadata.get("weekly_rest") or "").strip() or "según la jornada y descansos legalmente aplicables"
     pay_frequency = str(metadata.get("payment_frequency") or "Mensual").strip()
-    probation = str(metadata.get("probation_period") or "").strip() or "no consignado; completar únicamente si procede y dentro de los máximos legales"
+    probation = str(metadata.get("probation_period") or "").strip() or "no consignado; sujeto a su procedencia y a los máximos legales"
     contract_cause = str(metadata.get("contract_cause") or "").strip() or "COMPLETAR: describir y documentar la causa objetiva que justifica el plazo"
     contract_reference = str(metadata.get("previous_contract_number") or "").strip() or "COMPLETAR: identificar contrato anterior, fecha y vigencia"
-    contract_benefits = str(metadata.get("contract_benefits") or "").strip() or "COMPLETAR: indicar los beneficios en especie y su valoración cuando corresponda"
+    contract_benefits = str(metadata.get("contract_benefits") or "").strip() or "No se consignan beneficios adicionales en este documento"
     contract_payment_method = str(metadata.get("contract_payment_method") or "").strip() or "según la forma de pago acordada y documentada"
-    contract_additional_terms = str(metadata.get("contract_additional_terms") or "").strip() or "No se consignan estipulaciones especiales adicionales; completar si corresponde"
+    contract_additional_terms = str(metadata.get("contract_additional_terms") or "").strip() or "No se consignan estipulaciones especiales adicionales"
     contract_worker_gender = str(metadata.get("contract_worker_gender") or "").strip() or "COMPLETAR"
     contract_worker_civil_status = str(metadata.get("contract_worker_civil_status") or "").strip() or "COMPLETAR"
     contract_worker_nationality = str(metadata.get("contract_worker_nationality") or "").strip() or "COMPLETAR"
@@ -569,10 +569,10 @@ def build_document_body(
             "La aprobación, el cómputo y el registro del permiso deberán ajustarse a la legislación vigente y a la documentación respaldatoria."
         ),
         "contrato_trabajo": (
-            "BORRADOR CONTRACTUAL — COMPLETAR LOS CAMPOS PENDIENTES Y REVISAR ANTES DE FIRMAR.\n\n"
+            "BORRADOR CONTRACTUAL — REVISAR LOS DATOS Y LAS CLÁUSULAS ANTES DE FIRMAR.\n\n"
             f"En {city}, a los {format_date_long_es(issue_date)}, comparecen {employer_id}, en adelante EL EMPLEADOR; "
             f"y {employee_name}, C.I. N.º {employee_document or 'COMPLETAR'}, de {contract_worker_age} años, sexo {contract_worker_gender}, "
-            f"estado civil {contract_worker_civil_status}, profesión u oficio {role or 'COMPLETAR'}, nacionalidad {contract_worker_nationality}, "
+            f"estado civil {contract_worker_civil_status}, profesión u oficio {metadata.get('employee_profession') or role or 'COMPLETAR'}, nacionalidad {contract_worker_nationality}, "
             f"domiciliado/a en {employee_address_text}, en adelante EL TRABAJADOR/A. Las partes convienen celebrar el presente Contrato Individual de Trabajo "
             "de conformidad con los datos y condiciones previstos en el artículo 46 de la Ley N.º 213/93 y demás normas laborales y de seguridad social aplicables.\n\n"
             f"PRIMERA — OBJETO, CARGO, FUNCIONES Y LUGAR DE PRESTACIÓN. EL TRABAJADOR/A se obliga a prestar servicios personales, subordinados y remunerados "
@@ -607,7 +607,7 @@ def build_document_body(
             "Se extienden dos ejemplares de idéntico tenor, uno para cada parte, sin perjuicio de los trámites de registro, comunicación u homologación que correspondan.\n\n"
             "EL TRABAJADOR/A\nFirma: ____________________________________\nAclaración: _________________________________\nC.I. N.º: ___________________________________\n\n"
             "EL EMPLEADOR / REPRESENTANTE LEGAL\nFirma: ____________________________________\nAclaración: _________________________________\nCargo: _____________________________________\n\n"
-            "Antes de firmar, completar los datos señalados, verificar la modalidad, salario, jornada, período de prueba y requisitos específicos con el modelo oficial vigente del MTESS."
+            "Antes de firmar, verificar los datos, la modalidad, salario, jornada, período de prueba y requisitos específicos con el modelo oficial vigente del MTESS."
         ),
         "contrato_tiempo_parcial": (
             "BORRADOR DE CONTRATO A TIEMPO PARCIAL — REVISIÓN PROFESIONAL OBLIGATORIA.\n\n"
