@@ -170,9 +170,9 @@ if (certificateForm) {
       option.disabled = !visible;
       if (visible && !first) first = option;
     });
-    if (selectedOption(employeeSelect)?.dataset.company !== companyId && first) employeeSelect.value = employeeSelect.dataset.searchableEntity ? '' : first.value;
+    if (selectedOption(employeeSelect)?.dataset.company !== companyId) employeeSelect.value = employeeSelect.dataset.searchableEntity ? '' : (first?.value || '');
     const company = selectedOption(companySelect);
-    if (company?.dataset.city) cityInput.value = company.dataset.city;
+    if (!certificateForm.hasAttribute('data-employee-autofill') && company?.dataset.city) cityInput.value = company.dataset.city;
     loadEmployee();
     if (typeInput.value === 'notificacion_preaviso') refreshPreavisoCalculations();
   };
@@ -189,9 +189,11 @@ if (certificateForm) {
   const loadEmployee = () => {
     const employee = selectedOption(employeeSelect);
     if (!employee) return;
-    positionInput.value = employee.dataset.position || '';
-    admissionInput.value = employee.dataset.admission || '';
-    salaryInput.value = employee.dataset.salary || '0';
+    if (!certificateForm.hasAttribute('data-employee-autofill')) {
+      positionInput.value = employee.dataset.position || '';
+      admissionInput.value = employee.dataset.admission || '';
+      salaryInput.value = employee.dataset.salary || '0';
+    }
     const salaryBasic = document.querySelector('#certificateSalaryBasic');
     if (salaryBasic) salaryBasic.value = employee.dataset.salary || '0';
     if (!amountInput.value) amountInput.value = employee.dataset.salary || '0';
@@ -210,6 +212,7 @@ if (certificateForm) {
     });
     clearNewVacationRequestFields();
     updatePreview();
+    certificateForm.dispatchEvent(new Event('certificate:context'));
   };
   const updateSpecificFields = () => {
     const type = typeInput.value;
@@ -246,19 +249,19 @@ if (certificateForm) {
     const type = typeInput.value;
     const company = selectedOption(companySelect)?.dataset.name || '[NOMBRE DE LA EMPRESA]';
     const employeeOption = selectedOption(employeeSelect);
-    const employee = employeeOption?.dataset.name || '[NOMBRE COMPLETO DEL FUNCIONARIO]';
-    const documentNumber = employeeOption?.dataset.document || '[N.º DE C.I.]';
-    const employeeAddress = employeeOption?.dataset.address || '[DOMICILIO DEL FUNCIONARIO]';
+    const employee = (certificateForm.elements.namedItem('employee_name')?.value ?? employeeOption?.dataset.name) || '[NOMBRE COMPLETO DEL FUNCIONARIO]';
+    const documentNumber = (certificateForm.elements.namedItem('employee_document')?.value ?? employeeOption?.dataset.document) || '[N.º DE C.I.]';
+    const employeeAddress = (certificateForm.elements.namedItem('employee_address')?.value ?? employeeOption?.dataset.address) || '[DOMICILIO DEL FUNCIONARIO]';
     const companyAddress = companySelect.value ? (selectedOption(companySelect)?.dataset.address || '[DOMICILIO DE LA EMPRESA]') : '[DOMICILIO DE LA EMPRESA]';
     const identity = documentNumber ? employee + ', con C.I. N.º ' + documentNumber : employee;
     const role = positionInput.value || '[CARGO]';
     const admission = admissionInput.value ? longDate(admissionInput.value) : '[FECHA DE INGRESO]';
     const salaryRaw = Math.max(0, Number(salaryInput.value || 0));
-    const salary = salaryRaw ? 'Gs. ' + formatGs(salaryRaw) : 'remuneración registrada en el legajo';
+    const salary = salaryRaw ? formatGs(salaryRaw) : 'remuneración registrada en el legajo';
     const recipient = recipientInput?.value || 'Encargado/a de Recursos Humanos';
     const value = name => (document.querySelector('[name="' + name + '"]')?.value || '').trim();
     const num = name => Math.max(0, Number(value(name) || 0));
-    const money = amount => 'Gs. ' + formatGs(amount);
+    const money = amount => formatGs(amount);
     const from = shortDate(leaveStartInput?.value);
     const until = shortDate(leaveEndInput?.value);
     const startPeriod = shortDate(periodStartInput?.value);
@@ -476,12 +479,14 @@ if (certificateForm) {
   function scheduleCanonicalCertificatePreview(type) {
     const sequence = ++canonicalCertificatePreviewSequence;
     if (canonicalCertificatePreviewTimer !== null) window.clearTimeout(canonicalCertificatePreviewTimer);
-    if (!['certificado_trabajo_a', 'certificado_trabajo_b', 'constancia'].includes(type)) return;
+    if (!['certificado_trabajo_a', 'certificado_trabajo_b', 'constancia', 'contrato_trabajo'].includes(type)) return;
+    if (type === 'contrato_trabajo' && contractFullEditor?.value.trim()) return;
     // Sin empresa y funcionario no existe un documento canónico; mantener el modelo local con marcadores claros.
     if (!companySelect.value || !employeeSelect.value) return;
     canonicalCertificatePreviewTimer = window.setTimeout(async () => {
       const formData = new FormData(certificateForm);
       formData.set('intent', 'preview');
+      if (!formData.get('salary')) formData.set('salary', '0');
       try {
         const response = await fetch(certificateForm.action || '/app/certificates', {
           method: 'POST',
@@ -496,7 +501,7 @@ if (certificateForm) {
           typeInput.value !== type ||
           typeof result.body !== 'string'
         ) return;
-        renderCertificatePreviewBody(type, result.body);
+        renderCertificatePreviewBody(type, type === 'contrato_trabajo' ? result.body.replace(/\bCOMPLETAR\b/g, 'Pendiente') : result.body);
         if (result.title) document.querySelector('#certificatePreviewTitle').textContent = result.title.toUpperCase();
       } catch (error) {
         // La vista local sigue disponible si falla la sincronización con el servidor.
@@ -510,8 +515,8 @@ if (certificateForm) {
     const companyOption = selectedOption(companySelect);
     const employeeOption = selectedOption(employeeSelect);
     const company = companyOption?.dataset.name || '[NOMBRE DE LA EMPRESA]';
-    const employee = employeeOption?.dataset.name || '[NOMBRE COMPLETO DEL FUNCIONARIO]';
-    const employeeDocument = employeeOption?.dataset.document || '[N.º DE C.I.]';
+    const employee = (certificateForm.elements.namedItem('employee_name')?.value ?? employeeOption?.dataset.name) || '[NOMBRE COMPLETO DEL FUNCIONARIO]';
+    const employeeDocument = (certificateForm.elements.namedItem('employee_document')?.value ?? employeeOption?.dataset.document) || '[N.º DE C.I.]';
     const companyColor = companyOption?.dataset.primary || '#0B2D78';
 
     document.querySelector('#certificatePreviewTitle').textContent = title.toUpperCase();
@@ -836,11 +841,13 @@ if (certificateForm) {
       if (contractGenerationStatus) contractGenerationStatus.textContent = 'Seleccioná una empresa y un funcionario antes de generar el contrato.';
       return;
     }
+    if (!certificateForm.dispatchEvent(new Event('certificate:validate', {cancelable: true}))) return;
     if (contractGenerationStatus) contractGenerationStatus.textContent = 'Generando el contrato con los datos ingresados…';
     generateFullContractButton.disabled = true;
+    const generationInputs = JSON.stringify([...new FormData(certificateForm)].filter(([key]) => key !== 'contract_text'));
     try {
       const formData = new FormData(certificateForm);
-      formData.set('intent', 'preview');
+      formData.set('intent', 'generate_contract');
       formData.delete('contract_text');
       const response = await fetch(certificateForm.action || '/app/certificates', {
         method: 'POST',
@@ -850,6 +857,10 @@ if (certificateForm) {
       });
       let payload = {};
       try { payload = await response.json(); } catch (_) { payload = {}; }
+      if (generationInputs !== JSON.stringify([...new FormData(certificateForm)].filter(([key]) => key !== 'contract_text'))) {
+        if (contractGenerationStatus) contractGenerationStatus.textContent = 'Los datos cambiaron durante la generación. Revisalos y volvé a generar el contrato.';
+        return;
+      }
       if (!response.ok) {
         if (contractGenerationStatus) contractGenerationStatus.textContent = payload.detail || 'No se pudo generar el contrato. Revisá los campos requeridos.';
         return;
@@ -859,6 +870,8 @@ if (certificateForm) {
         contractFullEditor.disabled = false;
       }
       contractFullEditorWrap?.classList.remove('hidden');
+      const staleField = certificateForm.elements.namedItem('contract_text_stale');
+      if (staleField) staleField.value = '';
       if (contractGenerationStatus) contractGenerationStatus.textContent = 'Contrato completo generado. Revisá las cláusulas y editá el texto antes de guardarlo.';
       updatePreview();
     } catch (_) {
@@ -873,6 +886,7 @@ if (certificateForm) {
       if (contractGenerationStatus) contractGenerationStatus.textContent = 'Marcá la confirmación de firma recibida antes de registrar el estado Firmado.';
     }
   });
+  certificateForm.addEventListener('certificate:updated', updatePreview);
 
   document.querySelectorAll('[data-certificate-type]').forEach(button => button.addEventListener('click', () => {
     document.querySelectorAll('[data-certificate-type]').forEach(item => item.classList.toggle('active', item === button));
