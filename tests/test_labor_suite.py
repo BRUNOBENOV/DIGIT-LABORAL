@@ -1498,3 +1498,56 @@ def test_v24_salary_edit_preserves_documented_manual_ips_base(web_case):
     assert saved.ips_employee == 270_000
     assert saved.net == 3_330_000
     assert db.query(PayrollComplianceDetail).filter_by(payroll_line_id=line.id).count() == 1
+
+
+
+def test_live_salary_calculator_saves_attendance_and_payment_for_reop(web_case):
+    """The active ux_v24 POST, not dead core handler, must retain these fields."""
+    import json
+    from sqlalchemy import select
+    from app.models import CalculationRecord
+    client, db, _, company, employee, _other = web_case
+    response=client.post(
+        "/app/calculations",
+        data={
+            "csrf_token": token(client), "calculation_type": "salary",
+            "company_id": str(company.id), "employee_id": str(employee.id),
+            "reference_period": "2026-10", "gross": "3500000",
+            "ips_base": "3500000", "apply_ips": "on",
+            "days_worked": "22", "hours_worked": "176.5",
+            "payment_method": "Transferencia",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303, response.text
+    db.expire_all()
+    item=db.scalar(select(CalculationRecord).where(
+        CalculationRecord.company_id == company.id,
+        CalculationRecord.employee_id == employee.id,
+        CalculationRecord.reference_period == "2026-10",
+        CalculationRecord.calculation_type == "salary",
+    ))
+    assert item is not None
+    saved=json.loads(item.input_json)
+    assert saved["days_worked"] == 22
+    assert saved["hours_worked"] == "176.50"
+    assert saved["payment_method"] == "Transferencia"
+
+
+def test_live_salary_calculator_rejects_invalid_actual_workdays(web_case):
+    from sqlalchemy import select, func
+    from app.models import CalculationRecord
+    client, db, _, company, employee, _other = web_case
+    response=client.post(
+        "/app/calculations",
+        data={
+            "csrf_token": token(client), "calculation_type": "salary",
+            "company_id": str(company.id), "employee_id": str(employee.id),
+            "reference_period": "2026-10", "gross": "3500000",
+            "ips_base": "3500000", "apply_ips": "on",
+            "days_worked": "32", "hours_worked": "176",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 422
+    assert db.scalar(select(func.count()).select_from(CalculationRecord)) == 0
