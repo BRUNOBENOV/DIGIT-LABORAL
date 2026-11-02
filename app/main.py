@@ -5598,6 +5598,9 @@ def save_calculation(
     total_remunerations: Annotated[int, Form()] = 0,
     days: Annotated[float, Form()] = 0,
     notes: Annotated[str, Form()] = "",
+    days_worked: Annotated[int | None, Form()] = None,
+    hours_worked: Annotated[Decimal | None, Form()] = None,
+    payment_method: Annotated[str, Form()] = "",
     user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
     db: Session = Depends(get_db),
 ):
@@ -5646,6 +5649,17 @@ def save_calculation(
                 if minimum_scale.get("effective_from") else None
             ),
         })
+    if calculation_type == "salary":
+        if days_worked is not None:
+            if not (0 <= days_worked <= 31):
+                raise HTTPException(422, "Días trabajados fuera del rango 0-31.")
+            inputs["days_worked"] = days_worked
+        if hours_worked is not None:
+            if not hours_worked.is_finite() or not Decimal("0") <= hours_worked <= Decimal("744"):
+                raise HTTPException(422, "Horas ordinarias reales fuera del rango 0-744.")
+            inputs["hours_worked"] = str(hours_worked)
+        if payment_method.strip():
+            inputs["payment_method"] = clean_text(payment_method, max_length=100)
     item = CalculationRecord(
         company_id=company.id,
         employee_id=employee.id if employee else None,
@@ -9436,6 +9450,7 @@ def save_salary_import_details(
     days_worked: Annotated[int, Form()] = 0,
     hours_worked: Annotated[Decimal, Form()] = Decimal("0"),
     payment_method: Annotated[str, Form()] = "",
+    confirmed: Annotated[str, Form()] = "",
     user: User = Depends(require_roles("administrador", "contador")),
     db: Session = Depends(get_db),
 ):
@@ -9443,6 +9458,8 @@ def save_salary_import_details(
     from calendar import monthrange
     from .approved_salary_import import APPROVED, SALARY_TYPES, calculation_fingerprint
 
+    if confirmed != "si":
+        raise HTTPException(400, "Confirmá que los datos de asistencia y pago son reales.")
     item = db.get(CalculationRecord, calculation_id)
     if item is None:
         raise HTTPException(404, "Cálculo no encontrado.")
