@@ -75,8 +75,10 @@ if (calculatorWorkbench) {
     const vacationDaily = numberValue('calcVacationSalary') / 30;
     setMoney('calcVacationDailyResult', vacationDaily); setMoney('calcVacationResult', vacationDaily * numberValue('calcVacationDays'));
 
-    const noticeDaily = numberValue('calcNoticeSalary') / 30;
-    setMoney('calcNoticeDailyResult', noticeDaily); setMoney('calcNoticeResult', noticeDaily * numberValue('calcNoticeDays'));
+    if (!document.querySelector('[data-notice-auto]')) {
+      const noticeDaily = numberValue('calcNoticeSalary') / 30;
+      setMoney('calcNoticeDailyResult', noticeDaily); setMoney('calcNoticeResult', noticeDaily * numberValue('calcNoticeDays'));
+    }
   };
   calculatorWorkbench.querySelectorAll('input').forEach(input => input.addEventListener('input', calculateAll));
   calculatorWorkbench.querySelectorAll('input[type="checkbox"]').forEach(input => input.addEventListener('change', calculateAll));

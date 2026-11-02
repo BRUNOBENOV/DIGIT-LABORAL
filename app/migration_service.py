@@ -82,6 +82,9 @@ def run_migrations() -> None:
         # A fresh installation is built from current metadata and stamped once.
         # Subsequent releases will execute real incremental Alembic upgrades.
         _reconcile_legacy_schema()
+        from .notice_rule_schema import install_notice_rules
+        with migration_engine.begin() as connection:
+            install_notice_rules(connection)
         command.stamp(cfg, "head")
         logger.info("Fresh database created and stamped at Alembic head")
         return

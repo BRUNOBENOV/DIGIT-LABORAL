@@ -10,6 +10,18 @@ jobs:
   tests:
     runs-on: ubuntu-latest
     timeout-minutes: 12
+    services:
+      notice-postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: notice_test
+          POSTGRES_PASSWORD: synthetic-test-only
+          POSTGRES_DB: notice_migrations
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U notice_test -d notice_migrations"
+          --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       DATABASE_URL: sqlite:////tmp/digit-ci-unused.db
       MIGRATION_DATABASE_URL: sqlite:////tmp/digit-ci-unused.db
@@ -17,6 +29,7 @@ jobs:
       CSRF_ENABLED: "true"
       DEMO_ADMIN_PASSWORD: synthetic-test-only
       DEMO_SUPERADMIN_PASSWORD: synthetic-test-only
+      NOTICE_RULES_TEST_DATABASE_URL: postgresql+psycopg://notice_test:synthetic-test-only@127.0.0.1:5432/notice_migrations
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

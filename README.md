@@ -1,6 +1,14 @@
-# Digit Laboral 2.6.77
+# Digit Laboral 2.6.78
 
 Plataforma de gestión y cumplimiento laboral para estudios contables paraguayos.
+
+## Novedades de la versión 2.6.78
+
+- Cálculo → Preaviso carga los días desde el ingreso del funcionario y una fecha de referencia completa. Aplicar muestra el plazo y el importe; cambiar la fecha actualiza la propuesta con una consulta al servidor. El promedio sugerido del legajo permanece editable y se identifica como una base que requiere revisión.
+- Los días son de solo lectura. Un administrador puede registrar una excepción con fundamento obligatorio; quedan registrados los días automáticos, la excepción y su autor. Guardar y aprobar verifican las fuentes y los importes sin modificar cálculos históricos.
+- La migración Alembic `0021_notice_rules` instala `notice_rule_sets` y `notice_rule_bands`, con vigencia, fuente legal, límites inclusivos por aniversario y RLS de lectura. La inicialización de una base nueva también instala los datos. No se agregan dependencias de producción.
+- Configuración legal: conservar las versiones utilizadas. Una modificación normativa debe incorporarse mediante una migración con un código nuevo y fechas de vigencia sin superposición; no reemplazar el archivo publicado `app/data/notice_rules.json` ni sobrescribir escalas históricas. La propuesta privada consulta la versión vigente en la base; los calculadores puros conservan la referencia publicada y comparten el mismo motor de aniversarios.
+- Los clientes antiguos que envían solo `AAAA-MM` usan explícitamente el último día del mes. Una referencia inválida, un ingreso posterior o una escala ausente bloquean el guardado con un mensaje; no producen un plazo de cero. La referencia no inicia un preaviso, registra un egreso ni determina por sí sola su procedencia.
 
 ## Novedades de la versión 2.6.77
 
