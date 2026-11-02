@@ -317,7 +317,6 @@
     docNumberLabel?.classList.add('contract-simple-hidden');
     sectionHeadings.forEach(n => n.classList.add('contract-simple-hidden'));
     if (originalNodes.identity) originalNodes.identity.open = false;
-    resetSuggestions();
     acceptDossier();
   }
   function deactivate() {
@@ -381,8 +380,13 @@
   });
   for (const key of Object.keys(checkboxes)) {
     source(key)?.addEventListener('change', () => {
-      if (checkboxes[key].checked && valid(source(key)?.value)) candidates[key] = source(key).value;
+      const input = source(key);
+      if (valid(input?.value)) {
+        candidates[key] = input.value;
+        if (!checkboxes[key].checked) input.value = '';
+      }
       refresh();
+      document.getElementById('refreshCertificatePreview')?.click();
     });
   }
   const signatureAck = source('contract_signature_acknowledged');
