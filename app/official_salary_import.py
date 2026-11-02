@@ -105,7 +105,7 @@ def _source(db: Session, company, period: str):
 def prepare_import(db: Session, company, period: str, authority: str, *,
                    payment_code: str = "", other_category: str = "",
                    rei_category: str = "", name_order: str = "",
-                   source_type: str = "payroll") -> tuple[list[list], list[str]]:
+                   source_type: str = "payroll", employee_id: int | None = None) -> tuple[list[list], list[str]]:
     """Preflight integral: devuelve filas y TODOS los errores; el archivo se bloquea ante cualquier error."""
     if authority not in {"REOP", "REI"}:
         raise SalaryImportError(["Sistema de destino inválido."])
@@ -113,13 +113,15 @@ def prepare_import(db: Session, company, period: str, authority: str, *,
     if not re.fullmatch(r"20\d{2}-(0[1-9]|1[0-2])", period or ""):
         raise SalaryImportError(["Ingresá un período válido AAAA-MM."])
     try:
-        effective_source = choose_salary_source(db, company.id, period, source_type)
+        effective_source = choose_salary_source(db, company.id, period, source_type, employee_id=employee_id)
     except ValueError as exc:
         raise SalaryImportError([str(exc)]) from exc
     if effective_source == "approved":
-        records, source_errors, _details = approved_salary_records(db, company, period, authority=authority)
+        records, source_errors, _details = approved_salary_records(db, company, period, authority=authority, employee_id=employee_id)
     else:
         _payroll, records = _source(db, company, period)
+        if employee_id is not None:
+            records = [record for record in records if record[1].id == employee_id]
         source_errors = []
     start = date.fromisoformat(period + "-01")
     end = date(start.year, start.month, monthrange(start.year, start.month)[1])

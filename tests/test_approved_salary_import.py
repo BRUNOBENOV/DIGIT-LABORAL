@@ -126,3 +126,84 @@ def test_rei_uses_preserved_ips_base_from_approved_calculation():
     assert rows[0][7] == 3000000
     assert rows[0][3] == "PEREZ GOMEZ"
     assert rows[0][4] == "JUAN LUIS"
+
+
+
+def test_rei_only_requires_days_not_reop_hours_or_payment():
+    item, employee, company, detail = case()
+    detail.hours_worked = Decimal("0")
+    detail.payment_method = ""
+    db = FakeSession([item], employee, detail)
+    rows, errors = exporter.prepare_import(
+        db, company, "2026-10", "REI", name_order="apellido_primero",
+        rei_category="E", source_type="approved", employee_id=employee.id,
+    )
+    assert errors == []
+    assert len(rows) == 1
+    assert rows[0][6] == 22
+    assert rows[0][7] == 3000000
+    reop_rows, reop_errors = exporter.prepare_import(
+        db, company, "2026-10", "REOP", payment_code="1",
+        source_type="approved", employee_id=employee.id,
+    )
+    assert len(reop_rows) == 1
+    assert any("horas ordinarias" in e for e in reop_errors)
+    assert any("forma de pago" in e for e in reop_errors)
+
+
+def test_legacy_salary_ips_rate_comes_from_approved_inputs():
+    item, employee, company, detail = case()
+    saved = json.loads(item.result_json)
+    saved.pop("ips_rate")
+    item.result_json = json.dumps(saved)
+    input_data = json.loads(item.input_json)
+    input_data["ips_rate"] = 9.0
+    item.input_json = json.dumps(input_data)
+    detail.source_sha256 = source.calculation_fingerprint(item)
+    db = FakeSession([item], employee, detail)
+    rows, errors = exporter.prepare_import(
+        db, company, "2026-10", "REOP", payment_code="1",
+        source_type="approved", employee_id=employee.id,
+    )
+    assert errors == []
+    assert rows[0][25] == 270000
+
+
+def test_ips_opt_out_is_not_reinterpreted_as_deduction():
+    item, employee, company, detail = case()
+    inputs = json.loads(item.input_json)
+    inputs.update({"ips_rate": 9, "apply_ips": False})
+    item.input_json = json.dumps(inputs)
+    result = json.loads(item.result_json)
+    result["ips_employee"] = result["discounts"] = 0
+    result["net"] = result["gross_computable"]
+    result.pop("ips_rate")
+    item.result_json = json.dumps(result)
+    item.amount = result["net"]
+    detail.source_sha256 = source.calculation_fingerprint(item)
+    db = FakeSession([item], employee, detail)
+    rows, errors = exporter.prepare_import(
+        db, company, "2026-10", "REOP", payment_code="1", source_type="approved",
+        employee_id=employee.id,
+    )
+    assert errors == []
+    assert rows[0][25] == 0
+
+
+def test_explicit_employee_scope_is_present_in_approval_query():
+    item, employee, company, detail = case()
+
+    class RecordingSession(FakeSession):
+        def __init__(self):
+            super().__init__([item], employee, detail)
+            self.statements = []
+        def scalars(self, stmt):
+            self.statements.append(str(stmt))
+            return super().scalars(stmt)
+
+    db = RecordingSession()
+    _source, errors, details = source.approved_salary_records(
+        db, company, "2026-10", employee_id=employee.id,
+    )
+    assert not errors and len(details) == 1
+    assert any("calculation_records.employee_id =" in q for q in db.statements)

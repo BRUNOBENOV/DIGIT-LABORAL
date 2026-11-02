@@ -9426,6 +9426,7 @@ def salary_import_page(
     rei_category: str = "",
     name_order: str = "",
     source_type: str = "auto",
+    employee_id: OptionalQueryId = None,
     user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ):
@@ -9439,17 +9440,22 @@ def salary_import_page(
         Company, request=request
     ) if ids else []
     company = company_allowed(db, user, company_id) if company_id else None
+    selected_employee = db.get(Employee, employee_id) if employee_id is not None else None
+    if employee_id is not None and (
+        selected_employee is None or company is None or selected_employee.company_id != company.id
+    ):
+        raise HTTPException(404, "El funcionario no pertenece a la empresa seleccionada.")
     period = period or current_paraguay_date().strftime("%Y-%m")
     authority = authority if authority in {"REOP", "REI"} else "REOP"
     preview = bool(company and request.query_params.get("period"))
-    source_summary = salary_source_summary(db, company.id, period) if company else None
+    source_summary = salary_source_summary(db, company.id, period, employee_id=employee_id) if company else None
     try:
-        effective_source = choose_salary_source(db, company.id, period, source_type) if company else "payroll"
+        effective_source = choose_salary_source(db, company.id, period, source_type, employee_id=employee_id) if company else "payroll"
     except ValueError as exc:
         raise HTTPException(422, "Origen de salarios no válido.") from exc
     diagnostics = []
     if preview and effective_source == "approved":
-        _source_rows, _source_errors, diagnostics = approved_salary_records(db, company, period, authority=authority)
+        _source_rows, _source_errors, diagnostics = approved_salary_records(db, company, period, authority=authority, employee_id=employee_id)
     errors: list[str] = []
     rows: list[list] = []
     if preview:
@@ -9457,7 +9463,7 @@ def salary_import_page(
             rows, errors = prepare_import(
                 db, company, period, authority, payment_code=payment_code,
                 other_category=other_category, rei_category=rei_category,
-                name_order=name_order, source_type=source_type,
+                name_order=name_order, source_type=source_type, employee_id=employee_id,
             )
         except SalaryImportError as exc:
             errors = exc.errors
@@ -9479,6 +9485,7 @@ def salary_import_page(
         item_count=len(rows), errors=errors,
         source_type=source_type, effective_source=effective_source,
         source_summary=source_summary, diagnostics=diagnostics,
+        employee_id=employee_id, selected_employee=selected_employee,
         preview_headers=preview_headers, preview_rows=preview_rows,
     )
 
@@ -9536,12 +9543,20 @@ def save_salary_import_details(
     if not hours_worked.is_finite() or not (Decimal("0") <= hours_worked <= Decimal("744")):
         raise HTTPException(422, "Las horas trabajadas deben estar entre 0 y 744.")
     payment_method = clean_text(payment_method, max_length=100)
-    if not payment_method:
-        raise HTTPException(422, "Completá la forma de pago real.")
     detail = db.scalar(select(SalaryImportDetail).where(
         SalaryImportDetail.calculation_record_id == item.id,
         SalaryImportDetail.company_id == company.id,
     ))
+    if authority == "REI":
+        # REI no requiere horario ni medio de pago. No destruir datos REOP
+        # ya verificados cuando el usuario guarda solo las jornadas IPS.
+        if detail is not None:
+            if not payment_method:
+                payment_method = detail.payment_method
+            if hours_worked == 0:
+                hours_worked = detail.hours_worked
+    elif not payment_method:
+        raise HTTPException(422, "Completá la forma de pago real para REOP.")
     if detail is None:
         detail = SalaryImportDetail(company_id=company.id, calculation_record_id=item.id)
         db.add(detail)
@@ -9557,7 +9572,7 @@ def save_salary_import_details(
     system = authority if authority in {"REOP", "REI"} else "REOP"
     return RedirectResponse(
         f"/app/compliance/salary-import?company_id={company.id}&period={item.reference_period}"
-        f"&authority={system}&source_type=approved&details_saved=1", status_code=303,
+        f"&authority={system}&source_type=approved&employee_id={item.employee_id}&details_saved=1", status_code=303,
     )
 
 
@@ -9571,6 +9586,7 @@ def salary_import_export(
     rei_category: Annotated[str, Form()] = "",
     name_order: Annotated[str, Form()] = "",
     source_type: Annotated[str, Form()] = "auto",
+    employee_id: Annotated[int | None, Form()] = None,
     confirmed: Annotated[str, Form()] = "",
     user: User = Depends(require_roles("administrador", "contador")),
     db: Session = Depends(get_db),
@@ -9584,11 +9600,15 @@ def salary_import_export(
     if confirmed != "si":
         raise HTTPException(400, "Confirmá la revisión antes de descargar.")
     company = company_allowed(db, user, company_id)
+    if employee_id is not None:
+        chosen = db.get(Employee, employee_id)
+        if chosen is None or chosen.company_id != company.id:
+            raise HTTPException(404, "Funcionario ajeno a la empresa.")
     try:
         rows, errors = prepare_import(
             db, company, period, authority, payment_code=payment_code,
             other_category=other_category, rei_category=rei_category,
-            name_order=name_order, source_type=source_type,
+            name_order=name_order, source_type=source_type, employee_id=employee_id,
         )
     except SalaryImportError as exc:
         raise HTTPException(409, detail=" | ".join(exc.errors[:12])) from exc
@@ -9600,7 +9620,8 @@ def salary_import_export(
     media = MIME_REOP if authority == "REOP" else MIME_REI
     extension = "xlsx" if authority == "REOP" else "txt"
     safe_ruc = re.sub(r"[^A-Za-z0-9_-]+", "-", company.ruc or str(company.id))
-    file_name = f"{authority.lower()}_salarios_{safe_ruc}_{period}.{extension}"
+    scope = f"_legajo-{employee_id}" if employee_id is not None else ""
+    file_name = f"{authority.lower()}_salarios_{safe_ruc}_{period}{scope}.{extension}"
     batch = register_batch(
         db, company=company, authority=authority, batch_type="Importación de salarios",
         period=period, content=content, created_by=user.email,
@@ -9608,9 +9629,10 @@ def salary_import_export(
     batch.file_name = file_name
     batch.item_count = len(rows)
     from .approved_salary_import import choose_salary_source
-    effective_source = choose_salary_source(db, company.id, period, source_type)
+    effective_source = choose_salary_source(db, company.id, period, source_type, employee_id=employee_id)
     batch.payload_json = json.dumps({
         "source_type": effective_source,
+        "employee_scope_id": employee_id,
         "format": "REOP-32-col-2025" if authority == "REOP" else "REI-txt-referencia-2016",
         "payment_code": payment_code if authority == "REOP" else None,
         "other_category": other_category if authority == "REOP" else None,
