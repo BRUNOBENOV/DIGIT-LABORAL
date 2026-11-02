@@ -220,6 +220,30 @@ def _review_data(inputs: dict, batch: IntegrationBatch | None,
     return values
 
 
+def salary_excluded_records(db: Session, company_id: int, period: str) -> list[dict]:
+    """Latest non-approved salary snapshots per employee, for explicit partial-export consent.
+
+    Informational only. Older approved snapshots are NEVER revived over a
+    newer draft or annulment. The caller must show this list and require a
+    positive acknowledgement before exporting the approved subset.
+    """
+    rows = list(db.scalars(
+        select(CalculationRecord).where(
+            CalculationRecord.company_id == company_id,
+            CalculationRecord.reference_period == period,
+            CalculationRecord.calculation_type.in_(SALARY_TYPES),
+            CalculationRecord.employee_id.is_not(None),
+        ).order_by(CalculationRecord.created_at.desc(), CalculationRecord.id.desc())
+    ))
+    latest = {}
+    for row in rows:
+        latest.setdefault(row.employee_id, row)
+    return [
+        {"employee_id": row.employee_id, "calculation_id": row.id, "status": row.status}
+        for row in latest.values() if row.status not in APPROVED
+    ]
+
+
 def approved_salary_records(db: Session, company, period: str, *, authority: str = "REOP", employee_id: int | None = None) -> tuple[list[tuple], list[str], list[dict]]:
     """Selecciona última versión por legajo, con advertencias y sin resucitar anulados."""
     query = select(CalculationRecord).where(
@@ -266,7 +290,10 @@ def approved_salary_records(db: Session, company, period: str, *, authority: str
     for id_, item in sorted(selected.items(), key=lambda pair: pair[0]):
         employee = employee_map.get(id_)
         if item.status not in APPROVED:
-            errors.append(f"Legajo {id_}: el cálculo más reciente #{item.id} está «{item.status}»; no se reutiliza una aprobación anterior.")
+            if employee_id is not None:
+                errors.append(f"Legajo {id_}: el cálculo más reciente #{item.id} está «{item.status}»; no se reutiliza una aprobación anterior.")
+            # Company-level exports show excluded drafts separately and
+            # enforce consent for the reduced selection at the download gate.
             continue
         if employee is None:
             errors.append(f"Cálculo #{item.id}: el funcionario ya no pertenece a esta empresa.")
