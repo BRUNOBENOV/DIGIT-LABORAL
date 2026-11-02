@@ -110,7 +110,7 @@ def prepare_import(db: Session, company, period: str, authority: str, *,
     if authority not in {"REOP", "REI"}:
         raise SalaryImportError(["Sistema de destino inválido."])
     from .approved_salary_import import approved_salary_records, choose_salary_source
-    if not re.fullmatch(r"20\\d{2}-(0[1-9]|1[0-2])", period or ""):
+    if not re.fullmatch(r"20\d{2}-(0[1-9]|1[0-2])", period or ""):
         raise SalaryImportError(["Ingresá un período válido AAAA-MM."])
     try:
         effective_source = choose_salary_source(db, company.id, period, source_type)
