@@ -157,9 +157,18 @@ def _professional_line(item: CalculationRecord, inputs: dict, saved: dict, error
         total_discounts=_whole(saved.get("discounts"), "descuentos", errors),
         net=_whole(saved.get("net"), "neto", errors),
     )
+    raw_extra_hours = (inputs.get("day_extra_hours"), inputs.get("night_extra_hours"))
+    try:
+        extra_hours = sum((Decimal(str(value or "0")) for value in raw_extra_hours), Decimal("0"))
+        if not extra_hours.is_finite() or extra_hours < 0 or extra_hours > 744:
+            raise ValueError
+    except (ValueError, TypeError):
+        errors.append("horas extraordinarias guardadas inválidas")
+        extra_hours = Decimal("0")
     complements = dict(overtime_day=values["overtime_day"], overtime_night=values["overtime_night"],
                        night_surcharge=values["night_surcharge"], holidays=values["holidays"],
-                       family_allowance=values["family_allowance"])
+                       family_allowance=values["family_allowance"], extra_hours=extra_hours,
+                       extra_hours_documented=bool(any(value not in (None, "") for value in raw_extra_hours)))
     return line, complements
 
 
@@ -178,7 +187,7 @@ def _legacy_line(item: CalculationRecord, inputs: dict, saved: dict, errors: lis
         total_discounts=_whole(saved.get("discounts"), "total de descuentos", errors),
         net=_whole(saved.get("net"), "neto", errors),
     )
-    return line, dict(overtime_day=0, overtime_night=0, night_surcharge=0, holidays=0, family_allowance=0)
+    return line, dict(overtime_day=0, overtime_night=0, night_surcharge=0, holidays=0, family_allowance=0, extra_hours=Decimal("0"), extra_hours_documented=False)
 
 
 def calculation_fingerprint(item: CalculationRecord) -> str:
@@ -209,7 +218,7 @@ def _review_data(inputs: dict, batch: IntegrationBatch | None,
     return values
 
 
-def approved_salary_records(db: Session, company, period: str) -> tuple[list[tuple], list[str], list[dict]]:
+def approved_salary_records(db: Session, company, period: str, *, authority: str = "REOP") -> tuple[list[tuple], list[str], list[dict]]:
     """Selecciona última versión por legajo, con advertencias y sin resucitar anulados."""
     rows = list(db.scalars(select(CalculationRecord).where(
         CalculationRecord.company_id == company.id,
@@ -280,7 +289,7 @@ def approved_salary_records(db: Session, company, period: str) -> tuple[list[tup
             hours = Decimal(str(hours_raw)) if hours_raw not in (None, "") else Decimal(0)
         except (TypeError, ValueError):
             hours = Decimal(0)
-        if not hours.is_finite() or hours <= 0:
+        if authority == "REOP" and (not hours.is_finite() or hours <= 0):
             item_errors.append("faltan horas ordinarias efectivamente trabajadas (no usar divisor horario del salario)")
         if not supplementary.get("payment_method"):
             item_errors.append("falta forma de pago verificada")
@@ -309,6 +318,8 @@ def approved_salary_records(db: Session, company, period: str) -> tuple[list[tup
             family_allowance=complements["family_allowance"],
             other_income_detail=0,
             vacation_pay=0,
+            extra_hours=complements["extra_hours"],
+            extra_hours_documented=complements["extra_hours_documented"],
         )
         for error in item_errors:
             errors.append(f"{employee.full_name} (cálculo #{item.id}): {error}.")
