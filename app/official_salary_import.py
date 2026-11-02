@@ -105,7 +105,7 @@ def _source(db: Session, company, period: str):
 def prepare_import(db: Session, company, period: str, authority: str, *,
                    payment_code: str = "", other_category: str = "",
                    rei_category: str = "", name_order: str = "",
-                   source_type: str = "auto") -> tuple[list[list], list[str]]:
+                   source_type: str = "payroll") -> tuple[list[list], list[str]]:
     """Preflight integral: devuelve filas y TODOS los errores; el archivo se bloquea ante cualquier error."""
     if authority not in {"REOP", "REI"}:
         raise SalaryImportError(["Sistema de destino inválido."])
