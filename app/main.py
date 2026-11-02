@@ -5733,14 +5733,40 @@ def _revalidate_calculation_before_approval(item: CalculationRecord, db: Session
             )
         except HTTPException as exc:
             raise HTTPException(409, "Las entradas del cálculo guardado ya no superan las validaciones actuales. Recalculá antes de aprobar.") from exc
-        results_match = (
-            all(current_results.get(key) == value for key, value in saved_results.items())
-            if legacy_inputs else current_results == saved_results
+        # Calculadora v2.4 guardaba la tasa IPS en input_json, pero no
+        # repetía el campo ips_rate dentro de result_json (cinco campos
+        # salariales históricos). La versión actual sí lo incorpora.
+        # Se permiten EXCLUSIVAMENTE esos dos esquemas conocidos: nunca se
+        # omite verificar un concepto económico ni se toleran campos
+        # inesperados. La compatibilidad no altera registros históricos.
+        historic_salary_schema = {
+            "gross_computable", "ips_base", "ips_employee", "discounts", "net",
+        }
+        is_v24_salary = (
+            (item.source or "").strip() == "Calculadora v2.4"
+            and item.calculation_type == "salary"
         )
+        compatible_v24_schema = (
+            is_v24_salary
+            and set(saved_results) == historic_salary_schema
+            and set(current_results) == historic_salary_schema | {"ips_rate"}
+        )
+        if compatible_v24_schema:
+            results_match = all(
+                current_results[key] == saved_results[key]
+                for key in historic_salary_schema
+            )
+        else:
+            results_match = (
+                all(key in current_results and current_results[key] == value
+                    for key, value in saved_results.items())
+                if legacy_inputs else current_results == saved_results
+            )
         if not results_match or current_amount != item.amount:
             raise HTTPException(
                 409,
-                "El importe guardado no coincide con la fórmula reproducida. No se aprobó; revisá o recreá el cálculo.",
+                "El cálculo guardado presenta diferencias en sus componentes económicos "
+                "o en el importe final. No se aprobó; revisá o recreá el cálculo.",
             )
         return
 
