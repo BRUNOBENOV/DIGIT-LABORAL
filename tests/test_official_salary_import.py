@@ -28,7 +28,7 @@ def fixture_records(monkeypatch, *, override=None):
         termination_date=None, ips_contributor=True,
     )
     detail = SimpleNamespace(
-        days_worked=30, hours_worked=Decimal("176"),
+        days_worked=30, hours_worked=Decimal("176"), payment_method="Transferencia",
         period_start=date(2026, 10, 1), period_end=date(2026, 10, 31),
         overtime_day=0, overtime_night=0, night_surcharge=0,
         holidays=0, family_allowance=0, other_income_detail=0, vacation_pay=0,
