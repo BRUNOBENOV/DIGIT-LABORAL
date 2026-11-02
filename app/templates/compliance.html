@@ -52,6 +52,19 @@
   </article>
 </section>
 
+{% if user.role in ['administrador','contador'] %}
+<section class="panel" style="margin:16px 0;padding:18px 20px;border:1px solid #d8e1ef;border-radius:12px;background:#fff">
+  <div style="display:flex;justify-content:space-between;gap:15px;flex-wrap:wrap;align-items:center">
+    <div>
+      <small style="font-weight:800;color:#173b86;letter-spacing:.06em">IMPORTACIÓN DE SALARIOS</small>
+      <h2 style="font-size:1.05rem;color:#17335e;margin:4px 0">Exportar REOP Excel / REI TXT</h2>
+      <p style="font-size:.8rem;color:#52637d;margin:4px 0">Nóminas cerradas · validación de importes · estructura oficial REOP de 32 columnas y TXT REI de referencia.</p>
+    </div>
+    <a class="btn primary" href="/app/compliance/salary-import?company_id={{ selected_company.id }}">Preparar archivo salarial</a>
+  </div>
+</section>
+{% endif %}
+
 <section class="compliance-tabs" data-compliance-tabs>
   <button class="active" type="button" data-compliance-tab="communications">Comunicaciones</button>
   <button type="button" data-compliance-tab="profiles">Datos oficiales</button>
