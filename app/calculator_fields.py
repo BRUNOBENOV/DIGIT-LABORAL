@@ -77,6 +77,8 @@ GROUPS = {
         group("Salario del período", [field("month", "Mes liquidado", "month", required=True), SALARY, DAYS,
             field("days_worked", "Jornadas efectivamente trabajadas", max="31",
                   help="Dato del recibo. Distinto de la base mensual de 30 días."),
+            field("hours_worked", "Horas ordinarias efectivamente trabajadas", max="744", step="0.01",
+                  help="Asistencia real del período. No equivale al divisor horario ni incluye horas extra."),
             field("minimum_wage_category", "Escala de salario mínimo aplicable", "select", "general_day",
                   options=[("general_day", "Actividades diversas · jornada diurna"),
                            ("general_night", "Jornada nocturna · escala general"),

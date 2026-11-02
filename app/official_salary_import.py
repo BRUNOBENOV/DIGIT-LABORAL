@@ -187,7 +187,11 @@ def prepare_import(db: Session, company, period: str, authority: str, *,
             days, hours, dstart, dend = 0, Decimal(0), start, end
         else:
             days = detail.days_worked
-            hours = Decimal(str(detail.hours_worked or 0))
+            try:
+                hours = Decimal(str(detail.hours_worked or 0))
+                hours_invalid = not hours.is_finite() or hours < 0 or hours > 744
+            except (ValueError, TypeError, ArithmeticError):
+                hours, hours_invalid = Decimal(0), True
             dstart = detail.period_start or start
             dend = detail.period_end or end
             if (detail.period_start is None) != (detail.period_end is None):
@@ -204,8 +208,9 @@ def prepare_import(db: Session, company, period: str, authority: str, *,
                 err.append("cantidad de jornadas trabajadas fuera del rango 0-31")
             # For approved individual calculations, an absent day count (-1)
             # has already been reported in the source preflight.
-            if not hours.is_finite() or hours < 0 or hours > 744:
+            if hours_invalid:
                 err.append("cantidad de horas trabajadas inválida")
+                hours = Decimal(0)
         if authority == "REI":
             if not employee.ips_contributor:
                 err.append("funcionario no identificado como aportante IPS")

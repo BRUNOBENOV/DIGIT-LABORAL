@@ -119,3 +119,12 @@ def test_missing_details_blocked(monkeypatch):
     ))
     _, errors = service.prepare_import(None, company, "2026-10", "REOP", payment_code="1")
     assert any("falta el detalle" in item for item in errors)
+
+
+def test_invalid_payroll_hours_are_reported_without_crashing(monkeypatch):
+    company, _, _, detail = fixture_records(monkeypatch)
+    for invalid in ("NaN", "Infinity", "-1", "745"):
+        detail.hours_worked = Decimal(invalid)
+        rows, errors = service.prepare_import(None, company, "2026-10", "REOP", payment_code="1")
+        assert any("horas trabajadas inválida" in error for error in errors)
+        assert len(rows) == 1 and rows[0][7] == 0

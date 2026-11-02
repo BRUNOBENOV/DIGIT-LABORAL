@@ -137,6 +137,8 @@ def build_reop_salary_payload(
 ) -> dict[str, Any]:
     """Create an immutable handoff snapshot from a saved calculation; never recalculates wages."""
     inputs = _json_dict(item.input_json)
+    from .salary_data import attendance_data
+    attendance = attendance_data(db, item)
     result = _json_dict(item.result_json)
     identity = result.get("identity") if isinstance(result.get("identity"), dict) else {}
     employer_patronal, branch_name = _branch_patronal(db, company, employee)
@@ -156,8 +158,8 @@ def build_reop_salary_payload(
         "calculation_status": item.status or "",
         "calculation_type": item.calculation_type or "",
         "period": model.get("period") or item.reference_period or "",
-        "period_start": model["period_start"].isoformat() if model.get("period_start") else "",
-        "period_end": model["period_end"].isoformat() if model.get("period_end") else "",
+        "period_start": attendance.get("period_start") or (model["period_start"].isoformat() if model.get("period_start") else ""),
+        "period_end": attendance.get("period_end") or (model["period_end"].isoformat() if model.get("period_end") else ""),
         "source_snapshot_sha256": source_digest,
         "company_id": company.id,
         "employer_name": _first_text(model.get("employer_name"), company.legal_name),
@@ -170,7 +172,7 @@ def build_reop_salary_payload(
         "employee_ci": _first_text(model.get("employee_ci"), employee.document_number, limit=60),
         "employee_position": _first_text(model.get("employee_position"), employee.position, limit=160),
         "payment_method": _first_text(
-            payment_method, identity.get("payment_method"), inputs.get("payment_method"),
+            payment_method, attendance.get("payment_method"), identity.get("payment_method"), inputs.get("payment_method"),
             model.get("payment_method"), limit=100,
         ),
         "payment_date": _first_text(
@@ -178,11 +180,11 @@ def build_reop_salary_payload(
             inputs.get("payment_date"), inputs.get("paid_on"), limit=30,
         ),
         "days_worked": _first_text(
-            days_worked, result.get("days_worked"), inputs.get("days_worked"),
+            days_worked, attendance.get("days_worked"), result.get("days_worked"), inputs.get("days_worked"),
             inputs.get("worked_days"), limit=30,
         ),
         "hours_worked": _first_text(
-            hours_worked, result.get("hours_worked"), inputs.get("hours_worked"),
+            hours_worked, attendance.get("hours_worked"), result.get("hours_worked"), inputs.get("hours_worked"),
             inputs.get("worked_hours"), limit=30,
         ),
         "pieces_or_tasks": _first_text(

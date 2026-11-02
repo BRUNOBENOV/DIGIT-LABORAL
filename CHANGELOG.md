@@ -1,3 +1,13 @@
+## 2.6.77 — Asistencia compartida y aprobación salarial vigente
+
+- Usa una selección común por empresa, funcionario y mes: los borradores no desplazan una aprobación; las anulaciones y estados desconocidos impiden reutilizar aprobaciones anteriores. Alinea exportación, selector de funcionarios y contadores.
+- Carga jornadas, horas ordinarias, forma de pago y fechas reales disponibles en Liquidación de haberes. Los datos heredados quedan en modo lectura y pueden modificarse de forma explícita para el nuevo documento. Conserva la referencia y huella del origen; rechaza selecciones de otro período, funcionario o empresa y formularios cuyo origen cambió.
+- Añade horas ordinarias reales al motor profesional y las valida sin confundirlas con el divisor horario ni alterar las fórmulas salariales. Conserva las fechas parciales y valida su pertenencia al mes.
+- Comparte la lectura de JSON, comunicaciones validadas vinculadas a la misma instantánea y anexos revisados entre liquidación, recibo y exportación. Guardar solo jornadas para REI mantiene horas y forma de pago existentes, incluso sin anexo previo. Reemplazar datos registrados exige una elección explícita.
+- Muestra jornadas y horas en la vista previa REOP, jornadas en REI, códigos reales de legajo, origen e incluidos/excluidos. Prioriza la aprobación individual y las aprobaciones que cubren una nómina completa; conserva la nómina para evitar omitir trabajadores sin cálculo individual.
+- Agrega un acceso desde el cálculo aprobado a Liquidación de haberes con el mes y su aprobación vigente; permite revisar y aprobar el salario desde su pantalla guardada mediante los controles existentes. Mantiene aislada la liquidación final de egreso.
+- Sin migraciones ni nuevas dependencias de producción.
+
 ## 2.6.76 — Notificación de Preaviso con entrada compacta
 
 - Agrupa los datos precargados del legajo en un resumen editable. Mantiene emisión, inicio, terminación y plazo visibles cuando hay un cálculo vinculado; número, observaciones, datos adicionales y revisión del cálculo quedan en desplegables.

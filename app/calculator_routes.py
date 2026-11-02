@@ -31,6 +31,7 @@ from .payroll_average import annotate_average, propose_monthly_average, verify_a
 from .payroll_annual import annotate_annual, propose_annual_remuneration, verify_annual_selection
 from .settlement_presets import settlement_defaults
 from .settlement_evidence import annotate_judicial_document, judicial_document_choices, verify_judicial_document
+from .salary_data import attendance_proposal, apply_attendance_proposal, verify_attendance_inheritance, SALARY_TYPES
 
 router = APIRouter()
 HEADERS = {"Cache-Control": "no-store", "X-Digit-Laboral-Version": VERSION}
@@ -163,6 +164,7 @@ def page(request, kind, data=None, result=None, error=None, db=None, user=None, 
 
 def calculate_scoped(data, db, scoped):
     data.update(settlement_defaults(data))
+    verify_attendance_inheritance(db, scoped.get("employee"), data)
     proposal = verify_average_selection(db, scoped.get("employee"), data)
     annual = verify_annual_selection(db, scoped.get("employee"), data)
     judicial = verify_judicial_document(db, scoped.get("employee"), data)
@@ -231,12 +233,27 @@ def public_page(request: Request, tipo: str = "salary", ejemplo: bool = False):
 
 @router.get("/app/liquidaciones")
 def professional_page(request: Request, tipo: str = "settlement", company_id: OptionalQueryId = None, employee_id: OptionalQueryId = None, exit_id: OptionalQueryId = None,
+                      month: str = "", calculation_id: OptionalQueryId = None,
                       user: User = Depends(core.require_user), db: Session = Depends(core.get_db)):
     allowed_company_ids = core.company_ids_for_user(db, user)
     company_id, employee_id = core.default_labor_context(
         request, db, user, allowed_company_ids, company_id, employee_id
     )
     values = dict(context(tipo)["values"], company_id=company_id or 0, employee_id=employee_id or 0, prepared_by=user.full_name)
+    if tipo == "salary" and month:
+        if not re.fullmatch(r"20\d{2}-(0[1-9]|1[0-2])", month):
+            raise HTTPException(422, "Seleccioná un mes válido.")
+        values["month"] = month
+    if calculation_id:
+        if user.role not in {"administrador", "contador", "auxiliar"}:
+            raise HTTPException(403, "No tenés permiso para cargar un cálculo salarial de origen.")
+        origin = db.get(CalculationRecord, calculation_id)
+        if (tipo != "salary" or not origin or origin.company_id != company_id
+                or origin.employee_id != employee_id or origin.calculation_type not in SALARY_TYPES):
+            raise HTTPException(404, "El cálculo no corresponde a la empresa y funcionario seleccionados.")
+        if month and month != origin.reference_period:
+            raise HTTPException(409, "El mes seleccionado no corresponde al cálculo de origen.")
+        values["month"] = origin.reference_period
     if exit_id:
         from .employee_exit_routes import EXIT_REASONS
         exit_record = db.get(EmployeeExit, exit_id)
@@ -270,6 +287,14 @@ def professional_page(request: Request, tipo: str = "settlement", company_id: Op
         values.update(salary=str(effective_salary), start_date=employee.admission_date.isoformat(),
                       apply_ips="on" if employee.ips_contributor else "",
                       indefinite="on" if employee.contract_type == "Tiempo indefinido" else "")
+        if tipo == "salary" and user.role in {"administrador", "contador", "auxiliar"}:
+            try:
+                attendance = attendance_proposal(db, employee.company_id, employee.id, values["month"])
+            except ValueError as exc:
+                raise HTTPException(422, str(exc)) from None
+            if calculation_id and attendance["calculation_id"] != calculation_id:
+                raise HTTPException(409, "Ese cálculo no es la aprobación vigente. Cargá el funcionario y el mes para usar la versión actual.")
+            apply_attendance_proposal(values, attendance)
         if tipo == "settlement":
             try:
                 annual = propose_annual_remuneration(db, employee, effective_on)
@@ -279,6 +304,20 @@ def professional_page(request: Request, tipo: str = "settlement", company_id: Op
                 values.update(annual_remuneration=str(annual["annual_remuneration"]),
                               annual_origin="payroll", annual_payroll_fingerprint=annual["fingerprint"])
     return page(request, tipo, values, db=db, user=user)
+
+
+@router.get("/api/liquidaciones/asistencia-salarial")
+def salary_attendance_proposal(company_id: int, employee_id: int, period: str,
+                               user: User = Depends(core.require_roles("administrador", "contador", "auxiliar")), db: Session = Depends(core.get_db)):
+    company = core.company_allowed(db, user, company_id)
+    employee = db.get(Employee, employee_id)
+    if not employee or employee.company_id != company.id:
+        raise HTTPException(404, "Funcionario no encontrado en la empresa seleccionada.")
+    try:
+        proposal = attendance_proposal(db, company.id, employee.id, period)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from None
+    return JSONResponse(proposal, headers=HEADERS)
 
 
 @router.post("/herramientas/calcular")
@@ -411,7 +450,10 @@ async def save_calculation(request: Request,
             f"Procedimiento #{linked_exit.id}; liquidación #{linked_settlement.id}; cálculo #{item.id}.",
             core.current_paraguay_date(), int(result["net"]),
         )
-    core.write_audit(db, user, "crear", "liquidacion", str(item.id), "Motor " + VERSION)
+    origin_note = ""
+    if data["kind"] == "salary" and data.get("attendance_source_id"):
+        origin_note = f" · asistencia del cálculo #{data['attendance_source_id']} · " + ("modificada manualmente" if data.get("attendance_override") == "on" else "heredada")
+    core.write_audit(db, user, "crear", "liquidacion", str(item.id), "Motor " + VERSION + origin_note)
     db.commit()
     if linked_settlement:
         return RedirectResponse(f"/app/final-settlements/{linked_settlement.id}", status_code=303)
@@ -440,6 +482,9 @@ def copy_saved_calculation(request: Request, record_id: int, user: User = Depend
                            db: Session = Depends(core.get_db)):
     item, _ = saved_result(db, user, record_id)
     values = json.loads(item.input_json)
+    if values.get("kind") == "salary":
+        # Copying a historical snapshot is explicit; it is not a live source link.
+        values.update(attendance_source_id="", attendance_source_sha256="", attendance_override="on")
     values.update(company_id=item.company_id, employee_id=item.employee_id or 0, prepared_by=user.full_name,
                   issued_date=context(values["kind"])["values"]["issued_date"])
     # The saved result remains immutable. This opens a new form for review.
