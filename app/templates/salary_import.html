@@ -93,6 +93,15 @@
   <section class="import-salary-card">
     <h2>2. Resultado de validación</h2>
     <p class="import-salary-info"><strong>{{ selected_company.legal_name }}</strong> · {{ period }} · {{ authority }} · <strong>{{ item_count }}</strong> trabajador(es) de la nómina cerrada.</p>
+    {% if preview_rows %}
+    <div style="overflow-x:auto;margin:10px 0 15px;border:1px solid #dce5f1;border-radius:9px">
+      <table style="width:100%;border-collapse:collapse;font-size:.75rem">
+        <thead><tr>{% for heading in preview_headers %}<th style="padding:9px;text-align:left;background:#edf3fb;color:#17335e;white-space:nowrap">{{ heading }}</th>{% endfor %}</tr></thead>
+        <tbody>{% for row in preview_rows %}<tr>{% for value in row %}<td style="padding:8px 9px;border-top:1px solid #e5ebf4;color:#334765;white-space:nowrap">{{ value }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+      </table>
+    </div>
+    <p class="import-salary-info">Se muestran hasta 20 registros para inspección visual. Revisá los nombres, números y montos antes de descargar.</p>
+    {% endif %}
     {% if errors %}
     <div class="import-salary-errors">
       <h3>{{ errors|length }} observaciones: no se generará el archivo hasta corregirlas</h3>
