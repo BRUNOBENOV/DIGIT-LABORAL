@@ -42,6 +42,7 @@
     <div class="tag-row"><span>{{ employee.contract_type }}</span><span>{{ employee.payment_frequency }}</span><span class="status-pill {{ employee.status|lower }}">{{ employee.status }}</span></div>
   </div>
   {% if user.role in ['administrador', 'contador', 'auxiliar'] %}<button class="btn outline" type="button" data-modal-open="editEmployeeDetail">Editar ficha</button>{% endif %}
+  {% if user.role in ['administrador','contador'] %}<a class="btn danger" href="/app/employees/{{ employee.id }}/permanent-delete">Eliminar definitivamente</a>{% endif %}
 </section>
 
 <section class="metrics-grid">

@@ -2967,7 +2967,7 @@ async def api_update_employee(
 
 @app.delete("/api/employees/{employee_id}")
 def obsolete_api_employee_delete(employee_id: int, user: User = Depends(require_roles("administrador", "contador")), db: Session = Depends(get_db)):
-    raise HTTPException(410, "La eliminación y el archivado mediante DELETE fueron retirados; utilizá la acción Archivar legajo.")
+    raise HTTPException(410, "Esta ruta de eliminación directa fue retirada. Utilizá Eliminar definitivamente desde Acciones, con revisión y confirmación.")
 
 # ---------------------------------------------------------------------------
 # Mantenimientos · Exámenes médicos ocupacionales
@@ -4234,7 +4234,7 @@ def obsolete_employee_status(employee_id: int, user: User = Depends(require_role
 
 @app.post("/app/employees/{employee_id}/delete")
 def obsolete_employee_delete(employee_id: int, user: User = Depends(require_roles("administrador", "contador")), db: Session = Depends(get_db)):
-    raise HTTPException(410, "La eliminación fue retirada. Utilizá Archivar legajo.")
+    raise HTTPException(410, "Esta ruta de eliminación directa fue retirada. Utilizá Eliminar definitivamente desde Acciones, con revisión y confirmación.")
 
 @app.get("/app/calendar", response_class=HTMLResponse)
 def calendar_page(
@@ -10693,6 +10693,8 @@ from .calculator_routes import router as calculator_router
 app.include_router(calculator_router)
 from .employee_exit_routes import router as employee_exit_router
 app.include_router(employee_exit_router)
+from .employee_deletion_routes import router as employee_deletion_router
+app.include_router(employee_deletion_router)
 
 from .entity_select_routes import router as entity_select_router
 app.include_router(entity_select_router)

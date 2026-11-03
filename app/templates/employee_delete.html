@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Eliminar funcionario | Digit Laboral{% endblock %}
+{% block content %}
+<style>
+.employee-delete-page{max-width:860px;margin:0 auto}.employee-delete-page .panel{padding:22px;margin-bottom:16px}.employee-delete-identity{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:18px 0}.employee-delete-identity dt{color:#617089;font-size:.78rem}.employee-delete-identity dd{margin:5px 0 0;font-weight:700;overflow-wrap:anywhere}.employee-delete-page .delete-note{border:1px solid #e8b9b9;background:#fff6f5;border-radius:10px;color:#89362c;padding:13px;line-height:1.55}.employee-delete-page label{display:grid;gap:7px;margin:15px 0;font-size:.84rem;font-weight:700}.employee-delete-page :is(input,select,textarea){width:100%;box-sizing:border-box;border:1px solid #cbd6e7;border-radius:9px;padding:11px;font:inherit}.employee-delete-page li{margin:8px 0;line-height:1.5}.employee-delete-page .delete-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:20px}@media(max-width:650px){.employee-delete-identity{grid-template-columns:1fr}.employee-delete-page .panel{padding:16px}}
+</style>
+<div class="employee-delete-page">
+  <a class="back-link" href="{{ return_to }}">← Volver a funcionarios</a>
+  <div class="page-header"><div><span class="eyebrow">MANTENIMIENTOS · FUNCIONARIOS</span><h1>Eliminar definitivamente</h1><p>Revisá el legajo seleccionado antes de borrar su registro.</p></div></div>
+  {% if deletion_error %}<div class="alert danger" role="alert">{{ deletion_error }}</div>{% endif %}
+  <section class="panel">
+    <h2>{{ employee.full_name }}</h2>
+    <dl class="employee-delete-identity">
+      <div><dt>Legajo</dt><dd>{{ employee.employee_code if employee.employee_code is not none else 'Sin código (ID ' ~ employee.id ~ ')' }}</dd></div>
+      <div><dt>Empresa</dt><dd>{{ employee.company.legal_name }}</dd></div>
+      <div><dt>Cédula / documento</dt><dd>{{ employee.document_number }}</dd></div>
+      <div><dt>Estado actual</dt><dd>{{ employee.status }}</dd></div>
+    </dl>
+    {% if deletion.can_delete %}
+    <p class="delete-note"><strong>Se borrará el funcionario de la base de datos.</strong> Esta acción es definitiva y no se puede deshacer desde el sistema. Quedará un registro de la eliminación en la auditoría.</p>
+    <p>Se eliminarán también estos datos propios de su ficha:</p>
+    <ul>{% for item in deletion.profile %}<li>{{ item.label }}: <strong>{{ item.count }}</strong></li>{% else %}<li>No hay datos adicionales de la ficha.</li>{% endfor %}</ul>
+    <form method="post" action="/app/employees/{{ employee.id }}/permanent-delete" data-confirmed-by-experience="true">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="token" value="{{ deletion_token }}"><input type="hidden" name="return_to" value="{{ return_to }}">
+      <label>Motivo de eliminación<select name="reason" required><option value="">Seleccioná un motivo</option>{% for reason in deletion_reasons %}<option>{{ reason }}</option>{% endfor %}</select></label>
+      <label>Detalle del motivo (obligatorio si elegís Otro motivo)<textarea name="notes" maxlength="500" rows="2"></textarea></label>
+      <label>Para confirmar, escribí: <strong>{{ deletion.confirmation }}</strong><input name="confirmation" autocomplete="off" spellcheck="false" required aria-describedby="employeeDeleteConfirmationHelp"></label>
+      <p id="employeeDeleteConfirmationHelp">La confirmación corresponde únicamente a este funcionario. La revisión vence a los 15 minutos.</p>
+      <div class="delete-actions"><a class="btn ghost" href="{{ return_to }}">Cancelar</a><button class="btn danger" type="submit">Eliminar definitivamente</button></div>
+    </form>
+    {% else %}
+    <p class="delete-note"><strong>El legajo tiene registros vinculados que impiden borrarlo.</strong> La eliminación dejaría incompletos esos registros.</p>
+    <ul>{% for item in deletion.blockers %}<li>{{ item.label }}: <strong>{{ item.count }}</strong></li>{% endfor %}</ul>
+    <div class="delete-actions"><a class="btn primary" href="/app/employees/{{ employee.id }}">Revisar expediente</a><a class="btn ghost" href="{{ return_to }}">Volver</a></div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}
