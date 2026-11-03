@@ -36,6 +36,7 @@ def test_salary_daily_pact_rate_and_overtime_share_daily_base():
     ({"pay_basis": "monthly", "days_paid": "31"}, "days_paid"),
     ({"pay_basis": "daily", "days_paid": "32"}, "days_paid"),
     ({"pay_basis": "daily", "daily_rate": "-1"}, "daily_rate"),
+    ({"pay_basis": "daily", "daily_rate": "0"}, "daily_rate"),
 ])
 def test_salary_rejects_invalid_modality_or_days(data, field):
     with pytest.raises(CalculationError) as exc:
