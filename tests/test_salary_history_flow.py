@@ -186,7 +186,10 @@ def test_documented_salary_review_clears_only_no_history_warning_for_period():
         employee = _employee(db, salary=3_044_000, admission=date(2026, 11, 15))
         result = {"kind": "salary", "period": "2026-11", "warnings": [], "notes": []}
         data = {
+            "salary": "3044000",
             "salary_base_verified": "on",
+            "salary_base_verification_period": "2026-11",
+            "salary_base_verification_amount": "3044000",
             "salary_base_verification_note": "Recibo firmado noviembre 2026",
         }
         add_salary_period_warnings(result, db, {"employee": employee}, data)
@@ -214,6 +217,32 @@ def test_existing_salary_history_is_never_ignored_by_unrelated_manual_flag():
         })
         assert any("la base sugerida quedó en cero" in text for text in result["warnings"])
         assert not result["notes"]
+    finally:
+        db.close()
+        engine.dispose()
+
+
+def test_documented_salary_review_cannot_be_reused_for_another_month_or_amount():
+    engine, db = _session()
+    try:
+        employee = _employee(db, salary=3_044_000)
+        record = {
+            "salary": "3044000",
+            "salary_base_verified": "on",
+            "salary_base_verification_period": "2026-10",
+            "salary_base_verification_amount": "3044000",
+            "salary_base_verification_note": "Contrato y recibo de octubre 2026",
+        }
+        for data in (
+            record,  # Confirma octubre, pero no noviembre.
+            {**record, "salary_base_verification_period": "2026-11",
+             "salary": "3200000"},  # Cambio de importe sin reconfirmar.
+        ):
+            result = {"kind": "salary", "period": "2026-11", "warnings": [], "notes": []}
+            add_salary_period_warnings(result, db, {"employee": employee}, data)
+            assert any("no hay historial salarial registrado" in text
+                       for text in result["warnings"])
+            assert not result["notes"]
     finally:
         db.close()
         engine.dispose()
