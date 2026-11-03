@@ -21,7 +21,7 @@
     <span class="eyebrow">ARCHIVO HISTÓRICO · SOLO LECTURA</span>
     <h2 style="margin:3px 0 7px;font-size:1.13rem">Vacaciones migradas del sistema anterior</h2>
     <p style="font-size:.8rem;color:#617188;line-height:1.55;margin:0">Se registran como antecedentes independientes: <b>no generan saldo, solicitudes, pagos ni comunicados oficiales</b>. {{ historical_count }} movimientos vinculados. Página {{ history_page.page }} de {{ history_page.pages }}; registros {{ history_page.first }}–{{ history_page.last }}.</p>
-    <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><a class="btn ghost" href="/app/vacations/history.csv{% if history_export_query %}?{{ history_export_query }}{% endif %}">Exportar antecedentes CSV</a><a class="btn ghost" href="/app/employee-history{% if selected_company_id %}?company_id={{ selected_company_id }}{% endif %}">Histórico de funcionarios</a></div>
+    <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><a class="btn ghost" href="/app/vacations/history.csv{% if history_export_query %}?{{ history_export_query }}{% endif %}">Exportar antecedentes CSV</a>{% if user.role in ['administrador','contador','auxiliar'] %}<a class="btn ghost" href="/app/employee-history{% if selected_company_id %}?company_id={{ selected_company_id }}{% endif %}">Histórico de funcionarios</a>{% endif %}</div>
   </div>
   <div class="table-wrap"><table>
     <thead><tr><th>Funcionario</th><th>Empresa</th><th>Período devengado</th><th>Inicio de vacaciones</th><th>Fin de vacaciones</th><th>Días registrados</th><th>Importe histórico</th></tr></thead>
