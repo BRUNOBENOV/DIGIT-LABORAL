@@ -212,6 +212,14 @@ def legacy_notice_preview(db: Session, parsed: dict, allowed_company_ids: set[in
         payload = legacy_notice_data(event)
         if payload and payload.get("legacy_key"):
             existing[payload["legacy_key"]].append(payload)
+    # A shared historical identity with contradictory source contents is ambiguous
+    # for ALL of its rows, including the first occurrence. Never import either.
+    fingerprints_by_key: dict[str, set[str]] = defaultdict(set)
+    for item in parsed["rows"]:
+        fingerprints_by_key[item["legacy_key"]].add(item["source_hash"])
+    conflicting_keys = {
+        key for key, hashes in fingerprints_by_key.items() if len(hashes) > 1
+    }
     seen: dict[str, str] = {}
     counters = Counter()
     rows = []
@@ -220,10 +228,11 @@ def legacy_notice_preview(db: Session, parsed: dict, allowed_company_ids: set[in
         row["employee_id"], row["employee_name"], row["company_name"] = None, "", ""
         errors = list(row["errors"])
         key = row["legacy_key"]
-        if key in seen:
-            row["state"] = "duplicado_archivo" if seen[key] == row["source_hash"] else "conflicto"
-            if row["state"] == "conflicto":
-                errors.append("Misma clave histórica con datos distintos dentro del Excel.")
+        if key in conflicting_keys:
+            row["state"] = "conflicto"
+            errors.append("Misma clave histórica con datos contradictorios: excluir todas sus filas.")
+        elif key in seen:
+            row["state"] = "duplicado_archivo"
         else:
             seen[key] = row["source_hash"]
             matches = by_code.get(row["company_code"], [])
