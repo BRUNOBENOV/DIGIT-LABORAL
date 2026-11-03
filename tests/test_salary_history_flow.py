@@ -9,6 +9,7 @@ from sqlalchemy.pool import StaticPool
 from app.database import Base
 from app.models import Branch, Company, Employee, SalaryHistory, Studio
 from app.salary_history import salary_at, salary_for_period
+from app.calculator_routes import add_salary_period_warnings
 
 
 def _session():
@@ -158,6 +159,61 @@ def test_period_salary_flags_when_history_has_only_a_future_salary():
 
         assert salary == 0
         assert any("la base sugerida quedó en cero" in warning for warning in warnings)
+    finally:
+        db.close()
+        engine.dispose()
+
+
+def test_missing_wage_history_remains_pending_without_documented_verification():
+    engine, db = _session()
+    try:
+        employee = _employee(db, salary=3_044_000)
+        result = {"kind": "salary", "period": "2026-11", "warnings": [], "notes": []}
+        add_salary_period_warnings(
+            result, db, {"employee": employee},
+            {"salary_base_verified": "on", "salary_base_verification_note": "breve"},
+        )
+        assert any("no hay historial salarial registrado" in text for text in result["warnings"])
+        assert not result["notes"]
+    finally:
+        db.close()
+        engine.dispose()
+
+
+def test_documented_salary_review_clears_only_no_history_warning_for_period():
+    engine, db = _session()
+    try:
+        employee = _employee(db, salary=3_044_000, admission=date(2026, 11, 15))
+        result = {"kind": "salary", "period": "2026-11", "warnings": [], "notes": []}
+        data = {
+            "salary_base_verified": "on",
+            "salary_base_verification_note": "Recibo firmado noviembre 2026",
+        }
+        add_salary_period_warnings(result, db, {"employee": employee}, data)
+        assert not any("no hay historial salarial registrado" in text for text in result["warnings"])
+        assert any("ingreso el 15/11/2026" in text for text in result["warnings"])
+        assert any("Recibo firmado noviembre 2026" in text for text in result["notes"])
+        assert any("2026-11" in text for text in result["notes"])
+        # No se crea un evento salarial ficticio ni se modifica el sueldo.
+        assert salary_at(db, employee, date(2026, 11, 1)) == 3_044_000
+        assert db.scalars(select(SalaryHistory)).all() == []
+    finally:
+        db.close()
+        engine.dispose()
+
+
+def test_existing_salary_history_is_never_ignored_by_unrelated_manual_flag():
+    engine, db = _session()
+    try:
+        employee = _employee(db, salary=3_044_000)
+        _history(db, employee, date(2026, 11, 20), 3_044_000)
+        result = {"kind": "salary", "period": "2026-11", "warnings": [], "notes": []}
+        add_salary_period_warnings(result, db, {"employee": employee}, {
+            "salary_base_verified": "on",
+            "salary_base_verification_note": "Recibo firmado noviembre 2026",
+        })
+        assert any("la base sugerida quedó en cero" in text for text in result["warnings"])
+        assert not result["notes"]
     finally:
         db.close()
         engine.dispose()
