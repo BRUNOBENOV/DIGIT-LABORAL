@@ -9,7 +9,7 @@
 {% if active_calculation_type %}
 {% if request.query_params.get('saved') %}<div class="alert success">Cálculo guardado en estado <b>Revisar</b>. Podés aprobarlo después del control profesional.</div>{% endif %}
 <div class="v24-professional-note"><span class="v24-note-icon">§</span><div><b>El sistema calcula; el profesional determina la procedencia.</b> Revisá régimen, conceptos computables, base IPS, antigüedad y documentación antes de aprobar un resultado. Las referencias sirven como control y no sustituyen el análisis del caso.</div></div>{% if period_reuse_warning %}<div class="legal-warning" role="status"><b>Reutilización de historial: revisión obligatoria.</b> {{ period_reuse_warning }} No apruebes el importe sin verificar los conceptos.</div>{% endif %}
-<section class="calculation-context panel"><div><span class="eyebrow-label">1 · CONTEXTO</span><h2>Empresa y funcionario</h2><p>Elegí a quién corresponde el cálculo. Esto evita resultados sueltos sin trazabilidad.</p></div><form method="get" action="/app/calculations" class="calculation-context-form module-selection-form" data-module-selection><input type="hidden" name="tipo" value="{{ active_calculation_type }}">{% if active_calculation_type == "notice" %}<input type="hidden" name="reference_date" value="{{ notice_reference.isoformat() }}" data-notice-context-date>{% endif %}<label>Empresa<select name="company_id" id="calculationCompanyFilter" data-module-company data-searchable-entity="company" data-entity-scope="all"><option value="">Seleccioná empresa / todas</option>{% for company in companies|entity_choices %}<option value="{{ company.id }}" {{ 'selected' if selected_company == company.id }}>{{ company.legacy_code or (company.company_code if company.company_code is not none else 'Sin código') }} - {{ company.legal_name }}</option>{% endfor %}</select></label><label>Funcionario<select name="employee_id" id="calculationEmployeeFilter" data-module-employee data-searchable-entity="employee" data-entity-scope="active"><option value="">Seleccioná funcionario / todos</option>{% for employee in employees|entity_choices %}<option value="{{ employee.id }}" data-company="{{ employee.company_id }}" {{ 'selected' if selected_employee == employee.id }}>{{ employee.employee_code if employee.employee_code is not none else 'Sin legajo' }} - {{ employee.full_name }}</option>{% endfor %}</select></label><button class="btn ghost" type="submit">Aplicar</button></form></section>
+<section class="calculation-context panel"><div><span class="eyebrow-label">1 · CONTEXTO</span><h2>Empresa y funcionario</h2><p>Elegí a quién corresponde el cálculo. Esto evita resultados sueltos sin trazabilidad.</p></div><form method="get" action="/app/calculations" class="calculation-context-form module-selection-form" data-module-selection><input type="hidden" name="tipo" value="{{ active_calculation_type }}">{% if active_calculation_type == "notice" %}<input type="hidden" name="reference_date" value="{{ notice_reference.isoformat() }}" data-notice-context-date>{% endif %}<label>Empresa<select name="company_id" id="calculationCompanyFilter" data-module-company data-searchable-entity="company" data-entity-scope="all"><option value="">Seleccioná empresa / todas</option>{% for company in companies|entity_choices %}<option value="{{ company.id }}" {{ 'selected' if selected_company == company.id }}>{{ company.legacy_code or (company.company_code if company.company_code is not none else 'Sin código') }} - {{ company.legal_name }}</option>{% endfor %}</select></label><label>Funcionario<select name="employee_id" id="calculationEmployeeFilter" data-module-employee data-searchable-entity="employee" data-entity-scope="{{ 'all' if active_calculation_type == 'notice' else 'active' }}"><option value="">Seleccioná funcionario / todos</option>{% for employee in employees|entity_choices %}<option value="{{ employee.id }}" data-company="{{ employee.company_id }}" {{ 'selected' if selected_employee == employee.id }}>{{ employee.employee_code if employee.employee_code is not none else 'Sin legajo' }} - {{ employee.full_name }}{% if active_calculation_type == 'notice' and employee.status != 'Activo' %} ({{ employee.status }}){% endif %}</option>{% endfor %}</select></label><button class="btn ghost" type="submit">Aplicar</button></form></section>
 {% if active_calculation_type == 'vacation' and historical_vacation_overview %}
 <div class="v24-professional-note" role="note">
   <span class="v24-note-icon">↗</span>
@@ -21,6 +21,58 @@
     Los días y valores históricos no se suman automáticamente al cálculo: comprobá derechos vigentes, usufructo y documentos de respaldo.
   </div>
 </div>
+{% endif %}
+{% if active_calculation_type == 'notice' and notice_history_preview %}
+<section class="panel" id="noticeLegacyHistory" style="padding:16px 19px; margin:12px 0 16px">
+  <div class="panel-head" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+    <div>
+      <span class="eyebrow-label">ARCHIVO LSPRE · SISTEMA ANTERIOR</span>
+      <h2 style="font-size:1.1rem;margin:4px 0 0">Preavisos históricos vinculados</h2>
+    </div>
+    <div style="display:flex;gap:9px;flex-wrap:wrap">
+      <a class="btn ghost" href="/app/legacy-notices{% if selected_company %}?company_id={{ selected_company }}{% if selected_employee %}&amp;employee_id={{ selected_employee }}{% endif %}{% elif selected_employee %}?employee_id={{ selected_employee }}{% endif %}">Consultar {{ notice_history_preview.total }} antecedentes</a>
+      {% if user.role in ['administrador','contador'] %}
+      <a class="btn ghost" href="/app/legacy-notices/exceptions">Revisar excepciones</a>
+      {% endif %}
+    </div>
+  </div>
+  <p style="font-size:.8rem;color:#62748f;line-height:1.6;margin:7px 0 12px">
+    {% if selected_employee %}
+      Este legajo tiene <b>{{ notice_history_preview.total }}</b> movimiento(s) LSPRE vinculados.
+    {% elif selected_company %}
+      La empresa seleccionada tiene <b>{{ notice_history_preview.total }}</b> movimiento(s) LSPRE vinculados.
+    {% else %}
+      Hay <b>{{ notice_history_preview.total }}</b> movimiento(s) históricos en las empresas autorizadas de este estudio.
+    {% endif %}
+    Estos datos no equivalen a preavisos notificados, cumplidos ni pagados.
+  </p>
+  {% if notice_history_preview.rows %}
+  <div class="table-wrap"><table>
+    <thead><tr><th>Funcionario</th><th>Empresa</th><th>FECPRE</th><th>FECSAL</th><th>DIAPRE</th><th>Origen</th><th>Acceso</th></tr></thead>
+    <tbody>
+    {% for item in notice_history_preview.rows %}
+      {% set record = item.source %}
+      <tr>
+        <td><a href="/app/employees/{{ item.event.employee_id }}">{{ item.event.employee.full_name }}</a></td>
+        <td>{{ item.event.employee.company.legal_name }}</td>
+        <td>{{ record.notice_date_source or '—' }}</td>
+        <td>{{ record.departure_date_source or '—' }}</td>
+        <td>{{ record.days if record.days is not none else 'No informado' }}</td>
+        <td>{% if record.deleted_source %}<span class="status-pill">BORRAD=S</span>{% else %}LSPRE{% endif %}</td>
+        <td><a href="/app/legacy-notices/{{ item.event.id }}">Ver antecedente</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}<p class="empty-state">No se encontraron movimientos LSPRE para los filtros actuales. Podés consultar el archivo completo desde el enlace superior.</p>{% endif %}
+  {% if notice_selected_non_active %}
+    <p class="legal-warning" role="note" style="margin:12px 0 0">
+      El funcionario seleccionado figura como <b>no activo</b>. Para calcular un preaviso histórico,
+      utilizá una fecha de referencia compatible con la relación laboral y comprobá la documentación.
+      No se convierte el antecedente DOS en un cálculo aprobado.
+    </p>
+  {% endif %}
+</section>
 {% endif %}
 <section class="calculator-workbench" id="calculatorWorkbench" data-ips-rate="{{ ips_rate }}" data-minimum-salary="{{ minimum_salary|int }}" data-hourly-reference="{{ hourly_reference|int }}">
 {% set default_company = selected_company or '' %}{% set default_employee = selected_employee or '' %}
