@@ -151,6 +151,11 @@ from .labor_code_sync import (
     sync_labor_code,
 )
 from .legacy_employee_import import parse_legacy_employee_workbook, validate_legacy_employee_policy
+from .legacy_vacation_import import (
+    EVENT_TYPE as LEGACY_VACATION_EVENT_TYPE, MAX_BYTES as LEGACY_VACATION_MAX_BYTES,
+    event_legacy_data, make_historical_vacation_event,
+    parse_legacy_vacation_workbook, vacation_import_preview,
+)
 from .import_service import (
     ImportPreview,
     build_employee_template,
@@ -8174,6 +8179,147 @@ def payroll_status(
     return RedirectResponse(f"/app/payrolls/{payroll_id}", status_code=303)
 
 
+
+def _legacy_vacation_preview_path(token: str) -> Path:
+    if not re.fullmatch(r"[a-f0-9]{32}", token or ""):
+        raise ValueError("Token de vacaciones históricas inválido.")
+    return IMPORT_DIR / f"legacy_vacation_{token}.json.gz"
+
+
+def _load_legacy_vacation_preview(token: str) -> dict:
+    path = _legacy_vacation_preview_path(token)
+    if not path.exists():
+        raise ValueError("La previsualización expiró o no está disponible. Subí el archivo nuevamente.")
+    with gzip.open(path, "rt", encoding="utf-8") as handle:
+        payload = json.load(handle)
+    timestamp = datetime.fromisoformat(payload["created_at"])
+    if timestamp.tzinfo is None:
+        timestamp = timestamp.replace(tzinfo=UTC)
+    if timestamp < datetime.now(UTC) - timedelta(hours=4):
+        path.unlink(missing_ok=True)
+        raise ValueError("La previsualización caducó después de cuatro horas.")
+    return payload
+
+
+def _allowed_legacy_vacation_preview(db: Session, user: User, token: str) -> dict:
+    payload = _load_legacy_vacation_preview(token)
+    if payload["user_id"] != user.id or payload["studio_id"] != (user.studio_id or 0):
+        raise HTTPException(403, "La importación no corresponde a tu sesión o estudio.")
+    return payload
+
+
+@app.get("/app/import/legacy-vacations", response_class=HTMLResponse)
+def legacy_vacation_import_start(
+    request: Request,
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    return render(request, "legacy_vacation_import.html", db, user, preview=None)
+
+
+@app.post("/app/import/legacy-vacations/preview")
+async def legacy_vacation_import_upload(
+    file: UploadFile = File(),
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    content = await file.read(LEGACY_VACATION_MAX_BYTES + 1)
+    if len(content) > LEGACY_VACATION_MAX_BYTES:
+        raise HTTPException(413, "El archivo supera 8 MB.")
+    try:
+        parsed = parse_legacy_vacation_workbook(content, file.filename or "")
+        company_ids = set(company_ids_for_user(db, user))
+        plan = vacation_import_preview(db, parsed, company_ids)
+    except (ValueError, OSError, zipfile.BadZipFile) as exc:
+        raise HTTPException(422, str(exc)) from exc
+    token = uuid.uuid4().hex
+    payload = {
+        "user_id": user.id, "studio_id": user.studio_id or 0,
+        "created_at": datetime.now(UTC).isoformat(), "parsed": parsed,
+        "employee_mapping": {
+            row["legacy_key"]: row["employee_id"]
+            for row in plan["rows"] if row["state"] in {"listo", "ya_importado"} and row["employee_id"]
+        },
+    }
+    with gzip.open(_legacy_vacation_preview_path(token), "wt", encoding="utf-8") as handle:
+        json.dump(payload, handle, ensure_ascii=False, separators=(",", ":"))
+    write_audit(
+        db, user, "previsualizar", "importacion_historica_vacaciones", token,
+        f"LSVAC · {parsed['sha256']} · {plan['summary']['source_rows']} filas · "
+        f"{plan['summary']['ready']} vinculadas · {plan['summary']['rejected']} no vinculadas.",
+    )
+    db.commit()
+    return RedirectResponse(f"/app/import/legacy-vacations/{token}", status_code=303)
+
+
+@app.get("/app/import/legacy-vacations/{token}", response_class=HTMLResponse)
+def legacy_vacation_import_preview_page(
+    token: str,
+    request: Request,
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    try:
+        payload = _allowed_legacy_vacation_preview(db, user, token)
+    except ValueError as exc:
+        return RedirectResponse(f"/app/import/legacy-vacations?error={quote(str(exc))}", status_code=303)
+    plan = vacation_import_preview(db, payload["parsed"], set(company_ids_for_user(db, user)))
+    return render(
+        request, "legacy_vacation_import.html", db, user,
+        preview=plan, token=token, source_filename=payload["parsed"]["filename"],
+        source_sha256=payload["parsed"]["sha256"],
+        sample_ready=[r for r in plan["rows"] if r["state"] == "listo"][:25],
+        sample_issues=[r for r in plan["rows"] if r["state"] not in {"listo", "ya_importado"}][:40],
+    )
+
+
+@app.post("/app/import/legacy-vacations/{token}/confirm")
+def legacy_vacation_import_confirm(
+    token: str,
+    verified: Annotated[str, Form()] = "",
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    if verified != "si":
+        raise HTTPException(400, "Confirmá que revisaste las coincidencias antes de importar.")
+    payload = _allowed_legacy_vacation_preview(db, user, token)
+    allowed = set(company_ids_for_user(db, user))
+    if db.bind is not None and db.bind.dialect.name == "postgresql":
+        db.execute(
+            text("SELECT pg_advisory_xact_lock(hashtext(:key))"),
+            {"key": f"legacy-vacation:{user.studio_id or 0}"},
+        )
+    plan = vacation_import_preview(db, payload["parsed"], allowed)
+    original_mapping = payload.get("employee_mapping") or {}
+    for row in plan["rows"]:
+        previous_employee = original_mapping.get(row["legacy_key"])
+        if previous_employee is not None and row["state"] == "listo" and row["employee_id"] != previous_employee:
+            raise HTTPException(409, "La vinculación de legajos cambió desde la vista previa. Volvé a revisar el archivo.")
+    events = [
+        make_historical_vacation_event(row, payload["parsed"]["filename"], user.email)
+        for row in plan["rows"] if row["state"] == "listo"
+    ]
+    if events:
+        db.add_all(events)
+    write_audit(
+        db, user, "importar", "importacion_historica_vacaciones", token,
+        f"LSVAC · {payload['parsed']['sha256']} · {len(events)} movimientos incorporados al historial "
+        f"· {plan['summary']['already_imported']} existentes · "
+        f"{plan['summary']['rejected']} sin vínculo · "
+        f"{plan['summary']['file_duplicates']} duplicados Excel. "
+        "Sin cambios de saldo, nómina, empleado o obligaciones de REOP/REI.",
+    )
+    db.commit()
+    return RedirectResponse(
+        "/app/vacations?" + urlencode({
+            "legacy_imported": len(events),
+            "legacy_existing": plan["summary"]["already_imported"],
+            "legacy_unmatched": plan["summary"]["rejected"],
+        }), status_code=303,
+    )
+
+
+
 @app.get("/app/vacations", response_class=HTMLResponse)
 def vacations_page(
     request: Request,
@@ -8195,11 +8341,29 @@ def vacations_page(
         vacation_query = vacation_query.where(Vacation.employee_id == selected_employee_id)
     employees = seed_choices(db, employee_query.order_by(Employee.full_name), Employee, request=request)
     items = list(db.scalars(vacation_query.order_by(Vacation.created_at.desc())))
+    historical_query = select(EmployeeEvent).join(Employee).where(
+        Employee.company_id.in_(company_ids),
+        EmployeeEvent.event_type == LEGACY_VACATION_EVENT_TYPE,
+    ) if company_ids else select(EmployeeEvent).where(False)
+    if selected_company_id:
+        historical_query = historical_query.where(Employee.company_id == selected_company_id)
+    if selected_employee_id:
+        historical_query = historical_query.where(EmployeeEvent.employee_id == selected_employee_id)
+    historical_count = db.scalar(select(func.count()).select_from(historical_query.subquery())) or 0
+    historical_events = list(db.scalars(
+        historical_query.order_by(EmployeeEvent.effective_date.desc(), EmployeeEvent.id.desc()).limit(60)
+    ))
+    historical_vacations = [
+        {"event": item, "source": event_legacy_data(item)}
+        for item in historical_events
+        if event_legacy_data(item)
+    ]
     companies = seed_choices(db, select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name), Company, request=request) if company_ids else []
     filter_employees = seed_choices(db, select(Employee).where(Employee.company_id.in_(company_ids)).order_by(Employee.full_name), Employee, request=request) if company_ids else []
     return render(request, "vacations.html", db, user, employees=employees, filter_employees=filter_employees,
                   companies=companies, items=items, selected_company_id=selected_company_id,
-                  selected_employee_id=selected_employee_id)
+                  selected_employee_id=selected_employee_id,
+                  historical_vacations=historical_vacations, historical_count=historical_count)
 
 
 @app.post("/app/vacations")

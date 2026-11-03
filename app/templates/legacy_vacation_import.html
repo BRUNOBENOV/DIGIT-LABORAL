@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Importación histórica de vacaciones | Digit Laboral{% endblock %}
+{% block page_name %}Importar vacaciones históricas{% endblock %}
+{% block content %}
+<style>
+.lsvac-page{max-width:1150px;margin:0 auto;color:#152e52}
+.lsvac-page .lsvac-hero{background:linear-gradient(112deg,#071e50,#05256D 75%,#194793);padding:23px;border-radius:14px;color:#fff;margin-bottom:18px}
+.lsvac-hero h1{font-size:1.55rem;color:#fff;margin:4px 0 7px}
+.lsvac-hero p{font-size:.85rem;margin:0;color:#dceaff;line-height:1.5}
+.lsvac-panel{padding:20px;border:1px solid #dce5f2;border-radius:12px;background:#fff;margin-bottom:15px}
+.lsvac-panel h2{margin:0 0 12px;font-size:1.02rem;color:#18345d}
+.lsvac-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:11px;margin:12px 0 16px}
+.lsvac-stat{padding:13px;border:1px solid #dde6f4;border-radius:10px;background:#f7faff}
+.lsvac-stat strong{display:block;font-size:1.3rem;color:#173c87;font-variant-numeric:tabular-nums}
+.lsvac-stat small{display:block;margin-top:4px;color:#63738a;font-size:.75rem}
+.lsvac-warning{background:#fff8ea;border:1px solid #e9c78a;border-radius:9px;padding:12px 14px;font-size:.8rem;line-height:1.5;color:#7a5014}
+.lsvac-success{background:#effaf4;border-color:#bce0ca;color:#175a3a}
+.lsvac-file{display:flex;align-items:center;gap:11px;flex-wrap:wrap;margin:13px 0}
+.lsvac-file input{max-width:100%;font-size:.84rem}
+.lsvac-table{overflow:auto;border:1px solid #e0e7f1;border-radius:9px}
+.lsvac-table table{border-collapse:collapse;width:100%;font-size:.75rem}
+.lsvac-table th{background:#eff4fb;color:#1b3d69;text-align:left;padding:9px;white-space:nowrap}
+.lsvac-table td{padding:8px 9px;border-top:1px solid #e7edf6;white-space:nowrap}
+.lsvac-table .lsvac-reason{white-space:normal;min-width:190px;max-width:320px}
+.lsvac-page .lsvac-small{font-size:.78rem;color:#617188;line-height:1.55}
+.lsvac-confirm{display:flex;gap:8px;align-items:flex-start;font-weight:600;font-size:.81rem;margin:12px 0}
+.lsvac-confirm input{width:18px;height:18px;accent-color:#05256D}
+@media(max-width:700px){.lsvac-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.lsvac-panel{padding:13px}}
+</style>
+<div class="lsvac-page">
+  <header class="lsvac-hero">
+    <div style="font-size:.69rem;letter-spacing:.12em;font-weight:800">MIGRACIÓN · SISTEMA ANTERIOR DOS</div>
+    <h1>Vacaciones históricas (LSVAC)</h1>
+    <p>Incorporá los movimientos del Excel anterior al historial de los funcionarios ya migrados. Se conservan fechas, días y valores originales sin recalcular ni modificar saldos vigentes.</p>
+  </header>
+  <div style="margin:0 0 14px"><a href="/app/vacations" class="btn ghost">← Volver a Vacaciones</a></div>
+  {% if request.query_params.get("error") %}<div class="lsvac-warning" role="alert">{{ request.query_params.get("error") }}</div>{% endif %}
+  <section class="lsvac-panel">
+    <h2>1. Archivo histórico</h2>
+    <p class="lsvac-small">Subí una copia <b>.xlsx</b> de la tabla LSVAC. El sistema vincula empresas por CODEMP y funcionarios por CODTRA, con la referencia de la importación histórica previa. La vista previa no guarda movimientos.</p>
+    <form method="post" action="/app/import/legacy-vacations/preview" enctype="multipart/form-data">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="lsvac-file">
+        <input type="file" name="file" accept=".xlsx" required aria-label="Archivo LSVAC en Excel">
+        <button type="submit" class="btn primary">Analizar coincidencias</button>
+      </div>
+    </form>
+    <div class="lsvac-warning">
+      <b>Importante:</b> la importación no da por usufructuadas, autorizadas ni pendientes las vacaciones; tampoco crea nuevos trabajadores, pagos, saldos, liquidaciones ni comunicaciones REOP/REI. Los movimientos quedan como antecedentes históricos para revisión profesional.
+    </div>
+  </section>
+
+  {% if preview %}
+  <section class="lsvac-panel">
+    <h2>2. Resultado de conciliación — {{ source_filename }}</h2>
+    <p class="lsvac-small">Se analizó el archivo en modo lectura. Identificador SHA-256: <code>{{ source_sha256[:22] }}…</code></p>
+    <div class="lsvac-grid">
+      <div class="lsvac-stat"><strong>{{ preview.summary.source_rows }}</strong><small>Registros de origen</small></div>
+      <div class="lsvac-stat"><strong>{{ preview.summary.ready }}</strong><small>Listos para importar</small></div>
+      <div class="lsvac-stat"><strong>{{ preview.summary.already_imported }}</strong><small>Ya importados: se omiten</small></div>
+      <div class="lsvac-stat"><strong>{{ preview.summary.rejected }}</strong><small>Sin vínculo o datos inválidos</small></div>
+      <div class="lsvac-stat"><strong>{{ preview.summary.file_duplicates }}</strong><small>Duplicados en el Excel</small></div>
+      <div class="lsvac-stat"><strong>{{ preview.summary.amount_missing }}</strong><small>Sin importe informado</small></div>
+    </div>
+    {% if preview.summary.conflicts %}
+    <div class="lsvac-warning" role="alert"><b>Atención:</b> se detectaron {{ preview.summary.conflicts }} movimientos con identificador existente y datos distintos. Serán excluidos; es necesario revisarlos antes de decidir cualquier rectificación.</div>
+    {% endif %}
+    <h2 style="margin-top:18px">Muestra de movimientos vinculados</h2>
+    <p class="lsvac-small">Se muestran hasta 25 registros; la conciliación comprende todo el archivo.</p>
+    <div class="lsvac-table"><table><thead><tr><th>Fila</th><th>Empresa</th><th>Funcionario</th><th>Período devengado</th><th>Vacaciones</th><th>Días</th><th>Importe registrado</th></tr></thead>
+    <tbody>{% for row in sample_ready %}
+      <tr><td>{{ row.source_row }}</td><td>{{ row.company_name }}</td><td>{{ row.employee_name }}</td><td>{{ row.period_from }} – {{ row.period_to }}</td><td>{{ row.vacation_start }} – {{ row.vacation_end }}</td><td>{{ row.days }}</td><td>{{ row.vacation_amount if row.vacation_amount is not none else 'Sin dato' }}</td></tr>
+    {% else %}<tr><td colspan="7">No hay movimientos listos para importar.</td></tr>{% endfor %}</tbody></table></div>
+
+    {% if sample_issues %}
+    <h2 style="margin-top:20px">Registros excluidos (muestra)</h2>
+    <div class="lsvac-table"><table><thead><tr><th>Fila</th><th>CODEMP</th><th>CODTRA</th><th>Estado</th><th>Motivo</th></tr></thead>
+    <tbody>{% for row in sample_issues %}
+    <tr><td>{{ row.source_row }}</td><td>{{ row.company_code }}</td><td>{{ row.employee_code }}</td><td>{{ row.state }}</td><td class="lsvac-reason">{{ row.reason or 'Ya registrado.' }}</td></tr>
+    {% endfor %}</tbody></table></div>
+    {% endif %}
+  </section>
+  <section class="lsvac-panel">
+    <h2>3. Confirmar incorporación al historial</h2>
+    <p class="lsvac-small">Esta operación agregará <b>{{ preview.summary.ready }}</b> eventos históricos sin alterar el control de vacaciones operativo. Cada registro lleva su referencia de origen para evitar duplicaciones en cargas sucesivas.</p>
+    <form method="post" action="/app/import/legacy-vacations/{{ token }}/confirm">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label class="lsvac-confirm"><input type="checkbox" name="verified" value="si" required> Revisé las coincidencias y autorizo incorporar únicamente los movimientos correctamente vinculados, sin modificar saldos ni pagos.</label>
+      <button class="btn primary" type="submit" {% if preview.summary.ready == 0 %}disabled{% endif %}>Importar {{ preview.summary.ready }} movimientos históricos</button>
+    </form>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}
