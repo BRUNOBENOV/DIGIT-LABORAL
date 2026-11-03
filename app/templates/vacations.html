@@ -27,7 +27,7 @@
     <thead><tr><th>Funcionario</th><th>Empresa</th><th>Período devengado</th><th>Inicio de vacaciones</th><th>Fin de vacaciones</th><th>Días registrados</th><th>Importe histórico</th></tr></thead>
     <tbody>{% for row in historical_vacations %}
       <tr>
-        <td><a href="/app/employees/{{ row.event.employee_id }}"><b>{{ row.event.employee.full_name }}</b></a><small style="display:block;color:#687b96">CODTRA {{ row.source.employee_code }}</small></td>
+        <td><a href="/app/employees/{{ row.event.employee_id }}"><b>{{ row.event.employee.full_name }}</b></a><small style="display:block;color:#687b96">CODTRA {{ row.source.employee_code }} · <a href="/app/vacations/history/{{ row.event.id }}">Ver origen #{{ row.event.id }}</a></small></td>
         <td>{{ row.event.employee.company.legal_name }}</td>
         <td>{{ row.source.period_from }} – {{ row.source.period_to }}</td>
         <td>{{ row.source.vacation_start }}</td>
