@@ -6,6 +6,7 @@ ni expediente del trabajador hasta que exista una conciliación documentada.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 from typing import Any
 
@@ -46,6 +47,26 @@ def parse_exception_log(log: AuditLog) -> dict[str, Any] | None:
         return None
 
 
+def source_fingerprint(row: dict[str, Any]) -> str:
+    """Same source fingerprint as LSPRE importer; a row number alone is unsafe."""
+    core = [
+        str(row.get("company_code") or ""),
+        str(row.get("employee_code") or ""),
+        str(row.get("admission_source") or ""),
+        str(row.get("notice_date_source") or ""),
+        str(row.get("departure_date_source") or ""),
+        str(row.get("secondary_date_source") or ""),
+        str(row.get("days")) if row.get("days") is not None else "",
+        str(row.get("deleted_marker_raw") or ""),
+    ]
+    extended = core + [
+        str(row.get("updated_source") or ""),
+        str(row.get("updated_time_source") or ""),
+        str(row.get("operator_source") or ""),
+    ]
+    return hashlib.sha256("|".join(extended).encode("utf-8")).hexdigest()
+
+
 def list_notice_exceptions(db: Session, studio_id: int, allowed_company_ids: set[int]) -> dict:
     """Authoritative per-studio source quarantine; zero trust for JSON audit data."""
     if not studio_id or not allowed_company_ids:
@@ -74,7 +95,7 @@ def list_notice_exceptions(db: Session, studio_id: int, allowed_company_ids: set
             EmployeeEvent.event_type == EVENT_TYPE,
         )
     ))
-    by_source_row: dict[tuple[str, str, int], int] = {}
+    by_source_row: dict[tuple[str, str, int, str], int] = {}
     for event in historical_events:
         payload = legacy_notice_data(event)
         if not payload:
@@ -82,7 +103,8 @@ def list_notice_exceptions(db: Session, studio_id: int, allowed_company_ids: set
         try:
             key = (str(payload.get("company_code") or ""),
                    str(payload.get("employee_code") or ""),
-                   int(payload.get("source_row")))
+                   int(payload.get("source_row")),
+                   str(payload.get("source_hash") or ""))
             by_source_row[key] = event.id
         except (ValueError, TypeError, OverflowError):
             continue
@@ -101,7 +123,7 @@ def list_notice_exceptions(db: Session, studio_id: int, allowed_company_ids: set
         seen.add(log.entity_id)
         code = str(item.get("employee_code") or "")
         rownum = int(item["source_row"])
-        matching_id = by_source_row.get((source_company, code, rownum))
+        matching_id = by_source_row.get((source_company, code, rownum, source_fingerprint(item)))
         records.append({
             "log_id": log.id,
             "source": item,
