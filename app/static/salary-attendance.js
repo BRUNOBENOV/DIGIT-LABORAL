@@ -21,7 +21,8 @@
   function syncBrowserPeriod() {
     const contextMonth = document.querySelector('.dl-context [name="month"]');
     if (contextMonth) contextMonth.value = month.value;
-    if (window.location.pathname !== '/app/liquidaciones') return;
+    if (window.location.pathname !== '/app/liquidaciones' ||
+        !/^\d{4}-(0[1-9]|1[0-2])$/.test(month.value)) return;
     const url = new URL(window.location.href);
     if (url.searchParams.get('tipo') !== 'salary' || url.searchParams.get('month') === month.value) return;
     url.searchParams.set('month', month.value);
@@ -85,6 +86,8 @@
   month.addEventListener('change', refresh);
   form.addEventListener('submit', event => { if (pending) { event.preventDefault(); status.textContent = 'Esperá a que termine la consulta de asistencia.'; } }, true);
   locks();
+  // Los formularios restaurados por el navegador también deben reflejar su mes real.
+  syncBrowserPeriod();
 })();
 
 (() => {
