@@ -133,9 +133,11 @@ def build_employee_report_pdf(
         source = entry.get("source") or {}
         period = f"{source.get('period_from') or '—'} / {source.get('period_to') or '—'}"
         days = source.get("days")
+        amount = source.get("vacation_amount")
+        value_note = f", importe registrado Gs. {amount}" if amount is not None else ""
         vacations_text.append(
-            f"{period}: {days if days is not None else '—'} días registrados "
-            "(Sin conciliar · LSVAC, sin saldo acreditado)"
+            f"{period}: {days if days is not None else '—'} días registrados"
+            f"{value_note} (Sin conciliar · LSVAC, sin saldo acreditado)"
         )
     vac_text = "; ".join(vacations_text) or "Sin registros de vacaciones."
     ag_text = ", ".join(f"{a.year}: Gs. {_gs(a.calculated_amount)} ({a.status})" for a in aguinaldos) or "Sin registros de aguinaldo."
