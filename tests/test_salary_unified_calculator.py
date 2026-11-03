@@ -140,3 +140,90 @@ def test_wage_rate_field_is_optional_and_hidden_for_monthly_by_client_logic():
     html = (Path(__file__).resolve().parents[1] / "app/templates/labor_workbench.html").read_text(encoding="utf-8")
     assert "showApplicableWageFields" in html
     assert '''basis?.value === "daily"''' in html
+
+
+def test_salary_has_direct_save_action_before_first_calculate(web_case):
+    from bs4 import BeautifulSoup
+    client, db, box, company, employee, *_ = web_case
+    response = client.get("/app/liquidaciones", params={
+        "tipo": "salary", "month": "2026-10",
+        "company_id": company.id, "employee_id": employee.id,
+    })
+    assert response.status_code == 200
+    soup = BeautifulSoup(response.text, "html.parser")
+    actions = soup.select_one("[data-live-summary]")
+    save = actions.select_one('button[data-save-current]')
+    assert save is not None
+    assert save.get("formaction") == "/app/liquidaciones/guardar"
+    assert save.get("form") == "labor-form"
+    assert not save.has_attr("disabled")
+    assert actions.select_one("[data-quick-calculate]") is not None
+    assert soup.select_one("#labor-document") is None
+    # No mostrar un control muerto cuando todavía no hay documento calculado.
+    assert "Ver documento completo" not in soup.select_one('[data-quick-step="5"]').get_text()
+
+
+def test_salary_saves_draft_and_pdf_directly_with_no_ips_and_no_history(web_case):
+    import json
+    from sqlalchemy import select
+    from pypdf import PdfReader
+    import io
+    from app.models import CalculationRecord
+    from tests.test_labor_suite import token
+
+    client, db, box, company, employee, *_ = web_case
+    employee.ips_contributor = False
+    employee.base_salary = 3_044_000
+    db.commit()
+    csrf = token(client, f"/app/liquidaciones?tipo=salary&company_id={company.id}&employee_id={employee.id}")
+    payload = salary(
+        csrf_token=csrf, company_id=str(company.id), employee_id=str(employee.id),
+        month="2026-10", salary="3044000", pay_basis="monthly",
+        days_paid="30", days_worked="27", hours_worked="216",
+        period_start="2026-10-01", period_end="2026-10-31",
+        apply_ips="", two_copies="on",
+    )
+    # Sin POST previo a /calcular: guardar debe recalcular y confirmar en servidor.
+    response = client.post("/app/liquidaciones/guardar", data=payload, follow_redirects=False)
+    assert response.status_code == 303, response.text[:300]
+    db.expire_all()
+    record = db.scalar(select(CalculationRecord).where(
+        CalculationRecord.employee_id == employee.id,
+        CalculationRecord.calculation_type == "suite_salary",
+    ))
+    assert record is not None
+    assert record.reference_period == "2026-10"
+    assert record.amount == 3_044_000
+    assert record.status == "Borrador"
+    saved_result = json.loads(record.result_json)
+    assert saved_result["gross"] == 3_044_000
+    assert saved_result["net"] == 3_044_000
+    assert saved_result["copies"] == 2
+    assert any("no hay historial salarial registrado" in note for note in saved_result["warnings"])
+    assert any("No se aplicó descuento IPS" in note for note in saved_result["warnings"])
+
+    page = client.get(response.headers["location"])
+    assert page.status_code == 200 and "guardada" in page.text.lower()
+    pdf = client.get(response.headers["location"] + "/exportar/pdf")
+    assert pdf.status_code == 200 and pdf.content.startswith(b"%PDF")
+    assert len(PdfReader(io.BytesIO(pdf.content)).pages) >= 2
+
+
+def test_direct_save_rejects_invalid_salary_without_creating_record(web_case):
+    from sqlalchemy import select
+    from app.models import CalculationRecord
+    from tests.test_labor_suite import token
+
+    client, db, _box, company, employee, *_ = web_case
+    csrf = token(client, f"/app/liquidaciones?tipo=salary&company_id={company.id}&employee_id={employee.id}")
+    response = client.post("/app/liquidaciones/guardar", data=salary(
+        csrf_token=csrf, company_id=str(company.id), employee_id=str(employee.id),
+        salary="-1", month="2026-10"
+    ), follow_redirects=False)
+    assert response.status_code == 422
+    assert "Revisá los datos" in response.text
+    db.expire_all()
+    assert db.scalars(select(CalculationRecord).where(
+        CalculationRecord.calculation_type == "suite_salary",
+        CalculationRecord.employee_id == employee.id,
+    )).all() == []
