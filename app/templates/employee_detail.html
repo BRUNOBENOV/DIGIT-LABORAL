@@ -129,7 +129,7 @@
       <td>{{ row.source.period_from }} – {{ row.source.period_to }}</td>
       <td>{{ row.source.days }}</td>
       <td>{{ row.source.vacation_amount if row.source.vacation_amount is not none else 'No informado' }}</td>
-      <td>Sin conciliar</td></tr>
+      <td><a href="/app/vacations/history/{{ row.event.id }}">Ver origen · Sin conciliar</a></td></tr>
     {% endif %}{% endfor %}</tbody>
   </table></div>
   {% else %}<p class="empty-state">No hay antecedentes LSVAC vinculados.</p>{% endif %}
