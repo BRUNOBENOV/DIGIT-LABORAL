@@ -20,13 +20,14 @@
   <div style="padding:15px 17px 10px">
     <span class="eyebrow">ARCHIVO HISTÓRICO · SOLO LECTURA</span>
     <h2 style="margin:3px 0 7px;font-size:1.13rem">Vacaciones migradas del sistema anterior</h2>
-    <p style="font-size:.8rem;color:#617188;line-height:1.55;margin:0">Se registran como antecedentes independientes: <b>no generan saldo, solicitudes, pagos ni comunicados oficiales</b>. {{ historical_count }} movimientos vinculados según los filtros de esta vista; se muestran los 60 más recientes.</p>
+    <p style="font-size:.8rem;color:#617188;line-height:1.55;margin:0">Se registran como antecedentes independientes: <b>no generan saldo, solicitudes, pagos ni comunicados oficiales</b>. {{ historical_count }} movimientos vinculados. Página {{ history_page.page }} de {{ history_page.pages }}; registros {{ history_page.first }}–{{ history_page.last }}.</p>
+    <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><a class="btn ghost" href="/app/vacations/history.csv{% if history_export_query %}?{{ history_export_query }}{% endif %}">Exportar antecedentes CSV</a>{% if user.role in ['administrador','contador','auxiliar'] %}<a class="btn ghost" href="/app/employee-history{% if selected_company_id %}?company_id={{ selected_company_id }}{% endif %}">Histórico de funcionarios</a>{% endif %}</div>
   </div>
   <div class="table-wrap"><table>
     <thead><tr><th>Funcionario</th><th>Empresa</th><th>Período devengado</th><th>Inicio de vacaciones</th><th>Fin de vacaciones</th><th>Días registrados</th><th>Importe histórico</th></tr></thead>
     <tbody>{% for row in historical_vacations %}
       <tr>
-        <td><b>{{ row.event.employee.full_name }}</b><small style="display:block;color:#687b96">CODTRA {{ row.source.employee_code }}</small></td>
+        <td><a href="/app/employees/{{ row.event.employee_id }}"><b>{{ row.event.employee.full_name }}</b></a><small style="display:block;color:#687b96">CODTRA {{ row.source.employee_code }} · <a href="/app/vacations/history/{{ row.event.id }}">Ver origen #{{ row.event.id }}</a></small></td>
         <td>{{ row.event.employee.company.legal_name }}</td>
         <td>{{ row.source.period_from }} – {{ row.source.period_to }}</td>
         <td>{{ row.source.vacation_start }}</td>
@@ -36,6 +37,14 @@
       </tr>
     {% else %}<tr><td colspan="7" class="empty-state">No hay antecedentes LSVAC importados para esta selección.</td></tr>{% endfor %}</tbody>
   </table></div>
+  <nav style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 16px;flex-wrap:wrap" aria-label="Paginación de vacaciones históricas">
+    <span style="font-size:.77rem;color:#617188">{{ history_page.first }}–{{ history_page.last }} de {{ historical_count }} movimientos históricos</span>
+    <div style="display:flex;gap:8px;align-items:center">
+      {% if history_page.page > 1 %}<a class="btn ghost" href="/app/vacations?{{ history_prev_query }}">← Anterior</a>{% endif %}
+      <span style="font-size:.78rem">Página {{ history_page.page }} / {{ history_page.pages }}</span>
+      {% if history_page.page < history_page.pages %}<a class="btn ghost" href="/app/vacations?{{ history_next_query }}">Siguiente →</a>{% endif %}
+    </div>
+  </nav>
 </section>
 
 {% if user.role != 'empresa' %}<div class="modal" id="vacationModal" aria-hidden="true"><div class="modal-backdrop" data-modal-close></div><section class="modal-card"><button class="modal-x" type="button" data-modal-close>×</button><span class="eyebrow">NUEVO REGISTRO</span><h2>Vacaciones del funcionario</h2><form id="vacationFormV24" method="post" action="/app/vacations" class="form-grid"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label class="span-2">Funcionario<select name="employee_id" required data-searchable-entity="employee" data-entity-scope="active"><option value="" disabled {{ 'selected' if not selected_employee_id }}>Seleccioná un funcionario</option>{% for employee in employees|entity_choices %}<option value="{{ employee.id }}" data-admission="{{ employee.admission_date.isoformat() }}" {{ 'selected' if selected_employee_id == employee.id }} data-company="{{ employee.company_id }}">{{ employee.employee_code if employee.employee_code is not none else 'Sin legajo' }} - {{ employee.full_name }}</option>{% endfor %}</select></label><label>Año del periodo<input type="number" name="period_year" value="{{ today.year }}" min="1990" max="{{ today.year + 2 }}" required></label><label>Días concedidos<input type="number" name="entitled_days" min="0" placeholder="Se sugiere automáticamente"><small class="v24-inline-help">Podés modificar la sugerencia si el caso lo requiere.</small></label><div id="vacationLegalReference" class="v24-vacation-reference span-2">Seleccioná el funcionario y el periodo para ver la referencia.</div><label>Días utilizados<input type="number" name="used_days" min="0" value="0"></label><label>Estado<select name="status"><option>Pendiente</option><option>Aprobada</option><option>Completada</option></select></label><label>Desde<input type="date" name="start_date"></label><label>Hasta<input type="date" name="end_date"></label><label class="span-2">Observaciones<textarea name="notes" rows="3" placeholder="Condición más favorable, fraccionamiento, autorización u otra referencia"></textarea></label><div class="form-actions span-2"><button class="btn ghost" type="button" data-modal-close>Cancelar</button><button class="btn primary" type="submit">Guardar con control</button></div></form></section></div>{% endif %}

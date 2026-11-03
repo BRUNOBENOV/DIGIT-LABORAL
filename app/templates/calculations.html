@@ -10,6 +10,18 @@
 {% if request.query_params.get('saved') %}<div class="alert success">Cálculo guardado en estado <b>Revisar</b>. Podés aprobarlo después del control profesional.</div>{% endif %}
 <div class="v24-professional-note"><span class="v24-note-icon">§</span><div><b>El sistema calcula; el profesional determina la procedencia.</b> Revisá régimen, conceptos computables, base IPS, antigüedad y documentación antes de aprobar un resultado. Las referencias sirven como control y no sustituyen el análisis del caso.</div></div>{% if period_reuse_warning %}<div class="legal-warning" role="status"><b>Reutilización de historial: revisión obligatoria.</b> {{ period_reuse_warning }} No apruebes el importe sin verificar los conceptos.</div>{% endif %}
 <section class="calculation-context panel"><div><span class="eyebrow-label">1 · CONTEXTO</span><h2>Empresa y funcionario</h2><p>Elegí a quién corresponde el cálculo. Esto evita resultados sueltos sin trazabilidad.</p></div><form method="get" action="/app/calculations" class="calculation-context-form module-selection-form" data-module-selection><input type="hidden" name="tipo" value="{{ active_calculation_type }}">{% if active_calculation_type == "notice" %}<input type="hidden" name="reference_date" value="{{ notice_reference.isoformat() }}" data-notice-context-date>{% endif %}<label>Empresa<select name="company_id" id="calculationCompanyFilter" data-module-company data-searchable-entity="company" data-entity-scope="all"><option value="">Seleccioná empresa / todas</option>{% for company in companies|entity_choices %}<option value="{{ company.id }}" {{ 'selected' if selected_company == company.id }}>{{ company.legacy_code or (company.company_code if company.company_code is not none else 'Sin código') }} - {{ company.legal_name }}</option>{% endfor %}</select></label><label>Funcionario<select name="employee_id" id="calculationEmployeeFilter" data-module-employee data-searchable-entity="employee" data-entity-scope="active"><option value="">Seleccioná funcionario / todos</option>{% for employee in employees|entity_choices %}<option value="{{ employee.id }}" data-company="{{ employee.company_id }}" {{ 'selected' if selected_employee == employee.id }}>{{ employee.employee_code if employee.employee_code is not none else 'Sin legajo' }} - {{ employee.full_name }}</option>{% endfor %}</select></label><button class="btn ghost" type="submit">Aplicar</button></form></section>
+{% if active_calculation_type == 'vacation' and historical_vacation_overview %}
+<div class="v24-professional-note" role="note">
+  <span class="v24-note-icon">↗</span>
+  <div><b>Antecedentes de vacaciones del sistema anterior: {{ historical_vacation_overview.count }} movimientos.</b>
+    {% if historical_vacation_overview.count %}
+      Último registro {{ historical_vacation_overview.last_date|fecha }}.
+      <a href="/app/vacations?company_id={{ selected_company }}&amp;employee_id={{ selected_employee }}">Revisar historial histórico LSVAC</a>.
+    {% endif %}
+    Los días y valores históricos no se suman automáticamente al cálculo: comprobá derechos vigentes, usufructo y documentos de respaldo.
+  </div>
+</div>
+{% endif %}
 <section class="calculator-workbench" id="calculatorWorkbench" data-ips-rate="{{ ips_rate }}" data-minimum-salary="{{ minimum_salary|int }}" data-hourly-reference="{{ hourly_reference|int }}">
 {% set default_company = selected_company or '' %}{% set default_employee = selected_employee or '' %}
 {% if active_calculation_type == 'salary' %}

@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Antecedente LSVAC #{{ event.id }} | DIGIT-LABORAL{% endblock %}
+{% block page_name %}Antecedente histórico de vacaciones{% endblock %}
+{% block content %}
+<style>
+.legacy-record{max-width:1070px;margin:0 auto}
+.legacy-record-header{padding:23px;border-radius:14px;background:linear-gradient(110deg,#081d50,#05256d 70%,#214991);color:white;margin-bottom:18px}
+.legacy-record-header h1{font-size:1.45rem;color:white;margin:6px 0}
+.legacy-record-header p{font-size:.84rem;color:#d9e7ff;margin:0}
+.legacy-record .legacy-review-note{background:#fff8ea;border:1px solid #e5cd95;color:#795415;border-radius:10px;padding:13px 15px;line-height:1.6;margin-bottom:16px}
+.legacy-record-facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:12px 0}
+.legacy-record-facts div{background:#f6f9fd;border:1px solid #e0e7f1;border-radius:11px;padding:13px}
+.legacy-record-facts dt{font-size:.74rem;color:#5e718d;font-weight:650;margin-bottom:6px}
+.legacy-record-facts dd{font-size:.92rem;font-weight:700;color:#173456;margin:0;overflow-wrap:anywhere}
+.legacy-record .legacy-actionbar{display:flex;gap:8px;flex-wrap:wrap;margin:15px 0}
+.legacy-record p{line-height:1.5}
+@media(max-width:740px){.legacy-record-facts{grid-template-columns:repeat(2,minmax(0,1fr))}}
+</style>
+<div class="legacy-record">
+  <header class="legacy-record-header">
+    <small style="letter-spacing:.11em">ARCHIVO HISTÓRICO · LSVAC</small>
+    <h1>Registro original de vacaciones #{{ event.id }}</h1>
+    <p>Antecedente trazable del sistema DOS, vinculado al expediente de un funcionario existente.</p>
+  </header>
+  <div class="legacy-actionbar">
+    <a class="btn ghost" href="/app/vacations?company_id={{ event.employee.company_id }}&amp;employee_id={{ event.employee_id }}">← Volver a vacaciones</a>
+    <a class="btn ghost" href="/app/employees/{{ event.employee_id }}">Abrir expediente</a>
+    {% if user.role in ['administrador','contador','auxiliar'] %}
+      <a class="btn ghost" href="/app/employee-history?company_id={{ event.employee.company_id }}&amp;employee_id={{ event.employee_id }}">Histórico consolidado</a>
+      <a class="btn ghost" href="/app/calculations?tipo=vacation&amp;company_id={{ event.employee.company_id }}&amp;employee_id={{ event.employee_id }}">Calculadora de vacaciones</a>
+    {% endif %}
+  </div>
+  <p class="legacy-review-note" role="note">
+    <b>Estado: sin conciliar.</b>
+    Este registro demuestra que existe un dato en el sistema anterior; no confirma por sí solo
+    vacaciones efectivamente usufructuadas, autorización, pago, saldo pendiente ni presentación al MTESS.
+    Ningún importe o día se transfiere automáticamente al sistema operativo.
+  </p>
+  <section class="panel" style="padding:18px">
+    <div class="panel-head"><div><span>IDENTIFICACIÓN</span><h2>Relación con el expediente actual</h2></div></div>
+    <dl class="legacy-record-facts">
+      <div><dt>Funcionario</dt><dd><a href="/app/employees/{{ event.employee_id }}">{{ event.employee.full_name }}</a></dd></div>
+      <div><dt>Empresa</dt><dd>{{ event.employee.company.legal_name }}</dd></div>
+      <div><dt>Legajo actual</dt><dd>{{ event.employee.employee_code if event.employee.employee_code is not none else 'No asignado' }}</dd></div>
+      <div><dt>CODEMP original</dt><dd>{{ source.company_code or '—' }}</dd></div>
+      <div><dt>CODTRA original</dt><dd>{{ source.employee_code or '—' }}</dd></div>
+      <div><dt>Archivo original</dt><dd>{{ source.source_filename or 'No informado' }}</dd></div>
+    </dl>
+  </section>
+  <section class="panel" style="padding:18px;margin-top:13px">
+    <div class="panel-head"><div><span>DATOS CONSERVADOS</span><h2>Vacaciones según LSVAC</h2></div></div>
+    <dl class="legacy-record-facts">
+      <div><dt>Período devengado desde</dt><dd>{{ source.period_from or '—' }}</dd></div>
+      <div><dt>Período devengado hasta</dt><dd>{{ source.period_to or '—' }}</dd></div>
+      <div><dt>Inicio de vacaciones</dt><dd>{{ source.vacation_start or '—' }}</dd></div>
+      <div><dt>Fin de vacaciones</dt><dd>{{ source.vacation_end or '—' }}</dd></div>
+      <div><dt>Días informados</dt><dd>{{ source.days if source.days is not none else 'Sin dato' }}</dd></div>
+      <div><dt>Fecha de registro de origen</dt><dd>{{ source.registered_on or 'Sin dato' }}</dd></div>
+      <div><dt>Salario de origen (Gs.)</dt><dd>{{ source.salary_snapshot if source.salary_snapshot is not none else 'Sin dato' }}</dd></div>
+      <div><dt>Jornal de origen (Gs.)</dt><dd>{{ source.daily_wage if source.daily_wage is not none else 'Sin dato' }}</dd></div>
+      <div><dt>Importe vacaciones de origen (Gs.)</dt><dd>{{ source.vacation_amount if source.vacation_amount is not none else 'Sin dato' }}</dd></div>
+      <div><dt>Descuento IPS de origen (Gs.)</dt><dd>{{ source.ips_discount if source.ips_discount is not none else 'Sin dato' }}</dd></div>
+      <div><dt>Indicador IPS original</dt><dd>{{ source.ips_flag or 'Sin dato' }}</dd></div>
+      <div><dt>Fila original del archivo</dt><dd>{{ source.source_row if source.source_row is not none else 'Sin dato' }}</dd></div>
+    </dl>
+  </section>
+  <section class="panel" style="padding:18px;margin-top:13px">
+    <div class="panel-head"><div><span>TRAZABILIDAD</span><h2>Origen e integridad</h2></div></div>
+    <dl class="legacy-record-facts">
+      <div><dt>Clave única LSVAC</dt><dd style="font-size:.76rem">{{ source.legacy_key }}</dd></div>
+      <div><dt>Huella SHA-256</dt><dd style="font-size:.68rem">{{ source.source_hash }}</dd></div>
+      <div><dt>Importado por</dt><dd>{{ event.created_by or 'Sistema' }}</dd></div>
+    </dl>
+  </section>
+</div>
+{% endblock %}
