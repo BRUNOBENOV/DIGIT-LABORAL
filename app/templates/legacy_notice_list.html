@@ -4,7 +4,7 @@
 {% block content %}
 <div class="page-header"><div><span class="eyebrow">LSPRE · HISTORIAL DEL SISTEMA ANTERIOR</span>
 <h1>Preavisos históricos</h1><p>Datos enlazados a expedientes. No acreditan por sí solos un aviso practicado, cumplido o indemnización pagada.</p></div>
-<div class="header-actions">{% if user.role in ['administrador','contador'] %}<a class="btn primary" href="/app/import/legacy-notices">Importar LSPRE</a>{% endif %}
+<div class="header-actions">{% if user.role in ['administrador','contador'] %}<a class="btn primary" href="/app/import/legacy-notices">Importar LSPRE</a><a class="btn ghost" href="/app/legacy-notices/exceptions">Revisar pendientes de conciliación</a>{% endif %}
 <a class="btn ghost" href="/app/calculations?tipo=notice">Cálculo de preaviso</a></div></div>
 {% if request.query_params.get("imported") is not none %}
 <div class="alert success" role="status">{{ request.query_params.get("imported") }} preavisos históricos incorporados; {{ request.query_params.get("rejected") or 0 }} excluidos y {{ request.query_params.get("existing") or 0 }} existentes. Sin alteraciones de liquidaciones ni egresos.</div>
