@@ -48,3 +48,15 @@ def test_salary_legacy_entry_redirects_to_one_professional_calculator(web_case):
     response = client.get("/app/calculations?tipo=salary", follow_redirects=False)
     assert response.status_code == 303
     assert response.headers["location"].startswith("/app/liquidaciones?tipo=salary")
+
+
+def test_professional_jornal_exports_as_salary_not_unmapped_income():
+    from app.approved_salary_import import _professional_line
+    inputs = salary(salary="3044000", days_paid="26", pay_basis="daily")
+    result = calculate(inputs)
+    errors = []
+    line, complements = _professional_line(None, inputs, result, errors)
+    assert errors == []
+    assert line.base_salary == 3_044_000
+    assert line.gross == result["gross"]
+    assert line.ips_base == 3_044_000
