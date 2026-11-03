@@ -61,7 +61,7 @@
       <div class="import-salary-grid" style="margin-top:12px">
         <label>Alcance de la exportación
           <select name="employee_id" data-searchable-entity="employee" data-entity-scope="company">
-            <option value="" {{ 'selected' if not selected_employee }}>Toda la empresa (registros aprobados)</option>
+            <option value="" {{ 'selected' if not selected_employee }}>{{ 'Toda la empresa · solo activos con IPS Sí y salario guardado' if authority == 'REI' else 'Toda la empresa (registros aprobados)' }}</option>
             {% for worker in approved_choices %}
             <option value="{{ worker.id }}" {{ 'selected' if selected_employee and selected_employee.id == worker.id }}>
               {{ worker.employee_code or worker.id }} · {{ worker.full_name }}
@@ -113,6 +113,7 @@
       </div>
       {% else %}
       <p class="import-salary-info">REI: TXT tabulado basado en el procedimiento IPS de 2016. Requiere comprobación con el formato que acepte actualmente tu cuenta del REI. El sistema no tiene todavía nombres y apellidos separados en el legajo.</p>
+      <p class="import-salary-info"><strong>Filtro de exportación IPS:</strong> el TXT incluirá únicamente salarios guardados para este mes provenientes de una nómina cerrada o de cálculos aprobados, correspondientes a funcionarios con estado <strong>Activo</strong> y <strong>IPS: Sí</strong>. Los trabajadores con IPS: No, desvinculados, archivados o sin salarios guardados no se incorporan al archivo ni bloquean a los elegibles. Este criterio no modifica el REOP.</p>
       <div class="import-salary-grid">
         <label>Orden de nombres registrado
           <select name="name_order" required>
