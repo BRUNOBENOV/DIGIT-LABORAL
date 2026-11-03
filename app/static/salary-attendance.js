@@ -9,6 +9,26 @@
   const manual = field('attendance_override'), month = field('month');
   let inherited = Object.fromEntries(names.map(name => [name, field(name)?.value || '']));
   let sequence = 0, controller, pending = false;
+  function suggestFullMonthDates() {
+    const selected = String(month?.value || '');
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(selected)) return;
+    const [year, number] = selected.split('-').map(Number);
+    const lastDay = new Date(Date.UTC(year, number, 0)).getUTCDate();
+    if (field('period_start') && !field('period_start').value) field('period_start').value = selected + '-01';
+    if (field('period_end') && !field('period_end').value)
+      field('period_end').value = selected + '-' + String(lastDay).padStart(2, '0');
+  }
+  function syncBrowserPeriod() {
+    const contextMonth = document.querySelector('.dl-context [name="month"]');
+    if (contextMonth) contextMonth.value = month.value;
+    if (window.location.pathname !== '/app/liquidaciones') return;
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('tipo') !== 'salary' || url.searchParams.get('month') === month.value) return;
+    url.searchParams.set('month', month.value);
+    // An origin record belongs to a single approved month; do not keep a stale ID.
+    url.searchParams.delete('calculation_id');
+    window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash);
+  }
   function locks() {
     for (const name of names) {
       const input = field(name);
@@ -34,8 +54,8 @@
     manual.checked = false;
     inherited = Object.fromEntries(names.map(name => [name, '']));
     for (const name of names) if (field(name)) field(name).value = '';
-    const contextMonth = document.querySelector('.dl-context [name="month"]');
-    if (contextMonth) contextMonth.value = month.value;
+    syncBrowserPeriod();
+    suggestFullMonthDates();
     if (!month.value || !field('company_id')?.value || !field('employee_id')?.value) {
       pending = false; locks(); status.textContent = 'Seleccioná empresa, funcionario y mes para cargar la asistencia.'; return;
     }
@@ -50,12 +70,14 @@
       field('attendance_source_sha256').value = proposal.fingerprint || '';
       inherited = Object.fromEntries(names.map(name => [name, String(proposal.values?.[name] ?? '')]));
       for (const name of names) if (field(name)) field(name).value = inherited[name];
+      if (!proposal.available) suggestFullMonthDates();
       status.textContent = proposal.available ? 'Asistencia del cálculo aprobado #' + proposal.calculation_id + ' · ' + proposal.period + '. Completá solo los datos faltantes.'
-        : 'No hay un cálculo aprobado vigente para este funcionario y mes. Ingresá la asistencia real.';
+        : 'Sin cálculo aprobado para el mes seleccionado. Se propone el primer y último día del mes; revisá las fechas reales y la asistencia.';
     } catch (error) {
       if (request !== sequence || error.name === 'AbortError') return;
       manual.checked = true;
-      status.textContent = 'No se pudo cargar la asistencia. Volvé a cargar la selección o ingresá los datos manualmente para esta liquidación.';
+      suggestFullMonthDates();
+      status.textContent = 'No se pudo cargar la asistencia. Se propone el período del mes seleccionado; confirmá las fechas reales y los días trabajados.';
     } finally {
       if (request === sequence) { pending = false; locks(); form.dispatchEvent(new Event('input', {bubbles:true})); }
     }
