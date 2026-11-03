@@ -25,7 +25,7 @@ def fixture_records(monkeypatch, *, override=None):
         id=3, employee_code=9, company_id=1, branch_id=None,
         full_name="PEREZ GOMEZ JUAN LUIS", document_number="1234567",
         payment_frequency="Mensual", admission_date=date(2020, 1, 1),
-        termination_date=None, ips_contributor=True,
+        termination_date=None, status="Activo", ips_contributor=True,
     )
     detail = SimpleNamespace(
         days_worked=30, hours_worked=Decimal("176"), payment_method="Transferencia",
@@ -128,3 +128,67 @@ def test_invalid_payroll_hours_are_reported_without_crashing(monkeypatch):
         rows, errors = service.prepare_import(None, company, "2026-10", "REOP", payment_code="1")
         assert any("horas trabajadas inválida" in error for error in errors)
         assert len(rows) == 1 and rows[0][7] == 0
+
+
+def test_rei_payroll_filters_ips_no_inactive_and_archived_without_blocking(monkeypatch):
+    company, line, employee, detail = fixture_records(monkeypatch)
+    non_ips = SimpleNamespace(**vars(employee))
+    non_ips.id, non_ips.ips_contributor = 4, False
+    non_ips.document_number = "2222222"
+    inactive = SimpleNamespace(**vars(employee))
+    inactive.id, inactive.status = 5, "Desvinculado"
+    inactive.document_number = "3333333"
+    archived = SimpleNamespace(**vars(employee))
+    archived.id, archived.status = 6, "Archivado"
+    archived.document_number = "4444444"
+    source_lines = [(line, person, detail) for person in (employee, non_ips, inactive, archived)]
+    monkeypatch.setattr(service, "_source", lambda db, company, period:
+                        (SimpleNamespace(status="Cerrada"), source_lines))
+    db = SimpleNamespace(scalar=lambda query: None)
+    rei_rows, errors = service.prepare_import(
+        db, company, "2026-10", "REI", source_type="payroll",
+        name_order="apellido_primero", rei_category="E",
+    )
+    assert not errors
+    assert len(rei_rows) == 1
+    assert rei_rows[0][2] == employee.document_number
+    assert rei_rows[0][7] == line.ips_base
+    reop_rows, reop_errors = service.prepare_import(
+        db, company, "2026-10", "REOP", source_type="payroll",
+        payment_code="1",
+    )
+    assert not reop_errors
+    assert len(reop_rows) == 4
+
+
+def test_rei_does_not_export_inactive_or_ips_no_employee_even_with_loaded_salary(monkeypatch):
+    company, _line, employee, _detail = fixture_records(monkeypatch)
+    db = SimpleNamespace(scalar=lambda query: None)
+    employee.ips_contributor = False
+    rows, errors = service.prepare_import(
+        db, company, "2026-10", "REI",
+        name_order="apellido_primero", rei_category="E",
+    )
+    assert rows == []
+    assert any("no hay salarios guardados de funcionarios activos con IPS marcado Sí" in e for e in errors)
+    employee.ips_contributor = True
+    employee.status = "Desvinculado"
+    rows, errors = service.prepare_import(
+        db, company, "2026-10", "REI",
+        name_order="apellido_primero", rei_category="E",
+    )
+    assert rows == []
+    assert any("no hay salarios guardados" in e for e in errors)
+
+
+def test_rei_never_uses_employee_base_salary_without_saved_salary_record(monkeypatch):
+    company, _line, employee, _detail = fixture_records(monkeypatch)
+    employee.base_salary = 3044000
+    monkeypatch.setattr(service, "_source", lambda db, company, period:
+                        (SimpleNamespace(status="Cerrada"), []))
+    rows, errors = service.prepare_import(
+        None, company, "2026-10", "REI", name_order="apellido_primero",
+        rei_category="E", source_type="payroll",
+    )
+    assert rows == []
+    assert any("no hay salarios guardados" in e for e in errors)

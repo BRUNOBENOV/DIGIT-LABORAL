@@ -56,7 +56,7 @@ def case():
         id=8, company_id=7, branch_id=None, employee_code=8,
         full_name="PEREZ GOMEZ JUAN LUIS", document_number="1234567",
         admission_date=date(2024, 1, 1), termination_date=None,
-        ips_contributor=True, payment_frequency="Mensual",
+        ips_contributor=True, status="Activo", payment_frequency="Mensual",
     )
     company = SimpleNamespace(id=7, ruc="80000000-1",
                               ips_employer_number="654321", mtess_employer_number="123456")
@@ -257,3 +257,71 @@ def test_latest_approved_employee_choices_exclude_drafts():
     db = FakeSession([draft, item], employee, detail)
     options = source.approved_employee_choices(db, company.id, "2026-10")
     assert [e.id for e in options] == [employee.id]
+
+
+def test_rei_approved_source_includes_only_active_ips_yes_saved_salary():
+    item, employee, company, detail = case()
+    no_ips = SimpleNamespace(**vars(employee))
+    no_ips.id, no_ips.employee_code, no_ips.ips_contributor = 9, 9, False
+    no_ips.document_number = "2222222"
+    inactive = SimpleNamespace(**vars(employee))
+    inactive.id, inactive.employee_code, inactive.status = 10, 10, "Desvinculado"
+    inactive.document_number = "3333333"
+    archived = SimpleNamespace(**vars(employee))
+    archived.id, archived.employee_code, archived.status = 11, 11, "Archivado"
+    archived.document_number = "4444444"
+    workers = [employee, no_ips, inactive, archived]
+    calculations = [item]
+    for worker in workers[1:]:
+        copy = SimpleNamespace(**vars(item))
+        copy.id = 50 + worker.id
+        copy.employee_id = worker.id
+        calculations.append(copy)
+
+    class MultiSession(FakeSession):
+        def scalars(self, stmt):
+            entity = stmt.column_descriptions[0]["entity"]
+            if entity is Employee:
+                return workers
+            if entity is CalculationRecord:
+                return calculations
+            return super().scalars(stmt)
+
+    db = MultiSession(calculations, employee, detail)
+    rows, errors = exporter.prepare_import(
+        db, company, "2026-10", "REI", source_type="approved",
+        name_order="apellido_primero", rei_category="E",
+    )
+    assert errors == []
+    assert len(rows) == 1
+    assert rows[0][2] == employee.document_number
+    assert rows[0][7] == 3000000
+    # Al contrario, REOP no usa el filtro de afiliación/estado de REI.
+    reop_rows, _reop_errors, _reop_diagnostics = source.approved_salary_records(
+        db, company, "2026-10", authority="REOP",
+    )
+    assert len(reop_rows) == 4
+
+
+def test_rei_draft_warning_ignores_non_ips_and_inactive_workers():
+    item, employee, company, detail = case()
+    draft = SimpleNamespace(**vars(item))
+    draft.id, draft.employee_id, draft.status = 77, 77, "Borrador"
+    no_ips = SimpleNamespace(**vars(employee))
+    no_ips.id, no_ips.ips_contributor = 77, False
+
+    class MultiSession(FakeSession):
+        def scalars(self, stmt):
+            entity = stmt.column_descriptions[0]["entity"]
+            if entity is Employee:
+                return [employee, no_ips]
+            if entity is CalculationRecord:
+                return [draft, item]
+            return super().scalars(stmt)
+
+    db = MultiSession([draft, item], employee, detail)
+    assert not source.salary_excluded_records(db, company.id, "2026-10", authority="REI")
+    excluded_reop = source.salary_excluded_records(db, company.id, "2026-10")
+    assert len(excluded_reop) == 1 and excluded_reop[0]["employee_id"] == 77
+    choices = source.approved_employee_choices(db, company.id, "2026-10", authority="REI")
+    assert [person.id for person in choices] == [employee.id]
