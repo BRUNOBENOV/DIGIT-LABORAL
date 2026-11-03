@@ -29,6 +29,20 @@
   {% else %}<p class="empty-state">Sin movimientos históricos LSVAC vinculados.</p>{% endif %}
   <div style="margin-top:12px"><a href="/app/vacations/history.csv?company_id={{ selected.company_id }}&amp;employee_id={{ selected.id }}">Descargar antecedentes CSV</a></div>
 </section>
+<section class="panel">
+<div class="panel-head"><div><span class="eyebrow-label">LSPRE · ARCHIVO HISTÓRICO</span>
+<h2>Preavisos registrados en DOS · {{ history.historical_notice_summary.count }}</h2></div>
+<a href="/app/legacy-notices?company_id={{ selected.company_id }}&amp;employee_id={{ selected.id }}">Ver todos</a></div>
+<p style="font-size:.79rem;color:#61718c;margin:5px 0 12px">Referencias antiguas sin constancia documental de notificación, cumplimiento o pago. Se muestran separadas de los cálculos aprobados.</p>
+{% if history.historical_notices %}
+<div class="table-wrap"><table><thead><tr><th>FECPRE</th><th>FECSAL</th><th>DIAPRE</th><th>BORRAD</th><th>Origen</th></tr></thead><tbody>
+{% for row in history.historical_notices %}{% if row.source %}
+<tr><td>{{ row.source.notice_date_source }}</td><td>{{ row.source.departure_date_source }}</td>
+<td>{{ row.source.days if row.source.days is not none else 'Sin dato' }}</td><td>{{ 'S' if row.source.deleted_source else '—' }}</td>
+<td><a href="/app/legacy-notices/{{ row.event.id }}">Consultar #{{ row.event.id }}</a></td></tr>
+{% endif %}{% endfor %}</tbody></table></div>
+{% else %}<p class="empty-state">No hay antecedentes LSPRE vinculados.</p>{% endif %}
+</section>
 <section class="panel"><div class="panel-head"><div><span class="eyebrow-label">REMUNERACIÓN ANUAL</span><h2>Aguinaldos</h2></div></div>{% if history.aguinaldos %}<div class="table-wrap"><table><thead><tr><th>Año</th><th>Remuneraciones computables</th><th>Aguinaldo</th><th>Estado</th></tr></thead><tbody>{% for item in history.aguinaldos %}<tr><td>{{ item.year }}</td><td>Gs. {{ item.total_remunerations|gs }}</td><td>Gs. {{ item.amount|gs }}</td><td>{{ item.status }}</td></tr>{% endfor %}</tbody></table></div>{% else %}<p class="empty-state">Sin aguinaldos registrados.</p>{% endif %}</section>
 <section class="panel"><div class="panel-head"><div><span class="eyebrow-label">SALUD OCUPACIONAL</span><h2>Exámenes médicos</h2></div><a href="/app/medical-exams">Abrir módulo</a></div>{% if history.medical_exams %}<div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Tipo</th><th>Resultado</th><th>Vencimiento</th></tr></thead><tbody>{% for item in history.medical_exams %}<tr><td>{{ item.exam_date|fecha }}</td><td>{{ item.exam_type }}</td><td>{{ item.result }}</td><td>{{ item.expires_on|fecha }}</td></tr>{% endfor %}</tbody></table></div>{% else %}<p class="empty-state">Sin exámenes médicos registrados.</p>{% endif %}</section>
 <section class="panel"><div class="panel-head"><div><span class="eyebrow-label">NÓMINAS MENSUALES</span><h2>Detalle de haberes</h2></div></div>{% if history.payroll_lines %}<div class="table-wrap"><table><thead><tr><th>Liquidación</th><th>Bruto</th><th>Descuentos</th><th>Neto</th></tr></thead><tbody>{% for item in history.payroll_lines %}<tr><td>{{ item.payroll.period if item.payroll else '—' }}</td><td>Gs. {{ item.gross|gs }}</td><td>Gs. {{ item.total_discounts|gs }}</td><td><b>Gs. {{ item.net|gs }}</b></td></tr>{% endfor %}</tbody></table></div>{% else %}<p class="empty-state">Sin líneas de nómina registradas.</p>{% endif %}</section>
