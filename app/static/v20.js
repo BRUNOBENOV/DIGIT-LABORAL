@@ -37,6 +37,7 @@
 
   document.querySelectorAll('form').forEach(form => {
     form.addEventListener('submit', () => {
+      if (form.hasAttribute('data-download-form')) return;
       const submitter = form.querySelector('button[type="submit"]');
       if (submitter && !submitter.dataset.keepEnabled) {
         submitter.disabled = true;

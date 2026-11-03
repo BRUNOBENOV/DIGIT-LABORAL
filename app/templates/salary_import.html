@@ -19,6 +19,9 @@
 .import-salary-confirm{display:flex;gap:9px;align-items:flex-start;margin:10px 0;font-size:.78rem;color:#2e435f}
 .import-salary-confirm input{width:auto;margin-top:3px}
 .import-salary-ok{background:#f2faf5;color:#17603e;border:1px solid #c4e8d2;border-radius:8px;padding:11px 13px;font-size:.78rem;margin:12px 0}
+.import-salary-download-status{border:1px solid #cbdaf2;border-radius:8px;background:#f4f8ff;padding:11px 13px;font-size:.78rem;line-height:1.5}
+.import-salary-download-status[data-state="error"]{border-color:#e5c0a4;background:#fff8ef;color:#85380f}
+.import-salary-download-status[data-state="success"]{border-color:#c4e8d2;background:#f2faf5;color:#17603e}
 @media(max-width:800px){.import-salary-grid{grid-template-columns:1fr}.import-salary-hero{padding:18px}}
 </style>
 <div class="import-salary-page">
@@ -220,7 +223,7 @@
     <p class="import-salary-info">Revisá cada observación. Las jornadas se completan arriba sin alterar importes; si hay diferencias salariales, corregí mediante un nuevo cálculo o el procedimiento de nómina correspondiente.</p>
     {% else %}
     <div class="import-salary-ok">La validación técnica local finalizó sin observaciones. El archivo todavía requiere revisión humana y aceptación del organismo.</div>
-    <form method="post" action="/app/compliance/salary-import/export" class="import-salary-form">
+    <form method="post" action="/app/compliance/salary-import/export" class="import-salary-form" data-download-form data-download-format="{{ 'xlsx' if authority == 'REOP' else 'txt' }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <input type="hidden" name="company_id" value="{{ selected_company.id }}">
       <input type="hidden" name="period" value="{{ period }}">
@@ -241,8 +244,10 @@
         <span>Revisé los datos de los trabajadores, los conceptos y el formato de importación. Comprendo que esta descarga no equivale a una presentación oficial.{% if authority == 'REI' %} Confirmé además los nombres, la categoría y la estructura TXT vigente en mi portal REI.{% endif %}</span>
       </label>
       <button class="btn primary" type="submit">Descargar {{ 'Excel REOP (.xlsx)' if authority == 'REOP' else 'TXT REI (.txt)' }}</button>
+      <p class="import-salary-download-status" data-download-status role="status" aria-live="polite" hidden></p>
     </form>
     {% endif %}
+    <script src="{{ url_for('static', path='download-form.js') }}?v={{ app_version }}" defer></script>
   </section>
   {% endif %}
   <section class="import-salary-card">

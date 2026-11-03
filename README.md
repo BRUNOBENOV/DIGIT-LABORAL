@@ -1,6 +1,12 @@
-# Digit Laboral 2.6.78
+# Digit Laboral 2.6.79
 
 Plataforma de gestión y cumplimiento laboral para estudios contables paraguayos.
+
+## Novedades de la versión 2.6.79
+
+- Corrige el bloqueo del canal de desconexión después de formularios POST protegidos por CSRF, que podía detener las descargas en streaming y dejar sin respuesta al servicio.
+- La exportación salarial REOP/REI entrega el archivo ya generado con longitud explícita. Conserva los 32 encabezados REOP, el TXT REI, la asistencia guardada, las exclusiones y la auditoría del lote.
+- Permite descargar y reintentar desde la misma vista previa, con mensajes claros ante errores o sesión vencida y sin dejar el botón permanentemente deshabilitado. No recalcula ni modifica registros salariales. Sin migraciones ni nuevas dependencias.
 
 ## Novedades de la versión 2.6.78
 
