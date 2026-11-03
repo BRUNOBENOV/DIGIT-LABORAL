@@ -35,7 +35,7 @@ def calculation_summary(result):
     values = dict(salary=0, aguinaldo=0, vacations=0, severance=0, notice=0, other=0, ips=0, other_discounts=0)
     for row in result["earnings"]:
         label = row["label"]
-        key = ("salary" if label == "Salario del período" else
+        key = ("salary" if label in {"Salario del período", "Jornales del período"} else
                "aguinaldo" if label == "Aguinaldo devengado" else
                "vacations" if label.startswith("Vacaciones ") else
                "notice" if label.startswith("Indemnización por preaviso no cumplido") else

@@ -5567,6 +5567,17 @@ def calculations_page(
 ):
     if tipo and tipo not in CALCULATION_MODULES:
         raise HTTPException(404, "Calculadora no encontrada.")
+    if tipo == "salary":
+        # Un único cálculo completo: conservar enlaces DOS/anteriores y
+        # reutilizar el motor profesional con sus documentos y auditoría.
+        destination = "/app/liquidaciones?tipo=salary"
+        if company_id is not None:
+            destination += f"&company_id={company_id}"
+        if employee_id is not None:
+            destination += f"&employee_id={employee_id}"
+        if reference_period:
+            destination += "&month=" + quote(reference_period, safe="")
+        return RedirectResponse(destination, status_code=303)
     company_ids = company_ids_for_user(db, user)
     company_id, employee_id = default_labor_context(
         request, db, user, company_ids, company_id, employee_id

@@ -10,8 +10,13 @@ def group(title, fields, advanced=False):
     return dict(title=title, fields=fields, advanced=advanced)
 
 SALARY = field("salary", "Salario mensual · Gs.", required=True, min="1")
-DAYS = field("days_paid", "Días a liquidar", value="30", max="30",
-             help="Para remuneración mensual se utiliza base de 30 días.", required=True)
+DAYS = field("days_paid", "Días remunerados", value="30", max="31",
+             help="Mensualizados: hasta 30 días con divisor 30. Jornaleros: jornadas efectivamente pagadas con jornal calculado sobre divisor 26; revisar excepciones.", required=True)
+PAY_BASIS = field("pay_basis", "Modalidad de remuneración", "select", "monthly",
+                  options=[("monthly", "Mensualizado · divisor 30"), ("daily", "Jornalero · divisor 26")],
+                  help="Elegí la modalidad real del contrato. El divisor 26 no se aplica a trabajadores mensualizados.")
+DAILY_RATE = field("daily_rate", "Jornal pactado por día · Gs. (opcional)",
+                   help="Solo para jornaleros. Si queda vacío, se propone salario mensual de referencia / 26.")
 REMUNERATIVE_EXTRA_FIELDS = [
     field("commissions", "Comisiones · Gs."),
     field("bonuses", "Bonificaciones remunerativas · Gs."),
@@ -74,7 +79,8 @@ IDENTITY = group("Datos del documento", [
     field("two_copies", "PDF con original y duplicado", "checkbox", "on")])
 GROUPS = {
     "salary": [
-        group("Salario del período", [field("month", "Mes liquidado", "month", required=True), SALARY, DAYS,
+        group("Salario del período", [field("month", "Mes liquidado", "month", required=True),
+            PAY_BASIS, SALARY, DAILY_RATE, DAYS,
             field("days_worked", "Jornadas efectivamente trabajadas", max="31",
                   help="Dato del recibo. Distinto de la base mensual de 30 días."),
             field("hours_worked", "Horas ordinarias efectivamente trabajadas", max="744", step="0.01",

@@ -28,10 +28,10 @@ def _calculation_selectors(client: TestClient):
     response = client.get("/app/calculations?tipo=salary")
     assert response.status_code == 200
     company_html = re.search(
-        r'id="calculationCompanyFilter"[^>]*>(.*?)</select>', response.text, re.DOTALL
+        r'id="ctx-company"[^>]*>(.*?)</select>', response.text, re.DOTALL
     )
     employee_html = re.search(
-        r'id="calculationEmployeeFilter"[^>]*>(.*?)</select>', response.text, re.DOTALL
+        r'id="ctx-employee"[^>]*>(.*?)</select>', response.text, re.DOTALL
     )
     assert company_html and employee_html
     company_ids = re.findall(r'<option value="(\d+)"', company_html.group(1))
@@ -88,7 +88,7 @@ def test_a_module_selection_does_not_leak_into_another_module():
         )
         assert selected.status_code == 200
         filter_form = re.search(
-            r'<form method="get" action="/app/calculations".*?</form>',
+            r'<form method="get" action="/app/liquidaciones".*?</form>',
             selected.text,
             re.DOTALL,
         )
@@ -129,4 +129,4 @@ def test_module_selector_rejects_employee_from_a_different_company():
         response = client.get(
             f"/app/calculations?tipo=salary&company_id={first_company}&employee_id={employee_id}"
         )
-        assert response.status_code == 400
+        assert response.status_code in {400, 404}

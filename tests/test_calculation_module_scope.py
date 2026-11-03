@@ -16,7 +16,6 @@ def test_calculation_sidebar_has_one_global_entry_for_each_work_area():
     block = _calculation_sidebar_block()
     expected = [
         'href="/app/calculations?tipo=salary">Salario</a>',
-        'href="/app/liquidaciones?tipo=salary">Liquidación de haberes</a>',
         'href="/app/liquidaciones?tipo=settlement">Liquidación final</a>',
         'href="/app/payrolls">Nóminas mensuales</a>',
         'href="/app/calculations?tipo=hours">Horas y recargos</a>',
@@ -63,6 +62,8 @@ def test_salary_entry_uses_the_selected_calculation_and_keeps_the_professional_w
     assert 'SALARY_EXTRAS = group("Haberes adicionales", REMUNERATIVE_EXTRA_FIELDS, False)' in fields
     salary_fields = fields.split('"salary": [', 1)[1].split('"settlement": [', 1)[0]
     assert "SALARY_EXTRAS" in salary_fields
+    assert "PAY_BASIS" in salary_fields
+    assert "DAILY_RATE" in salary_fields
     assert "Horas ordinarias nocturnas · adicional del 30 %" in fields
     assert "Horas extraordinarias diurnas · mínimo 50 % (total 150 %)" in fields
     assert "Horas extraordinarias nocturnas · recargo 100 % (total 200 %)" in fields

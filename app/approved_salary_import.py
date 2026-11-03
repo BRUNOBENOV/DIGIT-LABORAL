@@ -106,6 +106,7 @@ def _professional_line(item: CalculationRecord, inputs: dict, saved: dict, error
     """Relaciona etiquetas del motor profesional; conceptos no reconocidos bloquean."""
     incomes = {
         "Salario del período": "base_salary",
+        "Jornales del período": "base_salary",
         "Comisiones": "commissions",
         "Bonificaciones remunerativas": "bonuses",
         "Otros haberes remunerativos": "other_income",

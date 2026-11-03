@@ -325,6 +325,11 @@ def professional_page(request: Request, tipo: str = "settlement", company_id: Op
         values.update(salary=str(effective_salary), start_date=employee.admission_date.isoformat(),
                       apply_ips="on" if employee.ips_contributor else "",
                       indefinite="on" if employee.contract_type == "Tiempo indefinido" else "")
+        if tipo == "salary":
+            frequency = (employee.payment_frequency or "").strip().lower()
+            is_daily = any(word in frequency for word in ("jornal", "diario", "diaria"))
+            values["pay_basis"] = "daily" if is_daily else "monthly"
+            values["days_paid"] = "26" if is_daily else "30"
         if tipo == "salary" and user.role in {"administrador", "contador", "auxiliar"}:
             try:
                 attendance = attendance_proposal(db, employee.company_id, employee.id, values["month"])
