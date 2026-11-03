@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Importar preavisos históricos LSPRE | DIGIT-LABORAL{% endblock %}
+{% block page_name %}Importación de preavisos históricos{% endblock %}
+{% block content %}
+<style>
+.lspre{max-width:1160px;margin:0 auto;color:#17365c}
+.lspre h1,.lspre h2{letter-spacing:-.02em}
+.lspre-head{background:linear-gradient(115deg,#061b4c,#05256d 75%,#1c4392);color:#fff;padding:23px;border-radius:14px;margin-bottom:16px}
+.lspre-head h1{color:white;font-size:1.55rem;margin:4px 0}
+.lspre-head p{color:#dbe8ff;margin:0;font-size:.85rem;line-height:1.55}
+.lspre-section{background:white;border:1px solid #dbe4f1;border-radius:12px;margin:14px 0;padding:19px}
+.lspre-section h2{font-size:1.05rem;margin:0 0 9px}
+.lspre-help{color:#61718c;font-size:.8rem;line-height:1.6}
+.lspre-warning{padding:13px 15px;border-radius:9px;background:#fff7e9;border:1px solid #e9c88b;color:#785014;font-size:.8rem;line-height:1.6;margin:12px 0}
+.lspre-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin:16px 0}
+.lspre-metric{border:1px solid #e0e7f2;background:#f7faff;border-radius:10px;padding:12px}
+.lspre-metric strong{display:block;color:#123b86;font-size:1.3rem;font-variant-numeric:tabular-nums}
+.lspre-metric small{color:#5f718c;font-size:.75rem}
+.lspre-scroll{overflow:auto;border:1px solid #e1e8f3;border-radius:9px}
+.lspre-scroll table{border-collapse:collapse;width:100%;font-size:.76rem}
+.lspre-scroll th{background:#f0f5fc;color:#12365c;text-align:left}
+.lspre-scroll td,.lspre-scroll th{padding:10px;border-bottom:1px solid #e1e9f4;white-space:nowrap}
+.lspre-scroll td:last-child{white-space:normal;min-width:190px}
+.lspre-file{display:flex;flex-wrap:wrap;gap:12px;margin:13px 0;align-items:center}
+.lspre-file input{max-width:100%}
+.lspre-verify{display:flex;align-items:flex-start;gap:8px;font-size:.8rem;margin:14px 0}
+.lspre-verify input{accent-color:#05256d;width:18px;height:18px}
+@media(max-width:700px){.lspre-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.lspre-section{padding:12px}}
+</style>
+<div class="lspre">
+<header class="lspre-head">
+  <small style="font-size:.68rem;letter-spacing:.12em">MIGRACIÓN · DOS / LSPRE</small>
+  <h1>Importación histórica de preavisos</h1>
+  <p>Vinculá los registros originales con legajos existentes sin cambiar cálculos, preavisos, egresos, liquidaciones ni pagos.</p>
+</header>
+<a class="btn ghost" href="/app/legacy-notices">← Consultar histórico LSPRE</a>
+{% if request.query_params.get('error') %}<div class="lspre-warning" role="alert">{{ request.query_params.get('error') }}</div>{% endif %}
+<section class="lspre-section">
+  <h2>1 · Archivo original</h2>
+  <p class="lspre-help">Subí el Excel <b>.xlsx</b> con encabezados CODEMP, CODTRA, FECPRE, FECSAL, FECSA1 y DIAPRE. Se concilia contra empresas y legajos ya migrados. No se generan registros oficiales.</p>
+  <form method="post" action="/app/import/legacy-notices/preview" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="lspre-file">
+      <input type="file" accept=".xlsx" name="file" required aria-label="Base histórica LSPRE">
+      <button class="btn primary" type="submit">Analizar coincidencias</button>
+    </div>
+  </form>
+  <div class="lspre-warning"><b>Campos sin interpretación automática:</b> FECSA1 se conservará con su nombre original hasta determinar su semántica. BORRAD=S indica un registro marcado como borrado en el sistema anterior, y se mantendrá con esa distinción. Ningún registro prueba por sí solo notificación, cumplimiento o pago.</div>
+</section>
+{% if preview %}
+<section class="lspre-section">
+<h2>2 · Conciliación del archivo {{ source_filename }}</h2>
+<p class="lspre-help">SHA-256: <code>{{ source_sha256[:24] }}…</code> · Análisis completo sin insertar preavisos.</p>
+<div class="lspre-metrics">
+  <div class="lspre-metric"><strong>{{ preview.summary.source_rows }}</strong><small>Registros de origen</small></div>
+  <div class="lspre-metric"><strong>{{ preview.summary.ready }}</strong><small>Listos para importar</small></div>
+  <div class="lspre-metric"><strong>{{ preview.summary.already_imported }}</strong><small>Ya importados</small></div>
+  <div class="lspre-metric"><strong>{{ preview.summary.rejected }}</strong><small>No conciliados</small></div>
+  <div class="lspre-metric"><strong>{{ preview.summary.source_deleted }}</strong><small>BORRAD=S</small></div>
+  <div class="lspre-metric"><strong>{{ preview.summary.missing_days }}</strong><small>Sin DIAPRE válido</small></div>
+  <div class="lspre-metric"><strong>{{ preview.summary.file_duplicates }}</strong><small>Duplicados de archivo</small></div>
+  <div class="lspre-metric"><strong>{{ preview.summary.conflicts }}</strong><small>Conflictos</small></div>
+</div>
+<h2>Muestra de vinculaciones válidas</h2>
+<div class="lspre-scroll"><table><thead><tr><th>Fila</th><th>Empresa</th><th>Funcionario</th><th>FECPRE</th><th>FECSAL</th><th>DIAPRE</th><th>Marcador</th><th>Observaciones</th></tr></thead><tbody>
+{% for row in sample_ready %}<tr><td>{{ row.source_row }}</td><td>{{ row.company_name }}</td><td>{{ row.employee_name }}</td>
+<td>{{ row.notice_date_source }}</td><td>{{ row.departure_date_source }}</td><td>{{ row.days if row.days is not none else 'Sin dato' }}</td>
+<td>{{ 'Borrado en origen' if row.deleted_source else 'Sin marca' }}</td><td>{{ row.warnings|join(' · ') if row.warnings else '—' }}</td></tr>
+{% else %}<tr><td colspan="8">No hay registros listos.</td></tr>{% endfor %}
+</tbody></table></div>
+{% if sample_issues %}
+<h2 style="margin-top:18px">Registros excluidos (muestra)</h2>
+<div class="lspre-scroll"><table><thead><tr><th>Fila</th><th>CODEMP</th><th>CODTRA</th><th>Estado</th><th>Motivo</th></tr></thead><tbody>
+{% for row in sample_issues %}<tr><td>{{ row.source_row }}</td><td>{{ row.company_code }}</td><td>{{ row.employee_code }}</td><td>{{ row.state }}</td><td>{{ row.reason }}</td></tr>{% endfor %}
+</tbody></table></div>
+{% endif %}
+</section>
+<section class="lspre-section">
+<h2>3 · Confirmación controlada</h2>
+<p class="lspre-help">Se incorporarán <b>{{ preview.summary.ready }}</b> antecedentes documentales LSPRE a sus expedientes, sin modificar registros operativos. El sistema excluye conflictos, duplicados y legajos no identificados.</p>
+<form method="post" action="/app/import/legacy-notices/{{ token }}/confirm">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+<label class="lspre-verify"><input type="checkbox" name="verified" value="si" required> Verifiqué las coincidencias. Autorizo cargar exclusivamente los registros vinculados como antecedentes sin valor de notificación ni pago demostrado.</label>
+<button type="submit" class="btn primary" {% if preview.summary.ready == 0 %}disabled{% endif %}>Importar {{ preview.summary.ready }} antecedentes</button>
+</form>
+</section>
+{% endif %}
+</div>
+{% endblock %}
