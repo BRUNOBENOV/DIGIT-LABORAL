@@ -36,6 +36,8 @@ def build_employee_report_pdf(
     branding: Any | None = None,
     historical_vacations: list[dict[str, Any]] | None = None,
     historical_vacation_count: int = 0,
+    historical_notices: list[dict[str, Any]] | None = None,
+    historical_notice_count: int = 0,
 ) -> bytes:
     stream = io.BytesIO()
     doc = SimpleDocTemplate(stream, pagesize=A4, rightMargin=16 * mm, leftMargin=16 * mm, topMargin=15 * mm, bottomMargin=16 * mm)
@@ -151,6 +153,41 @@ def build_employee_report_pdf(
             story.append(Paragraph(
                 "Se muestra una muestra de movimientos. El historial íntegro se consulta "
                 "en el módulo Vacaciones y se puede exportar a CSV.", small
+            ))
+
+    if historical_notice_count:
+        story.append(Paragraph("Preavisos históricos importados (LSPRE)", h2))
+        story.append(Paragraph(
+            f"{historical_notice_count} antecedentes vinculados, sin confirmación de "
+            "notificación, cumplimiento, fecha efectiva de egreso ni pago de indemnización. "
+            "Los días en origen no reemplazan la escala legal vigente.",
+            small,
+        ))
+        rows = [["FECPRE", "FECSAL", "FECSA1", "DIAPRE", "Marcador"]]
+        for row in (historical_notices or [])[:12]:
+            info = row.get("source") or {}
+            rows.append([
+                escape(str(info.get("notice_date_source") or "—")),
+                escape(str(info.get("departure_date_source") or "—")),
+                escape(str(info.get("secondary_date_source") or "—")),
+                escape(str(info.get("days") if info.get("days") is not None else "—")),
+                "BORRAD=S" if info.get("deleted_source") else "Sin marca",
+            ])
+        if len(rows) > 1:
+            table = Table(rows, colWidths=[37 * mm, 37 * mm, 37 * mm, 28 * mm, 37 * mm], repeatRows=1)
+            table.setStyle(TableStyle([
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#E5EDFA")),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 7),
+                ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#DCE4EF")),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ]))
+            story.append(table)
+        if historical_notice_count > len(historical_notices or []):
+            story.append(Paragraph(
+                "Se incluye una muestra; el histórico completo LSPRE se puede "
+                "consultar y exportar desde el módulo de preavisos históricos.", small,
             ))
 
     story.append(Paragraph("Documentos generados", h2))
