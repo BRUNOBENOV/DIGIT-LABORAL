@@ -151,15 +151,18 @@ def parse_legacy_notice_workbook(content: bytes, filename: str) -> dict:
                 warnings.append("BORRAD=S: registro marcado como borrado en el sistema anterior.")
             row["errors"] = errors
             row["warnings"] = warnings
-            row["legacy_key"] = _hash([
-                row["company_code"], row["employee_code"], row["admission_source"],
-                row["notice_date_source"], row["departure_date_source"], row["secondary_date_source"],
-                row["days"], row["deleted_marker_raw"],
-            ])[:24]
-            row["source_hash"] = _hash({
-                key: val for key, val in row.items()
-                if key not in {"source_row", "source_hash", "errors", "warnings"}
-            })
+            signature = [
+                row["company_code"], row["employee_code"], row["admission_source"] or "",
+                row["notice_date_source"] or "", row["departure_date_source"] or "",
+                row["secondary_date_source"] or "",
+                str(row["days"]) if row["days"] is not None else "",
+                row["deleted_marker_raw"],
+            ]
+            row["legacy_key"] = hashlib.sha256("|".join(signature).encode("utf-8")).hexdigest()[:24]
+            row["source_hash"] = hashlib.sha256("|".join(signature + [
+                row["updated_source"] or "", row["updated_time_source"],
+                row["operator_source"],
+            ]).encode("utf-8")).hexdigest()
             records.append(row)
     finally:
         workbook.close()
