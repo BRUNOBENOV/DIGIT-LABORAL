@@ -24,7 +24,8 @@ from app.report_export import build_employee_report_pdf
 def setup_history():
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine, tables=[
-        Studio.__table__, Company.__table__, Employee.__table__, EmployeeEvent.__table__,
+        Studio.__table__, Company.__table__, Employee.__table__,
+        EmployeeEvent.__table__, Vacation.__table__,
     ])
     db = Session(engine)
     db.add_all([Studio(id=1, name="Estudio Uno"), Studio(id=2, name="Estudio Dos")])
