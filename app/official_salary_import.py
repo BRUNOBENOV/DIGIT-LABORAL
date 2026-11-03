@@ -109,7 +109,7 @@ def prepare_import(db: Session, company, period: str, authority: str, *,
     """Preflight integral: devuelve filas y TODOS los errores; el archivo se bloquea ante cualquier error."""
     if authority not in {"REOP", "REI"}:
         raise SalaryImportError(["Sistema de destino inválido."])
-    from .approved_salary_import import approved_salary_records, choose_salary_source
+    from .approved_salary_import import approved_salary_records, choose_salary_source, rei_salary_employee_eligible
     if not re.fullmatch(r"20\d{2}-(0[1-9]|1[0-2])", period or ""):
         raise SalaryImportError(["Ingresá un período válido AAAA-MM."])
     try:
@@ -123,6 +123,13 @@ def prepare_import(db: Session, company, period: str, authority: str, *,
         if employee_id is not None:
             records = [record for record in records if record[1].id == employee_id]
         source_errors = []
+    if authority == "REI":
+        # La elegibilidad depende del legajo actual y de la existencia de un
+        # salario REAL en el origen seleccionado. No construir filas desde sueldo base.
+        records = [
+            (line, employee, detail) for line, employee, detail in records
+            if rei_salary_employee_eligible(employee)
+        ]
     start = date.fromisoformat(period + "-01")
     end = date(start.year, start.month, monthrange(start.year, start.month)[1])
     errors: list[str] = list(source_errors)
@@ -300,7 +307,11 @@ def prepare_import(db: Session, company, period: str, authority: str, *,
             errors.extend(f"{context}: {problem}." for problem in err)
         rows.append(fields)
     if not rows:
-        errors.append("No se identificaron trabajadores declarables.")
+        errors.append(
+            "REI: no hay salarios guardados de funcionarios activos con IPS marcado Sí para "
+            "esta empresa, período y origen seleccionados."
+            if authority == "REI" else "No se identificaron trabajadores declarables."
+        )
     return rows, list(dict.fromkeys(errors))
 
 
