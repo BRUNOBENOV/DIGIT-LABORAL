@@ -17,6 +17,7 @@ from app.models import (
 from app.unified_labor_history import (
     calculation_history_page, vacation_history_page,
 )
+from tests.test_labor_suite import web_case  # noqa: F401 — shared isolated integration fixture
 
 
 def setup_records():
