@@ -122,10 +122,30 @@ def add_salary_period_warnings(result, db, scoped, data):
     _, period_warnings = salary_for_period(
         db, scoped["employee"], period_start, period_end
     )
+    # Imported legajos can carry a current salary without dated SalaryHistory
+    # entries. Allow a documented verification for *this calculation/period*
+    # without manufacturing historical events or mutating the worker's salary.
+    no_history = not employee_salary_history(db, scoped["employee"].id)
+    evidence = clean(data.get("salary_base_verification_note"), 300)
+    acknowledged = (
+        no_history and str(data.get("salary_base_verified") or "") == "on"
+        and len(evidence) >= 12
+        and str(data.get("salary_base_verification_period") or "") == result["period"]
+        and str(data.get("salary_base_verification_amount") or "") == str(data.get("salary") or "")
+    )
     existing = result.setdefault("warnings", [])
     for warning in period_warnings:
+        if acknowledged and "no hay historial salarial registrado" in warning:
+            continue
         if warning not in existing:
             existing.append(warning)
+    if acknowledged:
+        result.setdefault("notes", []).append(
+            "Salario de Gs. " + str(data.get("salary") or "") +
+            " del período " + result["period"] +
+            " verificado manualmente por el liquidador. Respaldo: " + evidence +
+            ". La confirmación no crea historial salarial ni altera el legajo."
+        )
     return result
 
 
