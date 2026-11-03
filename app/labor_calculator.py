@@ -711,6 +711,11 @@ def calculate(data, *, judicial_evidence_verified=False):
                 result["employer_contribution"] = amount(base * employer_rate / 100)
             else:
                 result["warnings"].append("La base IPS del egreso fue ingresada manualmente. Revisar qué conceptos integran el salario cotizado según el régimen.")
+        elif kind == "salary":
+            result["warnings"].append(
+                "No se aplicó descuento IPS porque la opción está desactivada. "
+                "Verificá si el trabajador debe aportar antes de aprobar o exportar esta liquidación."
+            )
         advances = number(data, "advances", "anticipos")
         other = number(data, "other_discount", "otros descuentos")
         reason = clean(data.get("discount_reason"))
