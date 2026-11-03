@@ -100,7 +100,10 @@ def test_calculation_pages_render_only_the_selected_module():
     calculator_routes = (root / "app/calculator_routes.py").read_text(encoding="utf-8")
 
     assert "active_calculation_type=tipo or" in main
-    assert "CalculationRecord.calculation_type == tipo" in main
+    assert "calculation_history_page(" in main
+    unified = (root / "app/unified_labor_history.py").read_text(encoding="utf-8")
+    assert "CalculationRecord.calculation_type == tipo" in unified
+    assert "EmployeeEvent.event_type.in_(" in unified
     for kind in ("salary", "hours", "aguinaldo", "vacation", "notice"):
         assert f"active_calculation_type == '{kind}'" in template
 
