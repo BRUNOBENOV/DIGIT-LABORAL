@@ -104,4 +104,39 @@ def test_employee_marked_noncontributor_is_disclosed_on_salary_form(web_case):
     })
     assert page.status_code == 200
     assert "IPS desactivado por la ficha" in page.text
-    assert "No marcado como aportante" in page.text
+    assert '<div class="dl-alert" role="note">' not in page.text
+    assert 'data-quick-step="4"' in page.text
+
+
+def test_salary_form_relegates_optional_reviews_inside_base_step(web_case):
+    from bs4 import BeautifulSoup
+    client, db, _box, company, employee, *_ = web_case
+    page = client.get("/app/liquidaciones", params={
+        "tipo": "salary", "company_id": company.id, "employee_id": employee.id,
+        "month": "2026-11",
+    })
+    assert page.status_code == 200
+    soup = BeautifulSoup(page.text, "html.parser")
+    form = soup.select_one("#labor-form")
+    base = form.select_one('[data-quick-step="1"]')
+    assert base is not None
+    assert soup.select_one('form #labor-form') is None  # Solo un formulario laboral
+    assert not form.select_one("section.dl-alert[data-salary-attendance]")
+    assert not soup.select_one('.dl-alert[aria-label="Verificación de base salarial sin historial"]')
+    attendance = base.select_one("[data-salary-attendance]")
+    assert attendance is not None
+    assert attendance.find("details") is not None and not attendance.find("details").has_attr("open")
+    assert attendance.select_one('[name="period_start"]') is not None
+    verification = base.select_one('[name="salary_base_verified"]')
+    assert verification is not None
+    assert verification.find_parent("details") is not None
+    assert not verification.find_parent("details").has_attr("open")
+    assert base.select_one('[name="salary"]') is not None
+    assert form.select_one('[name="attendance_override"]') is not None
+
+
+def test_wage_rate_field_is_optional_and_hidden_for_monthly_by_client_logic():
+    from pathlib import Path
+    html = (Path(__file__).resolve().parents[1] / "app/templates/labor_workbench.html").read_text(encoding="utf-8")
+    assert "showApplicableWageFields" in html
+    assert '''basis?.value === "daily"''' in html

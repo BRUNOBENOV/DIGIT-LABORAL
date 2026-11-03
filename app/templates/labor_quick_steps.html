@@ -25,7 +25,14 @@
     </fieldset>
     {% if concept or group.advanced %}</details>{% endif %}
   {% endfor %}
-  {% if step.number == 1 %}{{ salary_hint() }}{% if kind == 'settlement' %}<p class="dl-alert" role="status" data-stability-detected hidden></p>{% endif %}{% endif %}
+  {% if step.number == 1 %}
+    {{ salary_hint() }}
+    {% if private and kind == 'salary' %}{% include 'salary_attendance_panel.html' %}{% endif %}
+    {% if kind == 'settlement' %}<p class="dl-alert" role="status" data-stability-detected hidden></p>{% endif %}
+  {% endif %}
+  {% if private and kind == 'salary' and step.number == 4 and employee and not employee.ips_contributor %}
+    <p class="dl-caption">IPS desactivado por la ficha. Revisá si corresponde aplicarlo.</p>
+  {% endif %}
   {% if kind == 'settlement' and step.number == 2 %}
     {{ settlement_preview() }}
     {% if private %}<details class="dl-inline-editor dl-average-disclosure"><summary>Buscar promedio en nóminas cerradas</summary>{% include 'payroll_average_panel.html' %}</details>{% endif %}

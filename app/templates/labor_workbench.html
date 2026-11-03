@@ -22,7 +22,7 @@
 {% endmacro %}
 {% macro salary_hint() %}
 {% if private and employee and kind == 'salary' %}
-<p id="salary-history-hint" class="dl-caption" aria-live="polite">La sugerencia usa la vigencia registrada al inicio del mes. Si falta un salario vigente para ese período, verificá el importe manualmente; revisá también cambios ocurridos dentro del mes.</p>
+<p id="salary-history-hint" class="dl-caption" aria-live="polite" hidden></p>
 {% elif private and employee and kind == 'settlement' %}
 <p id="salary-history-hint" class="dl-caption" aria-live="polite">La sugerencia usa la última vigencia salarial no posterior a la fecha de egreso. Si no existe historial aplicable, verificá el importe manualmente y revisá los componentes del promedio.</p>
 {% endif %}
@@ -35,15 +35,6 @@
 {% if not private and values.get('reference') == 'EJEMPLO' %}<p class="dl-alert dl-example-notice">Estás usando datos ficticios. Podés calcular y descargar el ejemplo; reemplazá los datos antes de usarlo en un caso real.</p>{% endif %}
 {% if copied_from %}<p class="dl-alert" role="status">Datos cargados desde la liquidación #{{ copied_from }}. Revisá el período y los conceptos antes de calcular. El registro original se conserva.</p>{% endif %}
 {% if private %}<form method="get" action="/app/liquidaciones" class="dl-context module-selection-form" data-module-selection><input type="hidden" name="tipo" value="{{ kind }}">{% if kind == 'salary' %}<input type="hidden" name="month" value="{{ values.get('month','') }}">{% endif %}<div class="dl-field"><label for="ctx-company">Empresa</label><select name="company_id" id="ctx-company" data-module-company aria-describedby="context-help" data-searchable-entity="company" data-entity-scope="all"><option value="">Seleccioná una empresa</option>{% for item in companies|entity_choices %}<option value="{{ item.id }}" {% if item.id == company_id %}selected{% endif %}>{{ item.legacy_code or (item.company_code if item.company_code is not none else 'Sin código') }} - {{ item.legal_name }}</option>{% endfor %}</select></div><div class="dl-field"><label for="ctx-employee">Funcionario</label><select name="employee_id" id="ctx-employee" data-module-employee aria-describedby="context-help" data-searchable-entity="employee" data-entity-scope="all"><option value="">Seleccioná un funcionario</option>{% for item in employees|entity_choices %}<option value="{{ item.id }}" data-company="{{ item.company_id }}" {% if item.id == employee_id %}selected{% endif %}>{{ item.employee_code if item.employee_code is not none else 'Sin legajo' }} - {{ item.full_name }}</option>{% endfor %}</select></div><button class="dl-button dl-outline">Cargar selección</button><small id="context-help">Elegí una empresa y luego un funcionario. Sus datos se cargarán en el formulario.</small></form>{% endif %}
-{% if private and employee and kind == 'salary' %}
-<div class="dl-alert" role="note"><b>Datos del legajo:</b> {{ employee.full_name }} · C.I. {{ employee.document_number }}
-· ingreso {{ employee.admission_date.strftime('%d/%m/%Y') }} · {{ employee.position or 'Cargo no informado' }}
-· pago registrado: {{ employee.payment_frequency or 'Sin modalidad registrada' }}
-· IPS en ficha: <b>{{ 'Aportante' if employee.ips_contributor else 'No marcado como aportante' }}</b>.
-Verificá la modalidad seleccionada antes de calcular.
-{% if not employee.ips_contributor %}<p><strong>IPS desactivado por la ficha:</strong> si corresponde aportar, activá el IPS en «Aportes y descuentos» y corregí el legajo para futuras liquidaciones. El sistema no debe presumir una exoneración legal a partir de una importación.</p>{% endif %}
-</div>
-{% endif %}
 {% if private and not companies %}<p class="dl-alert">Todavía no hay empresas en tu espacio. <a href="/app/companies">Registrá una empresa</a> para organizar tus liquidaciones.</p>{% elif private and company_id and not employees %}<p class="dl-alert">Esta empresa todavía no tiene funcionarios. <a href="/app/employees?company_id={{ company_id }}">Registrá un funcionario</a> para guardar sus liquidaciones.</p>{% endif %}
 {% if not private %}<nav class="dl-tabs" aria-label="Tipo de cálculo">{% for key, title in titles.items() %}<a href="/herramientas?tipo={{ key }}" {% if key == kind %}aria-current="page"{% endif %}>{{ title }}</a>{% endfor %}</nav>{% endif %}
 <div class="dl-calculator-layout">
@@ -52,23 +43,6 @@ Verificá la modalidad seleccionada antes de calcular.
 {% if kind == 'settlement' %}<input type="hidden" name="settlement_preset_version" value="{{ values.get('settlement_preset_version','2') }}"><input type="hidden" name="average_from_salary" value="{{ values.get('average_from_salary','') }}"><input type="hidden" name="judicial_document_sha256" value="{{ values.get('judicial_document_sha256','') }}">{% endif %}
 {% if private and values.get("employee_exit_id") %}<input type="hidden" name="employee_exit_id" value="{{ values.employee_exit_id }}"><p class="dl-alert" role="status">Cálculo vinculado a un procedimiento de egreso. La fecha y la causal deben coincidir con el expediente. El registro del pago se realiza por separado.</p>{% endif %}
 {% if private %}<input type="hidden" name="company_id" value="{{ company_id }}"><input type="hidden" name="employee_id" value="{{ employee_id }}">{% endif %}
-{% if private and kind == 'salary' and user.role in ['administrador','contador','auxiliar'] %}{% include 'salary_attendance_panel.html' %}{% endif %}
-{% if private and kind == 'salary' and employee and not salary_history %}
-<section class="dl-alert" aria-label="Verificación de base salarial sin historial">
-  <strong>Salario registrado sin historial de vigencias</strong>
-  <p>El legajo contiene un salario actual de <b>Gs. {{ employee.base_salary|gs }}</b>, pero no indica desde cuándo rige.
-  Verificá que el importe del formulario corresponda al mes seleccionado antes de confirmar.</p>
-  <label class="dl-check"><input type="checkbox" name="salary_base_verified" value="on" {% if values.get('salary_base_verified') == 'on' %}checked{% endif %}>
-  Confirmo que revisé la base salarial para este período e importe.</label>
-  <input type="hidden" name="salary_base_verification_period" value="{{ values.get('salary_base_verification_period','') }}">
-  <input type="hidden" name="salary_base_verification_amount" value="{{ values.get('salary_base_verification_amount','') }}">
-  <label class="dl-field" for="salary-base-verification-note"><span>Respaldo de la verificación</span>
-    <textarea id="salary-base-verification-note" name="salary_base_verification_note" maxlength="300" rows="2"
-      placeholder="Ej.: contrato de trabajo, recibo del mes, planilla firmada o comprobación documentada.">{{ values.get('salary_base_verification_note','') }}</textarea>
-  </label>
-  <p class="dl-caption">La confirmación solo elimina esta advertencia del cálculo si describís el respaldo (12 caracteres como mínimo). Se conserva en el borrador y no crea historial salarial. <a href="/app/employees/{{ employee.id }}">Consultar expediente</a>.</p>
-</section>
-{% endif %}
 {% if not quick_steps %}<div class="dl-form-title"><span class="dl-step">01</span><h2>{{ titles[kind] }}</h2></div>{% endif %}
 {% if error %}<div class="dl-alert dl-error" role="alert" id="labor-error" tabindex="-1"><b>Revisá los datos</b><p>{{ error }}</p></div>{% endif %}
 {% if quick_steps %}{% include 'labor_quick_steps.html' %}{% else %}
@@ -127,6 +101,12 @@ Verificá la modalidad seleccionada antes de calcular.
   suggestPeriodDates();
   const basis = form.elements.namedItem("pay_basis");
   const paidDays = form.elements.namedItem("days_paid");
+  const dailyRateField = form.querySelector('[data-field="daily_rate"]');
+  function showApplicableWageFields() {
+    if (dailyRateField) dailyRateField.style.display = basis?.value === "daily" ? "" : "none";
+  }
+  basis?.addEventListener("change", showApplicableWageFields);
+  showApplicableWageFields();
   basis?.addEventListener("change", () => {
     if (!paidDays) return;
     if (basis.value === "daily" && paidDays.value === "30") paidDays.value = "26";
@@ -280,13 +260,14 @@ Verificá la modalidad seleccionada antes de calcular.
 
     if (applicable.length) {
       salaryField.value = String(applicable[0].new_salary);
-      hint.textContent = "Salario sugerido según el historial vigente para la fecha seleccionada. Revisá cualquier cambio de salario ocurrido dentro del mes.";
+      hint.hidden = true;
     } else if (history.length) {
       salaryField.value = "0";
-      hint.textContent = "No hay una vigencia salarial registrada para esa fecha. Completá el salario correcto antes de calcular.";
+      hint.textContent = "No hay salario vigente registrado para ese mes. Verificá el importe.";
+      hint.hidden = false;
     } else {
       salaryField.value = legacyFallback;
-      hint.textContent = "Este legajo no tiene historial salarial registrado. Verificá manualmente el salario del período.";
+      hint.hidden = true;
     }
 
     salaryField.dispatchEvent(new Event("input", { bubbles: true }));

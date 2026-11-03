@@ -1,12 +1,36 @@
-<section class="dl-alert" data-salary-attendance>
-  <p data-attendance-status role="status" aria-live="polite">{% if values.get('attendance_source_id') %}Asistencia del cálculo aprobado #{{ values.attendance_source_id }} · {{ values.get('month','') }}. Los datos disponibles están cargados; completá únicamente los faltantes.{% else %}Ingresá la asistencia y las fechas reales del período. Las jornadas trabajadas no se deducen del salario ni del divisor.{% endif %}</p>
-  <input type="hidden" name="attendance_source_id" value="{{ values.get('attendance_source_id','') }}">
-  <input type="hidden" name="attendance_source_sha256" value="{{ values.get('attendance_source_sha256','') }}">
-  <label class="dl-check"><input type="checkbox" name="attendance_override" value="on" {% if values.get('attendance_override') == 'on' %}checked{% endif %}> Modificar asistencia para esta liquidación</label>
-  <p class="dl-caption">La modificación se guarda en esta nueva liquidación con referencia al origen. El cálculo original conserva sus datos.</p>
-  <details open><summary>Período de pago · desde / hasta</summary><div class="dl-fields">
-    {% for name,label in [('period_start','Desde'),('period_end','Hasta')] %}
-    <div class="dl-field {{ 'dl-invalid' if error_field == name else '' }}"><label for="attendance-{{ name }}">{{ label }}</label><input type="date" id="attendance-{{ name }}" name="{{ name }}" value="{{ values.get(name,'') }}" {% if values.get('attendance_source_id') and values.get(name) and values.get('attendance_override') != 'on' %}readonly{% endif %}></div>
-    {% endfor %}
-  </div></details>
+{# Opciones de revisión: ocultas por defecto para no entorpecer el cálculo diario. #}
+{% if private and user.role in ['administrador','contador','auxiliar'] %}
+<section class="dl-salary-optional">
+  <div data-salary-attendance>
+    <input type="hidden" name="attendance_source_id" value="{{ values.get('attendance_source_id','') }}">
+    <input type="hidden" name="attendance_source_sha256" value="{{ values.get('attendance_source_sha256','') }}">
+    <details class="dl-inline-editor" {% if error_field in ['period_start','period_end','days_worked','hours_worked'] or values.get('attendance_override') == 'on' %}open{% endif %}>
+      <summary>Fechas de pago y asistencia</summary>
+      <div class="dl-fields">
+        {% for name,label in [('period_start','Desde'),('period_end','Hasta')] %}
+        <div class="dl-field {{ 'dl-invalid' if error_field == name else '' }}">
+          <label for="attendance-{{ name }}">{{ label }}</label>
+          <input type="date" id="attendance-{{ name }}" name="{{ name }}" value="{{ values.get(name,'') }}"
+            {% if values.get('attendance_source_id') and values.get(name) and values.get('attendance_override') != 'on' %}readonly{% endif %}>
+        </div>
+        {% endfor %}
+      </div>
+      <label class="dl-check"><input type="checkbox" name="attendance_override" value="on" {% if values.get('attendance_override') == 'on' %}checked{% endif %}> Editar asistencia cargada</label>
+      <p class="dl-caption" data-attendance-status role="status" aria-live="polite">{% if values.get('attendance_source_id') %}Asistencia del cálculo aprobado #{{ values.attendance_source_id }}.{% else %}Sin asistencia aprobada para este mes; indicá los días reales.{% endif %}</p>
+    </details>
+  </div>
+  {% if employee and not salary_history %}
+  <details class="dl-inline-editor" {% if values.get('salary_base_verified') == 'on' %}open{% endif %}>
+    <summary>Verificar salario sin historial</summary>
+    <p class="dl-caption">El salario de la ficha no tiene vigencia histórica registrada. Confirmá la base de este mes solo si tenés respaldo.</p>
+    <label class="dl-check"><input type="checkbox" name="salary_base_verified" value="on" {% if values.get('salary_base_verified') == 'on' %}checked{% endif %}> Salario verificado para este mes</label>
+    <input type="hidden" name="salary_base_verification_period" value="{{ values.get('salary_base_verification_period','') }}">
+    <input type="hidden" name="salary_base_verification_amount" value="{{ values.get('salary_base_verification_amount','') }}">
+    <label class="dl-field" for="salary-base-verification-note">
+      <span>Respaldo</span>
+      <textarea id="salary-base-verification-note" name="salary_base_verification_note" maxlength="300" rows="2" placeholder="Contrato, recibo o planilla que verificaste">{{ values.get('salary_base_verification_note','') }}</textarea>
+    </label>
+  </details>
+  {% endif %}
 </section>
+{% endif %}
