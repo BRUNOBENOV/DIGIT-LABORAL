@@ -37,7 +37,9 @@
     {{ settlement_preview() }}
     {% if private %}<details class="dl-inline-editor dl-average-disclosure"><summary>Buscar promedio en nóminas cerradas</summary>{% include 'payroll_average_panel.html' %}</details>{% endif %}
   {% elif kind == 'salary' and step.number == 2 %}{{ salary_preview() }}{% endif %}
-  {% if step.number == 5 %}<p class="dl-caption">Revisá conceptos e identificación antes de guardar o emitir. El cálculo se conserva como borrador.</p><button type="button" class="dl-button dl-outline" data-open-document data-result-action {% if not result %}disabled{% endif %}>Ver documento completo</button>{% endif %}
+  {% if step.number == 5 %}
+    {% if result %}<button type="button" class="dl-button dl-outline" data-open-document data-result-action>Ver documento completo</button>{% elif kind == 'settlement' %}<p class="dl-caption">El documento se habilita al calcular.</p>{% endif %}
+  {% endif %}
   </div>
 </details>
 {% endfor %}
