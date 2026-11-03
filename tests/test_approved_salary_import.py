@@ -297,7 +297,7 @@ def test_rei_approved_source_includes_only_active_ips_yes_saved_salary():
     assert rows[0][2] == employee.document_number
     assert rows[0][7] == 3000000
     # Al contrario, REOP no usa el filtro de afiliación/estado de REI.
-    reop_rows, _ = source.approved_salary_records(
+    reop_rows, _reop_errors, _reop_diagnostics = source.approved_salary_records(
         db, company, "2026-10", authority="REOP",
     )
     assert len(reop_rows) == 4
