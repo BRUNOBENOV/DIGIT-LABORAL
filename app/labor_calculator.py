@@ -206,9 +206,29 @@ def calculate(data, *, judicial_evidence_verified=False):
     if kind in {"salary", "settlement", "vacation"}:
         salary = positive(data, "salary", "salario mensual")
     if kind in {"salary", "settlement"}:
-        days = number(data, "days_paid", "días a liquidar", required=True, maximum="30")
-        add("Salario del período", salary / 30 * days, f"Gs. {gs(salary)} / 30 × {days} días", "Base mensual")
-        fact("Días a liquidar (base 30)", days)
+        pay_basis = str(data.get("pay_basis") or "monthly") if kind == "salary" else "monthly"
+        if pay_basis not in {"monthly", "daily"}:
+            raise CalculationError("Elegí una modalidad salarial válida.", "pay_basis")
+        max_days = "31" if pay_basis == "daily" else "30"
+        days = number(data, "days_paid", "días remunerados", required=True, maximum=max_days)
+        daily_rate = ZERO
+        if pay_basis == "daily":
+            daily_rate = number(data, "daily_rate", "jornal pactado")
+            if not daily_rate:
+                daily_rate = salary / Decimal("26")
+            add("Jornales del período", daily_rate * days,
+                f"Gs. {daily_rate:.4f} × {days} jornadas",
+                "Jornal pactado o referencia mensual / 26; confirmar asistencia y contrato")
+            fact("Modalidad salarial", "Jornalero · divisor 26")
+            fact("Jornal diario aplicado", f"Gs. {daily_rate:.4f}")
+            if days > 26:
+                result["warnings"].append(
+                    "Se cargaron más de 26 jornadas remuneradas a jornal. Verificá el registro de asistencia, descansos, feriados y pagos antes de aprobar."
+                )
+        else:
+            add("Salario del período", salary / 30 * days, f"Gs. {gs(salary)} / 30 × {days} días", "Base mensual")
+            fact("Modalidad salarial", "Mensualizado · divisor 30")
+        fact("Días remunerados", days)
         if kind == "salary":
             period = str(data.get("month", ""))
             try:
@@ -261,9 +281,10 @@ def calculate(data, *, judicial_evidence_verified=False):
                 if raw_day_base:
                     day_base = number(data, "overtime_day_hourly_base", "valor de hora diurna", decimals=4)
                 elif period_categories == "general_day":
-                    day_base = salary / Decimal("240")
+                    day_base = daily_rate / Decimal("8") if pay_basis == "daily" else salary / Decimal("240")
                 elif period_categories == "general_night":
-                    day_base = salary / (Decimal("1.30") * Decimal("240"))
+                    day_base = (daily_rate / (Decimal("1.30") * Decimal("8"))
+                                if pay_basis == "daily" else salary / (Decimal("1.30") * Decimal("240")))
                 else:
                     raise CalculationError(
                         "Para esta escala salarial debés ingresar la base horaria diurna revisada en «Bases horarias y ajustes excepcionales».",
@@ -276,9 +297,10 @@ def calculate(data, *, judicial_evidence_verified=False):
                 if raw_night_base:
                     night_base = number(data, "overtime_night_hourly_base", "valor de hora nocturna", decimals=4)
                 elif period_categories == "general_day":
-                    night_base = salary * Decimal("1.30") / Decimal("210")
+                    night_base = (daily_rate * Decimal("1.30") / Decimal("7")
+                                  if pay_basis == "daily" else salary * Decimal("1.30") / Decimal("210"))
                 elif period_categories == "general_night":
-                    night_base = salary / Decimal("210")
+                    night_base = daily_rate / Decimal("7") if pay_basis == "daily" else salary / Decimal("210")
                 else:
                     raise CalculationError(
                         "Para esta escala salarial debés ingresar la base horaria nocturna revisada en «Bases horarias y ajustes excepcionales».",
