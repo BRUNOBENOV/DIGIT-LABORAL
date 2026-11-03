@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Preaviso histórico #{{ event.id }} | DIGIT-LABORAL{% endblock %}
+{% block page_name %}Antecedente histórico LSPRE{% endblock %}
+{% block content %}
+<style>
+.lspre-detail{max-width:1050px;margin:0 auto}
+.lspre-detail-hero{background:linear-gradient(110deg,#071d50,#05256d 70%,#1d4692);color:white;border-radius:13px;padding:23px;margin:10px 0 15px}
+.lspre-detail-hero h1{color:white;font-size:1.45rem;margin:5px 0}
+.lspre-detail-hero p{font-size:.82rem;color:#d6e6ff;margin:0}
+.lspre-detail .lspre-caution{padding:13px;border-radius:10px;background:#fff9ed;border:1px solid #e8c787;color:#755018;font-size:.83rem;line-height:1.5;margin-bottom:13px}
+.lspre-facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin:12px 0}
+.lspre-facts div{border:1px solid #dfe7f3;border-radius:10px;background:#f7faff;padding:12px;overflow-wrap:anywhere}
+.lspre-facts dt{font-size:.73rem;color:#58728d;margin-bottom:6px;font-weight:650}
+.lspre-facts dd{margin:0;font-size:.9rem;color:#17385e;font-weight:700}
+@media(max-width:680px){.lspre-facts{grid-template-columns:repeat(2,minmax(0,1fr))}}
+</style>
+<div class="lspre-detail">
+<header class="lspre-detail-hero"><small>ARCHIVO DEL SISTEMA ANTERIOR · LSPRE</small>
+<h1>Preaviso histórico #{{ event.id }}</h1><p>Registro importado del sistema DOS, conservado como antecedente de solo lectura.</p></header>
+<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+<a class="btn ghost" href="/app/legacy-notices?company_id={{ event.employee.company_id }}&amp;employee_id={{ event.employee_id }}">← Volver al listado</a>
+<a class="btn ghost" href="/app/employees/{{ event.employee_id }}">Abrir expediente</a>
+{% if user.role in ['administrador','contador','auxiliar'] %}
+<a class="btn ghost" href="/app/calculations?tipo=notice&amp;company_id={{ event.employee.company_id }}&amp;employee_id={{ event.employee_id }}">Calcular preaviso actual</a>
+<a class="btn ghost" href="/app/liquidaciones?tipo=settlement&amp;company_id={{ event.employee.company_id }}&amp;employee_id={{ event.employee_id }}">Liquidación final</a>
+{% endif %}</div>
+<div class="lspre-caution"><b>Sin conciliación documental.</b> Este registro no demuestra entrega del preaviso, recepción por el trabajador, cumplimiento de plazo, despido, finalización efectiva de la relación ni pago indemnizatorio.
+{% if source.deleted_source %}<b>Además fue marcado BORRAD=S en el sistema anterior.</b>{% endif %}</div>
+<section class="panel" style="padding:18px">
+<div class="panel-head"><div><span>RELACIÓN CON LEGADO</span><h2>Identificación</h2></div></div>
+<dl class="lspre-facts">
+<div><dt>Funcionario actual</dt><dd><a href="/app/employees/{{ event.employee_id }}">{{ event.employee.full_name }}</a></dd></div>
+<div><dt>Empresa actual</dt><dd>{{ event.employee.company.legal_name }}</dd></div>
+<div><dt>CODEMP original</dt><dd>{{ source.company_code }}</dd></div>
+<div><dt>CODTRA original</dt><dd>{{ source.employee_code }}</dd></div>
+<div><dt>Legajo actual</dt><dd>{{ event.employee.employee_code or '—' }}</dd></div>
+<div><dt>Estado en DOS</dt><dd>{{ 'BORRAD=S' if source.deleted_source else 'Sin marca BORRAD' }}</dd></div>
+</dl></section>
+<section class="panel" style="padding:18px;margin-top:13px">
+<div class="panel-head"><div><span>VALORES FIELES AL ORIGEN</span><h2>Fechas y plazo registrado</h2></div></div>
+<dl class="lspre-facts">
+<div><dt>FECENT</dt><dd>{{ source.admission_source or 'Sin dato' }}</dd></div>
+<div><dt>FECPRE</dt><dd>{{ source.notice_date_source or 'Sin dato' }}</dd></div>
+<div><dt>FECSAL</dt><dd>{{ source.departure_date_source or 'Sin dato' }}</dd></div>
+<div><dt>FECSA1 (significado sin verificar)</dt><dd>{{ source.secondary_date_source or 'Sin dato' }}</dd></div>
+<div><dt>DIAPRE</dt><dd>{{ source.days if source.days is not none else 'No informado' }}</dd></div>
+<div><dt>FECHAX</dt><dd>{{ source.updated_source or 'No informado' }}</dd></div>
+<div><dt>HORASX</dt><dd>{{ source.updated_time_source or 'No informado' }}</dd></div>
+<div><dt>USECOD</dt><dd>{{ source.operator_source or 'No informado' }}</dd></div>
+</dl>
+{% if source.warnings %}<div class="lspre-caution"><b>Observaciones de origen:</b> {{ source.warnings|join(' · ') }}</div>{% endif %}
+</section>
+<section class="panel" style="padding:18px;margin-top:13px">
+<div class="panel-head"><div><span>AUDITORÍA</span><h2>Procedencia</h2></div></div>
+<dl class="lspre-facts">
+<div><dt>Archivo original</dt><dd>{{ source.source_filename }}</dd></div>
+<div><dt>Fila original</dt><dd>{{ source.source_row }}</dd></div>
+<div><dt>Clave LSPRE</dt><dd>{{ source.legacy_key }}</dd></div>
+<div><dt>Huella de fuente SHA-256</dt><dd style="font-size:.7rem">{{ source.source_hash }}</dd></div>
+<div><dt>Importado por</dt><dd>{{ event.created_by or 'Sistema' }}</dd></div>
+</dl></section>
+</div>
+{% endblock %}
