@@ -20,6 +20,14 @@ from .models import CalculationRecord, Employee, IntegrationBatch, Payroll, Payr
 from .salary_data import (SALARY_TYPES, APPROVED, select_salary_versions, calculation_fingerprint, merge_attendance)
 
 
+def rei_salary_employee_eligible(employee: Employee) -> bool:
+    """REI/IPS: sólo legajos actualmente activos y con aportación IPS marcada Sí."""
+    return (
+        str(getattr(employee, "status", "") or "").strip().casefold() == "activo"
+        and bool(getattr(employee, "ips_contributor", False))
+    )
+
+
 def _obj(text: str | None) -> dict:
     try:
         value = json.loads(text or "{}")
@@ -206,7 +214,7 @@ def _review_data(inputs: dict, batch: IntegrationBatch | None,
     return merge_attendance(inputs, batch, detail, item)
 
 
-def approved_employee_choices(db: Session, company_id: int, period: str) -> list[Employee]:
+def approved_employee_choices(db: Session, company_id: int, period: str, *, authority: str = "REOP") -> list[Employee]:
     """Use the current approval, preserving it while a new draft is prepared."""
     records = list(db.scalars(
         select(CalculationRecord).where(
@@ -220,14 +228,15 @@ def approved_employee_choices(db: Session, company_id: int, period: str) -> list
     eligible = [eid for eid, item in latest.items() if item.status in APPROVED]
     if not eligible:
         return []
-    return list(db.scalars(
+    choices = list(db.scalars(
         select(Employee).where(
             Employee.company_id == company_id, Employee.id.in_(eligible),
         ).order_by(Employee.full_name, Employee.id)
     ))
+    return [worker for worker in choices if authority != "REI" or rei_salary_employee_eligible(worker)]
 
 
-def salary_excluded_records(db: Session, company_id: int, period: str) -> list[dict]:
+def salary_excluded_records(db: Session, company_id: int, period: str, *, authority: str = "REOP") -> list[dict]:
     """Employees without a current approval; annulments remain a barrier."""
     rows = list(db.scalars(
         select(CalculationRecord).where(
@@ -238,10 +247,20 @@ def salary_excluded_records(db: Session, company_id: int, period: str) -> list[d
         ).order_by(CalculationRecord.created_at.desc(), CalculationRecord.id.desc())
     ))
     latest = select_salary_versions(rows)
-    return [
+    excluded = [
         {"employee_id": row.employee_id, "calculation_id": row.id, "status": row.status}
         for row in latest.values() if row.status not in APPROVED
     ]
+    if authority == "REI" and excluded:
+        candidates = {e.id: e for e in db.scalars(select(Employee).where(
+            Employee.company_id == company_id,
+            Employee.id.in_([row["employee_id"] for row in excluded]),
+        ))}
+        excluded = [
+            row for row in excluded
+            if row["employee_id"] in candidates and rei_salary_employee_eligible(candidates[row["employee_id"]])
+        ]
+    return excluded
 
 
 def approved_salary_records(db: Session, company, period: str, *, authority: str = "REOP", employee_id: int | None = None) -> tuple[list[tuple], list[str], list[dict]]:
@@ -289,6 +308,10 @@ def approved_salary_records(db: Session, company, period: str, *, authority: str
     diagnostics: list[dict] = []
     for id_, item in sorted(selected.items(), key=lambda pair: pair[0]):
         employee = employee_map.get(id_)
+        # Excluir antes de validar datos o importes: un trabajador ajeno a REI
+        # no debe bloquear el archivo de otros aportantes elegibles.
+        if authority == "REI" and employee is not None and not rei_salary_employee_eligible(employee):
+            continue
         if item.status not in APPROVED:
             if employee_id is not None:
                 errors.append(f"Funcionario ID {id_}: no hay aprobación vigente; el registro #{item.id} está «{item.status}». No se reutiliza una aprobación anterior a una anulación.")
