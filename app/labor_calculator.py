@@ -213,9 +213,9 @@ def calculate(data, *, judicial_evidence_verified=False):
         days = number(data, "days_paid", "días remunerados", required=True, maximum=max_days)
         daily_rate = ZERO
         if pay_basis == "daily":
-            daily_rate = number(data, "daily_rate", "jornal pactado")
-            if not daily_rate:
-                daily_rate = salary / Decimal("26")
+            daily_rate = (positive(data, "daily_rate", "jornal pactado")
+                          if str(data.get("daily_rate") or "").strip()
+                          else salary / Decimal("26"))
             add("Jornales del período", daily_rate * days,
                 f"Gs. {daily_rate:.4f} × {days} jornadas",
                 "Jornal pactado o referencia mensual / 26; confirmar asistencia y contrato")
@@ -358,6 +358,11 @@ def calculate(data, *, judicial_evidence_verified=False):
                 fact("Mínimo legal mensual de referencia", "Gs. " + gs(minimum))
                 if wage_rule.get("effective_from"):
                     fact("Vigencia del mínimo usado", wage_rule["effective_from"].strftime("%d/%m/%Y"))
+                if pay_basis == "daily" and daily_rate < Decimal(minimum) / Decimal("26"):
+                    result["warnings"].append(
+                        "El jornal pactado está por debajo del mínimo diario de referencia (mínimo mensual / 26). "
+                        "Revisá la categoría, jornada y resolución aplicable antes de aprobar."
+                    )
                 if salary < minimum:
                     difference = int(minimum) - int(salary)
                     fact("Diferencia de la base frente al mínimo", "Gs. " + gs(difference))
