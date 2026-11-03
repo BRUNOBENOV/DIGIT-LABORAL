@@ -102,6 +102,15 @@ def build_employee_report_pdf(
     calc_rows = [["Fecha", "Tipo", "Periodo", "Monto", "Estado"]]
     for item in calculations:
         calc_rows.append([_date(item.created_at), item.calculation_type, item.reference_period or "—", f"Gs. {_gs(item.amount)}", item.status])
+    for entry in (historical_notices or [])[:12]:
+        source = entry.get("source") or {}
+        date_value = source.get("notice_date_source") or "—"
+        days = source.get("days")
+        calc_rows.append([
+            escape(str(date_value)), "Preaviso",
+            escape(f"{days if days is not None else '—'} días · FECSAL {source.get('departure_date_source') or '—'}"),
+            "—", "Borrado origen" if source.get("deleted_source") else "Sin conciliar",
+        ])
     if len(calc_rows) == 1:
         calc_rows.append(["—", "Sin cálculos", "—", "—", "—"])
     calc_table = Table(calc_rows, colWidths=[29 * mm, 42 * mm, 32 * mm, 38 * mm, 30 * mm], repeatRows=1)
@@ -116,79 +125,32 @@ def build_employee_report_pdf(
     story.append(calc_table)
 
     story.append(Paragraph("Vacaciones y aguinaldo", h2))
-    vac_text = ", ".join(f"{v.period_year}: {v.used_days}/{v.entitled_days} días ({v.status})" for v in vacations) or "Sin registros de vacaciones."
+    vacations_text = [
+        f"{v.period_year}: {v.used_days}/{v.entitled_days} días ({v.status})"
+        for v in vacations
+    ]
+    for entry in (historical_vacations or [])[:12]:
+        source = entry.get("source") or {}
+        period = f"{source.get('period_from') or '—'} / {source.get('period_to') or '—'}"
+        days = source.get("days")
+        vacations_text.append(
+            f"{period}: {days if days is not None else '—'} días registrados "
+            "(Sin conciliar · LSVAC, sin saldo acreditado)"
+        )
+    vac_text = "; ".join(vacations_text) or "Sin registros de vacaciones."
     ag_text = ", ".join(f"{a.year}: Gs. {_gs(a.calculated_amount)} ({a.status})" for a in aguinaldos) or "Sin registros de aguinaldo."
     story.extend([Paragraph(escape(vac_text), normal), Paragraph(escape(ag_text), normal)])
-
     if historical_vacation_count:
-        story.append(Paragraph("Antecedentes de vacaciones importados (LSVAC)", h2))
         story.append(Paragraph(
-            f"{historical_vacation_count} movimientos vinculados al legajo. "
-            "No constituyen saldo vigente, aprobación de vacaciones ni constancia de pago. "
-            "Requieren conciliación profesional con los registros operativos.",
-            small,
+            "No constituyen saldo vigente ni constancia de pago los movimientos sin conciliar. "
+            f"Se muestran {min(historical_vacation_count, 12)} de {historical_vacation_count}; "
+            "el resto está disponible en el módulo Vacaciones.", small
         ))
-        history_rows = [["Período original", "Desde", "Hasta", "Días", "Importe origen"]]
-        for row in (historical_vacations or [])[:12]:
-            source = row.get("source") or {}
-            history_rows.append([
-                escape(f"{source.get('period_from') or '—'} / {source.get('period_to') or '—'}"),
-                escape(str(source.get("vacation_start") or "—")),
-                escape(str(source.get("vacation_end") or "—")),
-                escape(str(source.get("days") if source.get("days") is not None else "—")),
-                escape(str(source.get("vacation_amount") if source.get("vacation_amount") is not None else "—")),
-            ])
-        if len(history_rows) > 1:
-            history_table = Table(history_rows, colWidths=[49 * mm, 33 * mm, 33 * mm, 21 * mm, 40 * mm], repeatRows=1)
-            history_table.setStyle(TableStyle([
-                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#E5EDFA")),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("FONTSIZE", (0, 0), (-1, -1), 7),
-                ("GRID", (0, 0), (-1, -1), .3, colors.HexColor("#DCE4EF")),
-                ("TOPPADDING", (0, 0), (-1, -1), 5),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-            ]))
-            story.append(history_table)
-        if historical_vacation_count > len(historical_vacations or []):
-            story.append(Paragraph(
-                "Se muestra una muestra de movimientos. El historial íntegro se consulta "
-                "en el módulo Vacaciones y se puede exportar a CSV.", small
-            ))
-
-    if historical_notice_count:
-        story.append(Paragraph("Preavisos históricos importados (LSPRE)", h2))
+    if historical_notice_count > 12:
         story.append(Paragraph(
-            f"{historical_notice_count} antecedentes vinculados, sin confirmación de "
-            "notificación, cumplimiento, fecha efectiva de egreso ni pago de indemnización. "
-            "Los días en origen no reemplazan la escala legal vigente.",
-            small,
+            f"Se muestran 12 de {historical_notice_count} movimientos de preaviso sin conciliar. "
+            "Los demás se consultan en Cálculo → Preaviso.", small
         ))
-        rows = [["FECPRE", "FECSAL", "FECSA1", "DIAPRE", "Marcador"]]
-        for row in (historical_notices or [])[:12]:
-            info = row.get("source") or {}
-            rows.append([
-                escape(str(info.get("notice_date_source") or "—")),
-                escape(str(info.get("departure_date_source") or "—")),
-                escape(str(info.get("secondary_date_source") or "—")),
-                escape(str(info.get("days") if info.get("days") is not None else "—")),
-                "BORRAD=S" if info.get("deleted_source") else "Sin marca",
-            ])
-        if len(rows) > 1:
-            table = Table(rows, colWidths=[37 * mm, 37 * mm, 37 * mm, 28 * mm, 37 * mm], repeatRows=1)
-            table.setStyle(TableStyle([
-                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#E5EDFA")),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("FONTSIZE", (0, 0), (-1, -1), 7),
-                ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#DCE4EF")),
-                ("TOPPADDING", (0, 0), (-1, -1), 5),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-            ]))
-            story.append(table)
-        if historical_notice_count > len(historical_notices or []):
-            story.append(Paragraph(
-                "Se incluye una muestra; el histórico completo LSPRE se puede "
-                "consultar y exportar desde el módulo de preavisos históricos.", small,
-            ))
 
     story.append(Paragraph("Documentos generados", h2))
     cert_rows = [["Fecha", "Documento", "Estado", "Creado por"]]
