@@ -68,6 +68,31 @@ Verificá la modalidad seleccionada antes de calcular.</div>
 (() => {
   const form = document.getElementById("labor-form");
   if (!form) return;
+  // El período completo se sugiere sin sobreescribir fechas de asistencia ya validadas.
+  const period = form.elements.namedItem("month");
+  const periodStart = form.elements.namedItem("period_start");
+  const periodEnd = form.elements.namedItem("period_end");
+  let suggestedStart = "", suggestedEnd = "";
+  function suggestPeriodDates() {
+    if (!period || !periodStart || !periodEnd || !/^\\d{4}-\\d{2}$/.test(period.value)) return;
+    const [year, month] = period.value.split("-").map(Number);
+    const nextLast = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    const start = period.value + "-01";
+    const end = period.value + "-" + String(nextLast).padStart(2, "0");
+    if (!periodStart.value || periodStart.value === suggestedStart) periodStart.value = start;
+    if (!periodEnd.value || periodEnd.value === suggestedEnd) periodEnd.value = end;
+    suggestedStart = start; suggestedEnd = end;
+  }
+  period?.addEventListener("change", suggestPeriodDates);
+  suggestPeriodDates();
+  const basis = form.elements.namedItem("pay_basis");
+  const paidDays = form.elements.namedItem("days_paid");
+  basis?.addEventListener("change", () => {
+    if (!paidDays) return;
+    if (basis.value === "daily" && paidDays.value === "30") paidDays.value = "26";
+    if (basis.value === "monthly" && paidDays.value === "26") paidDays.value = "30";
+    paidDays.dispatchEvent(new Event("input", {bubbles:true}));
+  });
   const read = name => {
     const field = form.elements.namedItem(name);
     if (!field) return 0;
