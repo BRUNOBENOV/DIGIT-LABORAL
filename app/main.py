@@ -9517,7 +9517,7 @@ def salary_import_page(
         raise HTTPException(404, "El funcionario no pertenece a la empresa seleccionada.")
     period = period or current_paraguay_date().strftime("%Y-%m")
     authority = authority if authority in {"REOP", "REI"} else "REOP"
-    approved_choices = approved_employee_choices(db, company.id, period) if company else []
+    approved_choices = approved_employee_choices(db, company.id, period, authority=authority) if company else []
     preview = bool(company and request.query_params.get("period"))
     source_summary = salary_source_summary(db, company.id, period, employee_id=employee_id) if company else None
     try:
@@ -9525,7 +9525,7 @@ def salary_import_page(
     except ValueError as exc:
         raise HTTPException(422, "Origen de salarios no válido.") from exc
     excluded_salary = (
-        salary_excluded_records(db, company.id, period)
+        salary_excluded_records(db, company.id, period, authority=authority)
         if company and effective_source == "approved" and employee_id is None
         else []
     )
@@ -9718,7 +9718,7 @@ def salary_import_export(
     from .approved_salary_import import choose_salary_source, salary_excluded_records
     effective_source = choose_salary_source(db, company.id, period, source_type, employee_id=employee_id)
     exclusions = (
-        salary_excluded_records(db, company.id, period)
+        salary_excluded_records(db, company.id, period, authority=authority)
         if effective_source == "approved" and employee_id is None else []
     )
     if exclusions and accept_partial != "si":
