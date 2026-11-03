@@ -125,8 +125,8 @@ def test_conflicting_and_missing_links_are_not_imported():
         plan = legacy_notice_preview(
             db, parse_legacy_notice_workbook(sample_workbook(altered=True), "LSPRE.xlsx"), {10},
         )
-        assert plan["summary"]["ready"] == 1
-        assert plan["summary"]["conflicts"] == 1
+        assert plan["summary"]["ready"] == 0
+        assert plan["summary"]["conflicts"] == 2
         assert legacy_notice_preview(
             db, parse_legacy_notice_workbook(sample_workbook(), "LSPRE.xlsx"), {11},
         )["summary"]["rejected"] == 1
