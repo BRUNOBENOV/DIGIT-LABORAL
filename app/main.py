@@ -8410,11 +8410,17 @@ def historical_vacations_csv_download(
         if company_id and employee.company_id != company_id:
             raise HTTPException(400, "El funcionario no pertenece a la empresa seleccionada.")
     try:
-        content, _count = historical_vacation_csv(
+        content, count = historical_vacation_csv(
             db, allowed_ids, company_id=company_id, employee_id=employee_id
         )
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
+    write_audit(
+        db, user, "exportar", "vacaciones_historicas",
+        str(employee_id or company_id or "todas"),
+        f"Exportación LSVAC CSV: {count} antecedentes; sin conciliación de saldos.",
+    )
+    db.commit()
     return Response(
         content=content,
         media_type="text/csv; charset=utf-8",
@@ -8422,6 +8428,27 @@ def historical_vacations_csv_download(
             "Content-Disposition": 'attachment; filename="vacaciones_historicas_lsvac.csv"',
             "Cache-Control": "no-store",
         },
+    )
+
+
+@app.get("/app/vacations/history/{event_id}", response_class=HTMLResponse)
+def historical_vacation_detail_page(
+    event_id: int,
+    request: Request,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    item = db.get(EmployeeEvent, event_id)
+    if not item or item.event_type != LEGACY_VACATION_EVENT_TYPE:
+        raise HTTPException(404, "Antecedente no encontrado.")
+    if item.employee.company_id not in company_ids_for_user(db, user):
+        raise HTTPException(404, "Antecedente no encontrado.")
+    source = event_legacy_data(item)
+    if source is None:
+        raise HTTPException(404, "Antecedente histórico sin datos válidos.")
+    return render(
+        request, "legacy_vacation_detail.html", db, user,
+        event=item, source=source,
     )
 
 
