@@ -27,6 +27,7 @@
 <nav class="maintenance-subnav maintenance-detail-nav" aria-label="Subsecciones del expediente del funcionario">
   <a class="is-active" href="#employee-overview" aria-current="location">Resumen</a>
   <a href="#timeline">Historial <span>{{ events|length }}</span></a>
+  {% if historical_vacation_overview.count %}<a href="#historical-vacations">Vacaciones históricas <span>{{ historical_vacation_overview.count }}</span></a>{% endif %}
   <a href="/app/documents?company_id={{ employee.company_id }}&amp;employee_id={{ employee.id }}">Documentos <span>{{ documents|length + certificates|length }}</span></a>
   {% if user.role in ['administrador','contador','auxiliar'] %}
     <a href="/app/calculations?company_id={{ employee.company_id }}&amp;employee_id={{ employee.id }}">Cálculos</a>
@@ -107,7 +108,33 @@
 <section class="panel" id="timeline">
   <div class="panel-head"><div><span>TRAZABILIDAD</span><h2>Línea de tiempo laboral</h2></div></div>
   <div class="employee-timeline">
-    {% for item in events %}<article><span class="timeline-dot"></span><div><header><b>{{ item.title }}</b><time>{{ item.effective_date|fecha }}</time></header><small>{{ item.event_type }} · {{ item.created_by or 'Sistema' }}</small>{% if item.detail %}<p>{{ item.detail }}</p>{% endif %}{% if item.amount is not none %}<strong>Gs. {{ item.amount|gs }}</strong>{% endif %}</div></article>{% else %}<p class="empty-state">Todavía no hay eventos en el expediente.</p>{% endfor %}
+    {% for item in events %}<article><span class="timeline-dot"></span><div><header><b>{{ item.title }}</b><time>{{ item.effective_date|fecha }}</time></header><small>{{ item.event_type }} · {{ item.created_by or 'Sistema' }}</small>{% if item.detail %}<p>{{ historical_event_details.get(item.id) or item.detail }}</p>{% endif %}{% if item.amount is not none %}<strong>Gs. {{ item.amount|gs }}</strong>{% endif %}</div></article>{% else %}<p class="empty-state">Todavía no hay eventos en el expediente.</p>{% endfor %}
+  </div>
+</section>
+
+<section class="panel" id="historical-vacations" style="margin-top:16px">
+  <div class="panel-head">
+    <div><span>LSVAC · ARCHIVO DEL SISTEMA ANTERIOR</span><h2>Antecedentes de vacaciones</h2></div>
+    <a href="/app/vacations?company_id={{ employee.company_id }}&amp;employee_id={{ employee.id }}">Consultar {{ historical_vacation_overview.count }} movimientos</a>
+  </div>
+  <p style="font-size:.8rem;color:#60728b;margin:6px 0 12px">
+    {{ historical_vacation_overview.count }} movimientos vinculados al legajo.
+    No representan por sí solos días pendientes, vacaciones aprobadas, pagos realizados ni saldos computados.
+  </p>
+  {% if historical_recent %}
+  <div class="table-wrap"><table>
+    <thead><tr><th>Desde</th><th>Hasta</th><th>Período de origen</th><th>Días informados</th><th>Importe de origen</th><th>Conciliación</th></tr></thead>
+    <tbody>{% for row in historical_recent %}{% if row.source %}
+    <tr><td>{{ row.source.vacation_start }}</td><td>{{ row.source.vacation_end }}</td>
+      <td>{{ row.source.period_from }} – {{ row.source.period_to }}</td>
+      <td>{{ row.source.days }}</td>
+      <td>{{ row.source.vacation_amount if row.source.vacation_amount is not none else 'No informado' }}</td>
+      <td>Sin conciliar</td></tr>
+    {% endif %}{% endfor %}</tbody>
+  </table></div>
+  {% else %}<p class="empty-state">No hay antecedentes LSVAC vinculados.</p>{% endif %}
+  <div style="padding:12px 0 0">
+    <a class="btn ghost" href="/app/vacations/history.csv?company_id={{ employee.company_id }}&amp;employee_id={{ employee.id }}">Exportar historial de vacaciones CSV</a>
   </div>
 </section>
 
