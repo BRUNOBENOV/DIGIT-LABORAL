@@ -189,3 +189,34 @@ def test_synthetic_route_presents_one_vacation_table_with_imported_records(web_c
     page = BeautifulSoup(dossier.text, "html.parser")
     assert page.get_text(" ", strip=True).count("Sin conciliar") >= 1
     assert "ANTECEDENTES DEL SISTEMA ANTERIOR" not in dossier.text
+
+
+
+def test_final_settlement_uses_one_traceability_list_without_source_banners(web_case):
+    client, db, _, company, employee, _ = web_case
+    source = {
+        "source": "LSPRE", "source_row": 88, "company_code": "1001",
+        "employee_code": "101", "legacy_key": "n88", "source_hash": "d" * 64,
+        "notice_date_source": "2025-03-01", "departure_date_source": "2025-04-15",
+        "days": 45, "deleted_source": False,
+    }
+    db.add(EmployeeEvent(
+        employee_id=employee.id, event_type=NOTICE_TYPE,
+        title="Preaviso registrado", detail=NOTICE_MARKER + json.dumps(source),
+        effective_date=date(2025, 3, 1), created_by="test",
+    ))
+    db.commit()
+    response = client.get("/app/liquidaciones", params={
+        "tipo": "settlement", "company_id": company.id, "employee_id": employee.id,
+    })
+    assert response.status_code == 200, response.text
+    page = BeautifulSoup(response.text, "html.parser")
+    traceability = page.select_one("#labor-history")
+    assert traceability is not None
+    text = traceability.get_text(" ", strip=True)
+    assert "Cálculos guardados" in text
+    assert "Preaviso" in text
+    assert "Sin conciliar" in text
+    assert traceability.select_one('a[href^="/app/legacy-notices/"]') is not None
+    assert "Historial de preavisos DOS" not in response.text
+    assert "Vacaciones históricas del sistema anterior" not in response.text
