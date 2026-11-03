@@ -362,7 +362,10 @@ class CSRFMiddleware:
         async def replay_receive():
             nonlocal sent
             if sent:
-                return {"type": "http.request", "body": b"", "more_body": False}
+                # Replay the consumed body once, then preserve the server's
+                # disconnect/backpressure channel. Repeating empty requests
+                # starves StreamingResponse's ASGI <2.4 disconnect listener.
+                return await receive()
             sent = True
             return {"type": "http.request", "body": body, "more_body": False}
 
@@ -412,7 +415,7 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "app" / "templates"))
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    if request.url.path == "/app/certificates" and "application/json" in request.headers.get("accept", ""):
+    if request.url.path in {"/app/certificates", "/app/compliance/salary-import/export"} and "application/json" in request.headers.get("accept", ""):
         return JSONResponse({"detail": "Revisá los datos del formulario: " + "; ".join(
             " → ".join(str(part) for part in error.get("loc", []) if part != "body") + ": " + error.get("msg", "Valor inválido")
             for error in exc.errors()
@@ -441,7 +444,7 @@ async def http_exception_handler(request: Request, exc: HTTPException):
     if location and 300 <= exc.status_code < 400:
         return RedirectResponse(location, status_code=exc.status_code)
     if request.url.path.startswith(("/health", "/api/certificates/", "/api/calculations/preaviso-proposal")) or (
-        request.url.path == "/app/certificates" and "application/json" in request.headers.get("accept", "")
+        request.url.path in {"/app/certificates", "/app/compliance/salary-import/export"} and "application/json" in request.headers.get("accept", "")
     ):
         return JSONResponse({"detail": exc.detail}, status_code=exc.status_code, headers=exc.headers)
     body = templates.get_template("http_error.html").render(
@@ -9758,8 +9761,8 @@ def salary_import_export(
         f"{authority} · {period} · {len(rows)} empleados · SHA-256 {batch.file_sha256}",
     )
     db.commit()
-    return StreamingResponse(
-        io.BytesIO(content), media_type=media,
+    return Response(
+        content=content, media_type=media,
         headers={"Content-Disposition": f'attachment; filename="{file_name}"',
                  "Cache-Control": "no-store"},
     )

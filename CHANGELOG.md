@@ -1,3 +1,10 @@
+## 2.6.79 — Descarga REOP/REI y canal de desconexión ASGI
+
+- Corrige un bloqueo de las descargas POST: el control CSRF repetía peticiones vacías después de leer el formulario, impidiendo que la respuesta en streaming terminara en el recorrido ASGI anterior a 2.4. Reproduce el cuerpo una sola vez y luego conserva el canal real de desconexión. Pruebas con vigilancia externa del proceso para impedir bloqueos de CI.
+- Entrega los bytes REOP/REI ya generados con longitud de contenido, conservando formato, auditoría, SHA-256, anexos de asistencia y confirmación de exportación parcial.
+- Descarga sin abandonar la vista previa, con errores legibles, tiempo de espera acotado y botón recuperable para reintentar. Evita que los manejadores generales de formularios dejen el botón permanentemente en «Procesando». Versiona los scripts compartidos modificados.
+- Prueba el POST autenticado de Excel y TXT, abre el Excel recibido, verifica asistencia e importes y comprueba el archivo registrado. No cambia fórmulas, nóminas, estados de los cálculos ni estructura oficial. Sin migraciones ni dependencias nuevas.
+
 ## 2.6.78 — Preaviso automático por antigüedad y fecha
 
 - Corrige el cero enviado por el formulario y el uso de la fecha actual al calcular períodos anteriores. El servidor consulta el ingreso, selecciona la escala vigente y compara aniversarios exactos; ignora días enviados en modo automático.
