@@ -2,11 +2,11 @@
 {% block title %}Vacaciones | Digit Laboral{% endblock %}
 {% block page_name %}Vacaciones{% endblock %}
 {% block content %}
-<div class="page-header"><div><span class="eyebrow">DESCANSO ANUAL</span><h1>Control de vacaciones</h1><p>Registrá periodos y utilización con una referencia automática de antigüedad para control profesional.</p></div><div style="display:flex;gap:8px;flex-wrap:wrap">{% if user.role in ['administrador','contador'] %}<a class="btn ghost" href="/app/import/legacy-vacations"><span aria-hidden="true">↥</span> Importar vacaciones históricas</a>{% endif %}{% if user.role != 'empresa' %}<button class="btn primary" type="button" data-modal-open="vacationModal">+ Registrar vacaciones</button>{% endif %}</div></div>
+<div class="page-header"><div><span class="eyebrow">DESCANSO ANUAL</span><h1>Control de vacaciones</h1><p>Registrá periodos y utilización con una referencia automática de antigüedad para control profesional.</p></div><div style="display:flex;gap:8px;flex-wrap:wrap">{% if user.role in ['administrador','contador'] %}<a class="btn ghost" href="/app/import/legacy-vacations"><span aria-hidden="true">↥</span> Importar registros</a>{% endif %}{% if user.role != 'empresa' %}<button class="btn primary" type="button" data-modal-open="vacationModal">+ Registrar vacaciones</button>{% endif %}</div></div>
 {% if request.query_params.get('form_error') %}<div class="alert danger v24-form-error">{{ request.query_params.get('form_error') }}</div>{% endif %}
 {% if request.query_params.get('legacy_imported') is not none %}
 <div class="alert success" role="status">
-  <b>Historial LSVAC incorporado:</b> {{ request.query_params.get('legacy_imported') }} movimientos importados.
+  <b>Registros incorporados:</b> {{ request.query_params.get('legacy_imported') }} movimientos importados.
   {{ request.query_params.get('legacy_existing') or 0 }} ya existentes y
   {{ request.query_params.get('legacy_unmatched') or 0 }} sin vínculo se omitieron.
   No se actualizaron saldos ni nóminas.
