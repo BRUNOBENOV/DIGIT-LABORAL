@@ -152,11 +152,14 @@ def page(request, kind, data=None, result=None, error=None, db=None, user=None, 
         except ValueError:
             pass
     # El histórico DOS informa, pero no modifica los conceptos de liquidación.
-    historic_vacations = None
+    historic_vacations, historic_notices = None, None
     if kind == "settlement" and db is not None and private.get("employee"):
         from .historical_labor_context import historical_vacation_summary
+        from .historical_notice_context import notice_history_summary
         historic_vacations = historical_vacation_summary(db, private["employee"].id)
-    ctx.update(historical_vacation_overview=historic_vacations)
+        historic_notices = notice_history_summary(db, private["employee"].id)
+    ctx.update(historical_vacation_overview=historic_vacations,
+               historical_notice_overview=historic_notices)
     ctx.update(private, salary_history_data=salary_history_data, result=result,
                average_suggestion_label=suggestion_label,
                live_summary=calculation_summary(result) if result else None, error=str(error or ""),

@@ -7,6 +7,13 @@
   <input type="hidden" name="notice_fingerprint" value="{{ notice_proposal.fingerprint if notice_proposal else '' }}">
   <input type="hidden" name="reference_period" value="{{ notice_reference.strftime('%Y-%m') }}">
   <script id="noticeInitialProposal" type="application/json">{{ notice_proposal|tojson }}</script>
+  {% if historical_notice_overview and historical_notice_overview.count %}
+  <div class="legal-warning" role="note">
+    <b>Antecedentes LSPRE del sistema DOS: {{ historical_notice_overview.count }} registros.</b>
+    <a href="/app/legacy-notices?company_id={{ default_company }}&amp;employee_id={{ default_employee }}">Consultar histórico de preavisos</a>.
+    Los días originales no sustituyen el plazo calculado automáticamente ni acreditan notificación o pago.
+  </div>
+  {% endif %}
   <div class="calculator-copy"><span class="eyebrow">PREAVISO · ARTS. 87/90/92</span><h2>Estimación económica</h2><p>Aplicá la selección del funcionario. Los días se calculan desde su ingreso hasta la fecha de referencia.</p></div>
   <div class="calculator-form-grid">
     <label>Fecha de referencia<input name="reference_date" id="calcNoticeReference" type="date" min="1900-01-01" max="2100-12-31" value="{{ notice_reference.isoformat() }}" required><small>Fecha completa utilizada para calcular la antigüedad.</small></label>
