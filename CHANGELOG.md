@@ -2,6 +2,7 @@
 
 - Agrega la acción de borrado físico desde el listado y el expediente para administradores y contadores, con identificación del legajo, resumen de datos de ficha, motivo y frase de confirmación.
 - Distingue los datos propios de ficha (perfil, anotaciones e historial salarial) de las operaciones vinculadas. Estas últimas impiden borrar y se enumeran antes de confirmar; las relaciones nuevas de empleado se consideran bloqueos por defecto.
+- Permite depurar los avisos de entrada generados automáticamente al dar de alta cuando siguen en borrador y carecen de revisión, lote o constancia. Las comunicaciones utilizadas o manuales bloquean el borrado.
 - Revisión firmada por usuario, empresa y legajo, con caducidad y verificación de cambios. Comprobación de vínculos y bloqueo de fila antes del borrado, sin anular referencias mediante el ORM. Auditoría y eliminación en la misma transacción; revierte todo si aparece una restricción de integridad.
 - Conserva archivado y egreso como acciones independientes, mantiene cerradas las antiguas rutas de eliminación directa y conserva filtros al volver al listado. Sin cambios de esquema ni dependencias.
 

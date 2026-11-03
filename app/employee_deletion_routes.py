@@ -62,7 +62,7 @@ def employee_delete_confirm(employee_id: int, request: Request,
         "notes": notes.strip(), "removed_profile_records": preview["profile"]}
     target = return_url(return_to, employee.company_id, deleted=True)
     try:
-        remove_dossier(db, employee)
+        remove_dossier(db, employee, entry_ids=preview["entry_ids"])
         core.write_audit(db, user, "eliminar_definitivamente", "funcionario", str(employee.id), json.dumps(identity, ensure_ascii=False, separators=(",", ":")))
         db.commit()
     except (IntegrityError, DeletionConflict):

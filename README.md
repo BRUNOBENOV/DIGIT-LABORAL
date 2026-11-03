@@ -5,6 +5,7 @@ Plataforma de gestión y cumplimiento laboral para estudios contables paraguayos
 ## Novedades de la versión 2.6.80
 
 - Funcionarios → Acciones → Eliminar definitivamente permite borrar un legajo y sus datos propios de ficha, con revisión previa, motivo y confirmación escrita. Disponible para administradores y contadores, también desde el expediente.
+- Incluye los avisos automáticos de entrada REOP/REI que siguen en borrador y no tienen aprobación, lote, exportación ni constancia. Las comunicaciones manuales, revisadas o utilizadas permanecen como bloqueos.
 - Comprueba todas las relaciones de empleado registradas en los modelos. Nóminas, cálculos de cualquier estado, documentos, egresos y demás operaciones vinculadas bloquean el borrado con un detalle de cantidades. No se desvinculan ni se borran silenciosamente esos registros.
 - La revisión firmada vence a los 15 minutos y se invalida si cambia el legajo. El servidor vuelve a comprobar permisos y vínculos, bloquea la fila y elimina ficha e historial propio junto con la auditoría en una única transacción. Conserva los filtros del listado. Sin migraciones ni dependencias nuevas.
 

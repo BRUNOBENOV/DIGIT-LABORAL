@@ -10,8 +10,9 @@ from sqlalchemy.exc import IntegrityError
 from app import main as core
 from app import employee_deletion_routes as routes
 from app.employee_deletion import return_url
-from app.models import (AuditLog, CalculationRecord, Document, Employee, EmployeeComplianceProfile,
+from app.models import (AuditLog, CalculationRecord, ComplianceEvent, Document, Employee, EmployeeComplianceProfile,
                         EmployeeEvent, EmployeeExit, FinalSettlement, Payroll, PayrollLine, SalaryHistory, User)
+from app.models import IntegrationBatchItem
 from tests.test_labor_suite import token, web_case
 
 
@@ -183,8 +184,8 @@ def test_failure_rolls_back_employee_profile_and_audit(deletion_case, monkeypatc
     data = payload(deletion_case)
     if failure == "delete":
         original = routes.remove_dossier
-        def fail(session, target):
-            original(session, target)
+        def fail(session, target, **kwargs):
+            original(session, target, **kwargs)
             raise IntegrityError("synthetic", {}, Exception("synthetic"))
         monkeypatch.setattr(routes, "remove_dossier", fail)
     else:
@@ -242,6 +243,49 @@ def test_preview_is_read_only_links_are_visible_and_names_are_escaped(deletion_c
     for url in (f"/app/employees?company_id={company.id}", f"/app/employees/{employee.id}"):
         page = BeautifulSoup(client.get(url).text, "html.parser")
         assert page.select_one(f'a[href^="{path(employee)}"]') is not None
+
+
+def test_actual_new_employee_can_be_deleted_with_unexported_automatic_entries(deletion_case):
+    client, db, _, company, _, _ = deletion_case
+    created = client.post("/api/employees", json={"company_id": company.id, "employee_code": 207020,
+        "full_name": "Alta errónea sintética", "document_number": "11223344", "position": "Auxiliar",
+        "admission_date": "2026-01-01", "base_salary": 3500000, "ips_contributor": True,
+        "contract_type": "Tiempo indefinido", "payment_frequency": "Mensual"}, headers={"x-csrf-token": token(client)})
+    assert created.status_code == 201, created.text
+    employee_id = created.json()["id"]
+    employee = db.get(Employee, employee_id)
+    entries = list(db.scalars(select(ComplianceEvent).where(ComplianceEvent.employee_id == employee_id)))
+    assert len(entries) == 2 and all(e.status == "Borrador" for e in entries)
+    data = payload(deletion_case, employee)
+    response = client.post(path(employee), data=data, follow_redirects=False)
+    assert response.status_code == 303, response.text
+    db.expire_all()
+    assert db.get(Employee, employee_id) is None
+    assert db.scalar(select(func.count(ComplianceEvent.id)).where(ComplianceEvent.employee_id == employee_id)) == 0
+
+
+@pytest.mark.parametrize("change", ["exported", "reference", "manual", "batch"])
+def test_entry_communications_with_review_or_export_evidence_block_deletion(deletion_case, change):
+    client, db, box, company, employee, _ = deletion_case
+    data = payload(deletion_case)
+    key = f"employee:{employee.id}:entry:reop"
+    event = ComplianceEvent(company_id=company.id, employee_id=employee.id, authority="REOP", event_type="Entrada",
+        event_date=employee.admission_date, status="Borrador", source_key=key,
+        payload_json=json.dumps({"employee_id":employee.id,"source_key":key,"generated_automatically":True}))
+    if change == "exported":event.status = "Exportado"
+    elif change == "reference":event.external_reference = "CONSTANCIA-SINTETICA"
+    elif change == "manual":event.source_key = "manual"
+    db.add(event); db.flush()
+    if change == "batch":
+        from app.compliance_service import register_batch
+        batch = register_batch(db, company=company, authority="REOP", batch_type="Prueba", period="2026-01",
+                               content=b"synthetic", created_by=box["user"].email)
+        db.add(IntegrationBatchItem(batch_id=batch.id, compliance_event_id=event.id))
+    db.commit()
+    response = client.post(path(employee), data=data)
+    assert response.status_code == 409 and exists(deletion_case) is not None
+    db.refresh(event)
+    assert event.employee_id == employee.id
 
 
 @pytest.mark.parametrize("url", ["https://example.invalid", "//example.invalid/app/employees", "/app/documents", "/app/employees\\evil"])

@@ -6,7 +6,7 @@ from itsdangerous import BadData, URLSafeTimedSerializer
 from sqlalchemy import delete, func, literal, or_, select, union_all
 from .config import settings
 from .database import Base
-from .models import Employee
+from .models import ComplianceEvent, Employee, IntegrationBatchItem
 
 PROFILE_TABLES = {"employee_compliance_profiles", "employee_events", "salary_history"}
 LABELS = {
@@ -54,6 +54,31 @@ def is_profile_reference(table, columns):
     return table.name in PROFILE_TABLES and {c.name for c in columns} == {"employee_id"}
 
 
+def automatic_entry_drafts(db, employee, *, lock=False):
+    query = select(ComplianceEvent.__table__).where(ComplianceEvent.employee_id == employee.id).order_by(ComplianceEvent.id)
+    if lock:
+        query = query.with_for_update()
+    rows = [dict(row) for row in db.execute(query).mappings()]
+    event_ids = [row["id"] for row in rows]
+    included = set(db.scalars(select(IntegrationBatchItem.compliance_event_id).where(
+        IntegrationBatchItem.compliance_event_id.in_(event_ids)))) if event_ids else set()
+    allowed = []
+    for row in rows:
+        key = f"employee:{employee.id}:entry:{row['authority'].lower()}"
+        try:
+            payload = json.loads(row["payload_json"] or "{}")
+        except (ValueError, TypeError):
+            continue
+        if (row["company_id"] == employee.company_id and row["authority"] in {"REOP", "REI"}
+                and row["event_type"] == "Entrada" and row["status"] == "Borrador"
+                and row["source_key"] == key and row["id"] not in included
+                and not any(row[k] for k in ("batch_id", "approved_by", "submitted_at", "external_reference", "receipt_storage_key"))
+                and isinstance(payload, dict) and payload.get("generated_automatically") is True
+                and payload.get("employee_id") == employee.id and payload.get("source_key") == key):
+            allowed.append(row)
+    return allowed, len(rows)
+
+
 def deletion_preview(db, employee, *, lock_profile=False):
     refs = employee_references()
     counts = dict(db.execute(union_all(*[
@@ -62,8 +87,13 @@ def deletion_preview(db, employee, *, lock_profile=False):
     ])).all())
     profile, blockers = [], []
     snapshot = {"employee": {c.name: getattr(employee, c.name) for c in Employee.__table__.columns}, "counts": counts, "profile": {}}
+    entry_drafts, entry_count = automatic_entry_drafts(db, employee, lock=lock_profile)
+    counts["compliance_events"] = entry_count
+    if entry_drafts:
+        profile.append({"key": "automatic_entry_drafts", "label": "Avisos automáticos de alta en borrador, sin exportar", "count": len(entry_drafts)})
+        snapshot["automatic_entry_drafts"] = entry_drafts
     for table, columns in refs:
-        count = counts[table.name]
+        count = counts[table.name] - (len(entry_drafts) if table.name == "compliance_events" else 0)
         item = {"key": table.name, "label": LABELS.get(table.name, "Otros registros vinculados"), "count": count}
         if is_profile_reference(table, columns):
             if count:
@@ -78,7 +108,7 @@ def deletion_preview(db, employee, *, lock_profile=False):
     fingerprint = hashlib.sha256(json.dumps(snapshot, sort_keys=True, ensure_ascii=False, default=str, separators=(",", ":")).encode()).hexdigest()
     code = employee.employee_code if employee.employee_code is not None else f"ID-{employee.id}"
     return {"profile": profile, "blockers": blockers, "can_delete": not blockers,
-            "fingerprint": fingerprint, "confirmation": f"ELIMINAR {code}"}
+            "fingerprint": fingerprint, "confirmation": f"ELIMINAR {code}", "entry_ids": [row["id"] for row in entry_drafts]}
 
 
 def review_payload(user, employee, preview):
@@ -97,9 +127,11 @@ def verify_confirmation(token, user, employee, preview):
     return recorded == review_payload(user, employee, preview)
 
 
-def remove_dossier(db, employee):
+def remove_dossier(db, employee, *, entry_ids=()):
     # Core DELETE avoids implicit ORM nullification. Existing FKs remain the
     # last guard against concurrent or unmodeled references.
+    if entry_ids:
+        db.execute(delete(ComplianceEvent.__table__).where(ComplianceEvent.employee_id == employee.id, ComplianceEvent.id.in_(entry_ids)))
     for table, columns in employee_references():
         if is_profile_reference(table, columns):
             db.execute(delete(table).where(or_(*(c == employee.id for c in columns))))
