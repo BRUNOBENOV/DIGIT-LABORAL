@@ -56,7 +56,9 @@ Verificá la modalidad seleccionada antes de calcular.</div>
   <p>El legajo contiene un salario actual de <b>Gs. {{ employee.base_salary|gs }}</b>, pero no indica desde cuándo rige.
   Verificá que el importe del formulario corresponda al mes seleccionado antes de confirmar.</p>
   <label class="dl-check"><input type="checkbox" name="salary_base_verified" value="on" {% if values.get('salary_base_verified') == 'on' %}checked{% endif %}>
-  Confirmo que revisé la base salarial para este período.</label>
+  Confirmo que revisé la base salarial para este período e importe.</label>
+  <input type="hidden" name="salary_base_verification_period" value="{{ values.get('salary_base_verification_period','') }}">
+  <input type="hidden" name="salary_base_verification_amount" value="{{ values.get('salary_base_verification_amount','') }}">
   <label class="dl-field" for="salary-base-verification-note"><span>Respaldo de la verificación</span>
     <textarea id="salary-base-verification-note" name="salary_base_verification_note" maxlength="300" rows="2"
       placeholder="Ej.: contrato de trabajo, recibo del mes, planilla firmada o comprobación documentada.">{{ values.get('salary_base_verification_note','') }}</textarea>
@@ -82,6 +84,27 @@ Verificá la modalidad seleccionada antes de calcular.</div>
 (() => {
   const form = document.getElementById("labor-form");
   if (!form) return;
+  // La confirmación es válida solo para el monto y mes revisados.
+  const verified = form.elements.namedItem("salary_base_verified");
+  const verificationPeriod = form.elements.namedItem("salary_base_verification_period");
+  const verificationAmount = form.elements.namedItem("salary_base_verification_amount");
+  const verificationMonth = form.elements.namedItem("month");
+  const verificationSalary = form.elements.namedItem("salary");
+  function resetVerification() {
+    if (verified) verified.checked = false;
+    if (verificationPeriod) verificationPeriod.value = "";
+    if (verificationAmount) verificationAmount.value = "";
+  }
+  if (verified && verificationPeriod && verificationAmount && verificationMonth && verificationSalary) {
+    if (verified.checked && (verificationPeriod.value !== verificationMonth.value ||
+                            verificationAmount.value !== verificationSalary.value)) resetVerification();
+    verified.addEventListener("change", () => {
+      verificationPeriod.value = verified.checked ? verificationMonth.value : "";
+      verificationAmount.value = verified.checked ? verificationSalary.value : "";
+    });
+    verificationMonth.addEventListener("change", resetVerification);
+    verificationSalary.addEventListener("input", resetVerification);
+  }
   // El período completo se sugiere sin sobreescribir fechas de asistencia ya validadas.
   const period = form.elements.namedItem("month");
   const periodStart = form.elements.namedItem("period_start");
