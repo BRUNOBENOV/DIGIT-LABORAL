@@ -7,7 +7,8 @@
   const total = panel.querySelector("[data-summary-total]"), review = panel.querySelector("[data-review-field]");
   const warnings = panel.querySelector("[data-summary-warnings]"), warningList = panel.querySelector("[data-summary-warning-list]");
   const saveCurrent = panel.querySelector("[data-save-current]");
-  const delay = form.elements.namedItem("kind")?.value === "settlement" ? 500 : 300;
+  const isSalary = form.elements.namedItem("kind")?.value === "salary";
+  const delay = isSalary ? 300 : 500;
   const money = value => "Gs. " + new Intl.NumberFormat("es-PY", {maximumFractionDigits:0}).format(value);
   const vacationDaysEntered = () => ["pending_days","double_days","proportional_days"].some(name => String(form.elements.namedItem(name)?.value || "").trim() !== "");
   let timer, controller, sequence = 0, pendingField = "", printWasOpen = false;
@@ -60,7 +61,9 @@
     warningList.replaceChildren();
     pendingField = "";
     review.hidden = true;
-    if (saveCurrent) saveCurrent.disabled = true;
+    // Guardar salario siempre puede enviarse: el servidor recalcula y valida todo.
+    // No bloquearlo si la vista previa está retrasada o no tiene conexión.
+    if (saveCurrent && !isSalary) saveCurrent.disabled = true;
     showKnownProjection();
   };
   const invalidField = () => Array.from(form.elements).find(input => input.willValidate && !input.validity.valid);
@@ -106,7 +109,9 @@
       badge.textContent = data.partial ? "Parcial" : "Vista previa";
       status.textContent = data.partial
         ? "Subtotal parcial: revisá el régimen y los conceptos pendientes antes de emitir."
-        : "Vista previa actualizada. Pulsá Calcular o Recalcular para habilitar el documento.";
+        : isSalary && saveCurrent
+          ? "Podés guardar el borrador o ver el documento."
+          : "Vista previa actualizada. Pulsá Calcular o Recalcular para habilitar el documento.";
       warningList.replaceChildren();
       for (const message of data.warnings) {
         const li = document.createElement("li"); li.textContent = message; warningList.appendChild(li);
