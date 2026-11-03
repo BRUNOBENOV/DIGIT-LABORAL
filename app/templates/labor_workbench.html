@@ -38,8 +38,11 @@
 {% if private and employee and kind == 'salary' %}
 <div class="dl-alert" role="note"><b>Datos del legajo:</b> {{ employee.full_name }} · C.I. {{ employee.document_number }}
 · ingreso {{ employee.admission_date.strftime('%d/%m/%Y') }} · {{ employee.position or 'Cargo no informado' }}
-· pago registrado: {{ employee.payment_frequency or 'Sin modalidad registrada' }}.
-Verificá la modalidad seleccionada antes de calcular.</div>
+· pago registrado: {{ employee.payment_frequency or 'Sin modalidad registrada' }}
+· IPS en ficha: <b>{{ 'Aportante' if employee.ips_contributor else 'No marcado como aportante' }}</b>.
+Verificá la modalidad seleccionada antes de calcular.
+{% if not employee.ips_contributor %}<p><strong>IPS desactivado por la ficha:</strong> si corresponde aportar, activá el IPS en «Aportes y descuentos» y corregí el legajo para futuras liquidaciones. El sistema no debe presumir una exoneración legal a partir de una importación.</p>{% endif %}
+</div>
 {% endif %}
 {% if private and not companies %}<p class="dl-alert">Todavía no hay empresas en tu espacio. <a href="/app/companies">Registrá una empresa</a> para organizar tus liquidaciones.</p>{% elif private and company_id and not employees %}<p class="dl-alert">Esta empresa todavía no tiene funcionarios. <a href="/app/employees?company_id={{ company_id }}">Registrá un funcionario</a> para guardar sus liquidaciones.</p>{% endif %}
 {% if not private %}<nav class="dl-tabs" aria-label="Tipo de cálculo">{% for key, title in titles.items() %}<a href="/herramientas?tipo={{ key }}" {% if key == kind %}aria-current="page"{% endif %}>{{ title }}</a>{% endfor %}</nav>{% endif %}
