@@ -1,3 +1,11 @@
+## 2.6.80 — Eliminación definitiva de funcionarios
+
+- Agrega la acción de borrado físico desde el listado y el expediente para administradores y contadores, con identificación del legajo, resumen de datos de ficha, motivo y frase de confirmación.
+- Distingue los datos propios de ficha (perfil, anotaciones e historial salarial) de las operaciones vinculadas. Estas últimas impiden borrar y se enumeran antes de confirmar; las relaciones nuevas de empleado se consideran bloqueos por defecto.
+- Permite depurar los avisos de entrada generados automáticamente al dar de alta cuando siguen en borrador y carecen de revisión, lote o constancia. Las comunicaciones utilizadas o manuales bloquean el borrado.
+- Revisión firmada por usuario, empresa y legajo, con caducidad y verificación de cambios. Comprobación de vínculos y bloqueo de fila antes del borrado, sin anular referencias mediante el ORM. Auditoría y eliminación en la misma transacción; revierte todo si aparece una restricción de integridad.
+- Conserva archivado y egreso como acciones independientes, mantiene cerradas las antiguas rutas de eliminación directa y conserva filtros al volver al listado. Sin cambios de esquema ni dependencias.
+
 ## 2.6.79 — Descarga REOP/REI y canal de desconexión ASGI
 
 - Corrige un bloqueo de las descargas POST: el control CSRF repetía peticiones vacías después de leer el formulario, impidiendo que la respuesta en streaming terminara en el recorrido ASGI anterior a 2.4. Reproduce el cuerpo una sola vez y luego conserva el canal real de desconexión. Pruebas con vigilancia externa del proceso para impedir bloqueos de CI.

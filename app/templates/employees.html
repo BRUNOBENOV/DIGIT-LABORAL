@@ -28,9 +28,11 @@
   .employee-action-panel{display:grid;gap:6px;padding:9px 0 4px;min-width:190px}
   .employee-action-panel a,.employee-action-panel button{display:block;text-align:left;width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--border-color,#334155);border-radius:8px;background:var(--input-bg,#101a2d);color:var(--text-primary,#f3f6fb);font-size:.8rem;text-decoration:none;cursor:pointer;font-family:inherit;font-weight:650}
   .employee-action-panel .employee-archive-action{color:var(--text-secondary,#9eacbf)}
+  .employee-action-panel .employee-delete-action{color:#b2333d;font-weight:750}
   .employee-action-panel .employee-no-settlement{font-size:.75rem;color:var(--text-secondary,#9eacbf)}
   .exit-modal-notice{border:1px solid var(--border-color,#334155);padding:12px 14px;border-radius:9px;line-height:1.5}
 </style>
+{% if request.query_params.get('deleted') == '1' %}<div class="alert success" role="status">Funcionario eliminado definitivamente. La acción quedó registrada en auditoría.</div>{% endif %}
 <div class="page-header">
   <div><span class="eyebrow">MANTENIMIENTOS</span><h1>Funcionarios</h1><p>Legajos personales, datos laborales e historial centralizado sin alterar los cálculos ya guardados.</p></div>
   <div class="header-actions">
@@ -121,6 +123,7 @@
           {% else %}
             <form method="post" action="/app/employees/{{ employee.id }}/archive" onsubmit="return confirm('¿Archivar este legajo? No se eliminarán nóminas, documentos ni liquidaciones.')"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="employee-archive-action" type="submit">Archivar legajo</button></form>
           {% endif %}
+          <a class="employee-delete-action" href="/app/employees/{{ employee.id }}/permanent-delete?return_to={{ (request.url.path ~ '?' ~ request.url.query)|urlencode }}">Eliminar definitivamente</a>
         {% elif user.role in ['auxiliar'] and settlements_by_employee.get(employee.id) %}
           <a href="/app/final-settlements/{{ settlements_by_employee[employee.id].id }}">Ver liquidación final</a>
         {% endif %}
