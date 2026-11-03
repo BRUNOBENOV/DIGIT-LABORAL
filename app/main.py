@@ -151,6 +151,10 @@ from .labor_code_sync import (
     sync_labor_code,
 )
 from .legacy_employee_import import parse_legacy_employee_workbook, validate_legacy_employee_policy
+from .historical_labor_context import (
+    historical_vacation_page, historical_vacation_summary,
+    historical_vacation_detail, historical_vacation_csv,
+)
 from .legacy_vacation_import import (
     EVENT_TYPE as LEGACY_VACATION_EVENT_TYPE, MAX_BYTES as LEGACY_VACATION_MAX_BYTES,
     event_legacy_data, make_historical_vacation_event,
@@ -3812,12 +3816,24 @@ def employee_detail_page(
     vacations = list(db.scalars(select(Vacation).where(Vacation.employee_id == employee.id).order_by(Vacation.period_year.desc())))
     payroll_lines = list(db.scalars(select(PayrollLine).where(PayrollLine.employee_id == employee.id).order_by(PayrollLine.id.desc()).limit(24)))
     deadlines = list(db.scalars(select(LaborDeadline).where(LaborDeadline.employee_id == employee.id).order_by(LaborDeadline.due_date)))
+    historical_vacation_overview = historical_vacation_summary(db, employee.id)
+    historical_event_details = {
+        event.id: historical_vacation_detail(event)
+        for event in events if event.event_type == LEGACY_VACATION_EVENT_TYPE
+    }
+    historical_recent = [
+        {"event": event, "source": event_legacy_data(event)}
+        for event in events if event.event_type == LEGACY_VACATION_EVENT_TYPE
+    ][:8]
     return render(
         request, "employee_detail.html", db, user, employee=employee, events=events, salaries=salaries,
         documents=documents, certificates=certificates, calculations=calculations, vacations=vacations,
         payroll_lines=payroll_lines, deadlines=deadlines,
         employee_profile=_employee_profile(db, employee.id),
         employee_exit=employee_exit, final_settlement=final_settlement,
+        historical_vacation_overview=historical_vacation_overview,
+        historical_event_details=historical_event_details,
+        historical_recent=historical_recent,
     )
 
 
@@ -5584,6 +5600,10 @@ def calculations_page(
         or (company_id and selected_employee_record.company_id != company_id)
     ):
         raise HTTPException(404, "Funcionario no encontrado en la empresa seleccionada.")
+    historical_vacation_overview = (
+        historical_vacation_summary(db, selected_employee_record.id)
+        if tipo == "vacation" and selected_employee_record else None
+    )
     minimum_salary = get_parameter(db, "minimum_monthly_salary_general", 0)
     calculation_salary_default = (
         int(selected_employee_record.base_salary or 0) if selected_employee_record else int(minimum_salary or 0)
@@ -5623,6 +5643,7 @@ def calculations_page(
         prefill_notes=prefill_notes,
         period_reuse_warning=period_reuse_warning,
         prefill_year=prefill_year,
+        historical_vacation_overview=historical_vacation_overview,
     )
 
 
@@ -7134,6 +7155,11 @@ def employee_integral_report(
     certificates = list(db.scalars(select(GeneratedCertificate).where(GeneratedCertificate.employee_id == employee.id).order_by(GeneratedCertificate.created_at.desc())))
     vacations = list(db.scalars(select(Vacation).where(Vacation.employee_id == employee.id).order_by(Vacation.period_year.desc())))
     aguinaldos = list(db.scalars(select(Aguinaldo).where(Aguinaldo.employee_id == employee.id).order_by(Aguinaldo.year.desc())))
+    historical_vacation_overview = historical_vacation_summary(db, employee.id)
+    historical_vacation_rows = historical_vacation_page(
+        db, company_ids_for_user(db, user), company_id=employee.company_id,
+        employee_id=employee.id, page=1, page_size=12
+    )["rows"]
     branding = get_or_create_branding(db, company)
     db.commit()
     payload = build_employee_report_pdf(
@@ -7144,6 +7170,8 @@ def employee_integral_report(
         vacations=vacations,
         aguinaldos=aguinaldos,
         branding=branding,
+        historical_vacations=historical_vacation_rows,
+        historical_vacation_count=historical_vacation_overview["count"],
     )
     filename = safe_download_name("Informe integral", employee.full_name, "pdf")
     write_audit(db, user, "descargar", "informe_integral", str(employee.id), filename)
@@ -8325,6 +8353,7 @@ def vacations_page(
     request: Request,
     company_id: OptionalQueryId = None,
     employee_id: OptionalQueryId = None,
+    history_page: int = 1,
     user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ):
@@ -8341,29 +8370,59 @@ def vacations_page(
         vacation_query = vacation_query.where(Vacation.employee_id == selected_employee_id)
     employees = seed_choices(db, employee_query.order_by(Employee.full_name), Employee, request=request)
     items = list(db.scalars(vacation_query.order_by(Vacation.created_at.desc())))
-    historical_query = select(EmployeeEvent).join(Employee).where(
-        Employee.company_id.in_(company_ids),
-        EmployeeEvent.event_type == LEGACY_VACATION_EVENT_TYPE,
-    ) if company_ids else select(EmployeeEvent).where(False)
-    if selected_company_id:
-        historical_query = historical_query.where(Employee.company_id == selected_company_id)
-    if selected_employee_id:
-        historical_query = historical_query.where(EmployeeEvent.employee_id == selected_employee_id)
-    historical_count = db.scalar(select(func.count()).select_from(historical_query.subquery())) or 0
-    historical_events = list(db.scalars(
-        historical_query.order_by(EmployeeEvent.effective_date.desc(), EmployeeEvent.id.desc()).limit(60)
-    ))
-    historical_vacations = [
-        {"event": item, "source": event_legacy_data(item)}
-        for item in historical_events
-        if event_legacy_data(item)
-    ]
+    history = historical_vacation_page(
+        db, company_ids, company_id=selected_company_id,
+        employee_id=selected_employee_id, page=history_page,
+    )
+    historical_vacations = history["rows"]
+    history_filters = {
+        key: value for key, value in {
+            "company_id": selected_company_id, "employee_id": selected_employee_id,
+        }.items() if value is not None
+    }
+    history_prev_query = urlencode({**history_filters, "history_page": history["page"] - 1})
+    history_next_query = urlencode({**history_filters, "history_page": history["page"] + 1})
+    history_export_query = urlencode(history_filters)
     companies = seed_choices(db, select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name), Company, request=request) if company_ids else []
     filter_employees = seed_choices(db, select(Employee).where(Employee.company_id.in_(company_ids)).order_by(Employee.full_name), Employee, request=request) if company_ids else []
     return render(request, "vacations.html", db, user, employees=employees, filter_employees=filter_employees,
                   companies=companies, items=items, selected_company_id=selected_company_id,
                   selected_employee_id=selected_employee_id,
-                  historical_vacations=historical_vacations, historical_count=historical_count)
+                  historical_vacations=historical_vacations, historical_count=history["total"],
+                  history_page=history, history_prev_query=history_prev_query,
+                  history_next_query=history_next_query, history_export_query=history_export_query)
+
+
+@app.get("/app/vacations/history.csv")
+def historical_vacations_csv_download(
+    company_id: OptionalQueryId = None,
+    employee_id: OptionalQueryId = None,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    allowed_ids = set(company_ids_for_user(db, user))
+    if company_id and company_id not in allowed_ids:
+        raise HTTPException(404, "Empresa no encontrada.")
+    if employee_id:
+        employee = db.get(Employee, employee_id)
+        if not employee or employee.company_id not in allowed_ids:
+            raise HTTPException(404, "Funcionario no encontrado.")
+        if company_id and employee.company_id != company_id:
+            raise HTTPException(400, "El funcionario no pertenece a la empresa seleccionada.")
+    try:
+        content, _count = historical_vacation_csv(
+            db, allowed_ids, company_id=company_id, employee_id=employee_id
+        )
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return Response(
+        content=content,
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": 'attachment; filename="vacaciones_historicas_lsvac.csv"',
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 @app.post("/app/vacations")
@@ -8901,6 +8960,14 @@ def employee_history_page(
                 if user.role in {"administrador", "contador"} else []
             ),
             "payroll_lines": list(db.scalars(select(PayrollLine).where(PayrollLine.employee_id == selected.id).order_by(PayrollLine.id.desc()).limit(100))),
+        }
+        history["historical_vacation_summary"] = historical_vacation_summary(db, selected.id)
+        history["historical_vacations"] = historical_vacation_page(
+            db, company_ids, company_id=selected.company_id, employee_id=selected.id, page=1, page_size=12
+        )["rows"]
+        history["event_detail_overrides"] = {
+            event.id: historical_vacation_detail(event)
+            for event in history["events"] if event.event_type == LEGACY_VACATION_EVENT_TYPE
         }
     return render(request, "employee_history.html", db, user, companies=companies, employees=employees,
                   selected_company=selected_company, selected_employee=selected.id if selected else None,
