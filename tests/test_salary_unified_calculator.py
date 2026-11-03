@@ -2,7 +2,7 @@
 import pytest
 
 from app.labor_calculator import CalculationError, calculate
-from tests.test_labor_suite import salary
+from tests.test_labor_suite import salary, web_case
 
 
 def test_salary_monthly_keeps_divisor_30():
