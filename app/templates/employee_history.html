@@ -24,7 +24,7 @@
     <td>{{ row.source.period_from }} – {{ row.source.period_to }}</td>
     <td>{{ row.source.vacation_start }} – {{ row.source.vacation_end }}</td>
     <td>{{ row.source.days }}</td>
-    <td>{{ row.source.vacation_amount if row.source.vacation_amount is not none else 'Sin dato' }}</td>
+    <td>{{ row.source.vacation_amount if row.source.vacation_amount is not none else 'Sin dato' }} <a href="/app/vacations/history/{{ row.event.id }}">Ver origen</a></td>
   </tr>{% endif %}{% endfor %}</tbody></table></div>
   {% else %}<p class="empty-state">Sin movimientos históricos LSVAC vinculados.</p>{% endif %}
   <div style="margin-top:12px"><a href="/app/vacations/history.csv?company_id={{ selected.company_id }}&amp;employee_id={{ selected.id }}">Descargar antecedentes CSV</a></div>
