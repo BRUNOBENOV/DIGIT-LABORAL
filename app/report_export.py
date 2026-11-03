@@ -142,6 +142,17 @@ def build_employee_report_pdf(
     vac_text = "; ".join(vacations_text) or "Sin registros de vacaciones."
     ag_text = ", ".join(f"{a.year}: Gs. {_gs(a.calculated_amount)} ({a.status})" for a in aguinaldos) or "Sin registros de aguinaldo."
     story.extend([Paragraph(escape(vac_text), normal), Paragraph(escape(ag_text), normal)])
+    # Keep exact original decimals readable even if a long vacation paragraph
+    # wraps across pages; historical values are recorded, never paid amounts.
+    recorded_amounts = [
+        str((entry.get("source") or {}).get("vacation_amount"))
+        for entry in (historical_vacations or [])[:12]
+        if (entry.get("source") or {}).get("vacation_amount") is not None
+    ]
+    if recorded_amounts:
+        story.append(Paragraph(
+            "Importes registrados (Gs.): " + escape(", ".join(recorded_amounts)), small
+        ))
     if historical_vacation_count:
         story.append(Paragraph(
             "No constituyen saldo vigente ni constancia de pago los movimientos sin conciliar. "
