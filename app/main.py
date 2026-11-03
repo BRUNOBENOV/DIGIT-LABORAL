@@ -155,6 +155,13 @@ from .historical_labor_context import (
     historical_vacation_page, historical_vacation_summary,
     historical_vacation_detail, historical_vacation_csv,
 )
+from .legacy_notice_import import (
+    EVENT_TYPE as LEGACY_NOTICE_EVENT_TYPE, MAX_BYTES as LEGACY_NOTICE_MAX_BYTES,
+    parse_legacy_notice_workbook, legacy_notice_preview, make_notice_event, legacy_notice_data,
+)
+from .historical_notice_context import (
+    notice_history_summary, notice_history_detail, notice_history_page, notice_history_csv,
+)
 from .legacy_vacation_import import (
     EVENT_TYPE as LEGACY_VACATION_EVENT_TYPE, MAX_BYTES as LEGACY_VACATION_MAX_BYTES,
     event_legacy_data, make_historical_vacation_event,
@@ -8234,6 +8241,207 @@ def _allowed_legacy_vacation_preview(db: Session, user: User, token: str) -> dic
     if payload["user_id"] != user.id or payload["studio_id"] != (user.studio_id or 0):
         raise HTTPException(403, "La importación no corresponde a tu sesión o estudio.")
     return payload
+
+
+def _legacy_notice_preview_path(token: str) -> Path:
+    if not re.fullmatch(r"[a-f0-9]{32}", token or ""):
+        raise ValueError("Token LSPRE inválido.")
+    return IMPORT_DIR / f"legacy_notice_{token}.json.gz"
+
+
+def _allowed_legacy_notice_preview(user: User, token: str) -> dict:
+    path = _legacy_notice_preview_path(token)
+    if not path.exists():
+        raise ValueError("La previsualización de preavisos ya no existe. Volvé a subir el archivo.")
+    with gzip.open(path, "rt", encoding="utf-8") as handle:
+        payload = json.load(handle)
+    created = datetime.fromisoformat(payload["created_at"])
+    if created.tzinfo is None:
+        created = created.replace(tzinfo=UTC)
+    if created < datetime.now(UTC) - timedelta(hours=4):
+        path.unlink(missing_ok=True)
+        raise ValueError("La previsualización expiró después de cuatro horas.")
+    if payload["user_id"] != user.id or payload["studio_id"] != (user.studio_id or 0):
+        raise HTTPException(403, "La previsualización no pertenece a esta sesión o estudio.")
+    return payload
+
+
+@app.get("/app/import/legacy-notices", response_class=HTMLResponse)
+def legacy_notice_import_start(
+    request: Request,
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    return render(request, "legacy_notice_import.html", db, user, preview=None)
+
+
+@app.post("/app/import/legacy-notices/preview")
+async def legacy_notice_import_upload(
+    file: UploadFile = File(),
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    content = await file.read(LEGACY_NOTICE_MAX_BYTES + 1)
+    if len(content) > LEGACY_NOTICE_MAX_BYTES:
+        raise HTTPException(413, "El Excel supera 8 MB.")
+    try:
+        parsed = parse_legacy_notice_workbook(content, file.filename or "")
+        plan = legacy_notice_preview(db, parsed, set(company_ids_for_user(db, user)))
+    except (ValueError, OSError, zipfile.BadZipFile) as exc:
+        raise HTTPException(422, str(exc)) from exc
+    token = uuid.uuid4().hex
+    payload = {
+        "user_id": user.id, "studio_id": user.studio_id or 0,
+        "created_at": datetime.now(UTC).isoformat(),
+        "parsed": parsed,
+        "employee_mapping": {row["legacy_key"]: row["employee_id"] for row in plan["rows"]
+                             if row["state"] in {"listo", "ya_importado"} and row["employee_id"]},
+    }
+    with gzip.open(_legacy_notice_preview_path(token), "wt", encoding="utf-8") as handle:
+        json.dump(payload, handle, ensure_ascii=False, separators=(",", ":"))
+    write_audit(
+        db, user, "previsualizar", "importacion_historica_preavisos", token,
+        f"LSPRE · {parsed['sha256']} · {plan['summary']['source_rows']} filas; "
+        f"{plan['summary']['ready']} elegibles, {plan['summary']['rejected']} rechazadas; "
+        f"{plan['summary']['source_deleted']} marcadas BORRAD=S.",
+    )
+    db.commit()
+    return RedirectResponse(f"/app/import/legacy-notices/{token}", status_code=303)
+
+
+@app.get("/app/import/legacy-notices/{token}", response_class=HTMLResponse)
+def legacy_notice_import_review(
+    token: str,
+    request: Request,
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    try:
+        payload = _allowed_legacy_notice_preview(user, token)
+    except ValueError as exc:
+        return RedirectResponse("/app/import/legacy-notices?"+urlencode({"error": str(exc)}), status_code=303)
+    plan = legacy_notice_preview(db, payload["parsed"], set(company_ids_for_user(db, user)))
+    return render(request, "legacy_notice_import.html", db, user,
+                  preview=plan, token=token, source_filename=payload["parsed"]["filename"],
+                  source_sha256=payload["parsed"]["sha256"],
+                  sample_ready=[r for r in plan["rows"] if r["state"] == "listo"][:30],
+                  sample_issues=[r for r in plan["rows"] if r["state"] not in {"listo", "ya_importado"}][:45])
+
+
+@app.post("/app/import/legacy-notices/{token}/confirm")
+def legacy_notice_import_confirm(
+    token: str,
+    verified: Annotated[str, Form()] = "",
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    if verified != "si":
+        raise HTTPException(400, "Confirmá la revisión de coincidencias antes de importar.")
+    payload = _allowed_legacy_notice_preview(user, token)
+    if db.bind is not None and db.bind.dialect.name == "postgresql":
+        db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:k))"),
+                   {"k": f"legacy-notice:{user.studio_id or 0}"})
+    plan = legacy_notice_preview(db, payload["parsed"], set(company_ids_for_user(db, user)))
+    prior = payload.get("employee_mapping") or {}
+    for row in plan["rows"]:
+        original = prior.get(row["legacy_key"])
+        if original is not None and row["state"] == "listo" and original != row["employee_id"]:
+            raise HTTPException(409, "Cambió la vinculación del legajo. Volvé a previsualizar.")
+    events = [make_notice_event(row, payload["parsed"]["filename"], user.email)
+              for row in plan["rows"] if row["state"] == "listo"]
+    if events:
+        db.add_all(events)
+    write_audit(
+        db, user, "importar", "importacion_historica_preavisos", token,
+        f"LSPRE · {payload['parsed']['sha256']} · {len(events)} eventos históricos; "
+        f"{plan['summary']['source_deleted']} borrados en origen; "
+        f"{plan['summary']['rejected']} sin vínculo, "
+        f"{plan['summary']['already_imported']} previamente incorporados. "
+        "No se modificaron preavisos calculados, egresos, nóminas ni indemnizaciones.",
+    )
+    db.commit()
+    return RedirectResponse(
+        "/app/legacy-notices?" + urlencode({
+            "imported": len(events),
+            "existing": plan["summary"]["already_imported"],
+            "rejected": plan["summary"]["rejected"],
+        }), status_code=303,
+    )
+
+
+@app.get("/app/legacy-notices", response_class=HTMLResponse)
+def legacy_notices_page(
+    request: Request,
+    company_id: OptionalQueryId = None,
+    employee_id: OptionalQueryId = None,
+    page: int = 1,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    allowed = company_ids_for_user(db, user)
+    company_id, employee_id = default_labor_context(
+        request, db, user, allowed, company_id, employee_id,
+    )
+    result = notice_history_page(db, allowed, company_id=company_id,
+                                 employee_id=employee_id, page=page)
+    companies = seed_choices(
+        db, select(Company).where(Company.id.in_(allowed)).order_by(Company.legal_name),
+        Company, request=request,
+    ) if allowed else []
+    employees = seed_choices(
+        db, select(Employee).where(Employee.company_id.in_(allowed)).order_by(Employee.full_name),
+        Employee, request=request,
+    ) if allowed else []
+    filters = {k:v for k,v in {"company_id": company_id, "employee_id": employee_id}.items() if v}
+    return render(request, "legacy_notice_list.html", db, user,
+                  result=result, companies=companies, employees=employees,
+                  selected_company=company_id, selected_employee=employee_id,
+                  previous_query=urlencode({**filters, "page": result["page"]-1}),
+                  next_query=urlencode({**filters, "page": result["page"]+1}),
+                  export_query=urlencode(filters))
+
+
+@app.get("/app/legacy-notices/history.csv")
+def legacy_notices_export(
+    company_id: OptionalQueryId = None,
+    employee_id: OptionalQueryId = None,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    allowed = company_ids_for_user(db, user)
+    if company_id is not None and company_id not in allowed:
+        raise HTTPException(404, "Empresa no autorizada.")
+    if employee_id is not None:
+        employee = db.get(Employee, employee_id)
+        if not employee or employee.company_id not in allowed or (company_id and employee.company_id != company_id):
+            raise HTTPException(404, "Funcionario no autorizado.")
+    try:
+        content, count = notice_history_csv(db, allowed, company_id=company_id, employee_id=employee_id)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    write_audit(db, user, "exportar", "historico_preaviso", str(employee_id or company_id or "todos"),
+                f"Exportación LSPRE: {count} antecedentes sin conciliación documental.")
+    db.commit()
+    return Response(content=content, media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": 'attachment; filename="historico_preaviso_lspre.csv"',
+                             "Cache-Control": "no-store"})
+
+
+@app.get("/app/legacy-notices/{event_id}", response_class=HTMLResponse)
+def legacy_notice_detail_page(
+    event_id: int, request: Request,
+    user: User = Depends(require_user), db: Session = Depends(get_db),
+):
+    event = db.get(EmployeeEvent, event_id)
+    if not event or event.event_type != LEGACY_NOTICE_EVENT_TYPE:
+        raise HTTPException(404, "Preaviso histórico no encontrado.")
+    if event.employee.company_id not in company_ids_for_user(db, user):
+        raise HTTPException(404, "Preaviso histórico no encontrado.")
+    source = legacy_notice_data(event)
+    if not source:
+        raise HTTPException(404, "El antecedente no tiene datos válidos.")
+    return render(request, "legacy_notice_detail.html", db, user, event=event, source=source)
+
 
 
 @app.get("/app/import/legacy-vacations", response_class=HTMLResponse)
