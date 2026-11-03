@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Pendientes LSPRE | DIGIT-LABORAL{% endblock %}
+{% block page_name %}Conciliación de preavisos históricos{% endblock %}
+{% block content %}
+<style>
+.lspre-exceptions{max-width:1260px;margin:0 auto;color:#17365c}
+.lspre-exceptions-head{background:linear-gradient(115deg,#071c49,#082b71 76%,#244b94);color:white;border-radius:13px;padding:23px;margin-bottom:15px}
+.lspre-exceptions-head h1{color:#fff;font-size:1.48rem;margin:5px 0 9px}
+.lspre-exceptions-head p{color:#d8e7ff;font-size:.83rem;line-height:1.55;margin:0}
+.lspre-exceptions-cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:14px 0}
+.lspre-exceptions-metric{background:#f7faff;border:1px solid #dae5f5;border-radius:10px;padding:13px}
+.lspre-exceptions-metric strong{display:block;font-size:1.5rem;color:#113c80;font-variant-numeric:tabular-nums}
+.lspre-exceptions-metric small{display:block;color:#657793;font-size:.76rem;margin-top:5px}
+.lspre-exceptions .lspre-note{font-size:.8rem;line-height:1.55;color:#664b1d;background:#fff7e8;border:1px solid #e9d09b;padding:12px 15px;border-radius:9px;margin-bottom:15px}
+.lspre-exceptions .lspre-table-wrap{overflow:auto;border:1px solid #dce4ef;border-radius:10px}
+.lspre-exceptions table{border-collapse:collapse;width:100%;font-size:.78rem}
+.lspre-exceptions th{text-align:left;white-space:nowrap;background:#eff4fb;color:#1d416f;padding:11px 10px}
+.lspre-exceptions td{border-top:1px solid #e7edf6;padding:10px;vertical-align:top}
+.lspre-exceptions td.small{font-size:.75rem;max-width:280px;min-width:210px;color:#53687e}
+.lspre-exceptions .exception-pending{font-weight:700;color:#a06216}
+.lspre-exceptions .exception-linked{font-weight:700;color:#116b4b}
+.lspre-exceptions .lspre-actions{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0}
+.lspre-exceptions .mini{font-size:.74rem;color:#62738c;margin-top:4px}
+@media(max-width:740px){.lspre-exceptions-cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
+</style>
+<div class="lspre-exceptions">
+  <header class="lspre-exceptions-head">
+    <span style="font-size:.7rem;letter-spacing:.12em">LSPRE · CONCILIACIÓN DOCUMENTAL</span>
+    <h1>Registros de preaviso pendientes de vinculación</h1>
+    <p>Inventario auditado de movimientos del sistema DOS que no pudieron asociarse inequívocamente a un legajo o presentan datos de origen contradictorios.</p>
+  </header>
+  <div class="lspre-actions">
+    <a class="btn ghost" href="/app/legacy-notices">← Volver a Preavisos históricos</a>
+    <a class="btn ghost" href="/app/import/legacy-notices">Importador de preavisos</a>
+  </div>
+  <div class="lspre-exceptions-cards">
+    <div class="lspre-exceptions-metric"><strong>{{ exception_report.total }}</strong><small>Excepciones registradas</small></div>
+    <div class="lspre-exceptions-metric"><strong>{{ exception_report.pending }}</strong><small>Pendientes de identificar o corregir</small></div>
+    <div class="lspre-exceptions-metric"><strong>{{ exception_report.categories.get('trabajador_no_migrado',0) }}</strong><small>Trabajador en base DOS, no migrado</small></div>
+    <div class="lspre-exceptions-metric"><strong>{{ exception_report.categories.get('trabajador_no_identificado',0) + exception_report.categories.get('conflicto_fuente',0) }}</strong><small>Sin identidad o con conflicto de origen</small></div>
+  </div>
+  <p class="lspre-note"><b>Importante:</b> estas filas están conservadas en auditoría con su código de empresa, legajo DOS, fechas y huellas de archivo. No generan funcionarios activos, avisos legales, pagos ni indemnizaciones. Para resolverlas se requiere una identidad documentada, o aclarar cuál versión del registro contradictorio corresponde.</p>
+  <section class="panel" style="padding:17px">
+    <h2 style="font-size:1.06rem;margin:0 0 12px">Detalle de excepciones</h2>
+    <div class="lspre-table-wrap"><table>
+      <thead><tr><th>Fila DOS</th><th>CODEMP</th><th>CODTRA</th><th>FECPRE</th><th>FECSAL</th><th>DIAPRE</th><th>Estado</th><th>Motivo y fuente</th></tr></thead>
+      <tbody>
+        {% for row in exception_report.rows %}
+        {% set r=row.source %}
+        <tr>
+          <td><b>{{ r.source_row }}</b><div class="mini">LSPRE</div></td>
+          <td>{{ r.company_code }}<div class="mini">{{ row.company.legal_name }}</div></td>
+          <td><b>{{ r.employee_code }}</b><div class="mini">{{ 'BORRAD=S' if r.deleted_marker_raw == 'S' else 'Sin marca BORRAD' }}</div></td>
+          <td>{{ r.notice_date_source or '—' }}</td>
+          <td>{{ r.departure_date_source or '—' }}</td>
+          <td>{{ r.days if r.days is not none else 'Sin dato' }}</td>
+          <td>
+            {% if row.status == 'Vinculado' %}<span class="exception-linked">Vinculado</span>
+            <div class="mini"><a href="/app/legacy-notices/{{ row.event_id }}">Ver registro</a></div>
+            {% else %}<span class="exception-pending">Pendiente</span>{% endif %}
+          </td>
+          <td class="small"><b>{{ row.category_label }}</b>
+            <div style="margin-top:5px">{{ r.reason }}</div>
+            {% if r.source_worker_row %}
+              <div class="mini">Trabajador encontrado en fila {{ r.source_worker_row }} de la base DOS; no migrado al legajo actual.</div>
+            {% endif %}
+            <div class="mini">Auditoría #{{ row.log_id }} · SHA-256 {{ r.source_sha256[:12] }}…</div>
+          </td>
+        </tr>
+        {% else %}<tr><td colspan="8">No existen excepciones pendientes para las empresas autorizadas.</td></tr>{% endfor %}
+      </tbody>
+    </table></div>
+  </section>
+</div>
+{% endblock %}

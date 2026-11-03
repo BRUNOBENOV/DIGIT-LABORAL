@@ -162,6 +162,7 @@ from .legacy_notice_import import (
 from .historical_notice_context import (
     notice_history_summary, notice_history_detail, notice_history_page, notice_history_csv,
 )
+from .legacy_notice_exceptions import list_notice_exceptions
 from .legacy_vacation_import import (
     EVENT_TYPE as LEGACY_VACATION_EVENT_TYPE, MAX_BYTES as LEGACY_VACATION_MAX_BYTES,
     event_legacy_data, make_historical_vacation_event,
@@ -8447,6 +8448,20 @@ def legacy_notices_export(
     return Response(content=content, media_type="text/csv; charset=utf-8",
                     headers={"Content-Disposition": 'attachment; filename="historico_preaviso_lspre.csv"',
                              "Cache-Control": "no-store"})
+
+
+@app.get("/app/legacy-notices/exceptions", response_class=HTMLResponse)
+def legacy_notice_exceptions_page(
+    request: Request,
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    allowed_companies = set(company_ids_for_user(db, user))
+    report = list_notice_exceptions(db, user.studio_id or 0, allowed_companies)
+    return render(
+        request, "legacy_notice_exceptions.html", db, user,
+        exception_report=report,
+    )
 
 
 @app.get("/app/legacy-notices/{event_id}", response_class=HTMLResponse)
