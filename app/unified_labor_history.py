@@ -143,12 +143,14 @@ def calculation_history_page(
     *, tipo: str | None = None, company_id: int | None = None,
     employee_id: int | None = None,
     page: int = 1, page_size: int = DEFAULT_PAGE_SIZE,
+    include_center_calculations: bool = False,
 ) -> dict[str, Any]:
     ids = tuple(company_ids)
     live = select(CalculationRecord).where(
         CalculationRecord.company_id.in_(ids),
-        CalculationRecord.source != "Centro laboral",
     ) if ids else select(CalculationRecord).where(False)
+    if not include_center_calculations:
+        live = live.where(CalculationRecord.source != "Centro laboral")
     if tipo:
         live = live.where(CalculationRecord.calculation_type == tipo)
     if company_id is not None:
