@@ -162,6 +162,7 @@ from .legacy_notice_import import (
 from .historical_notice_context import (
     notice_history_summary, notice_history_detail, notice_history_page, notice_history_csv,
 )
+from .unified_labor_history import calculation_history_page, vacation_history_page
 from .legacy_notice_exceptions import list_notice_exceptions
 from .legacy_vacation_import import (
     EVENT_TYPE as LEGACY_VACATION_EVENT_TYPE, MAX_BYTES as LEGACY_VACATION_MAX_BYTES,
@@ -3824,34 +3825,21 @@ def employee_detail_page(
     vacations = list(db.scalars(select(Vacation).where(Vacation.employee_id == employee.id).order_by(Vacation.period_year.desc())))
     payroll_lines = list(db.scalars(select(PayrollLine).where(PayrollLine.employee_id == employee.id).order_by(PayrollLine.id.desc()).limit(24)))
     deadlines = list(db.scalars(select(LaborDeadline).where(LaborDeadline.employee_id == employee.id).order_by(LaborDeadline.due_date)))
-    historical_vacation_overview = historical_vacation_summary(db, employee.id)
-    historical_notice_overview = notice_history_summary(db, employee.id)
-    historical_notice_recent = notice_history_page(
-        db, {employee.company_id}, employee_id=employee.id, page_size=8,
-    )["rows"]
     historical_event_details = {
-        event.id: historical_vacation_detail(event)
-        for event in events if event.event_type == LEGACY_VACATION_EVENT_TYPE
+        event.id: (
+            historical_vacation_detail(event) if event.event_type == LEGACY_VACATION_EVENT_TYPE
+            else notice_history_detail(event)
+        )
+        for event in events
+        if event.event_type in {LEGACY_VACATION_EVENT_TYPE, LEGACY_NOTICE_EVENT_TYPE}
     }
-    historical_recent = [
-        {"event": event, "source": event_legacy_data(event)}
-        for event in events if event.event_type == LEGACY_VACATION_EVENT_TYPE
-    ][:8]
-    historical_event_details.update({
-        event.id: notice_history_detail(event) for event in events
-        if event.event_type == LEGACY_NOTICE_EVENT_TYPE
-    })
     return render(
         request, "employee_detail.html", db, user, employee=employee, events=events, salaries=salaries,
         documents=documents, certificates=certificates, calculations=calculations, vacations=vacations,
         payroll_lines=payroll_lines, deadlines=deadlines,
         employee_profile=_employee_profile(db, employee.id),
         employee_exit=employee_exit, final_settlement=final_settlement,
-        historical_vacation_overview=historical_vacation_overview,
         historical_event_details=historical_event_details,
-        historical_recent=historical_recent,
-        historical_notice_overview=historical_notice_overview,
-        historical_notice_recent=historical_notice_recent,
     )
 
 
@@ -5573,6 +5561,7 @@ def calculations_page(
     year: int | None = None,
     reference_date: str | None = None,
     reference_period: str | None = None,
+    history_page: int = 1,
     user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
     db: Session = Depends(get_db),
 ):
@@ -5592,19 +5581,16 @@ def calculations_page(
         if company_ids else select(Employee).where(False)
     )
     employees = seed_choices(db, employees_query.order_by(Employee.full_name), Employee, request=request, selected_ids=[employee_id])
-    notice_history_preview = (
-        notice_history_page(db, company_ids, company_id=company_id, employee_id=employee_id,
-                            page=1, page_size=5)
-        if tipo == "notice" else None
+    unified_calculations = calculation_history_page(
+        db, company_ids, tipo=tipo, company_id=company_id,
+        employee_id=employee_id, page=history_page, page_size=40,
     )
-    recent_query = select(CalculationRecord).where(CalculationRecord.company_id.in_(company_ids), CalculationRecord.source != "Centro laboral") if company_ids else select(CalculationRecord).where(False)
-    if company_id and company_id in company_ids:
-        recent_query = recent_query.where(CalculationRecord.company_id == company_id)
-    if employee_id:
-        recent_query = recent_query.where(CalculationRecord.employee_id == employee_id)
-    if tipo:
-        recent_query = recent_query.where(CalculationRecord.calculation_type == tipo)
-    recent_calculations = list(db.scalars(recent_query.order_by(CalculationRecord.created_at.desc()).limit(30)))
+    history_filters = {key: value for key, value in {
+        "tipo": tipo, "company_id": company_id, "employee_id": employee_id,
+        "reference_date": reference_date if tipo == "notice" else None,
+    }.items() if value is not None}
+    history_previous_query = urlencode({**history_filters, "history_page": unified_calculations["page"] - 1})
+    history_next_query = urlencode({**history_filters, "history_page": unified_calculations["page"] + 1})
     prefill_total_remunerations = 0
     prefill_notes = ""
     period_reuse_warning = ""
@@ -5660,7 +5646,9 @@ def calculations_page(
         user,
         companies=companies,
         employees=employees,
-        recent_calculations=recent_calculations,
+        unified_calculations=unified_calculations,
+        history_previous_query=history_previous_query,
+        history_next_query=history_next_query,
         selected_company=company_id,
         selected_employee=employee_id,
         ips_rate=get_parameter(db, "ips_employee_rate_general", 9),
@@ -5679,7 +5667,6 @@ def calculations_page(
         prefill_year=prefill_year,
         historical_vacation_overview=historical_vacation_overview,
         historical_notice_overview=historical_notice_overview,
-        notice_history_preview=notice_history_preview,
         notice_selected_non_active=bool(
             tipo == "notice" and selected_employee_record
             and selected_employee_record.status != "Activo"
@@ -8624,19 +8611,13 @@ def vacations_page(
         request, db, user, company_ids, company_id, employee_id
     )
     employee_query = select(Employee).where(Employee.company_id.in_(company_ids), Employee.status == "Activo") if company_ids else select(Employee).where(False)
-    vacation_query = select(Vacation).join(Employee).where(Employee.company_id.in_(company_ids)) if company_ids else select(Vacation).where(False)
     if selected_company_id:
         employee_query = employee_query.where(Employee.company_id == selected_company_id)
-        vacation_query = vacation_query.where(Employee.company_id == selected_company_id)
-    if selected_employee_id:
-        vacation_query = vacation_query.where(Vacation.employee_id == selected_employee_id)
     employees = seed_choices(db, employee_query.order_by(Employee.full_name), Employee, request=request)
-    items = list(db.scalars(vacation_query.order_by(Vacation.created_at.desc())))
-    history = historical_vacation_page(
+    history = vacation_history_page(
         db, company_ids, company_id=selected_company_id,
-        employee_id=selected_employee_id, page=history_page,
+        employee_id=selected_employee_id, page=history_page, page_size=60,
     )
-    historical_vacations = history["rows"]
     history_filters = {
         key: value for key, value in {
             "company_id": selected_company_id, "employee_id": selected_employee_id,
@@ -8648,9 +8629,8 @@ def vacations_page(
     companies = seed_choices(db, select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name), Company, request=request) if company_ids else []
     filter_employees = seed_choices(db, select(Employee).where(Employee.company_id.in_(company_ids)).order_by(Employee.full_name), Employee, request=request) if company_ids else []
     return render(request, "vacations.html", db, user, employees=employees, filter_employees=filter_employees,
-                  companies=companies, items=items, selected_company_id=selected_company_id,
+                  companies=companies, selected_company_id=selected_company_id,
                   selected_employee_id=selected_employee_id,
-                  historical_vacations=historical_vacations, historical_count=history["total"],
                   history_page=history, history_prev_query=history_prev_query,
                   history_next_query=history_next_query, history_export_query=history_export_query)
 
@@ -9238,11 +9218,18 @@ def employee_history_page(
     history = {}
     if selected:
         history = {
-            "events": list(db.scalars(select(EmployeeEvent).where(EmployeeEvent.employee_id == selected.id).order_by(EmployeeEvent.effective_date.desc(), EmployeeEvent.created_at.desc()).limit(100))),
+            "events": list(db.scalars(select(EmployeeEvent).where(
+                EmployeeEvent.employee_id == selected.id,
+                EmployeeEvent.event_type.notin_([LEGACY_NOTICE_EVENT_TYPE, LEGACY_VACATION_EVENT_TYPE]),
+            ).order_by(EmployeeEvent.effective_date.desc(), EmployeeEvent.created_at.desc()).limit(100))),
             "salary_history": list(db.scalars(select(SalaryHistory).where(SalaryHistory.employee_id == selected.id).order_by(SalaryHistory.effective_from.desc()).limit(100))),
-            "calculations": list(db.scalars(select(CalculationRecord).where(CalculationRecord.employee_id == selected.id).order_by(CalculationRecord.created_at.desc()).limit(100))),
+            "calculation_feed": calculation_history_page(
+                db, company_ids, employee_id=selected.id, page=1, page_size=40,
+            ),
             "operations": list(db.scalars(select(LaborOperation).where(LaborOperation.employee_id == selected.id).order_by(LaborOperation.effective_date.desc()).limit(100))),
-            "vacations": list(db.scalars(select(Vacation).where(Vacation.employee_id == selected.id).order_by(Vacation.period_year.desc()).limit(100))),
+            "vacation_feed": vacation_history_page(
+                db, company_ids, employee_id=selected.id, page=1, page_size=40,
+            ),
             "aguinaldos": list(db.scalars(select(Aguinaldo).where(Aguinaldo.employee_id == selected.id).order_by(Aguinaldo.year.desc()).limit(100))),
             "medical_exams": (
                 list(db.scalars(select(MedicalExam).where(MedicalExam.employee_id == selected.id).order_by(MedicalExam.exam_date.desc()).limit(100)))
@@ -9250,15 +9237,6 @@ def employee_history_page(
             ),
             "payroll_lines": list(db.scalars(select(PayrollLine).where(PayrollLine.employee_id == selected.id).order_by(PayrollLine.id.desc()).limit(100))),
         }
-        history["historical_notice_summary"] = notice_history_summary(db, selected.id)
-        history["historical_notices"] = notice_history_page(
-            db, company_ids, company_id=selected.company_id, employee_id=selected.id,
-            page=1, page_size=12,
-        )["rows"]
-        history["historical_vacation_summary"] = historical_vacation_summary(db, selected.id)
-        history["historical_vacations"] = historical_vacation_page(
-            db, company_ids, company_id=selected.company_id, employee_id=selected.id, page=1, page_size=12
-        )["rows"]
         history["event_detail_overrides"] = {
             event.id: (historical_vacation_detail(event) if event.event_type == LEGACY_VACATION_EVENT_TYPE
                        else notice_history_detail(event))

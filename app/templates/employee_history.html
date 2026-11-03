@@ -7,41 +7,39 @@
 <section class="panel employee-history-profile"><div><span class="eyebrow-label">EXPEDIENTE LABORAL</span><h2>{{ selected.full_name }}</h2><p>{{ selected.company.legal_name }} · Legajo {{ selected.employee_code or '—' }} · Documento {{ selected.document_number or '—' }}</p></div><div class="employee-history-metrics"><span><small>Estado</small><b>{{ selected.status }}</b></span><span><small>Ingreso</small><b>{{ selected.admission_date|fecha if selected.admission_date else '—' }}</b></span><span><small>Salario base registrado</small><b>Gs. {{ (selected.base_salary or 0)|gs }}</b></span><span><small>Cargo</small><b>{{ selected.position or '—' }}</b></span></div><a class="btn outline" href="/app/employees/{{ selected.id }}">Abrir ficha completa</a></section>
 <div class="employee-history-grid">
 <section class="panel"><div class="panel-head"><div><span class="eyebrow-label">TRAZABILIDAD DE REMUNERACIÓN</span><h2>Cambios salariales</h2></div></div>{% if history.salary_history %}<div class="table-wrap"><table><thead><tr><th>Vigencia</th><th>Anterior</th><th>Nuevo</th><th>Motivo</th></tr></thead><tbody>{% for item in history.salary_history %}<tr><td>{{ item.effective_from|fecha }}</td><td>Gs. {{ item.previous_salary|gs }}</td><td><b>Gs. {{ item.new_salary|gs }}</b></td><td>{{ item.reason }}</td></tr>{% endfor %}</tbody></table></div>{% else %}<p class="empty-state">Sin cambios salariales registrados.</p>{% endif %}</section>
-<section class="panel"><div class="panel-head"><div><span class="eyebrow-label">CÁLCULOS</span><h2>Histórico de cálculos</h2></div></div>{% if history.calculations %}<div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Tipo / período</th><th>Importe</th><th>Estado</th></tr></thead><tbody>{% for item in history.calculations %}<tr><td>{{ item.created_at|fecha }}</td><td>{{ item.calculation_type }}<small>{{ item.reference_period or '—' }}</small></td><td>Gs. {{ item.calculated_amount|gs }}</td><td>{{ item.status }}</td></tr>{% endfor %}</tbody></table></div>{% else %}<p class="empty-state">Sin cálculos guardados.</p>{% endif %}</section>
-<section class="panel"><div class="panel-head"><div><span class="eyebrow-label">JORNADA Y OTRAS NOVEDADES</span><h2>Operaciones laborales</h2></div></div>{% if history.operations %}<div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Tipo / concepto</th><th>Cantidad</th><th>Importe / estado</th></tr></thead><tbody>{% for item in history.operations %}<tr><td>{{ item.effective_date|fecha }}</td><td>{{ item.operation_type }}<small>{{ item.title }}</small></td><td>{{ item.quantity if item.quantity is not none else '—' }}</td><td>{% if item.amount is not none %}Gs. {{ item.amount|gs }} · {% endif %}{{ item.status }}</td></tr>{% endfor %}</tbody></table></div>{% else %}<p class="empty-state">Sin operaciones registradas.</p>{% endif %}</section>
-<section class="panel"><div class="panel-head"><div><span class="eyebrow-label">DESCANSO ANUAL</span><h2>Vacaciones</h2></div></div>{% if history.vacations %}<div class="table-wrap"><table><thead><tr><th>Ejercicio</th><th>Días habilitados</th><th>Días usados</th><th>Estado</th></tr></thead><tbody>{% for item in history.vacations %}<tr><td>{{ item.period_year }}</td><td>{{ item.entitled_days }}</td><td>{{ item.used_days }}</td><td>{{ item.status }}</td></tr>{% endfor %}</tbody></table></div>{% else %}<p class="empty-state">Sin periodos de vacaciones registrados.</p>{% endif %}</section>
-
 <section class="panel">
-  <div class="panel-head"><div>
-    <span class="eyebrow-label">ANTECEDENTES DEL SISTEMA ANTERIOR · LSVAC</span>
-    <h2>Vacaciones históricas · {{ history.historical_vacation_summary.count }} movimientos</h2>
-  </div>
-  <a href="/app/vacations?company_id={{ selected.company_id }}&amp;employee_id={{ selected.id }}">Ver todos</a></div>
-  <p style="font-size:.79rem;color:#64748b;margin:5px 0 12px">Solo datos históricos; no acreditan saldo disponible ni confirman pago o usufructo. Los importes se exhiben tal como fueron registrados en origen.</p>
-  {% if history.historical_vacations %}
-  <div class="table-wrap"><table><thead><tr><th>Período devengado</th><th>Vacaciones</th><th>Días en origen</th><th>Importe en origen</th></tr></thead>
-  <tbody>{% for row in history.historical_vacations %}{% if row.source %}<tr>
-    <td>{{ row.source.period_from }} – {{ row.source.period_to }}</td>
-    <td>{{ row.source.vacation_start }} – {{ row.source.vacation_end }}</td>
-    <td>{{ row.source.days }}</td>
-    <td>{{ row.source.vacation_amount if row.source.vacation_amount is not none else 'Sin dato' }} <a href="/app/vacations/history/{{ row.event.id }}">Ver origen</a></td>
-  </tr>{% endif %}{% endfor %}</tbody></table></div>
-  {% else %}<p class="empty-state">Sin movimientos históricos LSVAC vinculados.</p>{% endif %}
-  <div style="margin-top:12px"><a href="/app/vacations/history.csv?company_id={{ selected.company_id }}&amp;employee_id={{ selected.id }}">Descargar antecedentes CSV</a></div>
+<div class="panel-head"><div><span class="eyebrow-label">CÁLCULOS</span><h2>Histórico de cálculos</h2></div>
+<a href="/app/calculations?tipo=notice&amp;company_id={{ selected.company_id }}&amp;employee_id={{ selected.id }}#calculation-history">Ver preavisos</a></div>
+{% if history.calculation_feed.rows %}
+<div class="table-wrap"><table>
+<thead><tr><th>Fecha</th><th>Tipo / período</th><th>Importe</th><th>Estado / acción</th></tr></thead>
+<tbody>{% for row in history.calculation_feed.rows %}
+<tr>
+  <td>{{ row.date|fecha }}</td>
+  <td>{{ row.label }}<small>{{ row.period }}{% if row.detail %} · {{ row.detail }}{% endif %}</small></td>
+  <td>{% if row.amount is not none %}Gs. {{ row.amount|gs if row.origin == 'current' else row.amount }}{% else %}—{% endif %}</td>
+  <td>{{ row.status }}{% if row.url %} · <a href="{{ row.url }}">Ver registro</a>{% endif %}</td>
+</tr>
+{% endfor %}</tbody></table></div>
+{% else %}<p class="empty-state">Sin cálculos ni movimientos registrados.</p>{% endif %}
 </section>
+<section class="panel"><div class="panel-head"><div><span class="eyebrow-label">JORNADA Y OTRAS NOVEDADES</span><h2>Operaciones laborales</h2></div></div>{% if history.operations %}<div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Tipo / concepto</th><th>Cantidad</th><th>Importe / estado</th></tr></thead><tbody>{% for item in history.operations %}<tr><td>{{ item.effective_date|fecha }}</td><td>{{ item.operation_type }}<small>{{ item.title }}</small></td><td>{{ item.quantity if item.quantity is not none else '—' }}</td><td>{% if item.amount is not none %}Gs. {{ item.amount|gs }} · {% endif %}{{ item.status }}</td></tr>{% endfor %}</tbody></table></div>{% else %}<p class="empty-state">Sin operaciones registradas.</p>{% endif %}</section>
 <section class="panel">
-<div class="panel-head"><div><span class="eyebrow-label">LSPRE · ARCHIVO HISTÓRICO</span>
-<h2>Preavisos registrados en DOS · {{ history.historical_notice_summary.count }}</h2></div>
-<a href="/app/legacy-notices?company_id={{ selected.company_id }}&amp;employee_id={{ selected.id }}">Ver todos</a></div>
-<p style="font-size:.79rem;color:#61718c;margin:5px 0 12px">Referencias antiguas sin constancia documental de notificación, cumplimiento o pago. Se muestran separadas de los cálculos aprobados.</p>
-{% if history.historical_notices %}
-<div class="table-wrap"><table><thead><tr><th>FECPRE</th><th>FECSAL</th><th>DIAPRE</th><th>BORRAD</th><th>Origen</th></tr></thead><tbody>
-{% for row in history.historical_notices %}{% if row.source %}
-<tr><td>{{ row.source.notice_date_source }}</td><td>{{ row.source.departure_date_source }}</td>
-<td>{{ row.source.days if row.source.days is not none else 'Sin dato' }}</td><td>{{ 'S' if row.source.deleted_source else '—' }}</td>
-<td><a href="/app/legacy-notices/{{ row.event.id }}">Consultar #{{ row.event.id }}</a></td></tr>
-{% endif %}{% endfor %}</tbody></table></div>
-{% else %}<p class="empty-state">No hay antecedentes LSPRE vinculados.</p>{% endif %}
+<div class="panel-head"><div><span class="eyebrow-label">DESCANSO ANUAL</span><h2>Vacaciones</h2></div>
+<a href="/app/vacations?company_id={{ selected.company_id }}&amp;employee_id={{ selected.id }}#vacations-records">Ver todos</a></div>
+{% if history.vacation_feed.rows %}
+<div class="table-wrap"><table>
+<thead><tr><th>Período</th><th>Días registrados</th><th>Días usados</th><th>Saldo</th><th>Estado / acción</th></tr></thead>
+<tbody>{% for row in history.vacation_feed.rows %}
+<tr>
+  <td>{{ row.period }}</td>
+  <td>{{ row.days if row.days is not none else '—' }}</td>
+  <td>{{ row.used_days if row.used_days is not none else '—' }}</td>
+  <td>{{ row.balance if row.balance is not none else '—' }}</td>
+  <td>{{ row.status }}{% if row.url %} · <a href="{{ row.url }}">Ver registro</a>{% endif %}</td>
+</tr>
+{% endfor %}</tbody></table></div>
+{% else %}<p class="empty-state">Sin vacaciones registradas.</p>{% endif %}
 </section>
 <section class="panel"><div class="panel-head"><div><span class="eyebrow-label">REMUNERACIÓN ANUAL</span><h2>Aguinaldos</h2></div></div>{% if history.aguinaldos %}<div class="table-wrap"><table><thead><tr><th>Año</th><th>Remuneraciones computables</th><th>Aguinaldo</th><th>Estado</th></tr></thead><tbody>{% for item in history.aguinaldos %}<tr><td>{{ item.year }}</td><td>Gs. {{ item.total_remunerations|gs }}</td><td>Gs. {{ item.amount|gs }}</td><td>{{ item.status }}</td></tr>{% endfor %}</tbody></table></div>{% else %}<p class="empty-state">Sin aguinaldos registrados.</p>{% endif %}</section>
 <section class="panel"><div class="panel-head"><div><span class="eyebrow-label">SALUD OCUPACIONAL</span><h2>Exámenes médicos</h2></div><a href="/app/medical-exams">Abrir módulo</a></div>{% if history.medical_exams %}<div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Tipo</th><th>Resultado</th><th>Vencimiento</th></tr></thead><tbody>{% for item in history.medical_exams %}<tr><td>{{ item.exam_date|fecha }}</td><td>{{ item.exam_type }}</td><td>{{ item.result }}</td><td>{{ item.expires_on|fecha }}</td></tr>{% endfor %}</tbody></table></div>{% else %}<p class="empty-state">Sin exámenes médicos registrados.</p>{% endif %}</section>

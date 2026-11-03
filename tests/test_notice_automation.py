@@ -91,15 +91,15 @@ def test_apply_renders_days_and_total_without_javascript(notice_case):
     assert not page.select_one("#noticeSave").has_attr("disabled")
 
 
-def test_notice_page_shows_migrated_lspre_and_offers_inactive_employees(notice_case):
-    """Historical LSPRE is visible even without selecting an active worker."""
+def test_notice_page_merges_imported_records_and_inactive_employees(notice_case):
+    """Imported preavisos share Cálculos guardados; no archival panel remains."""
     client, db, _, company, employee, _ = notice_case
     from app.legacy_notice_import import MARKER as LSPRE_MARKER, EVENT_TYPE as LSPRE_EVENT_TYPE
     employee.status = "Desvinculado"
     employee.termination_date = date(2026, 10, 31)
     db.add(EmployeeEvent(
         employee_id=employee.id, event_type=LSPRE_EVENT_TYPE,
-        title="Preaviso histórico LSPRE",
+        title="Preaviso documental",
         detail=LSPRE_MARKER + json.dumps({
             "source": "LSPRE", "source_row": 33,
             "company_code": "001", "employee_code": "099",
@@ -115,11 +115,15 @@ def test_notice_page_shows_migrated_lspre_and_offers_inactive_employees(notice_c
     page_response = client.get("/app/calculations", params={"tipo": "notice"})
     assert page_response.status_code == 200, page_response.text
     page = BeautifulSoup(page_response.text, "html.parser")
-    archive = page.select_one("#noticeLegacyHistory")
-    assert archive is not None
-    assert "Preavisos históricos vinculados" in archive.get_text(" ", strip=True)
-    assert "Consultar 1 antecedentes" in archive.get_text(" ", strip=True)
-    assert archive.select_one('a[href^="/app/legacy-notices/"]') is not None
+    section = page.select_one("#calculation-history")
+    assert section is not None
+    assert "Preaviso" in section.get_text(" ", strip=True)
+    assert "Plazo registrado: 45 días" in section.get_text(" ", strip=True)
+    assert "Sin conciliar" in section.get_text(" ", strip=True)
+    assert section.select_one('a[href^="/app/legacy-notices/"]') is not None
+    assert page.select_one("#noticeLegacyHistory") is None
+    assert "ARCHIVO LSPRE" not in page.get_text(" ", strip=True)
+
     selector = page.select_one("#calculationEmployeeFilter")
     assert selector["data-entity-scope"] == "all"
     assert any(f"{employee.full_name} (Desvinculado)" in option.get_text(" ", strip=True)
@@ -130,7 +134,6 @@ def test_notice_page_shows_migrated_lspre_and_offers_inactive_employees(notice_c
     })
     assert selected.status_code == 200, selected.text
     selected_page = BeautifulSoup(selected.text, "html.parser")
-    assert "no activo" in selected_page.select_one("#noticeLegacyHistory").get_text(" ", strip=True)
     assert selected_page.select_one("#noticeSave").has_attr("disabled")
     assert "egreso registrado" in selected_page.select_one("#noticeProposalStatus").text
 

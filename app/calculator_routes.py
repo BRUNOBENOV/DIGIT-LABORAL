@@ -10,6 +10,7 @@ import zipfile
 from datetime import date, datetime
 from decimal import Decimal
 from zoneinfo import ZoneInfo
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse, Response
@@ -19,6 +20,7 @@ from starlette.concurrency import run_in_threadpool
 
 from . import main as core
 from .entity_selects import seed_choices
+from .unified_labor_history import calculation_history_page
 from .calculator_fields import GROUPS
 from .calculator_presentation import calculation_summary, quick_steps
 from .form_utils import OptionalQueryId
@@ -160,6 +162,33 @@ def page(request, kind, data=None, result=None, error=None, db=None, user=None, 
         historic_notices = notice_history_summary(db, private["employee"].id)
     ctx.update(historical_vacation_overview=historic_vacations,
                historical_notice_overview=historic_notices)
+    # Same traceability stream as the calculation module, including old and
+    # current records; no historical source is promoted to an approved calculation.
+    labor_history = None
+    labor_prev_query, labor_next_query = "", ""
+    if private and db is not None and user is not None:
+        try:
+            requested_page = int(request.query_params.get("history_page", "1"))
+        except (ValueError, TypeError):
+            requested_page = 1
+        labor_history = calculation_history_page(
+            db, core.company_ids_for_user(db, user),
+            company_id=private.get("company_id") or None,
+            employee_id=private.get("employee_id") or None,
+            page=requested_page, page_size=30,
+            include_center_calculations=True,
+        )
+        filters = {
+            key: val for key, val in {
+                "tipo": kind,
+                "company_id": private.get("company_id") or None,
+                "employee_id": private.get("employee_id") or None,
+            }.items() if val is not None
+        }
+        labor_prev_query = urlencode({**filters, "history_page": labor_history["page"] - 1})
+        labor_next_query = urlencode({**filters, "history_page": labor_history["page"] + 1})
+    ctx.update(labor_history=labor_history,
+               labor_prev_query=labor_prev_query, labor_next_query=labor_next_query)
     ctx.update(private, salary_history_data=salary_history_data, result=result,
                average_suggestion_label=suggestion_label,
                live_summary=calculation_summary(result) if result else None, error=str(error or ""),

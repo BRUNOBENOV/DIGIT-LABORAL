@@ -2,11 +2,11 @@
 {% block title %}Vacaciones | Digit Laboral{% endblock %}
 {% block page_name %}Vacaciones{% endblock %}
 {% block content %}
-<div class="page-header"><div><span class="eyebrow">DESCANSO ANUAL</span><h1>Control de vacaciones</h1><p>Registrá periodos y utilización con una referencia automática de antigüedad para control profesional.</p></div><div style="display:flex;gap:8px;flex-wrap:wrap">{% if user.role in ['administrador','contador'] %}<a class="btn ghost" href="/app/import/legacy-vacations"><span aria-hidden="true">↥</span> Importar vacaciones históricas</a>{% endif %}{% if user.role != 'empresa' %}<button class="btn primary" type="button" data-modal-open="vacationModal">+ Registrar vacaciones</button>{% endif %}</div></div>
+<div class="page-header"><div><span class="eyebrow">DESCANSO ANUAL</span><h1>Control de vacaciones</h1><p>Registrá periodos y utilización con una referencia automática de antigüedad para control profesional.</p></div><div style="display:flex;gap:8px;flex-wrap:wrap">{% if user.role in ['administrador','contador'] %}<a class="btn ghost" href="/app/import/legacy-vacations"><span aria-hidden="true">↥</span> Importar registros</a>{% endif %}{% if user.role != 'empresa' %}<button class="btn primary" type="button" data-modal-open="vacationModal">+ Registrar vacaciones</button>{% endif %}</div></div>
 {% if request.query_params.get('form_error') %}<div class="alert danger v24-form-error">{{ request.query_params.get('form_error') }}</div>{% endif %}
 {% if request.query_params.get('legacy_imported') is not none %}
 <div class="alert success" role="status">
-  <b>Historial LSVAC incorporado:</b> {{ request.query_params.get('legacy_imported') }} movimientos importados.
+  <b>Registros incorporados:</b> {{ request.query_params.get('legacy_imported') }} movimientos importados.
   {{ request.query_params.get('legacy_existing') or 0 }} ya existentes y
   {{ request.query_params.get('legacy_unmatched') or 0 }} sin vínculo se omitieron.
   No se actualizaron saldos ni nóminas.
@@ -14,35 +14,55 @@
 {% endif %}
 <form method="get" action="/app/vacations" class="module-selection-form panel" data-module-selection><label>Empresa<select name="company_id" data-module-company data-searchable-entity="company" data-entity-scope="all"><option value="">Todas las empresas</option>{% for company in companies|entity_choices %}<option value="{{ company.id }}" {{ 'selected' if selected_company_id == company.id }}>{{ company.legacy_code or (company.company_code if company.company_code is not none else 'Sin código') }} - {{ company.legal_name }}</option>{% endfor %}</select></label><label>Funcionario<select name="employee_id" data-module-employee data-searchable-entity="employee" data-entity-scope="all"><option value="">Todos los funcionarios</option>{% for employee in filter_employees|entity_choices %}<option value="{{ employee.id }}" data-company="{{ employee.company_id }}" {{ 'selected' if selected_employee_id == employee.id }}>{{ employee.employee_code if employee.employee_code is not none else 'Sin legajo' }} - {{ employee.full_name }}</option>{% endfor %}</select></label><button class="btn ghost" type="submit">Aplicar filtro</button></form>
 <div class="v24-professional-note"><span class="v24-note-icon">§</span><div><b>Referencia del Código del Trabajo, art. 218.</b> Digit Laboral sugiere 12, 18 o 30 días según la antigüedad computada al cierre del periodo. El profesional puede modificar el valor cuando corresponda un régimen especial, derecho proporcional o condición más favorable.</div></div>
-<section class="panel table-panel"><div class="table-wrap"><table><thead><tr><th>Funcionario</th><th>Empresa</th><th>Año</th><th>Días concedidos</th><th>Días usados</th><th>Saldo</th><th>Fechas</th><th>Estado</th></tr></thead><tbody>{% for item in items %}{% set balance = item.entitled_days - item.used_days %}<tr><td><b>{{ item.employee.full_name }}</b></td><td>{{ item.employee.company.legal_name }}</td><td>{{ item.period_year }}</td><td>{{ item.entitled_days }}</td><td>{{ item.used_days }}</td><td><b class="v24-vacation-balance {{ 'negative' if balance < 0 }}">{{ balance }}</b></td><td>{{ item.start_date|fecha }} – {{ item.end_date|fecha }}</td><td><span class="status-pill {{ item.status|lower|replace(' ', '-') }}">{{ item.status }}</span></td></tr>{% else %}<tr><td colspan="8" class="empty-state">No hay vacaciones registradas.</td></tr>{% endfor %}</tbody></table></div></section>
-
-<section class="panel table-panel" style="margin-top:18px">
-  <div style="padding:15px 17px 10px">
-    <span class="eyebrow">ARCHIVO HISTÓRICO · SOLO LECTURA</span>
-    <h2 style="margin:3px 0 7px;font-size:1.13rem">Vacaciones migradas del sistema anterior</h2>
-    <p style="font-size:.8rem;color:#617188;line-height:1.55;margin:0">Se registran como antecedentes independientes: <b>no generan saldo, solicitudes, pagos ni comunicados oficiales</b>. {{ historical_count }} movimientos vinculados. Página {{ history_page.page }} de {{ history_page.pages }}; registros {{ history_page.first }}–{{ history_page.last }}.</p>
-    <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><a class="btn ghost" href="/app/vacations/history.csv{% if history_export_query %}?{{ history_export_query }}{% endif %}">Exportar antecedentes CSV</a>{% if user.role in ['administrador','contador','auxiliar'] %}<a class="btn ghost" href="/app/employee-history{% if selected_company_id %}?company_id={{ selected_company_id }}{% endif %}">Histórico de funcionarios</a>{% endif %}</div>
+<section class="panel table-panel" id="vacations-records">
+  <div class="panel-head" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:14px 17px">
+    <div><span class="eyebrow">CONTROL Y TRAZABILIDAD</span>
+      <h2 style="font-size:1.1rem;margin:4px 0">Registros de vacaciones</h2>
+      <small style="color:#617188">{{ history_page.total }} movimiento(s) · {{ history_page.first }}–{{ history_page.last }}</small>
+    </div>
+    <a class="btn ghost" href="/app/vacations/history.csv{% if history_export_query %}?{{ history_export_query }}{% endif %}">Exportar registros importados CSV</a>
   </div>
   <div class="table-wrap"><table>
-    <thead><tr><th>Funcionario</th><th>Empresa</th><th>Período devengado</th><th>Inicio de vacaciones</th><th>Fin de vacaciones</th><th>Días registrados</th><th>Importe histórico</th></tr></thead>
-    <tbody>{% for row in historical_vacations %}
-      <tr>
-        <td><a href="/app/employees/{{ row.event.employee_id }}"><b>{{ row.event.employee.full_name }}</b></a><small style="display:block;color:#687b96">CODTRA {{ row.source.employee_code }} · <a href="/app/vacations/history/{{ row.event.id }}">Ver origen #{{ row.event.id }}</a></small></td>
-        <td>{{ row.event.employee.company.legal_name }}</td>
-        <td>{{ row.source.period_from }} – {{ row.source.period_to }}</td>
-        <td>{{ row.source.vacation_start }}</td>
-        <td>{{ row.source.vacation_end }}</td>
-        <td>{{ row.source.days }}</td>
-        <td>{{ row.source.vacation_amount if row.source.vacation_amount is not none else 'No informado' }}</td>
-      </tr>
-    {% else %}<tr><td colspan="7" class="empty-state">No hay antecedentes LSVAC importados para esta selección.</td></tr>{% endfor %}</tbody>
+    <thead><tr>
+      <th>Funcionario</th><th>Empresa</th><th>Período</th>
+      <th>Días registrados</th><th>Días usados</th><th>Saldo</th>
+      <th>Fechas</th><th>Estado</th><th>Acciones</th>
+    </tr></thead><tbody>
+    {% for row in history_page.rows %}
+    <tr>
+      <td><a href="/app/employees/{{ row.employee.id }}"><b>{{ row.employee.full_name }}</b></a></td>
+      <td>{{ row.company.legal_name }}</td>
+      <td>{{ row.period }}</td>
+      <td>{{ row.days if row.days is not none else '—' }}</td>
+      <td>{{ row.used_days if row.used_days is not none else '—' }}</td>
+      <td>
+        {% if row.balance is not none %}
+          <b class="v24-vacation-balance {{ 'negative' if row.balance < 0 }}">{{ row.balance }}</b>
+        {% else %}—{% endif %}
+      </td>
+      <td>
+        {{ row.start_date|fecha if row.start_date is not string and row.start_date else (row.start_date or '—') }}
+        –
+        {{ row.end_date|fecha if row.end_date is not string and row.end_date else (row.end_date or '—') }}
+      </td>
+      <td><span class="status-pill {{ row.status|lower|replace(' ', '-') }}">{{ row.status }}</span></td>
+      <td>
+        {% if row.url %}<a href="{{ row.url }}">Ver registro</a>
+        {% else %}Registrado{% endif %}
+        {% if row.origin == 'imported' and row.amount is not none %}
+          <small class="table-sub">Valor registrado: Gs. {{ row.amount }}</small>
+        {% endif %}
+      </td>
+    </tr>
+    {% else %}<tr><td colspan="9" class="empty-state">No hay registros de vacaciones para esta selección.</td></tr>{% endfor %}
+    </tbody>
   </table></div>
-  <nav style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 16px;flex-wrap:wrap" aria-label="Paginación de vacaciones históricas">
-    <span style="font-size:.77rem;color:#617188">{{ history_page.first }}–{{ history_page.last }} de {{ historical_count }} movimientos históricos</span>
-    <div style="display:flex;gap:8px;align-items:center">
-      {% if history_page.page > 1 %}<a class="btn ghost" href="/app/vacations?{{ history_prev_query }}">← Anterior</a>{% endif %}
-      <span style="font-size:.78rem">Página {{ history_page.page }} / {{ history_page.pages }}</span>
-      {% if history_page.page < history_page.pages %}<a class="btn ghost" href="/app/vacations?{{ history_next_query }}">Siguiente →</a>{% endif %}
+  <nav aria-label="Paginación de vacaciones" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;flex-wrap:wrap">
+    <span style="font-size:.8rem;color:#617188">{{ history_page.first }}–{{ history_page.last }} de {{ history_page.total }}</span>
+    <div style="display:flex;gap:9px;align-items:center">
+    {% if history_page.page > 1 %}<a class="btn ghost" href="/app/vacations?{{ history_prev_query }}#vacations-records">← Anterior</a>{% endif %}
+    <span style="font-size:.8rem">Página {{ history_page.page }} / {{ history_page.pages }}</span>
+    {% if history_page.page < history_page.pages %}<a class="btn ghost" href="/app/vacations?{{ history_next_query }}#vacations-records">Siguiente →</a>{% endif %}
     </div>
   </nav>
 </section>

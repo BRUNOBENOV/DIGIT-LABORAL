@@ -4,76 +4,12 @@
 {% if active_calculation_type == "notice" %}<link rel="stylesheet" href="{{ url_for('static', path='notice-auto.css') }}?v={{ app_version }}">{% endif %}
 <div class="page-header calculations-header">
   <div><span class="eyebrow">{% if calculation_module %}{{ calculation_module.eyebrow }}{% else %}MÓDULO DE CÁLCULO{% endif %}</span><h1>{% if calculation_module %}{{ calculation_module.title }}{% else %}Cálculo laboral{% endif %}</h1><p>{% if calculation_module %}{{ calculation_module.description }}{% else %}Seleccioná uno de los 11 submódulos laborales. Cada área conserva sus registros, validaciones y trazabilidad.{% endif %}</p></div>
-  {% if active_calculation_type %}<div class="header-actions">{% if active_calculation_type == 'notice' %}<a class="btn ghost" href="/app/legacy-notices">Consultar preavisos históricos</a>{% if user.role in ['administrador', 'contador'] %}<a class="btn ghost" href="/app/import/legacy-notices">Importar base LSPRE</a>{% endif %}{% endif %}<a class="btn ghost" href="/app/calculations">Volver al módulo Cálculo</a></div>{% endif %}
+  {% if active_calculation_type %}<div class="header-actions">{% if active_calculation_type == 'notice' and user.role in ['administrador', 'contador'] %}<a class="btn ghost" href="/app/import/legacy-notices">Importar registros</a>{% endif %}<a class="btn ghost" href="/app/calculations">Volver al módulo Cálculo</a></div>{% endif %}
 </div>
 {% if active_calculation_type %}
 {% if request.query_params.get('saved') %}<div class="alert success">Cálculo guardado en estado <b>Revisar</b>. Podés aprobarlo después del control profesional.</div>{% endif %}
 <div class="v24-professional-note"><span class="v24-note-icon">§</span><div><b>El sistema calcula; el profesional determina la procedencia.</b> Revisá régimen, conceptos computables, base IPS, antigüedad y documentación antes de aprobar un resultado. Las referencias sirven como control y no sustituyen el análisis del caso.</div></div>{% if period_reuse_warning %}<div class="legal-warning" role="status"><b>Reutilización de historial: revisión obligatoria.</b> {{ period_reuse_warning }} No apruebes el importe sin verificar los conceptos.</div>{% endif %}
 <section class="calculation-context panel"><div><span class="eyebrow-label">1 · CONTEXTO</span><h2>Empresa y funcionario</h2><p>Elegí a quién corresponde el cálculo. Esto evita resultados sueltos sin trazabilidad.</p></div><form method="get" action="/app/calculations" class="calculation-context-form module-selection-form" data-module-selection><input type="hidden" name="tipo" value="{{ active_calculation_type }}">{% if active_calculation_type == "notice" %}<input type="hidden" name="reference_date" value="{{ notice_reference.isoformat() }}" data-notice-context-date>{% endif %}<label>Empresa<select name="company_id" id="calculationCompanyFilter" data-module-company data-searchable-entity="company" data-entity-scope="all"><option value="">Seleccioná empresa / todas</option>{% for company in companies|entity_choices %}<option value="{{ company.id }}" {{ 'selected' if selected_company == company.id }}>{{ company.legacy_code or (company.company_code if company.company_code is not none else 'Sin código') }} - {{ company.legal_name }}</option>{% endfor %}</select></label><label>Funcionario<select name="employee_id" id="calculationEmployeeFilter" data-module-employee data-searchable-entity="employee" data-entity-scope="{{ 'all' if active_calculation_type == 'notice' else 'active' }}"><option value="">Seleccioná funcionario / todos</option>{% for employee in employees|entity_choices %}<option value="{{ employee.id }}" data-company="{{ employee.company_id }}" {{ 'selected' if selected_employee == employee.id }}>{{ employee.employee_code if employee.employee_code is not none else 'Sin legajo' }} - {{ employee.full_name }}{% if active_calculation_type == 'notice' and employee.status != 'Activo' %} ({{ employee.status }}){% endif %}</option>{% endfor %}</select></label><button class="btn ghost" type="submit">Aplicar</button></form></section>
-{% if active_calculation_type == 'vacation' and historical_vacation_overview %}
-<div class="v24-professional-note" role="note">
-  <span class="v24-note-icon">↗</span>
-  <div><b>Antecedentes de vacaciones del sistema anterior: {{ historical_vacation_overview.count }} movimientos.</b>
-    {% if historical_vacation_overview.count %}
-      Último registro {{ historical_vacation_overview.last_date|fecha }}.
-      <a href="/app/vacations?company_id={{ selected_company }}&amp;employee_id={{ selected_employee }}">Revisar historial histórico LSVAC</a>.
-    {% endif %}
-    Los días y valores históricos no se suman automáticamente al cálculo: comprobá derechos vigentes, usufructo y documentos de respaldo.
-  </div>
-</div>
-{% endif %}
-{% if active_calculation_type == 'notice' and notice_history_preview %}
-<section class="panel" id="noticeLegacyHistory" style="padding:16px 19px; margin:12px 0 16px">
-  <div class="panel-head" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
-    <div>
-      <span class="eyebrow-label">ARCHIVO LSPRE · SISTEMA ANTERIOR</span>
-      <h2 style="font-size:1.1rem;margin:4px 0 0">Preavisos históricos vinculados</h2>
-    </div>
-    <div style="display:flex;gap:9px;flex-wrap:wrap">
-      <a class="btn ghost" href="/app/legacy-notices{% if selected_company %}?company_id={{ selected_company }}{% if selected_employee %}&amp;employee_id={{ selected_employee }}{% endif %}{% elif selected_employee %}?employee_id={{ selected_employee }}{% endif %}">Consultar {{ notice_history_preview.total }} antecedentes</a>
-      {% if user.role in ['administrador','contador'] %}
-      <a class="btn ghost" href="/app/legacy-notices/exceptions">Revisar excepciones</a>
-      {% endif %}
-    </div>
-  </div>
-  <p style="font-size:.8rem;color:#62748f;line-height:1.6;margin:7px 0 12px">
-    {% if selected_employee %}
-      Este legajo tiene <b>{{ notice_history_preview.total }}</b> movimiento(s) LSPRE vinculados.
-    {% elif selected_company %}
-      La empresa seleccionada tiene <b>{{ notice_history_preview.total }}</b> movimiento(s) LSPRE vinculados.
-    {% else %}
-      Hay <b>{{ notice_history_preview.total }}</b> movimiento(s) históricos en las empresas autorizadas de este estudio.
-    {% endif %}
-    Estos datos no equivalen a preavisos notificados, cumplidos ni pagados.
-  </p>
-  {% if notice_history_preview.rows %}
-  <div class="table-wrap"><table>
-    <thead><tr><th>Funcionario</th><th>Empresa</th><th>FECPRE</th><th>FECSAL</th><th>DIAPRE</th><th>Origen</th><th>Acceso</th></tr></thead>
-    <tbody>
-    {% for item in notice_history_preview.rows %}
-      {% set record = item.source %}
-      <tr>
-        <td><a href="/app/employees/{{ item.event.employee_id }}">{{ item.event.employee.full_name }}</a></td>
-        <td>{{ item.event.employee.company.legal_name }}</td>
-        <td>{{ record.notice_date_source or '—' }}</td>
-        <td>{{ record.departure_date_source or '—' }}</td>
-        <td>{{ record.days if record.days is not none else 'No informado' }}</td>
-        <td>{% if record.deleted_source %}<span class="status-pill">BORRAD=S</span>{% else %}LSPRE{% endif %}</td>
-        <td><a href="/app/legacy-notices/{{ item.event.id }}">Ver antecedente</a></td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table></div>
-  {% else %}<p class="empty-state">No se encontraron movimientos LSPRE para los filtros actuales. Podés consultar el archivo completo desde el enlace superior.</p>{% endif %}
-  {% if notice_selected_non_active %}
-    <p class="legal-warning" role="note" style="margin:12px 0 0">
-      El funcionario seleccionado figura como <b>no activo</b>. Para calcular un preaviso histórico,
-      utilizá una fecha de referencia compatible con la relación laboral y comprobá la documentación.
-      No se convierte el antecedente DOS en un cálculo aprobado.
-    </p>
-  {% endif %}
-</section>
-{% endif %}
 <section class="calculator-workbench" id="calculatorWorkbench" data-ips-rate="{{ ips_rate }}" data-minimum-salary="{{ minimum_salary|int }}" data-hourly-reference="{{ hourly_reference|int }}">
 {% set default_company = selected_company or '' %}{% set default_employee = selected_employee or '' %}
 {% if active_calculation_type == 'salary' %}
@@ -88,7 +24,85 @@
 {% include "calculation_notice.html" %}
 {% endif %}
 </section>
-<section class="panel calculation-history"><div class="panel-head"><div><span>TRAZABILIDAD</span><h2>Cálculos guardados</h2></div></div><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Empresa / funcionario</th><th>Tipo</th><th>Periodo</th><th>Monto</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>{% for item in recent_calculations %}<tr><td>{{ item.created_at|fecha }}</td><td><b>{{ item.employee.full_name if item.employee else item.company.legal_name }}</b><small class="table-sub">{{ item.company.legal_name }}</small></td><td>{{ calculation_labels.get(item.calculation_type, item.calculation_type) }}</td><td>{{ item.reference_period or '—' }}</td><td>Gs. {{ item.amount|gs }}</td><td><span class="status-pill {{ item.status|lower }}">{{ item.status }}</span></td><td><div class="document-row-actions"><a href="/app/calculations/{{ item.id }}/certificate">Usar en documento</a>{% if item.calculation_type == 'salary' and item.status == 'Aprobado' %}{% if item.employee_id %}<a href="/app/liquidaciones?tipo=salary&amp;company_id={{ item.company_id }}&amp;employee_id={{ item.employee_id }}&amp;month={{ item.reference_period }}">Liquidar haberes del mes</a>{% endif %}<a href="/app/compliance/salary-import?company_id={{ item.company_id }}&amp;period={{ item.reference_period }}&amp;source_type=approved{% if item.employee_id %}&amp;employee_id={{ item.employee_id }}{% endif %}">Exportar REOP / REI</a>{% endif %}{% if user.role in ['administrador','contador'] %}<form method="post" action="/app/calculations/{{ item.id }}/status"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><select name="status" onchange="this.form.submit()"><option {{ 'selected' if item.status == 'Revisar' }}>Revisar</option><option {{ 'selected' if item.status == 'Aprobado' }}>Aprobado</option><option {{ 'selected' if item.status == 'Anulado' }}>Anulado</option></select></form>{% endif %}</div></td></tr>{% else %}<tr><td colspan="7" class="empty-state">No hay cálculos guardados con estos filtros.</td></tr>{% endfor %}</tbody></table></div></section>
+<section class="panel calculation-history" id="calculation-history">
+  <div class="panel-head" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+    <div><span>TRAZABILIDAD</span><h2>Cálculos guardados</h2></div>
+    <span style="font-size:.8rem;color:#617188">{{ unified_calculations.total }} registro(s)</span>
+  </div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Fecha</th><th>Empresa / funcionario</th><th>Tipo</th><th>Período / detalle</th><th>Monto</th><th>Estado</th><th>Acciones</th></tr></thead>
+    <tbody>
+    {% for row in unified_calculations.rows %}
+      <tr>
+        <td>{{ row.date|fecha }}</td>
+        <td>
+          <b>{{ row.employee.full_name if row.employee else row.company.legal_name }}</b>
+          <small class="table-sub">{{ row.company.legal_name }}</small>
+        </td>
+        <td>{{ row.label }}</td>
+        <td>
+          {{ row.period }}
+          {% if row.origin == 'imported' and row.detail %}
+            <small class="table-sub">{{ row.detail }}</small>
+          {% endif %}
+        </td>
+        <td>
+          {% if row.origin == 'current' %}Gs. {{ row.amount|gs }}
+          {% elif row.amount is not none %}Gs. {{ row.amount }} <small class="table-sub">Valor registrado</small>
+          {% else %}—{% endif %}
+        </td>
+        <td>
+          {% if row.origin == 'imported' %}
+            <span class="status-pill">{{ row.status }}</span>
+          {% else %}
+            <span class="status-pill {{ row.status|lower }}">{{ row.status }}</span>
+          {% endif %}
+        </td>
+        <td>
+          <div class="document-row-actions">
+          {% if row.origin == 'current' %}
+            <a href="{{ row.url }}">Usar en documento</a>
+            {% set item = row.record %}
+            {% if item.calculation_type == 'salary' and item.status == 'Aprobado' %}
+              {% if item.employee_id %}
+                <a href="/app/liquidaciones?tipo=salary&amp;company_id={{ item.company_id }}&amp;employee_id={{ item.employee_id }}&amp;month={{ item.reference_period }}">Liquidar haberes del mes</a>
+              {% endif %}
+              <a href="/app/compliance/salary-import?company_id={{ item.company_id }}&amp;period={{ item.reference_period }}&amp;source_type=approved{% if item.employee_id %}&amp;employee_id={{ item.employee_id }}{% endif %}">Exportar REOP / REI</a>
+            {% endif %}
+            {% if user.role in ['administrador','contador'] %}
+              <form method="post" action="/app/calculations/{{ item.id }}/status">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <select name="status" onchange="this.form.submit()">
+                  <option {{ 'selected' if item.status == 'Revisar' }}>Revisar</option>
+                  <option {{ 'selected' if item.status == 'Aprobado' }}>Aprobado</option>
+                  <option {{ 'selected' if item.status == 'Anulado' }}>Anulado</option>
+                </select>
+              </form>
+            {% endif %}
+          {% else %}
+            <a href="{{ row.url }}">Ver registro</a>
+          {% endif %}
+          </div>
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="7" class="empty-state">No hay registros para estos filtros.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  <nav aria-label="Páginas de cálculos guardados" style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 16px;flex-wrap:wrap">
+    <span style="font-size:.78rem;color:#62748f">{{ unified_calculations.first }}–{{ unified_calculations.last }} de {{ unified_calculations.total }}</span>
+    <div style="display:flex;gap:9px;align-items:center">
+    {% if unified_calculations.page > 1 %}
+      <a class="btn ghost" href="/app/calculations?{{ history_previous_query }}#calculation-history">← Anterior</a>
+    {% endif %}
+    <span style="font-size:.79rem">Página {{ unified_calculations.page }} / {{ unified_calculations.pages }}</span>
+    {% if unified_calculations.page < unified_calculations.pages %}
+      <a class="btn ghost" href="/app/calculations?{{ history_next_query }}#calculation-history">Siguiente →</a>
+    {% endif %}
+    </div>
+  </nav>
+</section>
 {% else %}
 <section class="calculation-index-grid" aria-label="Los 11 submódulos de Cálculo">
   <a class="calculation-index-card" href="/app/liquidaciones?tipo=salary{% if selected_company %}&amp;company_id={{ selected_company }}{% endif %}{% if selected_employee %}&amp;employee_id={{ selected_employee }}{% endif %}"><span class="calculation-index-symbol">₲</span><span class="calculation-index-copy"><small>01 · REMUNERACIÓN</small><b>Salario</b><em>Haberes, bonificaciones, descuentos y control de IPS.</em></span><span class="calculation-index-arrow">↗</span></a>

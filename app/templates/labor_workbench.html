@@ -32,23 +32,6 @@
 <div class="dl dl-workbench {{ 'dl-quick' if quick_steps else '' }} {{ 'dl-wrap' if not private else '' }}">
 <header class="dl-workbench-head"><p class="dl-eyebrow">{{ 'CENTRO PROFESIONAL' if private else 'CALCULADORAS LABORALES · PARAGUAY' }}</p><h1>{{ titles[kind] if private else 'Calculá. Revisá. Emití.' }}</h1><p>{% if private and kind == 'salary' %}Liquidá el período con desglose de sueldo, horas extras, comisiones, bonificaciones, aportes y descuentos. Revisá la base y el resultado antes de aprobar o imprimir.{% elif private and kind == 'settlement' %}Revisá salarios, conceptos de egreso y bases aplicables en un módulo dedicado, con desglose y descarga del resultado.{% elif private %}Completá los datos de esta liquidación. La revisión y el desglose permanecen dentro del módulo seleccionado.{% else %}Completá los datos y obtené un desglose listo para descargar. Los campos con * son obligatorios.{% endif %}</p></header>
 {% if private %}<div class="dl-output-actions"><a class="dl-textlink" href="/app/calculations">Volver al módulo Cálculo</a></div>{% else %}<div class="dl-output-actions"><a class="dl-textlink" href="/empezar">Guía para empezar</a><a class="dl-textlink" href="/herramientas/comparar?tipo={{ kind }}">Comparar dos escenarios</a></div>{% endif %}
-{% if private and kind == 'settlement' and historical_vacation_overview and historical_vacation_overview.count %}
-<p class="dl-alert" role="note">
-  <b>Vacaciones históricas del sistema anterior: {{ historical_vacation_overview.count }} movimientos LSVAC.</b>
-  Último registro: {{ historical_vacation_overview.last_date|fecha }}.
-  <a href="/app/vacations?company_id={{ company_id }}&amp;employee_id={{ employee_id }}">Consultar antecedentes vinculados</a>.
-  Son datos <b>sin conciliar</b>: no determinan automáticamente vacaciones pendientes, días usufructuados,
-  pagos ni montos indemnizables. Verificá la documentación antes de completar la liquidación final.
-</p>
-{% endif %}
-{% if private and kind == 'settlement' and historical_notice_overview and historical_notice_overview.count %}
-<p class="dl-alert" role="note">
-  <b>Historial de preavisos DOS: {{ historical_notice_overview.count }} antecedentes LSPRE.</b>
-  <a href="/app/legacy-notices?company_id={{ company_id }}&amp;employee_id={{ employee_id }}">Revisar registros de origen</a>.
-  El sistema <b>no</b> transfiere automáticamente sus días al cálculo ni da por comunicada,
-  cumplida o abonada ninguna indemnización. Contrastá documentos, fechas y el régimen aplicable.
-</p>
-{% endif %}
 {% if not private and values.get('reference') == 'EJEMPLO' %}<p class="dl-alert dl-example-notice">Estás usando datos ficticios. Podés calcular y descargar el ejemplo; reemplazá los datos antes de usarlo en un caso real.</p>{% endif %}
 {% if copied_from %}<p class="dl-alert" role="status">Datos cargados desde la liquidación #{{ copied_from }}. Revisá el período y los conceptos antes de calcular. El registro original se conserva.</p>{% endif %}
 {% if private %}<form method="get" action="/app/liquidaciones" class="dl-context module-selection-form" data-module-selection><input type="hidden" name="tipo" value="{{ kind }}">{% if kind == 'salary' %}<input type="hidden" name="month" value="{{ values.get('month','') }}">{% endif %}<div class="dl-field"><label for="ctx-company">Empresa</label><select name="company_id" id="ctx-company" data-module-company aria-describedby="context-help" data-searchable-entity="company" data-entity-scope="all"><option value="">Seleccioná una empresa</option>{% for item in companies|entity_choices %}<option value="{{ item.id }}" {% if item.id == company_id %}selected{% endif %}>{{ item.legacy_code or (item.company_code if item.company_code is not none else 'Sin código') }} - {{ item.legal_name }}</option>{% endfor %}</select></div><div class="dl-field"><label for="ctx-employee">Funcionario</label><select name="employee_id" id="ctx-employee" data-module-employee aria-describedby="context-help" data-searchable-entity="employee" data-entity-scope="all"><option value="">Seleccioná un funcionario</option>{% for item in employees|entity_choices %}<option value="{{ item.id }}" data-company="{{ item.company_id }}" {% if item.id == employee_id %}selected{% endif %}>{{ item.employee_code if item.employee_code is not none else 'Sin legajo' }} - {{ item.full_name }}</option>{% endfor %}</select></div><button class="dl-button dl-outline">Cargar selección</button><small id="context-help">Elegí una empresa y luego un funcionario. Sus datos se cargarán en el formulario.</small></form>{% endif %}
@@ -157,7 +140,41 @@
 {% endif %}
 </aside></div>
 {% if quick_steps and result %}<details class="dl-document-preview" id="labor-document"><summary>Documento completo · desglose y descargas</summary><div class="dl-document-content"><div class="dl-output-actions"><button type="submit" class="dl-button" form="labor-form" data-keep-enabled="true" formaction="{{ '/app/liquidaciones' if private else '/herramientas' }}/exportar/pdf" data-result-action>Descargar PDF</button><button type="submit" class="dl-button dl-outline" form="labor-form" data-keep-enabled="true" formaction="{{ '/app/liquidaciones' if private else '/herramientas' }}/exportar/csv" data-result-action>CSV</button><button type="button" class="dl-button dl-outline" data-print data-result-action>Imprimir</button></div>{% include "liquidation_result.html" %}</div></details>{% endif %}
-{% if private %}<details class="dl-history"><summary>Historial del centro laboral · {{ history|length }} registros</summary><p>Últimos 30 cálculos de la selección. Cada registro conserva su resultado original.</p><div class="dl-table-wrap"><table><thead><tr><th>Referencia</th><th>Tipo de cálculo</th><th>Funcionario</th><th>Período</th><th>Importe · Gs.</th><th>Documento</th></tr></thead><tbody>{% for item in history %}<tr><td>#{{ item.id }}</td><td>{{ titles.get(item.calculation_type|replace('suite_',''), item.calculation_type) }}</td><td>{{ item.employee.full_name if item.employee else 'Sin funcionario' }}</td><td>{{ item.reference_period }}</td><td>{{ item.amount|gs }}</td><td><a href="/app/liquidaciones/{{ item.id }}">Ver y descargar</a></td></tr>{% else %}<tr><td colspan="6">Todavía no hay cálculos guardados para esta selección.</td></tr>{% endfor %}</tbody></table></div></details>{% endif %}
+{% if private and labor_history %}
+<details class="dl-history" id="labor-history" {% if request.query_params.get('history_page') %}open{% endif %}>
+  <summary>TRAZABILIDAD · Cálculos guardados ({{ labor_history.total }})</summary>
+  <p>Registros de esta selección ordenados por fecha. Los movimientos sin conciliar no constituyen pagos ni prestaciones aprobadas.</p>
+  <div class="dl-table-wrap"><table>
+    <thead><tr><th>Fecha</th><th>Funcionario</th><th>Tipo</th><th>Período / detalle</th><th>Importe · Gs.</th><th>Estado</th><th>Acción</th></tr></thead>
+    <tbody>
+    {% for row in labor_history.rows %}
+    <tr>
+      <td>{{ row.date|fecha }}</td>
+      <td>{{ row.employee.full_name if row.employee else 'Sin funcionario' }}</td>
+      <td>{{ titles.get(row.record.calculation_type|replace('suite_',''), row.label) if row.origin == 'current' else row.label }}</td>
+      <td>{{ row.period }}{% if row.origin == 'imported' and row.detail %}<small class="table-sub">{{ row.detail }}</small>{% endif %}</td>
+      <td>{% if row.amount is none %}—{% elif row.origin == 'current' %}{{ row.amount|gs }}{% else %}{{ row.amount }}{% endif %}</td>
+      <td>{{ row.status }}</td>
+      <td>
+      {% if row.origin == 'current' and row.record.source == 'Centro laboral' %}
+        <a href="/app/liquidaciones/{{ row.id }}">Ver y descargar</a>
+      {% elif row.url %}<a href="{{ row.url }}">Ver registro</a>
+      {% else %}—{% endif %}
+      </td>
+    </tr>
+    {% else %}<tr><td colspan="7">Todavía no hay registros para esta selección.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+  <nav aria-label="Paginación de trazabilidad" style="display:flex;gap:12px;align-items:center;justify-content:space-between;padding:10px;flex-wrap:wrap">
+    <small>{{ labor_history.first }}–{{ labor_history.last }} de {{ labor_history.total }}</small>
+    <div style="display:flex;align-items:center;gap:10px">
+      {% if labor_history.page > 1 %}<a href="/app/liquidaciones?{{ labor_prev_query }}#labor-history">← Anterior</a>{% endif %}
+      <span>Página {{ labor_history.page }} / {{ labor_history.pages }}</span>
+      {% if labor_history.page < labor_history.pages %}<a href="/app/liquidaciones?{{ labor_next_query }}#labor-history">Siguiente →</a>{% endif %}
+    </div>
+  </nav>
+</details>
+{% endif %}
 </div>
 {% if private and employee and kind in ['salary', 'settlement'] %}
 <script type="application/json" id="salary-history-data">{{ salary_history_data|tojson }}</script>
