@@ -5583,8 +5583,20 @@ def calculations_page(
         request, db, user, company_ids, company_id, employee_id
     )
     companies = seed_choices(db, select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name), Company, request=request, selected_ids=[company_id]) if company_ids else []
-    employees_query = select(Employee).where(Employee.company_id.in_(company_ids), Employee.status == "Activo") if company_ids else select(Employee).where(False)
+    # Preaviso también consulta antecedentes DOS de personas ya desvinculadas.
+    # Otros cálculos conservan exclusivamente el selector de funcionarios activos.
+    employees_query = (
+        select(Employee).where(Employee.company_id.in_(company_ids))
+        if tipo == "notice" and company_ids
+        else select(Employee).where(Employee.company_id.in_(company_ids), Employee.status == "Activo")
+        if company_ids else select(Employee).where(False)
+    )
     employees = seed_choices(db, employees_query.order_by(Employee.full_name), Employee, request=request, selected_ids=[employee_id])
+    notice_history_preview = (
+        notice_history_page(db, company_ids, company_id=company_id, employee_id=employee_id,
+                            page=1, page_size=5)
+        if tipo == "notice" else None
+    )
     recent_query = select(CalculationRecord).where(CalculationRecord.company_id.in_(company_ids), CalculationRecord.source != "Centro laboral") if company_ids else select(CalculationRecord).where(False)
     if company_id and company_id in company_ids:
         recent_query = recent_query.where(CalculationRecord.company_id == company_id)
@@ -5667,6 +5679,11 @@ def calculations_page(
         prefill_year=prefill_year,
         historical_vacation_overview=historical_vacation_overview,
         historical_notice_overview=historical_notice_overview,
+        notice_history_preview=notice_history_preview,
+        notice_selected_non_active=bool(
+            tipo == "notice" and selected_employee_record
+            and selected_employee_record.status != "Activo"
+        ),
     )
 
 

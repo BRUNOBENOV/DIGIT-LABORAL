@@ -15,7 +15,7 @@ from sqlalchemy import create_engine, func, select
 from app.database import Base
 from app.labor_calculator import notice_days
 from app.main import _revalidate_calculation_before_approval
-from app.models import AuditLog, CalculationRecord, Employee, NoticeRuleBand, NoticeRuleSet
+from app.models import AuditLog, CalculationRecord, Employee, EmployeeEvent, NoticeRuleBand, NoticeRuleSet
 from app.notice_rule_schema import install_notice_rules
 from app.notice_scale import service_tenure
 from app.notice_service import NoticeError, notice_proposal, notice_results, reference_date_from
@@ -89,6 +89,57 @@ def test_apply_renders_days_and_total_without_javascript(notice_case):
     assert "27 años y 8 meses (22 días adicionales)" in page.select_one("#noticeTenure").text
     assert page.select_one("#noticeOverride") is None  # contador
     assert not page.select_one("#noticeSave").has_attr("disabled")
+
+
+def test_notice_page_shows_migrated_lspre_and_offers_inactive_employees(notice_case):
+    """Historical LSPRE is visible even without selecting an active worker."""
+    client, db, _, company, employee, _ = notice_case
+    from app.legacy_notice_import import MARKER as LSPRE_MARKER, EVENT_TYPE as LSPRE_EVENT_TYPE
+    employee.status = "Desvinculado"
+    employee.termination_date = date(2026, 10, 31)
+    db.add(EmployeeEvent(
+        employee_id=employee.id, event_type=LSPRE_EVENT_TYPE,
+        title="Preaviso histórico LSPRE",
+        detail=LSPRE_MARKER + json.dumps({
+            "source": "LSPRE", "source_row": 33,
+            "company_code": "001", "employee_code": "099",
+            "notice_date_source": "2026-09-01",
+            "departure_date_source": "2026-10-31",
+            "days": 45, "deleted_source": False,
+            "legacy_key": "historic-test", "source_hash": "a" * 64,
+        }),
+        effective_date=date(2026, 9, 1), created_by="tester",
+    ))
+    db.commit()
+
+    page_response = client.get("/app/calculations", params={"tipo": "notice"})
+    assert page_response.status_code == 200, page_response.text
+    page = BeautifulSoup(page_response.text, "html.parser")
+    archive = page.select_one("#noticeLegacyHistory")
+    assert archive is not None
+    assert "Preavisos históricos vinculados" in archive.get_text(" ", strip=True)
+    assert "Consultar 1 antecedentes" in archive.get_text(" ", strip=True)
+    assert archive.select_one('a[href^="/app/legacy-notices/"]') is not None
+    selector = page.select_one("#calculationEmployeeFilter")
+    assert selector["data-entity-scope"] == "all"
+    assert any(f"{employee.full_name} (Desvinculado)" in option.get_text(" ", strip=True)
+               for option in selector.select("option"))
+
+    selected = client.get("/app/calculations", params={
+        "tipo": "notice", "company_id": company.id, "employee_id": employee.id,
+    })
+    assert selected.status_code == 200, selected.text
+    selected_page = BeautifulSoup(selected.text, "html.parser")
+    assert "no activo" in selected_page.select_one("#noticeLegacyHistory").get_text(" ", strip=True)
+    assert selected_page.select_one("#noticeSave").has_attr("disabled")
+    assert "egreso registrado" in selected_page.select_one("#noticeProposalStatus").text
+
+    revised = client.get("/app/calculations", params={
+        "tipo": "notice", "company_id": company.id, "employee_id": employee.id,
+        "reference_date": "2026-10-31",
+    })
+    assert revised.status_code == 200, revised.text
+    assert not BeautifulSoup(revised.text, "html.parser").select_one("#noticeSave").has_attr("disabled")
 
 
 @pytest.mark.parametrize("posted_days", ["0", "", "999", "manipulado", "NaN"])
