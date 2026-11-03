@@ -34,6 +34,8 @@ def build_employee_report_pdf(
     vacations: list[Any],
     aguinaldos: list[Any],
     branding: Any | None = None,
+    historical_vacations: list[dict[str, Any]] | None = None,
+    historical_vacation_count: int = 0,
 ) -> bytes:
     stream = io.BytesIO()
     doc = SimpleDocTemplate(stream, pagesize=A4, rightMargin=16 * mm, leftMargin=16 * mm, topMargin=15 * mm, bottomMargin=16 * mm)
@@ -115,6 +117,41 @@ def build_employee_report_pdf(
     vac_text = ", ".join(f"{v.period_year}: {v.used_days}/{v.entitled_days} días ({v.status})" for v in vacations) or "Sin registros de vacaciones."
     ag_text = ", ".join(f"{a.year}: Gs. {_gs(a.calculated_amount)} ({a.status})" for a in aguinaldos) or "Sin registros de aguinaldo."
     story.extend([Paragraph(escape(vac_text), normal), Paragraph(escape(ag_text), normal)])
+
+    if historical_vacation_count:
+        story.append(Paragraph("Antecedentes de vacaciones importados (LSVAC)", h2))
+        story.append(Paragraph(
+            f"{historical_vacation_count} movimientos vinculados al legajo. "
+            "No constituyen saldo vigente, aprobación de vacaciones ni constancia de pago. "
+            "Requieren conciliación profesional con los registros operativos.",
+            small,
+        ))
+        history_rows = [["Período original", "Desde", "Hasta", "Días", "Importe origen"]]
+        for row in (historical_vacations or [])[:12]:
+            source = row.get("source") or {}
+            history_rows.append([
+                escape(f"{source.get('period_from') or '—'} / {source.get('period_to') or '—'}"),
+                escape(str(source.get("vacation_start") or "—")),
+                escape(str(source.get("vacation_end") or "—")),
+                escape(str(source.get("days") if source.get("days") is not None else "—")),
+                escape(str(source.get("vacation_amount") if source.get("vacation_amount") is not None else "—")),
+            ])
+        if len(history_rows) > 1:
+            history_table = Table(history_rows, colWidths=[49 * mm, 33 * mm, 33 * mm, 21 * mm, 40 * mm], repeatRows=1)
+            history_table.setStyle(TableStyle([
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#E5EDFA")),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 7),
+                ("GRID", (0, 0), (-1, -1), .3, colors.HexColor("#DCE4EF")),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ]))
+            story.append(history_table)
+        if historical_vacation_count > len(historical_vacations or []):
+            story.append(Paragraph(
+                "Se muestra una muestra de movimientos. El historial íntegro se consulta "
+                "en el módulo Vacaciones y se puede exportar a CSV.", small
+            ))
 
     story.append(Paragraph("Documentos generados", h2))
     cert_rows = [["Fecha", "Documento", "Estado", "Creado por"]]
