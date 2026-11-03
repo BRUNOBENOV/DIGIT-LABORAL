@@ -3825,34 +3825,21 @@ def employee_detail_page(
     vacations = list(db.scalars(select(Vacation).where(Vacation.employee_id == employee.id).order_by(Vacation.period_year.desc())))
     payroll_lines = list(db.scalars(select(PayrollLine).where(PayrollLine.employee_id == employee.id).order_by(PayrollLine.id.desc()).limit(24)))
     deadlines = list(db.scalars(select(LaborDeadline).where(LaborDeadline.employee_id == employee.id).order_by(LaborDeadline.due_date)))
-    historical_vacation_overview = historical_vacation_summary(db, employee.id)
-    historical_notice_overview = notice_history_summary(db, employee.id)
-    historical_notice_recent = notice_history_page(
-        db, {employee.company_id}, employee_id=employee.id, page_size=8,
-    )["rows"]
     historical_event_details = {
-        event.id: historical_vacation_detail(event)
-        for event in events if event.event_type == LEGACY_VACATION_EVENT_TYPE
+        event.id: (
+            historical_vacation_detail(event) if event.event_type == LEGACY_VACATION_EVENT_TYPE
+            else notice_history_detail(event)
+        )
+        for event in events
+        if event.event_type in {LEGACY_VACATION_EVENT_TYPE, LEGACY_NOTICE_EVENT_TYPE}
     }
-    historical_recent = [
-        {"event": event, "source": event_legacy_data(event)}
-        for event in events if event.event_type == LEGACY_VACATION_EVENT_TYPE
-    ][:8]
-    historical_event_details.update({
-        event.id: notice_history_detail(event) for event in events
-        if event.event_type == LEGACY_NOTICE_EVENT_TYPE
-    })
     return render(
         request, "employee_detail.html", db, user, employee=employee, events=events, salaries=salaries,
         documents=documents, certificates=certificates, calculations=calculations, vacations=vacations,
         payroll_lines=payroll_lines, deadlines=deadlines,
         employee_profile=_employee_profile(db, employee.id),
         employee_exit=employee_exit, final_settlement=final_settlement,
-        historical_vacation_overview=historical_vacation_overview,
         historical_event_details=historical_event_details,
-        historical_recent=historical_recent,
-        historical_notice_overview=historical_notice_overview,
-        historical_notice_recent=historical_notice_recent,
     )
 
 
