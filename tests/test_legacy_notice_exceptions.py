@@ -8,7 +8,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from app.database import Base
-from app.legacy_notice_exceptions import list_notice_exceptions, parse_exception_log
+from app.legacy_notice_exceptions import list_notice_exceptions, parse_exception_log, source_fingerprint
 from app.legacy_notice_import import EVENT_TYPE, MARKER
 from app.models import Studio, Company, Employee, EmployeeEvent, AuditLog
 
@@ -100,7 +100,7 @@ def test_audit_case_automatically_marks_linked_only_when_event_matches():
         payload = {
             "source": "LSPRE", "source_row": 113,
             "company_code": "2052", "employee_code": "052060",
-            "legacy_key": "key113", "source_hash": "a" * 64,
+            "legacy_key": "key113", "source_hash": source_fingerprint(exception_payload()),
         }
         db.add(EmployeeEvent(
             employee_id=21, event_type=EVENT_TYPE, title="Preaviso histórico",
