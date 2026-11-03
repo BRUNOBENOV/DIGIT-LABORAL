@@ -7177,6 +7177,11 @@ def employee_integral_report(
     certificates = list(db.scalars(select(GeneratedCertificate).where(GeneratedCertificate.employee_id == employee.id).order_by(GeneratedCertificate.created_at.desc())))
     vacations = list(db.scalars(select(Vacation).where(Vacation.employee_id == employee.id).order_by(Vacation.period_year.desc())))
     aguinaldos = list(db.scalars(select(Aguinaldo).where(Aguinaldo.employee_id == employee.id).order_by(Aguinaldo.year.desc())))
+    historical_notice_overview = notice_history_summary(db, employee.id)
+    historical_notice_rows = notice_history_page(
+        db, company_ids_for_user(db, user), company_id=employee.company_id,
+        employee_id=employee.id, page=1, page_size=12
+    )["rows"]
     historical_vacation_overview = historical_vacation_summary(db, employee.id)
     historical_vacation_rows = historical_vacation_page(
         db, company_ids_for_user(db, user), company_id=employee.company_id,
@@ -7194,6 +7199,8 @@ def employee_integral_report(
         branding=branding,
         historical_vacations=historical_vacation_rows,
         historical_vacation_count=historical_vacation_overview["count"],
+        historical_notices=historical_notice_rows,
+        historical_notice_count=historical_notice_overview["count"],
     )
     filename = safe_download_name("Informe integral", employee.full_name, "pdf")
     write_audit(db, user, "descargar", "informe_integral", str(employee.id), filename)
