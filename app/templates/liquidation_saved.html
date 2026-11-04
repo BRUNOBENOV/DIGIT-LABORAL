@@ -9,8 +9,10 @@
 <a class="dl-button dl-outline" href="/app/liquidaciones/{{ item.id }}/exportar/csv">CSV</a>
 <button type="button" class="dl-button dl-outline" data-print>Imprimir</button>
 <a class="dl-button dl-outline" href="/app/liquidaciones/{{ item.id }}/copiar">Usar como base de otro cálculo</a>
-{% if item.calculation_type == 'suite_salary' and item.status != 'Anulado' and user.role in ['administrador','contador','auxiliar'] %}
+{% if item.calculation_type == 'suite_salary' and item.status != 'Anulado' and user.role in ['administrador','contador','auxiliar'] and not approved_rectifications %}
 <a class="dl-button dl-rectify-button" href="/app/liquidaciones/{{ item.id }}/rectificar">Rectificar datos</a>
+{% elif approved_rectifications %}
+<a class="dl-button dl-outline" href="/app/liquidaciones/{{ approved_rectifications[0].id }}">Ir a la versión vigente</a>
 {% endif %}
 </div>
 {% if rectification_origin %}
@@ -22,15 +24,15 @@
 {% endif %}
 {% if approved_rectifications %}
 <section class="dl-rectify-lineage dl-rectify-replaced">
-  <strong>Este cálculo tiene una rectificación aprobada</strong>
-  <span>Los datos originales no se alteraron. Consultá la versión posterior antes de reutilizar este documento.</span>
+  <strong>Versión sustituida · solo historial</strong>
+  <span>Esta liquidación ya fue reemplazada por una rectificación aprobada. Se conserva por trazabilidad y no aparece en el listado principal.</span>
   <a href="/app/liquidaciones/{{ approved_rectifications[0].id }}">Ver versión aprobada #{{ approved_rectifications[0].id }}</a>
 </section>
 {% endif %}
 {% if item.calculation_type == 'suite_salary' %}
 <section class="dl-alert">
-  <p><strong>Estado: {{ item.status }}</strong>. Revisá la asistencia, los haberes y los descuentos antes de aprobar. Guardar un borrador conserva la aprobación anterior del período.</p>
-  {% if item.status in ['Aprobado','Validado'] %}
+  <p><strong>{{ 'Versión sustituida · estado original: ' if approved_rectifications else 'Estado: ' }}{{ item.status }}</strong>. {% if approved_rectifications %}Usá la rectificación aprobada para operaciones nuevas; este documento queda como antecedente.{% else %}Revisá la asistencia, los haberes y los descuentos antes de aprobar. Guardar un borrador conserva la aprobación anterior del período.{% endif %}</p>
+  {% if item.status in ['Aprobado','Validado'] and not approved_rectifications %}
   <a class="dl-button" href="/app/compliance/salary-import?company_id={{ item.company_id }}&amp;employee_id={{ item.employee_id }}&amp;period={{ item.reference_period }}&amp;source_type=approved">Exportar REOP / REI</a>
   {% endif %}
   {% if user.role in ['administrador','contador'] and item.status not in ['Aprobado','Validado','Anulado'] %}
