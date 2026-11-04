@@ -34,6 +34,7 @@ from .payroll_annual import annotate_annual, propose_annual_remuneration, verify
 from .settlement_presets import settlement_defaults
 from .settlement_evidence import annotate_judicial_document, judicial_document_choices, verify_judicial_document
 from .salary_data import attendance_proposal, apply_attendance_proposal, verify_attendance_inheritance, SALARY_TYPES
+from .salary_novelties import salary_novelties
 
 router = APIRouter()
 HEADERS = {"Cache-Control": "no-store", "X-Digit-Laboral-Version": VERSION}
@@ -230,11 +231,62 @@ def page(request, kind, data=None, result=None, error=None, db=None, user=None, 
 
 def calculate_scoped(data, db, scoped):
     data.update(settlement_defaults(data))
+    novelties = None
+    if data.get("kind") == "salary" and scoped.get("employee"):
+        try:
+            novelties = salary_novelties(
+                db, scoped["employee"].company_id, scoped["employee"].id,
+                str(data.get("month") or ""), str(data.get("pay_basis") or "monthly"),
+            )
+        except ValueError as exc:
+            raise CalculationError(str(exc), "month") from None
+        applied = data.get("novelties_applied") == "on"
+        complete = data.get("novelties_attendance_confirmed") == "on"
+        if applied or complete:
+            if str(data.get("novelties_fingerprint") or "") != novelties["fingerprint"]:
+                raise CalculationError(
+                    "Las novedades del mes cambiaron. Actualizá la conciliación antes de calcular o guardar.", "days_paid"
+                )
+        if applied and (not novelties["can_apply_paid_days"]
+                        or str(data.get("days_paid") or "") != str(novelties["suggested_paid_days"])):
+            raise CalculationError(
+                "La propuesta de días remunerados ya no coincide con el cálculo. Volvé a revisar las novedades.", "days_paid"
+            )
+        if complete:
+            if (not novelties["daily_attendance"]
+                    or str(data.get("days_worked") or "") != str(novelties["observed_worked_days"])):
+                raise CalculationError(
+                    "Las jornadas no corresponden a la asistencia confirmada. Actualizá la conciliación.", "days_worked"
+                )
+            try:
+                same_hours = Decimal(str(data.get("hours_worked") or "")) == Decimal(novelties["observed_ordinary_hours"])
+            except (ValueError, ArithmeticError):
+                same_hours = False
+            if not same_hours:
+                raise CalculationError(
+                    "Las horas ordinarias no corresponden a la asistencia confirmada.", "hours_worked"
+                )
+            if data.get("pay_basis") == "daily" and str(data.get("days_paid") or "") != str(novelties["observed_worked_days"]):
+                raise CalculationError(
+                    "Revisá las jornadas pagadas del jornalero y su asistencia.", "days_paid"
+                )
     verify_attendance_inheritance(db, scoped.get("employee"), data)
     proposal = verify_average_selection(db, scoped.get("employee"), data)
     annual = verify_annual_selection(db, scoped.get("employee"), data)
     judicial = verify_judicial_document(db, scoped.get("employee"), data)
     result = annotate_judicial_document(annotate_annual(annotate_average(calculate(data, judicial_evidence_verified=judicial is not None), proposal), annual), judicial)
+    if novelties and novelties["events"]:
+        result["facts"].append({"label": "Novedades del período", "value": str(len(novelties["events"]))})
+        result["facts"].append({"label": "Ausencias sin goce verificadas", "value": str(novelties["unpaid_days"])})
+        result["facts"].append({"label": "Descansos remunerados registrados", "value": str(novelties["paid_leave_days"])})
+        if data.get("novelties_applied") == "on":
+            result["notes"].append("Días remunerados propuestos desde novedades aprobadas; respaldo y versión conciliados.")
+        if data.get("novelties_attendance_confirmed") == "on":
+            result["notes"].append("Jornadas y horas efectivamente registradas confirmadas como asistencia completa por el usuario.")
+        if novelties["requires_review"] or (novelties["unpaid_days"] and data.get("novelties_applied") != "on"):
+            result["warnings"].append(
+                "Existen permisos, sanciones, reposos o ausencias que requieren conciliación antes de declarar días remunerados."
+            )
     return add_salary_period_warnings(result, db, scoped, data)
 
 
@@ -393,6 +445,23 @@ def salary_attendance_proposal(company_id: int, employee_id: int, period: str,
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from None
     return JSONResponse(proposal, headers=HEADERS)
+
+
+@router.get("/api/liquidaciones/novedades-salariales")
+def salary_novelties_proposal(
+    company_id: int, employee_id: int, period: str, pay_basis: str = "monthly",
+    user: User = Depends(core.require_roles("administrador", "contador", "auxiliar")),
+    db: Session = Depends(core.get_db),
+):
+    company = core.company_allowed(db, user, company_id)
+    employee = db.get(Employee, employee_id)
+    if not employee or employee.company_id != company.id:
+        raise HTTPException(404, "Funcionario no encontrado en la empresa seleccionada.")
+    try:
+        payload = salary_novelties(db, company.id, employee.id, period, pay_basis)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from None
+    return JSONResponse(payload, headers=HEADERS)
 
 
 @router.post("/herramientas/calcular")
