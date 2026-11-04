@@ -68,7 +68,16 @@ def salary_novelties(db, company_id: int, employee_id: int, period: str, pay_bas
                 entries.append({"type": "Horas", "title": op.title, "status": op.status,
                                 "days": len(when), "detail": "Jornada pendiente de aprobación", "id": f"operacion:{op.id}"})
                 continue
-            hrs = Decimal(str(data.get("regular_hours") or "0"))
+            try:
+                hrs = Decimal(str(data.get("regular_hours") or "0"))
+                if not hrs.is_finite() or hrs < 0 or hrs > 24:
+                    raise ValueError
+            except (ValueError, ArithmeticError):
+                unresolved = True
+                entries.append({"type": "Horas", "title": op.title, "status": op.status,
+                                "days": 1, "detail": "Registro de horas inválido; revisión obligatoria",
+                                "id": f"operacion:{op.id}"})
+                continue
             if hrs > 0:
                 regular[op.effective_date] = regular.get(op.effective_date, Decimal(0)) + hrs
             entries.append({"type": "Horas", "title": op.title, "status": op.status,
