@@ -8772,7 +8772,17 @@ def create_vacation(
     employee = db.get(Employee, employee_id)
     if not employee or employee.company_id not in company_ids_for_user(db, user):
         raise HTTPException(404)
-    item = Vacation(employee_id=employee_id, period_year=period_year, entitled_days=max(0, entitled_days), used_days=max(0, used_days), start_date=start_date, end_date=end_date, status=status_value, notes=notes.strip())
+    if not 1990 <= period_year <= current_paraguay_date().year + 2:
+        raise HTTPException(422, "El año del período de vacaciones está fuera del rango permitido.")
+    if not 0 <= entitled_days <= 365 or not 0 <= used_days <= entitled_days:
+        raise HTTPException(422, "Verificá los días concedidos y usados: no pueden ser negativos ni superar el derecho.")
+    if start_date and end_date and end_date < start_date:
+        raise HTTPException(422, "La fecha final no puede ser anterior a la inicial.")
+    if status_value not in {"Pendiente", "Aprobada", "Completada", "Anulada", "Rechazada", "Cancelada"}:
+        raise HTTPException(422, "Estado de vacaciones no válido.")
+    if len(notes) > 4000:
+        raise HTTPException(422, "Las observaciones superan el límite permitido.")
+    item = Vacation(employee_id=employee_id, period_year=period_year, entitled_days=entitled_days, used_days=used_days, start_date=start_date, end_date=end_date, status=status_value, notes=notes.strip())
     db.add(item)
     db.flush()
     if item.start_date:
@@ -8784,7 +8794,7 @@ def create_vacation(
         )
     write_audit(db, user, "crear", "vacaciones", str(item.id), employee.full_name)
     db.commit()
-    return RedirectResponse("/app/vacations", status_code=303)
+    return RedirectResponse(f"/app/vacations/{item.id}", status_code=303)
 
 
 @app.get("/app/aguinaldo", response_class=HTMLResponse)
