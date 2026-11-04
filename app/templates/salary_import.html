@@ -92,13 +92,13 @@
       {% if effective_source == 'payroll' and source_summary.approved %}<p class="import-salary-info">La vista usa los datos de la nómina cerrada. Para usar la asistencia de los cálculos individuales, elegí Cálculos individuales aprobados en Origen de los salarios.</p>{% endif %}
       {% endif %}
       {% if authority == 'REOP' %}
-      <p class="import-salary-info">REOP: la planilla respetará exactamente las 32 columnas del Excel de referencia. Seleccioná el código de pago que corresponda al portal y clasificá cualquier ingreso no desglosado.</p>
+      <p class="import-salary-info">REOP: se conserva la estructura de 32 columnas del Excel de referencia. Elegí el medio real utilizado para pagar los salarios y clasificá cualquier ingreso no desglosado.</p>
       <div class="import-salary-grid">
-        <label>Código de forma de pago (REOP)
+        <label>Forma de pago (REOP)
           <select name="payment_code" required>
-            <option value="">Seleccionar según el portal</option>
-            {% for value in ['1','2','3','4'] %}
-            <option value="{{ value }}" {{ 'selected' if payment_code == value }}>Código {{ value }} — confirmar significado en REOP</option>
+            <option value="">Seleccionar forma de pago</option>
+            {% for value, label in [('1','Efectivo'),('2','Cheque'),('3','Banco (depósito o transferencia)'),('4','Giro')] %}
+            <option value="{{ value }}" {{ 'selected' if payment_code == value }}>{{ value }} — {{ label }}</option>
             {% endfor %}
           </select>
         </label>
