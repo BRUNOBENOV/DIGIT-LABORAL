@@ -23,7 +23,7 @@ OPERATION_STATUSES = {
     "discipline": ("Registrado", "Aprobado", "Anulado"),
     "telegram": ("Borrador", "Listo para imprimir", "Enviado", "Anulado"),
 }
-DISCIPLINE_TYPES = ("Amonestación", "Suspensión", "Permiso")
+DISCIPLINE_TYPES = ("Amonestación", "Suspensión", "Permiso", "Reposo")
 
 
 def _text(value: Any, field: str, maximum: int, *, required: bool = False) -> str:
@@ -144,13 +144,19 @@ def validate_labor_operation(payload: dict[str, Any], *, today: date | None = No
     elif kind == "discipline":
         subtype = _text(payload.get("subtype"), "El tipo de novedad", 40, required=True)
         if subtype not in DISCIPLINE_TYPES:
-            raise ValueError("El tipo debe ser Amonestación, Suspensión o Permiso.")
-        if subtype in {"Suspensión", "Permiso"} and not values["end_date"]:
+            raise ValueError("Elegí Amonestación, Suspensión, Permiso o Reposo.")
+        if subtype in {"Suspensión", "Permiso", "Reposo"} and not values["end_date"]:
             raise ValueError("La fecha de fin es obligatoria para suspensiones y permisos.")
         quantity_raw = payload.get("quantity")
         quantity = _decimal(quantity_raw, "La cantidad", maximum=24) if quantity_raw not in (None, "") else None
         amount = None
+        pay_treatment = _text(payload.get("pay_treatment"), "El tratamiento salarial", 20) or "review"
+        if pay_treatment not in {"review", "paid", "unpaid", "ips"}:
+            raise ValueError("Elegí un tratamiento salarial válido.")
+        if subtype == "Amonestación":
+            pay_treatment = "review"  # Una amonestación sola no afecta el salario.
         custom = {
+            "pay_treatment": pay_treatment,
             "subtype": subtype,
             "reason": _text(payload.get("reason"), "El motivo", 1000, required=True),
             "authorized_by": _text(payload.get("authorized_by"), "La persona autorizante", 180),
