@@ -80,7 +80,7 @@ def salary_novelties(db, company_id: int, employee_id: int, period: str, pay_bas
             entries.append({"type": subtype, "title": op.title, "status": op.status,
                             "days": len(when), "detail": "No genera descuento automático", "id": f"operacion:{op.id}"})
             continue
-        if subtype not in {"Permiso", "Suspensión", "Reposo"}:
+        if subtype not in {"Permiso", "Suspensión", "Reposo", "Ausencia", "Licencia"}:
             unresolved = True
             warnings.append(f"Revisar la clasificación de la novedad #{op.id}.")
             continue
