@@ -2,7 +2,7 @@
 {% block title %}Vacaciones #{{ item.id }} | Digit Laboral{% endblock %}
 {% block page_name %}Detalle de vacaciones{% endblock %}
 {% block content %}
-<main class="vac-detail-page" aria-labelledby="vac-detail-title">
+<div class="vac-detail-page" aria-labelledby="vac-detail-title">
   <header class="vac-detail-header">
     <span class="vac-kicker">MOVIMIENTO OPERATIVO · VACACIONES</span>
     <h1 id="vac-detail-title">Vacaciones · período {{ item.period_year }}</h1>
@@ -38,5 +38,5 @@
     {% endif %}
     <p class="vac-detail-note" role="note">Este es un movimiento operativo guardado. El saldo corresponde únicamente a este registro; para evaluar el derecho anual completo revisá todos los movimientos y solicitudes del período. No se deduce que un antecedente DOS haya sido conciliado.</p>
   </section>
-</main>
+</div>
 {% endblock %}
