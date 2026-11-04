@@ -29,19 +29,19 @@
 </style>
 <div class="lsvac-page">
   <header class="lsvac-hero">
-    <div style="font-size:.69rem;letter-spacing:.12em;font-weight:800">MIGRACIÓN · SISTEMA ANTERIOR DOS</div>
-    <h1>Vacaciones históricas (LSVAC)</h1>
-    <p>Incorporá los movimientos del Excel anterior al historial de los funcionarios ya migrados. Se conservan fechas, días y valores originales sin recalcular ni modificar saldos vigentes.</p>
+    <div style="font-size:.69rem;letter-spacing:.12em;font-weight:800">DIGIT-LABORAL · GESTIÓN DE HISTORIAL</div>
+    <h1>Importar historial de vacaciones</h1>
+    <p>Incorporá movimientos desde una planilla Excel al historial de DIGIT-LABORAL. Se conservan las fechas, los días y los importes registrados sin recalcular ni modificar saldos vigentes.</p>
   </header>
   <div style="margin:0 0 14px"><a href="/app/vacations" class="btn ghost">← Volver a Vacaciones</a></div>
   {% if request.query_params.get("error") %}<div class="lsvac-warning" role="alert">{{ request.query_params.get("error") }}</div>{% endif %}
   <section class="lsvac-panel">
     <h2>1. Archivo histórico</h2>
-    <p class="lsvac-small">Subí una copia <b>.xlsx</b> de la tabla LSVAC. El sistema vincula empresas por CODEMP y funcionarios por CODTRA, con la referencia de la importación histórica previa. La vista previa no guarda movimientos.</p>
+    <p class="lsvac-small">Subí una planilla Excel <b>.xlsx</b> de vacaciones. DIGIT-LABORAL vincula los datos mediante los códigos de empresa (CODEMP) y funcionario (CODTRA). La vista previa no guarda movimientos.</p>
     <form method="post" action="/app/import/legacy-vacations/preview" enctype="multipart/form-data">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <div class="lsvac-file">
-        <input type="file" name="file" accept=".xlsx" required aria-label="Archivo LSVAC en Excel">
+        <input type="file" name="file" accept=".xlsx" required aria-label="Planilla de vacaciones en Excel">
         <button type="submit" class="btn primary">Analizar coincidencias</button>
       </div>
     </form>
