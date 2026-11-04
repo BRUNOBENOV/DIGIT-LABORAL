@@ -6,6 +6,7 @@ vacation balances, payment receipts, notices or approvals.
 """
 from __future__ import annotations
 
+import json
 from datetime import date, datetime
 from math import ceil
 from typing import Any
@@ -143,19 +144,88 @@ def _legacy_vacation(event: EmployeeEvent) -> dict:
     )
 
 
+
+def _superseded_salary_record_ids(
+    db: Session, company_ids: tuple[int, ...],
+    company_id: int | None, employee_id: int | None,
+) -> set[int]:
+    """Only approved, same-employee/period rectifications hide their source.
+
+    Keep originals and links intact for audits. Drafts never replace the
+    approved record, including the one used for REOP/REI exports.
+    """
+    if not company_ids:
+        return set()
+    revisions = select(
+        CalculationRecord.id, CalculationRecord.company_id,
+        CalculationRecord.employee_id, CalculationRecord.reference_period,
+        CalculationRecord.input_json,
+    ).where(
+        CalculationRecord.company_id.in_(company_ids),
+        CalculationRecord.calculation_type == "suite_salary",
+        CalculationRecord.source == "Centro laboral",
+        CalculationRecord.status.in_(("Aprobado", "Validado")),
+        CalculationRecord.input_json.contains('"rectifies_record_id"'),
+    )
+    if company_id is not None:
+        revisions = revisions.where(CalculationRecord.company_id == company_id)
+    if employee_id is not None:
+        revisions = revisions.where(CalculationRecord.employee_id == employee_id)
+
+    lineage: dict[int, list[tuple[int, int, str]]] = {}
+    for revision_id, revision_company, revision_employee, period, raw in db.execute(revisions):
+        if revision_employee is None:
+            continue
+        try:
+            source_id = int(json.loads(raw or "{}").get("rectifies_record_id") or 0)
+        except (ValueError, TypeError, AttributeError):
+            continue
+        if source_id > 0 and source_id != revision_id:
+            lineage.setdefault(source_id, []).append(
+                (revision_company, revision_employee, period)
+            )
+    if not lineage:
+        return set()
+
+    originals = db.execute(select(
+        CalculationRecord.id, CalculationRecord.company_id,
+        CalculationRecord.employee_id, CalculationRecord.reference_period,
+    ).where(
+        CalculationRecord.id.in_(lineage),
+        CalculationRecord.company_id.in_(company_ids),
+        CalculationRecord.calculation_type == "suite_salary",
+        CalculationRecord.source == "Centro laboral",
+    ))
+    return {
+        source_id
+        for source_id, source_company, source_employee, source_period in originals
+        if any(
+            (source_company, source_employee, source_period) == expected
+            for expected in lineage[source_id]
+        )
+    }
+
+
 def calculation_history_page(
     db: Session, company_ids: list[int] | set[int],
     *, tipo: str | None = None, company_id: int | None = None,
     employee_id: int | None = None,
     page: int = 1, page_size: int = DEFAULT_PAGE_SIZE,
     include_center_calculations: bool = False,
+    include_superseded_salary: bool = False,
 ) -> dict[str, Any]:
     ids = tuple(company_ids)
+    superseded = (
+        _superseded_salary_record_ids(db, ids, company_id, employee_id)
+        if include_center_calculations and tipo in (None, "suite_salary") else set()
+    )
     live = select(CalculationRecord).where(
         CalculationRecord.company_id.in_(ids),
     ) if ids else select(CalculationRecord).where(False)
     if not include_center_calculations:
         live = live.where(CalculationRecord.source != "Centro laboral")
+    if superseded and not include_superseded_salary:
+        live = live.where(CalculationRecord.id.not_in(superseded))
     if tipo:
         live = live.where(CalculationRecord.calculation_type == tipo)
     if company_id is not None:
@@ -190,8 +260,17 @@ def calculation_history_page(
         _normalized_date(EmployeeEvent.effective_date).label("record_date"),
     ).order_by(None)
 
-    return _unified_page(db, live_ids, archive_ids, CalculationRecord,
-                         "archive", page=page, page_size=page_size)
+    result = _unified_page(db, live_ids, archive_ids, CalculationRecord,
+                           "archive", page=page, page_size=page_size)
+    result["superseded_count"] = len(superseded)
+    for row in result["rows"]:
+        if row["origin"] == "current" and row["id"] in superseded:
+            row["superseded"] = True
+            row["display_status"] = "Sustituido"
+        else:
+            row["superseded"] = False
+            row["display_status"] = row["status"]
+    return result
 
 
 def vacation_history_page(
