@@ -10018,7 +10018,10 @@ def salary_import_page(
 ):
     """Vista previa de importación salarial; no modifica nóminas."""
     from .official_salary_import import SalaryImportError, prepare_import
-    from .approved_salary_import import salary_source_summary, choose_salary_source, approved_salary_records, salary_excluded_records, approved_employee_choices
+    from .approved_salary_import import (
+        salary_source_summary, choose_salary_source, approved_salary_records,
+        salary_excluded_records, approved_employee_choices, salary_export_employee_eligible,
+    )
 
     ids = company_ids_for_user(db, user)
     companies = seed_choices(
@@ -10033,13 +10036,33 @@ def salary_import_page(
         raise HTTPException(404, "El funcionario no pertenece a la empresa seleccionada.")
     period = period or current_paraguay_date().strftime("%Y-%m")
     authority = authority if authority in {"REOP", "REI"} else "REOP"
-    approved_choices = approved_employee_choices(db, company.id, period, authority=authority) if company else []
+    if selected_employee and not salary_export_employee_eligible(selected_employee, authority):
+        raise HTTPException(422, "Este funcionario no es elegible para la exportación: verificá IPS Sí en Mantenimientos → Funcionarios.")
     preview = bool(company and request.query_params.get("period"))
-    source_summary = salary_source_summary(db, company.id, period, employee_id=employee_id) if company else None
+    source_summary = salary_source_summary(
+        db, company.id, period, employee_id=employee_id, authority=authority
+    ) if company else None
     try:
-        effective_source = choose_salary_source(db, company.id, period, source_type, employee_id=employee_id) if company else "payroll"
+        effective_source = choose_salary_source(
+            db, company.id, period, source_type, employee_id=employee_id, authority=authority
+        ) if company else "payroll"
     except ValueError as exc:
         raise HTTPException(422, "Origen de salarios no válido.") from exc
+    if company and effective_source == "payroll":
+        payroll_choice_query = select(Employee).join(
+            PayrollLine, PayrollLine.employee_id == Employee.id
+        ).join(Payroll, Payroll.id == PayrollLine.payroll_id).where(
+            Payroll.company_id == company.id, Payroll.period == period,
+            Employee.company_id == company.id, Employee.ips_contributor.is_(True),
+        ).distinct().order_by(Employee.full_name, Employee.id)
+        approved_choices = [
+            worker for worker in db.scalars(payroll_choice_query)
+            if salary_export_employee_eligible(worker, authority)
+        ]
+    else:
+        approved_choices = approved_employee_choices(
+            db, company.id, period, authority=authority
+        ) if company else []
     excluded_salary = (
         salary_excluded_records(db, company.id, period, authority=authority)
         if company and effective_source == "approved" and employee_id is None
@@ -10134,6 +10157,8 @@ def save_salary_import_details(
         raise HTTPException(422, "Ingresá fechas del período válidas.") from exc
     last_day = date(anchor.year, anchor.month, monthrange(anchor.year, anchor.month)[1])
     employee = db.get(Employee, item.employee_id)
+    if employee is not None and not employee.ips_contributor:
+        raise HTTPException(422, "Este funcionario tiene IPS No y no corresponde a la exportación REOP/REI.")
     if (
         start < anchor or end > last_day or end < start or employee is None
         or start < employee.admission_date
@@ -10224,6 +10249,10 @@ def salary_import_export(
         chosen = db.get(Employee, employee_id)
         if chosen is None or chosen.company_id != company.id:
             raise HTTPException(404, "Funcionario ajeno a la empresa.")
+        if not chosen.ips_contributor:
+            raise HTTPException(422, "Solo se exportan funcionarios con IPS Sí en Mantenimientos → Funcionarios.")
+        if authority == "REI" and (chosen.status or "").strip().casefold() != "activo":
+            raise HTTPException(422, "REI requiere un funcionario activo con IPS Sí.")
     try:
         rows, errors = prepare_import(
             db, company, period, authority, payment_code=payment_code,
@@ -10235,7 +10264,9 @@ def salary_import_export(
     if errors:
         raise HTTPException(409, detail="Hay datos pendientes: " + " | ".join(errors[:12]))
     from .approved_salary_import import choose_salary_source, salary_excluded_records
-    effective_source = choose_salary_source(db, company.id, period, source_type, employee_id=employee_id)
+    effective_source = choose_salary_source(
+        db, company.id, period, source_type, employee_id=employee_id, authority=authority
+    )
     exclusions = (
         salary_excluded_records(db, company.id, period, authority=authority)
         if effective_source == "approved" and employee_id is None else []
