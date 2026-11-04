@@ -50,7 +50,9 @@
   });
   async function refresh() {
     const request = ++sequence;
-    controller?.abort(); controller = new AbortController();
+    controller?.abort();
+    const requestController = new AbortController();
+    controller = requestController;
     field('attendance_source_id').value = ''; field('attendance_source_sha256').value = '';
     manual.checked = false;
     inherited = Object.fromEntries(names.map(name => [name, '']));
@@ -61,9 +63,13 @@
       pending = false; locks(); status.textContent = 'Seleccioná empresa, funcionario y mes para cargar la asistencia.'; return;
     }
     pending = true; locks(); status.textContent = 'Buscando la asistencia aprobada del mes…';
+    let timeout;
     try {
+      // Evitar que la consulta mantenga bloqueado indefinidamente el guardado.
+      // La edición manual no altera cálculos aprobados ni inventa asistencias.
+      timeout = window.setTimeout(() => requestController.abort(), 8000);
       const query = new URLSearchParams({company_id:field('company_id').value, employee_id:field('employee_id').value, period:month.value});
-      const response = await fetch('/api/liquidaciones/asistencia-salarial?' + query, {credentials:'same-origin',signal:controller.signal,headers:{Accept:'application/json'}});
+      const response = await fetch('/api/liquidaciones/asistencia-salarial?' + query, {credentials:'same-origin',signal:requestController.signal,headers:{Accept:'application/json'}});
       if (!response.ok) throw new Error('Consulta no disponible');
       const proposal = await response.json();
       if (request !== sequence) return;
@@ -75,11 +81,14 @@
       status.textContent = proposal.available ? 'Asistencia del cálculo aprobado #' + proposal.calculation_id + ' · ' + proposal.period + '. Completá solo los datos faltantes.'
         : 'Sin cálculo aprobado para el mes seleccionado. Se propone el primer y último día del mes; revisá las fechas reales y la asistencia.';
     } catch (error) {
-      if (request !== sequence || error.name === 'AbortError') return;
+      if (request !== sequence) return;
       manual.checked = true;
       suggestFullMonthDates();
-      status.textContent = 'No se pudo cargar la asistencia. Se propone el período del mes seleccionado; confirmá las fechas reales y los días trabajados.';
+      status.textContent = error.name === 'AbortError'
+        ? 'La consulta de asistencia tardó demasiado. Podés continuar con carga manual y verificar los datos reales.'
+        : 'No se pudo cargar la asistencia. Se propone el período del mes seleccionado; confirmá las fechas reales y los días trabajados.';
     } finally {
+      if (timeout) window.clearTimeout(timeout);
       if (request === sequence) { pending = false; locks(); form.dispatchEvent(new Event('input', {bubbles:true})); }
     }
   }
