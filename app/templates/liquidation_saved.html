@@ -9,7 +9,24 @@
 <a class="dl-button dl-outline" href="/app/liquidaciones/{{ item.id }}/exportar/csv">CSV</a>
 <button type="button" class="dl-button dl-outline" data-print>Imprimir</button>
 <a class="dl-button dl-outline" href="/app/liquidaciones/{{ item.id }}/copiar">Usar como base de otro cálculo</a>
+{% if item.calculation_type == 'suite_salary' and item.status != 'Anulado' and user.role in ['administrador','contador','auxiliar'] %}
+<a class="dl-button dl-rectify-button" href="/app/liquidaciones/{{ item.id }}/rectificar">Rectificar datos</a>
+{% endif %}
 </div>
+{% if rectification_origin %}
+<section class="dl-rectify-lineage">
+  <strong>Rectificación del cálculo #{{ rectification_origin.id }}</strong>
+  <span>Importe anterior: <b>Gs. {{ rectification_origin.amount|gs }}</b> · Importe rectificado: <b>Gs. {{ item.amount|gs }}</b>. Esta versión requiere su propia aprobación.</span>
+  <a href="/app/liquidaciones/{{ rectification_origin.id }}">Ver cálculo original</a>
+</section>
+{% endif %}
+{% if approved_rectifications %}
+<section class="dl-rectify-lineage dl-rectify-replaced">
+  <strong>Este cálculo tiene una rectificación aprobada</strong>
+  <span>Los datos originales no se alteraron. Consultá la versión posterior antes de reutilizar este documento.</span>
+  <a href="/app/liquidaciones/{{ approved_rectifications[0].id }}">Ver versión aprobada #{{ approved_rectifications[0].id }}</a>
+</section>
+{% endif %}
 {% if item.calculation_type == 'suite_salary' %}
 <section class="dl-alert">
   <p><strong>Estado: {{ item.status }}</strong>. Revisá la asistencia, los haberes y los descuentos antes de aprobar. Guardar un borrador conserva la aprobación anterior del período.</p>

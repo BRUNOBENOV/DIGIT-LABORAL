@@ -43,6 +43,19 @@
 {% if kind == 'settlement' %}<input type="hidden" name="settlement_preset_version" value="{{ values.get('settlement_preset_version','2') }}"><input type="hidden" name="average_from_salary" value="{{ values.get('average_from_salary','') }}"><input type="hidden" name="judicial_document_sha256" value="{{ values.get('judicial_document_sha256','') }}">{% endif %}
 {% if private and values.get("employee_exit_id") %}<input type="hidden" name="employee_exit_id" value="{{ values.employee_exit_id }}"><p class="dl-alert" role="status">Cálculo vinculado a un procedimiento de egreso. La fecha y la causal deben coincidir con el expediente. El registro del pago se realiza por separado.</p>{% endif %}
 {% if private %}<input type="hidden" name="company_id" value="{{ company_id }}"><input type="hidden" name="employee_id" value="{{ employee_id }}">{% endif %}
+{% if private and kind == 'salary' and values.get('rectifies_record_id') %}
+<section class="dl-rectify-panel" aria-labelledby="rectify-heading">
+  <input type="hidden" name="rectifies_record_id" value="{{ values.get('rectifies_record_id') }}">
+  <div class="dl-rectify-heading">
+    <strong id="rectify-heading">Rectificación del cálculo #{{ values.get('rectifies_record_id') }}</strong>
+    <span>Se guardará una nueva versión en borrador</span>
+  </div>
+  <label for="rectification-reason">Motivo de la corrección <span aria-hidden="true">*</span></label>
+  <textarea id="rectification-reason" name="rectification_reason" rows="2" minlength="12" maxlength="300" required
+    placeholder="Ej.: corregí las jornadas remuneradas y el aporte del mes.">{{ values.get('rectification_reason','') }}</textarea>
+  <small>El documento original no se modifica. Revisá los importes y aprobá la nueva versión cuando corresponda.</small>
+</section>
+{% endif %}
 {% if not quick_steps %}<div class="dl-form-title"><span class="dl-step">01</span><h2>{{ titles[kind] }}</h2></div>{% endif %}
 {% if error %}<div class="dl-alert dl-error" role="alert" id="labor-error" tabindex="-1"><b>Revisá los datos</b><p>{{ error }}</p></div>{% endif %}
 {% if quick_steps %}{% include 'labor_quick_steps.html' %}{% else %}
@@ -212,38 +225,51 @@
 </aside></div>
 {% if quick_steps and result %}<details class="dl-document-preview" id="labor-document"><summary>Documento completo · desglose y descargas</summary><div class="dl-document-content"><div class="dl-output-actions"><button type="submit" class="dl-button" form="labor-form" data-keep-enabled="true" formaction="{{ '/app/liquidaciones' if private else '/herramientas' }}/exportar/pdf" data-result-action>Descargar PDF</button><button type="submit" class="dl-button dl-outline" form="labor-form" data-keep-enabled="true" formaction="{{ '/app/liquidaciones' if private else '/herramientas' }}/exportar/csv" data-result-action>CSV</button><button type="button" class="dl-button dl-outline" data-print data-result-action>Imprimir</button></div>{% include "liquidation_result.html" %}</div></details>{% endif %}
 {% if private and labor_history %}
-<details class="dl-history" id="labor-history" {% if request.query_params.get('history_page') %}open{% endif %}>
-  <summary>TRAZABILIDAD · Cálculos guardados ({{ labor_history.total }})</summary>
-  <p>Registros de esta selección ordenados por fecha. Los movimientos sin conciliar no constituyen pagos ni prestaciones aprobadas.</p>
-  <div class="dl-table-wrap"><table>
-    <thead><tr><th>Fecha</th><th>Funcionario</th><th>Tipo</th><th>Período / detalle</th><th>Importe · Gs.</th><th>Estado</th><th>Acción</th></tr></thead>
-    <tbody>
-    {% for row in labor_history.rows %}
-    <tr>
-      <td>{{ row.date|fecha }}</td>
-      <td>{{ row.employee.full_name if row.employee else 'Sin funcionario' }}</td>
-      <td>{{ titles.get(row.record.calculation_type|replace('suite_',''), row.label) if row.origin == 'current' else row.label }}</td>
-      <td>{{ row.period }}{% if row.origin == 'imported' and row.detail %}<small class="table-sub">{{ row.detail }}</small>{% endif %}</td>
-      <td>{% if row.amount is none %}—{% elif row.origin == 'current' %}{{ row.amount|gs }}{% else %}{{ row.amount }}{% endif %}</td>
-      <td>{{ row.status }}</td>
-      <td>
-      {% if row.origin == 'current' and row.record.source == 'Centro laboral' %}
-        <a href="/app/liquidaciones/{{ row.id }}">Ver y descargar</a>
-      {% elif row.url %}<a href="{{ row.url }}">Ver registro</a>
-      {% else %}—{% endif %}
-      </td>
-    </tr>
-    {% else %}<tr><td colspan="7">Todavía no hay registros para esta selección.</td></tr>{% endfor %}
-    </tbody>
-  </table></div>
-  <nav aria-label="Paginación de trazabilidad" style="display:flex;gap:12px;align-items:center;justify-content:space-between;padding:10px;flex-wrap:wrap">
-    <small>{{ labor_history.first }}–{{ labor_history.last }} de {{ labor_history.total }}</small>
-    <div style="display:flex;align-items:center;gap:10px">
-      {% if labor_history.page > 1 %}<a href="/app/liquidaciones?{{ labor_prev_query }}#labor-history">← Anterior</a>{% endif %}
-      <span>Página {{ labor_history.page }} / {{ labor_history.pages }}</span>
-      {% if labor_history.page < labor_history.pages %}<a href="/app/liquidaciones?{{ labor_next_query }}#labor-history">Siguiente →</a>{% endif %}
+<details class="dl-history dl-trace" id="labor-history" {% if request.query_params.get('history_page') %}open{% endif %}>
+  <summary class="dl-trace-summary">
+    <span class="dl-trace-icon" aria-hidden="true">↺</span>
+    <span class="dl-trace-title"><strong>Trazabilidad de cálculos</strong><small>Cálculos guardados · consultar, descargar o rectificar</small></span>
+    <span class="dl-trace-count">{{ labor_history.total }} registros</span>
+  </summary>
+  <div class="dl-trace-body">
+    <div class="dl-trace-intro">Cada corrección genera un nuevo borrador vinculado al original. Los registros aprobados anteriores permanecen disponibles.</div>
+    <div class="dl-table-wrap">
+      <table class="dl-trace-table">
+        <thead><tr><th>Registrado</th><th>Funcionario y concepto</th><th>Período</th><th>Importe</th><th>Estado</th><th>Acciones</th></tr></thead>
+        <tbody>
+        {% for row in labor_history.rows %}
+        <tr>
+          <td class="dl-trace-date">{{ row.date|fecha }}</td>
+          <td class="dl-trace-person"><strong>{{ row.employee.full_name if row.employee else 'Sin funcionario' }}</strong>
+            <small>{{ titles.get(row.record.calculation_type|replace('suite_',''), row.label) if row.origin == 'current' else row.label }}
+            {% if row.rectifies is defined and row.rectifies %} · Rectifica #{{ row.rectifies }}{% endif %}</small>
+          </td>
+          <td>{{ row.period }}{% if row.origin == 'imported' and row.detail %}<small class="dl-trace-detail">{{ row.detail }}</small>{% endif %}</td>
+          <td class="dl-trace-amount">{% if row.amount is none %}—{% elif row.origin == 'current' %}Gs. {{ row.amount|gs }}{% else %}{{ row.amount }}{% endif %}</td>
+          <td><span class="dl-trace-status {{ 'is-approved' if row.status in ['Aprobado','Validado'] else 'is-void' if row.status in ['Anulado','Borrado en origen'] else 'is-draft' }}">{{ row.status }}</span></td>
+          <td><div class="dl-trace-actions">
+          {% if row.origin == 'current' and row.record.source == 'Centro laboral' %}
+            <a href="/app/liquidaciones/{{ row.id }}" class="dl-trace-action">Ver</a>
+            {% if user.role in ['administrador','contador','auxiliar'] and row.record.calculation_type == 'suite_salary' and row.status != 'Anulado' %}
+              <a href="/app/liquidaciones/{{ row.id }}/rectificar" class="dl-trace-action dl-trace-correct">Rectificar</a>
+            {% endif %}
+          {% elif row.url %}<a href="{{ row.url }}" class="dl-trace-action">Ver</a>
+          {% else %}—{% endif %}
+          </div></td>
+        </tr>
+        {% else %}<tr><td colspan="6" class="dl-trace-empty">Todavía no hay cálculos guardados para esta selección.</td></tr>{% endfor %}
+        </tbody>
+      </table>
     </div>
-  </nav>
+    <nav class="dl-trace-pages" aria-label="Paginación de trazabilidad">
+      <small>{{ labor_history.first }}–{{ labor_history.last }} de {{ labor_history.total }}</small>
+      <div class="dl-trace-pages-controls">
+        {% if labor_history.page > 1 %}<a href="/app/liquidaciones?{{ labor_prev_query }}#labor-history">← Anterior</a>{% endif %}
+        <span>Página {{ labor_history.page }} de {{ labor_history.pages }}</span>
+        {% if labor_history.page < labor_history.pages %}<a href="/app/liquidaciones?{{ labor_next_query }}#labor-history">Siguiente →</a>{% endif %}
+      </div>
+    </nav>
+  </div>
 </details>
 {% endif %}
 </div>

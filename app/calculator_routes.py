@@ -207,6 +207,14 @@ def page(request, kind, data=None, result=None, error=None, db=None, user=None, 
         }
         labor_prev_query = urlencode({**filters, "history_page": labor_history["page"] - 1})
         labor_next_query = urlencode({**filters, "history_page": labor_history["page"] + 1})
+    if labor_history:
+        for row in labor_history["rows"]:
+            if row["origin"] == "current" and row["record"].source == SOURCE:
+                try:
+                    source_id = json.loads(row["record"].input_json or "{}").get("rectifies_record_id")
+                    row["rectifies"] = int(source_id) if source_id else None
+                except (ValueError, TypeError, AttributeError):
+                    row["rectifies"] = None
     ctx.update(labor_history=labor_history,
                labor_prev_query=labor_prev_query, labor_next_query=labor_next_query)
     ctx.update(private, salary_history_data=salary_history_data, result=result,
@@ -502,6 +510,37 @@ async def save_calculation(request: Request,
             raise CalculationError("Este monto supera el límite del historial actual; podés descargar el cálculo.")
     except CalculationError as exc:
         return page(request, data["kind"], data, error=exc, db=db, user=user)
+    correction_origin = None
+    if data.get("rectifies_record_id"):
+        if data["kind"] != "salary":
+            raise HTTPException(422, "La rectificación desde trazabilidad está disponible para cálculos salariales.")
+        try:
+            original_id = int(data["rectifies_record_id"])
+        except (ValueError, TypeError):
+            raise HTTPException(422, "El cálculo de origen es inválido.") from None
+        correction_origin = db.get(CalculationRecord, original_id)
+        if (correction_origin is None or correction_origin.source != SOURCE
+            or correction_origin.calculation_type != "suite_salary"
+            or correction_origin.company_id != scoped["company"].id
+            or correction_origin.employee_id != scoped["employee"].id
+            or correction_origin.reference_period != result["period"][:20]
+            or correction_origin.status == "Anulado"):
+            raise HTTPException(409, "La rectificación debe mantener funcionario, empresa y mes del cálculo original.")
+        if db.scalar(select(FinalSettlement.id).where(
+            FinalSettlement.calculation_record_id == correction_origin.id
+        )):
+            raise HTTPException(409, "Un cálculo vinculado a una liquidación final se revisa desde ese procedimiento.")
+        reason = clean(data.get("rectification_reason"), 300)
+        if len(reason) < 12:
+            return page(request, data["kind"], data,
+                        error=CalculationError("Explicá el motivo de la rectificación (mínimo 12 caracteres).", "rectification_reason"),
+                        db=db, user=user, copied_from=correction_origin.id)
+        data["rectification_reason"] = reason
+        data["rectifies_record_id"] = str(correction_origin.id)
+        result.setdefault("notes", []).append(
+            f"Rectificación del cálculo #{correction_origin.id}: {reason}. "
+            "El cálculo original permanece conservado; este registro requiere aprobación independiente."
+        )
     item = CalculationRecord(company_id=scoped["company"].id, employee_id=scoped["employee"].id,
         calculation_type="suite_" + data["kind"], reference_period=result["period"][:20],
         input_json=json.dumps(data, ensure_ascii=False), result_json=json.dumps(result, ensure_ascii=False),
@@ -520,7 +559,10 @@ async def save_calculation(request: Request,
     origin_note = ""
     if data["kind"] == "salary" and data.get("attendance_source_id"):
         origin_note = f" · asistencia del cálculo #{data['attendance_source_id']} · " + ("modificada manualmente" if data.get("attendance_override") == "on" else "heredada")
-    core.write_audit(db, user, "crear", "liquidacion", str(item.id), "Motor " + VERSION + origin_note)
+    core.write_audit(db, user, "rectificar" if correction_origin else "crear", "liquidacion",
+                     str(item.id), ("Rectifica #" + str(correction_origin.id) + " · " +
+                                    data["rectification_reason"] if correction_origin
+                                    else "Motor " + VERSION + origin_note))
     db.commit()
     if linked_settlement:
         return RedirectResponse(f"/app/final-settlements/{linked_settlement.id}", status_code=303)
@@ -539,9 +581,60 @@ def saved_result(db, user, record_id):
 @router.get("/app/liquidaciones/{record_id}")
 def saved_page(request: Request, record_id: int, user: User = Depends(core.require_user), db: Session = Depends(core.get_db)):
     item, result = saved_result(db, user, record_id)
-    response = core.render(request, "liquidation_saved.html", db, user, item=item, result=result)
+    metadata = json.loads(item.input_json or "{}")
+    origin_id = metadata.get("rectifies_record_id")
+    origin = None
+    if origin_id:
+        try:
+            origin = db.get(CalculationRecord, int(origin_id))
+        except (ValueError, TypeError):
+            pass
+        if origin and (origin.company_id != item.company_id or origin.employee_id != item.employee_id):
+            origin = None
+    revisions = []
+    if item.calculation_type == "suite_salary" and item.employee_id:
+        related = db.scalars(select(CalculationRecord).where(
+            CalculationRecord.company_id == item.company_id,
+            CalculationRecord.employee_id == item.employee_id,
+            CalculationRecord.reference_period == item.reference_period,
+            CalculationRecord.calculation_type == item.calculation_type,
+            CalculationRecord.source == SOURCE,
+            CalculationRecord.id != item.id,
+        ).order_by(CalculationRecord.id.desc())).all()
+        for candidate in related:
+            if candidate.status not in {"Aprobado", "Validado"}:
+                continue
+            try:
+                candidate_inputs = json.loads(candidate.input_json or "{}")
+            except (ValueError, TypeError):
+                continue
+            if str(candidate_inputs.get("rectifies_record_id") or "") == str(item.id):
+                revisions.append(candidate)
+    response = core.render(request, "liquidation_saved.html", db, user, item=item, result=result,
+                           rectification_origin=origin, approved_rectifications=revisions)
     response.headers.update(HEADERS)
     return response
+
+
+@router.get("/app/liquidaciones/{record_id}/rectificar")
+def rectify_saved_calculation(
+    request: Request, record_id: int,
+    user: User = Depends(core.require_roles("administrador", "contador", "auxiliar")),
+    db: Session = Depends(core.get_db),
+):
+    item, _ = saved_result(db, user, record_id)
+    if item.calculation_type != "suite_salary" or item.status == "Anulado":
+        raise HTTPException(409, "Solo se pueden rectificar cálculos salariales no anulados desde este apartado.")
+    if db.scalar(select(FinalSettlement.id).where(FinalSettlement.calculation_record_id == item.id)):
+        raise HTTPException(409, "Esta liquidación se rectifica desde el procedimiento de egreso.")
+    values = json.loads(item.input_json)
+    values.update(
+        company_id=item.company_id, employee_id=item.employee_id or 0,
+        rectifies_record_id=str(item.id), rectification_reason="",
+        attendance_source_id="", attendance_source_sha256="", attendance_override="on",
+        prepared_by=user.full_name,
+    )
+    return page(request, "salary", values, db=db, user=user, copied_from=item.id)
 
 
 @router.get("/app/liquidaciones/{record_id}/copiar")
@@ -549,6 +642,10 @@ def copy_saved_calculation(request: Request, record_id: int, user: User = Depend
                            db: Session = Depends(core.get_db)):
     item, _ = saved_result(db, user, record_id)
     values = json.loads(item.input_json)
+    # «Usar como base» crea un cálculo independiente; no lo marca como
+    # rectificación ni reutiliza por accidente un motivo anterior.
+    values.pop("rectifies_record_id", None)
+    values.pop("rectification_reason", None)
     if values.get("kind") == "salary":
         # Copying a historical snapshot is explicit; it is not a live source link.
         values.update(attendance_source_id="", attendance_source_sha256="", attendance_override="on")
@@ -685,6 +782,8 @@ async def api_replace_calculation(
     db: Session = Depends(core.get_db),
 ):
     item, _ = saved_result(db, user, record_id)
+    if item.status in {"Aprobado", "Validado", "Anulado"}:
+        raise HTTPException(409, "Este registro aprobado o anulado no puede sobrescribirse. Creá una rectificación desde su detalle.")
     if db.scalar(select(FinalSettlement.id).where(FinalSettlement.calculation_record_id == item.id)):
         raise HTTPException(409, "Los cálculos vinculados a egresos solo se sustituyen desde el procedimiento de liquidación final.")
     try:
