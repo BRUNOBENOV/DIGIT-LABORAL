@@ -20,12 +20,18 @@ from .models import CalculationRecord, Employee, IntegrationBatch, Payroll, Payr
 from .salary_data import (SALARY_TYPES, APPROVED, select_salary_versions, calculation_fingerprint, merge_attendance)
 
 
+def salary_export_employee_eligible(employee: Employee, authority: str) -> bool:
+    """REOP/REI: IPS Sí es obligatorio; REI conserva además su filtro de activos."""
+    if not bool(getattr(employee, "ips_contributor", False)):
+        return False
+    if authority == "REI":
+        return str(getattr(employee, "status", "") or "").strip().casefold() == "activo"
+    return authority == "REOP"
+
+
 def rei_salary_employee_eligible(employee: Employee) -> bool:
-    """REI/IPS: sólo legajos actualmente activos y con aportación IPS marcada Sí."""
-    return (
-        str(getattr(employee, "status", "") or "").strip().casefold() == "activo"
-        and bool(getattr(employee, "ips_contributor", False))
-    )
+    """Compatibilidad: REI exige legajo activo con IPS Sí."""
+    return salary_export_employee_eligible(employee, "REI")
 
 
 def _obj(text: str | None) -> dict:
@@ -55,7 +61,8 @@ def _whole(value, label: str, errors: list[str], *, required=True) -> int:
         return 0
 
 
-def salary_source_summary(db: Session, company_id: int, period: str, employee_id: int | None = None) -> dict:
+def salary_source_summary(db: Session, company_id: int, period: str, employee_id: int | None = None,
+                          *, authority: str = "REOP") -> dict:
     """Conteo informativo para distinguir liquidaciones individuales de nóminas."""
     payroll = db.scalar(select(Payroll).where(Payroll.company_id == company_id, Payroll.period == period))
     query = select(CalculationRecord).where(
@@ -66,6 +73,13 @@ def salary_source_summary(db: Session, company_id: int, period: str, employee_id
     if employee_id is not None:
         query = query.where(CalculationRecord.employee_id == employee_id)
     records = list(db.scalars(query.order_by(CalculationRecord.created_at.desc(), CalculationRecord.id.desc())))
+    employee_ids = {item.employee_id for item in records if item.employee_id is not None}
+    workers = {worker.id: worker for worker in db.scalars(select(Employee).where(
+        Employee.company_id == company_id, Employee.id.in_(employee_ids)
+    ))} if employee_ids else {}
+    records = [item for item in records if item.employee_id is None or (
+        item.employee_id in workers and salary_export_employee_eligible(workers[item.employee_id], authority)
+    )]
     latest = select_salary_versions(records)
     newest = {}
     for item in records:
@@ -83,19 +97,26 @@ def salary_source_summary(db: Session, company_id: int, period: str, employee_id
     }
 
 
-def choose_salary_source(db: Session, company_id: int, period: str, requested: str, employee_id: int | None = None) -> str:
+def choose_salary_source(db: Session, company_id: int, period: str, requested: str, employee_id: int | None = None,
+                         *, authority: str = "REOP") -> str:
     if requested not in {"auto", "payroll", "approved"}:
         raise ValueError("Seleccioná un origen de salarios válido.")
     if requested != "auto":
         return requested
-    summary = salary_source_summary(db, company_id, period, employee_id=employee_id)
+    summary = salary_source_summary(db, company_id, period, employee_id=employee_id, authority=authority)
     if employee_id is not None and summary["approved"]:
         return "approved"
     if summary["closed_payroll"]:
         if summary["approved"]:
-            payroll_employees = set(db.scalars(select(PayrollLine.employee_id).join(
+            payroll_ids = set(db.scalars(select(PayrollLine.employee_id).join(
                 Payroll, Payroll.id == PayrollLine.payroll_id
-            ).where(Payroll.company_id == company_id, Payroll.period == period)))
+            ).join(Employee, Employee.id == PayrollLine.employee_id).where(
+                Payroll.company_id == company_id, Payroll.period == period,
+                Employee.ips_contributor.is_(True),
+            )))
+            # Un trabajador con IPS No no debe forzar la elección de nómina
+            # cuando los trabajadores declarables ya tienen cálculos aprobados.
+            payroll_employees = payroll_ids
             if payroll_employees and payroll_employees.issubset(set(summary["approved_employee_ids"])):
                 return "approved"
         return "payroll"
@@ -255,7 +276,7 @@ def approved_employee_choices(db: Session, company_id: int, period: str, *, auth
             Employee.company_id == company_id, Employee.id.in_(eligible),
         ).order_by(Employee.full_name, Employee.id)
     ))
-    return [worker for worker in choices if authority != "REI" or rei_salary_employee_eligible(worker)]
+    return [worker for worker in choices if salary_export_employee_eligible(worker, authority)]
 
 
 def salary_excluded_records(db: Session, company_id: int, period: str, *, authority: str = "REOP") -> list[dict]:
@@ -273,14 +294,15 @@ def salary_excluded_records(db: Session, company_id: int, period: str, *, author
         {"employee_id": row.employee_id, "calculation_id": row.id, "status": row.status}
         for row in latest.values() if row.status not in APPROVED
     ]
-    if authority == "REI" and excluded:
+    if excluded:
         candidates = {e.id: e for e in db.scalars(select(Employee).where(
             Employee.company_id == company_id,
             Employee.id.in_([row["employee_id"] for row in excluded]),
         ))}
         excluded = [
             row for row in excluded
-            if row["employee_id"] in candidates and rei_salary_employee_eligible(candidates[row["employee_id"]])
+            if row["employee_id"] in candidates
+            and salary_export_employee_eligible(candidates[row["employee_id"]], authority)
         ]
     return excluded
 
@@ -331,9 +353,8 @@ def approved_salary_records(db: Session, company, period: str, *, authority: str
     diagnostics: list[dict] = []
     for id_, item in sorted(selected.items(), key=lambda pair: pair[0]):
         employee = employee_map.get(id_)
-        # Excluir antes de validar datos o importes: un trabajador ajeno a REI
-        # no debe bloquear el archivo de otros aportantes elegibles.
-        if authority == "REI" and employee is not None and not rei_salary_employee_eligible(employee):
+        # Excluir antes de validar importes: IPS No nunca figura en REOP ni REI.
+        if employee is not None and not salary_export_employee_eligible(employee, authority):
             continue
         if item.status not in APPROVED:
             if employee_id is not None:
