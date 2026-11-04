@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Importar preavisos históricos LSPRE | DIGIT-LABORAL{% endblock %}
+{% block title %}Importar preavisos | DIGIT-LABORAL{% endblock %}
 {% block page_name %}Importación de preavisos históricos{% endblock %}
 {% block content %}
 <style>
@@ -33,7 +33,7 @@
   <h1>Importación histórica de preavisos</h1>
   <p>Vinculá los registros originales con legajos existentes sin cambiar cálculos, preavisos, egresos, liquidaciones ni pagos.</p>
 </header>
-<a class="btn ghost" href="/app/legacy-notices">← Consultar histórico LSPRE</a>
+<a class="btn ghost" href="/app/legacy-notices">← Consultar historial de preavisos</a>
 {% if request.query_params.get('error') %}<div class="lspre-warning" role="alert">{{ request.query_params.get('error') }}</div>{% endif %}
 <section class="lspre-section">
   <h2>1 · Archivo original</h2>
@@ -41,7 +41,7 @@
   <form method="post" action="/app/import/legacy-notices/preview" enctype="multipart/form-data">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <div class="lspre-file">
-      <input type="file" accept=".xlsx" name="file" required aria-label="Base histórica LSPRE">
+      <input type="file" accept=".xlsx" name="file" required aria-label="Planilla de preavisos">
       <button class="btn primary" type="submit">Analizar coincidencias</button>
     </div>
   </form>
