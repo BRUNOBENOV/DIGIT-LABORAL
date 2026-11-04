@@ -1045,9 +1045,10 @@ def test_dark_module_navigation_styles_are_versioned_and_accessible():
         assert login_page.status_code == 200
         base = client.get("/app")
         assert base.status_code == 200
-        assert "brand-identity.css?v=20261024c" in base.text
+        from app.main import APP_VERSION
+        assert f"brand-identity.css?v={APP_VERSION}" in base.text
 
-        stylesheet = client.get("/static/brand-identity.css?v=20261024c")
+        stylesheet = client.get(f"/static/brand-identity.css?v={APP_VERSION}")
         assert stylesheet.status_code == 200
         css = stylesheet.text
         assert ".modern-mobile-nav.workspace-sidebar" in css
