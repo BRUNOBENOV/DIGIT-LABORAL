@@ -8656,6 +8656,13 @@ def vacations_page(
     }
     history_prev_query = urlencode({**history_filters, "history_page": history["page"] - 1})
     history_next_query = urlencode({**history_filters, "history_page": history["page"] + 1})
+    vacation_source_links = {
+        item: "/app/vacations?" + urlencode({
+            **{key: value for key, value in history_filters.items() if key != "source"},
+            **({"source": item} if item != "all" else {}),
+        })
+        for item in ("all", "current", "imported")
+    }
     history_export_query = urlencode({
         key: value for key, value in {
             "company_id": selected_company_id, "employee_id": selected_employee_id,
@@ -8670,6 +8677,7 @@ def vacations_page(
                   history_next_query=history_next_query, history_export_query=history_export_query,
                   vacation_q=q.strip(), vacation_source=source, vacation_status=status,
                   vacation_sort=sort, vacation_page_size=page_size,
+                  vacation_source_links=vacation_source_links,
                   vacation_current_on_page=sum(r["origin"] == "current" for r in history["rows"]),
                   vacation_imported_on_page=sum(r["origin"] == "imported" for r in history["rows"]))
 
