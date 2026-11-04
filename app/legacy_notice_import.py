@@ -148,7 +148,7 @@ def parse_legacy_notice_workbook(content: bytes, filename: str) -> dict:
             if row["secondary_date_source"] and row["departure_date_source"] and row["secondary_date_source"] != row["departure_date_source"]:
                 warnings.append("FECSA1 distinto de FECSAL; significado por verificar.")
             if row["deleted_source"]:
-                warnings.append("BORRAD=S: registro marcado como borrado en el sistema anterior.")
+                warnings.append("BORRAD=S: registro marcado como borrado en el archivo de respaldo.")
             row["errors"] = errors
             row["warnings"] = warnings
             signature = [
