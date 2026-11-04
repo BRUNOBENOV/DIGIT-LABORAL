@@ -178,3 +178,16 @@
   .app-body .main-content .page-header .header-actions{grid-template-columns:repeat(auto-fit,minmax(min(100%,140px),1fr))}
   .app-body .main-content .table-wrap>table{min-width:580px}
 }
+
+
+/* Acceso rápido por teclado sin alterar la distribución de la pantalla. */
+.app-skip-link{
+  position:fixed;top:-90px;left:14px;z-index:2000;
+  padding:11px 16px;border-radius:9px;border:2px solid #a9c8ff;
+  background:#07285f;color:#fff;text-decoration:none;
+  font:700 14px/1.35 "Aptos","Segoe UI",Arial,sans-serif;
+  box-shadow:0 8px 24px rgba(0,0,0,.2);
+}
+.app-skip-link:focus,.app-skip-link:focus-visible{
+  top:10px;outline:3px solid #f6c85f;outline-offset:2px;color:#fff;
+}
