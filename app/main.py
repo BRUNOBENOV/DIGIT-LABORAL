@@ -9065,6 +9065,7 @@ def save_calculation_operation(
     deduction_period: Annotated[str, Form()] = "",
     payment_method: Annotated[str, Form()] = "",
     subtype: Annotated[str, Form()] = "",
+    pay_treatment: Annotated[str, Form()] = "review",
     reason: Annotated[str, Form()] = "",
     authorized_by: Annotated[str, Form()] = "",
     quantity: Annotated[str, Form()] = "",
@@ -9084,7 +9085,7 @@ def save_calculation_operation(
         "regular_hours": regular_hours, "overtime_hours": overtime_hours,
         "salary_reference": salary_reference, "monthly_hours": monthly_hours, "multiplier": multiplier,
         "amount": amount, "deduction_period": deduction_period, "payment_method": payment_method,
-        "subtype": subtype, "reason": reason, "authorized_by": authorized_by, "quantity": quantity,
+        "subtype": subtype, "pay_treatment": pay_treatment, "reason": reason, "authorized_by": authorized_by, "quantity": quantity,
         "recipient": recipient, "recipient_document": recipient_document,
         "recipient_address": recipient_address, "sender": sender, "body": body, "legal_review": legal_review,
     }
