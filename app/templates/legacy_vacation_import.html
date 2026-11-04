@@ -37,7 +37,7 @@
   {% if request.query_params.get("error") %}<div class="lsvac-warning" role="alert">{{ request.query_params.get("error") }}</div>{% endif %}
   <section class="lsvac-panel">
     <h2>1. Archivo histórico</h2>
-    <p class="lsvac-small">Subí una copia <b>.xlsx</b> de la tabla LSVAC. El sistema vincula empresas por CODEMP y funcionarios por CODTRA, con la referencia de la importación histórica previa. La vista previa no guarda movimientos.</p>
+    <p class="lsvac-small">Subí una planilla Excel <b>.xlsx</b> de vacaciones. DIGIT-LABORAL vincula los datos mediante los códigos de empresa (CODEMP) y funcionario (CODTRA). La vista previa no guarda movimientos.</p>
     <form method="post" action="/app/import/legacy-vacations/preview" enctype="multipart/form-data">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <div class="lsvac-file">
