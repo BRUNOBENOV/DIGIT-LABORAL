@@ -10055,7 +10055,10 @@ def salary_import_page(
             row["employee_name"] = worker.full_name if worker else "Registro no disponible"
     diagnostics = []
     if preview and effective_source == "approved":
-        _source_rows, _source_errors, diagnostics = approved_salary_records(db, company, period, authority=authority, employee_id=employee_id)
+        _source_rows, _source_errors, diagnostics = approved_salary_records(
+            db, company, period, authority=authority, employee_id=employee_id,
+            payment_code=payment_code if authority == "REOP" else "",
+        )
     errors: list[str] = []
     rows: list[list] = []
     if preview:
