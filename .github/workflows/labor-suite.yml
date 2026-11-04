@@ -40,7 +40,16 @@ jobs:
       - name: Compile application and templates
         run: |
           python -m compileall -q app alembic tests/test_labor_suite.py
-          python -c "from jinja2 import Environment, FileSystemLoader; e=Environment(loader=FileSystemLoader('app/templates')); [e.parse(e.loader.get_source(e,n)[0]) for n in e.list_templates()]"
+          python - <<'PY'
+          from jinja2 import Environment, FileSystemLoader
+          env = Environment(loader=FileSystemLoader("app/templates"))
+          for name in env.list_templates():
+              try:
+                  env.parse(env.loader.get_source(env, name)[0])
+              except Exception as exc:
+                  print(f"Fallo de sintaxis en plantilla {name}: {exc}", flush=True)
+                  raise
+          PY
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
