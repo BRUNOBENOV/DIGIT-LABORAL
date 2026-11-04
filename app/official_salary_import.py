@@ -117,7 +117,10 @@ def prepare_import(db: Session, company, period: str, authority: str, *,
     except ValueError as exc:
         raise SalaryImportError([str(exc)]) from exc
     if effective_source == "approved":
-        records, source_errors, _details = approved_salary_records(db, company, period, authority=authority, employee_id=employee_id)
+        records, source_errors, _details = approved_salary_records(
+            db, company, period, authority=authority, employee_id=employee_id,
+            payment_code=payment_code if authority == "REOP" else "",
+        )
     else:
         _payroll, records = _source(db, company, period)
         if employee_id is not None:

@@ -1380,7 +1380,7 @@ def test_salary_export_shows_draft_exclusions_and_requires_partial_consent(web_c
     }
     preview = client.get("/app/compliance/salary-import", params=params)
     assert preview.status_code == 200, preview.text[:500]
-    assert "legajo(s) excluidos" in preview.text
+    assert "sin aprobación" in preview.text
     assert "accept_partial" in preview.text
     assert str(approved.id) in preview.text
 

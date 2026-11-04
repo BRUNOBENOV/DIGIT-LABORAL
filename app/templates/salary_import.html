@@ -78,21 +78,15 @@
             <option value="payroll" {{ 'selected' if source_type == 'payroll' }}>Solo nómina mensual cerrada</option>
             <option value="approved" {{ 'selected' if source_type == 'approved' }}>Cálculos individuales aprobados</option>
           </select>
-          <small>Si existe una nómina cerrada, el modo automático usa cálculos aprobados solo cuando cubren todos sus funcionarios. Para un legajo individual se prioriza su aprobación vigente.</small>
+          <small>Automático selecciona la nómina cerrada o los cálculos aprobados.</small>
         </label>
       </div>
       {% if source_summary %}
-      <p class="import-salary-info">
-        <strong>Nómina del período:</strong> {{ source_summary.payroll_status }}
-        · <strong>Aprobaciones vigentes:</strong> {{ source_summary.approved }}
-        · <strong>Sin aprobación vigente:</strong> {{ source_summary.pending }}
-        · <strong>Borradores en preparación:</strong> {{ source_summary.drafts_in_progress }}
-        · <strong>Origen elegido:</strong> {{ 'Cálculos aprobados' if effective_source == 'approved' else 'Nómina cerrada' }}
-      </p>
+      <p class="import-salary-info"><strong>{{ source_summary.approved }} aprobados</strong> · {{ 'Cálculos aprobados' if effective_source == 'approved' else 'Nómina cerrada' }} · {{ period }}</p>
       {% if effective_source == 'payroll' and source_summary.approved %}<p class="import-salary-info">La vista usa los datos de la nómina cerrada. Para usar la asistencia de los cálculos individuales, elegí Cálculos individuales aprobados en Origen de los salarios.</p>{% endif %}
       {% endif %}
       {% if authority == 'REOP' %}
-      <p class="import-salary-info">REOP: se conserva la estructura de 32 columnas del Excel de referencia. Elegí el medio real utilizado para pagar los salarios y clasificá cualquier ingreso no desglosado.</p>
+      <p class="import-salary-info">Elegí la forma real de pago; se utiliza también cuando falta en un cálculo guardado, sin modificar el original.</p>
       <div class="import-salary-grid">
         <label>Forma de pago (REOP)
           <select name="payment_code" required>
@@ -134,37 +128,28 @@
   {% if request.query_params.get("details_saved") %}<div class="import-salary-ok">Datos complementarios guardados. Ejecutá la verificación nuevamente antes de descargar.</div>{% endif %}
   {% if selected_company and preview %}
   <section class="import-salary-card">
-    <h2>2. Resultado de validación</h2>
-    <p class="import-salary-info"><strong>{{ selected_company.legal_name }}</strong> · {{ period }} · {{ authority }} · <strong>{{ item_count }}</strong> trabajador(es) · {{ 'Cálculos aprobados' if effective_source == 'approved' else 'Nómina cerrada' }}.</p>
-    <p class="import-salary-info"><strong>{{ item_count }}</strong> incluidos en la vista previa · <strong>{{ excluded_salary|length }}</strong> excluidos por estado · <strong>{{ evaluated_count }}</strong> legajos evaluados. Los errores de validación se resuelven antes de descargar.</p>
+    <h2>2. {{ item_count }} trabajador(es) para {{ authority }}{% if errors %} · {{ errors|length }} dato(s) pendiente(s){% else %} · Listo para descargar{% endif %}</h2>
+    <p class="import-salary-info">{{ selected_company.legal_name }} · {{ period }}{% if excluded_salary %} · {{ excluded_salary|length }} sin aprobación no se incluirán{% endif %}</p>
     {% if preview_rows %}
-    <div style="overflow-x:auto;margin:10px 0 15px;border:1px solid #dce5f1;border-radius:9px">
+    <details style="margin:10px 0 15px"><summary style="cursor:pointer;font-size:.8rem;font-weight:750;color:#17335e">Ver datos del Excel ({{ preview_rows|length }})</summary><div style="overflow-x:auto;margin:10px 0;border:1px solid #dce5f1;border-radius:9px">
       <table style="width:100%;border-collapse:collapse;font-size:.75rem">
         <thead><tr>{% for heading in preview_headers %}<th style="padding:9px;text-align:left;background:#edf3fb;color:#17335e;white-space:nowrap">{{ heading }}</th>{% endfor %}</tr></thead>
         <tbody>{% for row in preview_rows %}<tr>{% for value in row %}<td style="padding:8px 9px;border-top:1px solid #e5ebf4;color:#334765;white-space:nowrap">{{ value }}</td>{% endfor %}</tr>{% endfor %}</tbody>
       </table>
-    </div>
-    <p class="import-salary-info">Se muestran hasta 20 registros para inspección visual. Revisá los nombres, números y montos antes de descargar.</p>
+    </div></details>
     {% endif %}
     {% if excluded_salary %}
-    <div class="import-salary-errors" role="status">
-      <h3>{{ excluded_salary|length }} legajo(s) excluidos por estado — no se incorporarán al archivo</h3>
-      <p class="import-salary-info">Se usa una aprobación vigente por trabajador. Preparar otro borrador no elimina esa aprobación. Una anulación posterior bloquea las aprobaciones anteriores. Revisá estos registros antes de emitir una declaración completa.</p>
+    <details style="margin:12px 0;font-size:.8rem;color:#425776">
+      <summary style="cursor:pointer">{{ excluded_salary|length }} sin aprobación · ver excluidos (no bloquean esta exportación parcial)</summary>
       <ul>{% for excluded in excluded_salary[:30] %}
         <li>{% if excluded.employee_code is not none %}Legajo {{ excluded.employee_code }}{% else %}Funcionario ID {{ excluded.employee_id }}{% endif %} · {{ excluded.employee_name }} · cálculo #{{ excluded.calculation_id }}: {{ excluded.status }}</li>
       {% endfor %}</ul>
-    </div>
+    </details>
     {% endif %}
     {% if effective_source == 'approved' and diagnostics %}
-    <details class="import-salary-card" style="background:#f7faff;margin:12px 0" {% if errors %}open{% endif %}>
-      <summary style="font-size:.88rem;font-weight:800;color:#17335e;cursor:pointer">{{ "Completar jornadas para REI" if authority == "REI" else "Completar jornadas y horas para REOP" }} ({{ diagnostics|length }})</summary>
-      <p class="import-salary-info">
-        Los cálculos antiguos guardaban el importe salarial, pero no siempre la asistencia ni el medio de pago.
-        DIGIT reutiliza automáticamente los datos que estén guardados en el cálculo seleccionado o en su anexo declarativo.
-        Registrá únicamente las jornadas y horas reales que correspondan al organismo y estén respaldadas
-        por el control de asistencia; los días pagados y el divisor 240 no equivalen a horas efectivamente trabajadas.
-        Podés guardar los datos incluso cuando existan otras observaciones pendientes.
-      </p>
+    <details class="import-salary-card" style="background:#f7faff;margin:12px 0">
+      <summary style="font-size:.88rem;font-weight:800;color:#17335e;cursor:pointer">Editar datos de asistencia ({{ diagnostics|length }})</summary>
+      <p class="import-salary-info">Solo completá datos reales faltantes. No se alteran los salarios aprobados.</p>
       {% for calculation in diagnostics %}
       <details style="margin:10px 0;padding:12px;border:1px solid #d9e4f2;border-radius:9px;background:#fff">
         <summary style="cursor:pointer;color:#203b64;font-size:.8rem;font-weight:800">
@@ -217,11 +202,11 @@
     {% endif %}
     {% if errors %}
     <div class="import-salary-errors">
-      <h3>{{ errors|length }} observaciones: no se generará el archivo hasta corregirlas</h3>
+      <h3>{{ errors|length }} dato(s) que impiden descargar</h3>
       <ul>{% for error in errors[:100] %}<li>{{ error }}</li>{% endfor %}</ul>
       {% if errors|length > 100 %}<p>Se muestran las primeras 100 observaciones.</p>{% endif %}
     </div>
-    <p class="import-salary-info">Revisá cada observación. Las jornadas se completan arriba sin alterar importes; si hay diferencias salariales, corregí mediante un nuevo cálculo o el procedimiento de nómina correspondiente.</p>
+    <p class="import-salary-info">Corregí solo estos datos y pulsá «Verificar archivo».</p>
     {% else %}
     <div class="import-salary-ok">La validación técnica local finalizó sin observaciones. El archivo todavía requiere revisión humana y aceptación del organismo.</div>
     <form method="post" action="/app/compliance/salary-import/export" class="import-salary-form" data-download-form data-download-format="{{ 'xlsx' if authority == 'REOP' else 'txt' }}">
@@ -238,11 +223,11 @@
       {% if excluded_salary %}
       <label class="import-salary-confirm">
         <input type="checkbox" name="accept_partial" value="si" required>
-        <span>Confirmo que esta exportación es <strong>parcial</strong>: se omiten {{ excluded_salary|length }} legajo(s) sin cálculo aprobado. No la presentaré como nómina completa.</span>
+        <span>Exportar solo {{ item_count }} aprobados; omitir {{ excluded_salary|length }} sin aprobación (archivo parcial).</span>
       </label>
       {% endif %}
       <label class="import-salary-confirm"><input type="checkbox" name="confirmed" value="si" required>
-        <span>Revisé los datos de los trabajadores, los conceptos y el formato de importación. Comprendo que esta descarga no equivale a una presentación oficial.{% if authority == 'REI' %} Confirmé además los nombres, la categoría y la estructura TXT vigente en mi portal REI.{% endif %}</span>
+        <span>Confirmo que los datos{% if authority == 'REOP' %} y la forma de pago seleccionada{% endif %} son reales y revisados. Descargar no equivale a presentar ante el organismo.</span>
       </label>
       <button class="btn primary" type="submit">Descargar {{ 'Excel REOP (.xlsx)' if authority == 'REOP' else 'TXT REI (.txt)' }}</button>
       <p class="import-salary-download-status" data-download-status role="status" aria-live="polite" hidden></p>
