@@ -13,10 +13,10 @@ SALARY = field("salary", "Salario mensual · Gs.", required=True, min="1")
 DAYS = field("days_paid", "Días remunerados", value="30", max="31",
              help="Mensualizados: hasta 30 días con divisor 30. Jornaleros: jornadas efectivamente pagadas con jornal calculado sobre divisor 26; revisar excepciones.", required=True)
 PAY_BASIS = field("pay_basis", "Modalidad de remuneración", "select", "monthly",
-                  options=[("monthly", "Mensualizado · divisor 30"), ("daily", "Jornalero · divisor 26")],
-                  help="Elegí la modalidad real del contrato. El divisor 26 no se aplica a trabajadores mensualizados.")
-DAILY_RATE = field("daily_rate", "Jornal pactado por día · Gs. (opcional)",
-                   help="Solo para jornaleros. Si queda vacío, se propone salario mensual de referencia / 26.")
+                  options=[("monthly", "Mensualizado · divisor 30"), ("daily", "Jornalero · pago por día")],
+                  help="Elegí la modalidad real del contrato. El divisor 26 sirve para calcular el jornal de referencia, no para determinar días trabajados.")
+DAILY_RATE = field("daily_rate", "Jornal pactado por día · Gs.",
+                   help="Para jornalero, ingresá el jornal real del contrato. No hace falta un sueldo mensual.")
 REMUNERATIVE_EXTRA_FIELDS = [
     field("commissions", "Comisiones · Gs."),
     field("bonuses", "Bonificaciones remunerativas · Gs."),

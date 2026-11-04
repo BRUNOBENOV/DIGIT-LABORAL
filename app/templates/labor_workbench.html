@@ -101,18 +101,36 @@
   suggestPeriodDates();
   const basis = form.elements.namedItem("pay_basis");
   const paidDays = form.elements.namedItem("days_paid");
+  const salaryInput = form.elements.namedItem("salary");
+  const jornalInput = form.elements.namedItem("daily_rate");
+  const monthlySalaryField = form.querySelector('[data-field="salary"]');
   const dailyRateField = form.querySelector('[data-field="daily_rate"]');
   function showApplicableWageFields() {
-    if (dailyRateField) dailyRateField.style.display = basis?.value === "daily" ? "" : "none";
+    const jornalero = basis?.value === "daily";
+    if (dailyRateField) dailyRateField.style.display = jornalero ? "" : "none";
+    if (monthlySalaryField) monthlySalaryField.style.display = jornalero ? "none" : "";
+    // Jornalero = jornal pactado; la referencia mensual es opcional y no
+    // puede impedir guardar cuando se conoce el jornal real.
+    if (salaryInput) salaryInput.required = !jornalero;
+    if (jornalInput) {
+      if (jornalero && !jornalInput.value && Number(salaryInput?.value || 0) > 0) {
+        jornalInput.value = String(Math.round(Number(salaryInput.value) / 26));
+      }
+      jornalInput.required = jornalero;
+    }
   }
-  basis?.addEventListener("change", showApplicableWageFields);
-  showApplicableWageFields();
   basis?.addEventListener("change", () => {
-    if (!paidDays) return;
-    if (basis.value === "daily" && paidDays.value === "30") paidDays.value = "26";
-    if (basis.value === "monthly" && paidDays.value === "26") paidDays.value = "30";
-    paidDays.dispatchEvent(new Event("input", {bubbles:true}));
+    if (paidDays) {
+      if (basis.value === "daily" && paidDays.value === "30") {
+        paidDays.value = form.elements.namedItem("days_worked")?.value || "";
+      }
+      if (basis.value === "monthly" && !paidDays.value) paidDays.value = "30";
+      paidDays.dispatchEvent(new Event("input", {bubbles:true}));
+    }
+    showApplicableWageFields();
+    jornalInput?.dispatchEvent(new Event("input", {bubbles:true}));
   });
+  showApplicableWageFields();
   const read = name => {
     const field = form.elements.namedItem(name);
     if (!field) return 0;

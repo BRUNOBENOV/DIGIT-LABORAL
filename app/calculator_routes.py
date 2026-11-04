@@ -349,7 +349,9 @@ def professional_page(request: Request, tipo: str = "settlement", company_id: Op
             frequency = (employee.payment_frequency or "").strip().lower()
             is_daily = any(word in frequency for word in ("jornal", "diario", "diaria"))
             values["pay_basis"] = "daily" if is_daily else "monthly"
-            values["days_paid"] = "26" if is_daily else "30"
+            # Un jornalero NO cobra 26 días por defecto: debe declararse
+            # la cantidad real de jornadas remuneradas del período.
+            values["days_paid"] = "" if is_daily else "30"
         if tipo == "salary" and user.role in {"administrador", "contador", "auxiliar"}:
             try:
                 attendance = attendance_proposal(db, employee.company_id, employee.id, values["month"])
@@ -358,6 +360,8 @@ def professional_page(request: Request, tipo: str = "settlement", company_id: Op
             if calculation_id and attendance["calculation_id"] != calculation_id:
                 raise HTTPException(409, "Ese cálculo no es la aprobación vigente. Cargá el funcionario y el mes para usar la versión actual.")
             apply_attendance_proposal(values, attendance)
+            if is_daily and str(values.get("days_worked") or "").strip():
+                values["days_paid"] = str(values["days_worked"])
         if tipo == "settlement":
             try:
                 annual = propose_annual_remuneration(db, employee, effective_on)
