@@ -1,0 +1,48 @@
+/* Trazabilidad de cálculos · presentación compacta y responsive. */
+.dl .dl-trace{margin:24px 0 30px;border:1px solid #d8e3f2;border-radius:14px;background:#fff;box-shadow:0 8px 22px rgba(15,39,78,.045);overflow:hidden;color:#122b52}
+.dl .dl-trace-summary{display:flex;gap:12px;align-items:center;padding:17px 20px;cursor:pointer;list-style:none;background:linear-gradient(110deg,#f8faff,#edf3ff);border-bottom:1px solid transparent;min-height:72px}
+.dl .dl-trace-summary::-webkit-details-marker{display:none}
+.dl .dl-trace-summary:focus-visible{outline:3px solid #6da1ff;outline-offset:-3px}
+.dl .dl-trace[open]>.dl-trace-summary{border-bottom-color:#dce5f2}
+.dl .dl-trace-icon{width:37px;height:37px;border-radius:11px;display:grid;place-items:center;background:#dfeaff;color:#153e8c;font-size:23px;flex:none}
+.dl .dl-trace-title{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0}
+.dl .dl-trace-title strong{font-size:14px;letter-spacing:-.01em}
+.dl .dl-trace-title small{font-size:11px;color:#61738b;font-weight:450}
+.dl .dl-trace-count{font:750 11px/1.3 "Aptos","Segoe UI",Arial,sans-serif;font-variant-numeric:tabular-nums;padding:8px 11px;border:1px solid #cddbf0;background:#fff;color:#234b8c;border-radius:20px;white-space:nowrap}
+.dl .dl-trace-body{padding:14px 18px 8px}
+.dl .dl-trace-intro{font-size:11px;line-height:1.6;color:#5b6c80;padding:2px 2px 13px}
+.dl .dl-trace .dl-table-wrap{border:1px solid #e1e8f0;border-radius:10px;overflow-x:auto}
+.dl .dl-trace-table{min-width:720px;white-space:normal;font-variant-numeric:tabular-nums}
+.dl .dl-trace-table thead th{background:#f4f7fc;color:#526782;text-transform:uppercase;letter-spacing:.075em;font-size:9px;font-weight:800;padding:13px 10px;border-bottom:1px solid #e0e8f2}
+.dl .dl-trace-table tbody tr:hover{background:#f8fbff}
+.dl .dl-trace-table tbody td{padding:14px 10px;border-bottom:1px solid #edf1f6;font-size:11px;vertical-align:middle}
+.dl .dl-trace-table tbody tr:last-child td{border-bottom:0}
+.dl .dl-trace-person strong{font-size:11px;font-weight:750;color:#142e52;display:block}
+.dl .dl-trace-person small,.dl .dl-trace-detail{display:block;margin-top:4px;color:#64758a;font-size:10px;max-width:285px;line-height:1.5}
+.dl .dl-trace-date{white-space:nowrap;color:#57677b}
+.dl .dl-trace-amount{white-space:nowrap;font-weight:800;color:#142a55}
+.dl .dl-trace-status{display:inline-block;white-space:nowrap;font-size:10px;font-weight:750;padding:5px 9px;border-radius:20px;border:1px solid #e1e6ee;background:#f2f5fa;color:#475c78}
+.dl .dl-trace-status.is-approved{border-color:#baded0;background:#eaf7f1;color:#20614c}
+.dl .dl-trace-status.is-void{border-color:#ecc9c9;background:#fff1f0;color:#903f42}
+.dl .dl-trace-status.is-draft{border-color:#ead8b1;background:#fff8e9;color:#825f20}
+.dl .dl-trace-actions{display:flex;gap:6px;flex-wrap:wrap;white-space:nowrap}
+.dl .dl-trace-action{display:inline-flex;align-items:center;justify-content:center;min-height:30px;border:1px solid #d5e0f2;border-radius:7px;padding:5px 10px;font-size:10px;font-weight:700;color:#18457f;background:white;text-decoration:none}
+.dl .dl-trace-action:hover,.dl .dl-trace-action:focus-visible{background:#ebf3ff;border-color:#aac1e5}
+.dl .dl-trace-correct{background:#eef4ff;color:#133d80}
+.dl .dl-trace-empty{text-align:center;color:#63758a;padding:30px 10px!important}
+.dl .dl-trace-pages{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:14px 3px 7px;color:#68798e;font-size:11px}
+.dl .dl-trace-pages-controls{display:flex;align-items:center;gap:13px;flex-wrap:wrap}
+.dl .dl-trace-pages-controls a{color:#184b90;font-weight:700;text-decoration:none}
+.dl .dl-trace-pages-controls a:hover{text-decoration:underline}
+.dl .dl-rectify-panel,.dl .dl-rectify-lineage{border:1px solid #cbdcf2;border-radius:12px;background:#f4f8ff;padding:17px;margin:15px 0;color:#16345e;display:grid;gap:10px}
+.dl .dl-rectify-heading{display:flex;flex-direction:column;gap:3px}
+.dl .dl-rectify-heading strong,.dl .dl-rectify-lineage strong{font-size:14px;font-weight:800}
+.dl .dl-rectify-heading span,.dl .dl-rectify-panel small,.dl .dl-rectify-lineage span{font-size:11px;line-height:1.5;color:#5c718c}
+.dl .dl-rectify-panel label{font-size:12px;font-weight:750;margin-top:4px}
+.dl .dl-rectify-panel textarea{width:100%;box-sizing:border-box;min-height:76px;padding:12px;border:1px solid #bfcfe6;border-radius:8px;background:#fff;color:#122b52;font:inherit;font-size:12px;resize:vertical}
+.dl .dl-rectify-panel textarea:focus-visible{outline:3px solid #bed7ff;border-color:#3068c4}
+.dl .dl-rectify-lineage a{color:#174d98;font-weight:800;font-size:11px}
+.dl .dl-rectify-replaced{background:#fff9ee;border-color:#e9d8ac}
+.dl .dl-rectify-button{border-color:#95b6ed!important;background:#eaf2ff!important;color:#153f86!important}
+@media(max-width:650px){.dl .dl-trace-summary{padding:13px;gap:8px}.dl .dl-trace-body{padding:10px}.dl .dl-trace-count{font-size:10px;padding:6px 7px}.dl .dl-trace-title strong{font-size:12px}.dl .dl-trace-title small{font-size:10px}.dl .dl-trace-pages{align-items:flex-start;flex-direction:column}.dl .dl-rectify-panel{padding:13px}}
+@media print{.dl .dl-trace,.dl .dl-rectify-panel,.dl .dl-rectify-lineage{display:none!important}}
