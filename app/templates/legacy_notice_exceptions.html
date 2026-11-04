@@ -27,7 +27,7 @@
   <header class="lspre-exceptions-head">
     <span style="font-size:.7rem;letter-spacing:.12em">LSPRE · CONCILIACIÓN DOCUMENTAL</span>
     <h1>Registros de preaviso pendientes de vinculación</h1>
-    <p>Inventario auditado de movimientos del sistema DOS que no pudieron asociarse inequívocamente a un legajo o presentan datos de origen contradictorios.</p>
+    <p>Registros pendientes de conciliación en DIGIT-LABORAL que no pudieron asociarse inequívocamente a un legajo o presentan datos contradictorios.</p>
   </header>
   <div class="lspre-actions">
     <a class="btn ghost" href="/app/legacy-notices">← Volver a Preavisos históricos</a>
@@ -36,14 +36,14 @@
   <div class="lspre-exceptions-cards">
     <div class="lspre-exceptions-metric"><strong>{{ exception_report.total }}</strong><small>Excepciones registradas</small></div>
     <div class="lspre-exceptions-metric"><strong>{{ exception_report.pending }}</strong><small>Pendientes de identificar o corregir</small></div>
-    <div class="lspre-exceptions-metric"><strong>{{ exception_report.categories.get('trabajador_no_migrado',0) }}</strong><small>Trabajador en base DOS, no migrado</small></div>
+    <div class="lspre-exceptions-metric"><strong>{{ exception_report.categories.get('trabajador_no_migrado',0) }}</strong><small>Trabajador pendiente de vinculación</small></div>
     <div class="lspre-exceptions-metric"><strong>{{ exception_report.categories.get('trabajador_no_identificado',0) + exception_report.categories.get('conflicto_fuente',0) }}</strong><small>Sin identidad o con conflicto de origen</small></div>
   </div>
-  <p class="lspre-note"><b>Importante:</b> estas filas están conservadas en auditoría con su código de empresa, legajo DOS, fechas y huellas de archivo. No generan funcionarios activos, avisos legales, pagos ni indemnizaciones. Para resolverlas se requiere una identidad documentada, o aclarar cuál versión del registro contradictorio corresponde.</p>
+  <p class="lspre-note"><b>Importante:</b> estas filas están conservadas en auditoría con su código de empresa, legajo de referencia, fechas y huellas de archivo. No generan funcionarios activos, avisos legales, pagos ni indemnizaciones. Para resolverlas se requiere una identidad documentada, o aclarar cuál versión del registro contradictorio corresponde.</p>
   <section class="panel" style="padding:17px">
     <h2 style="font-size:1.06rem;margin:0 0 12px">Detalle de excepciones</h2>
     <div class="lspre-table-wrap"><table>
-      <thead><tr><th>Fila DOS</th><th>CODEMP</th><th>CODTRA</th><th>FECPRE</th><th>FECSAL</th><th>DIAPRE</th><th>Estado</th><th>Motivo y fuente</th></tr></thead>
+      <thead><tr><th>Fila de origen</th><th>CODEMP</th><th>CODTRA</th><th>FECPRE</th><th>FECSAL</th><th>DIAPRE</th><th>Estado</th><th>Motivo y fuente</th></tr></thead>
       <tbody>
         {% for row in exception_report.rows %}
         {% set r=row.source %}
@@ -62,7 +62,7 @@
           <td class="small"><b>{{ row.category_label }}</b>
             <div style="margin-top:5px">{{ r.reason }}</div>
             {% if r.source_worker_row %}
-              <div class="mini">Trabajador encontrado en fila {{ r.source_worker_row }} de la base DOS; no migrado al legajo actual.</div>
+              <div class="mini">Trabajador encontrado en fila {{ r.source_worker_row }} del archivo; sin vínculo al legajo actual.</div>
             {% endif %}
             <div class="mini">Auditoría #{{ row.log_id }} · SHA-256 {{ r.source_sha256[:12] }}…</div>
           </td>
