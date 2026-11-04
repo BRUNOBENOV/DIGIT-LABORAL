@@ -642,6 +642,10 @@ def copy_saved_calculation(request: Request, record_id: int, user: User = Depend
                            db: Session = Depends(core.get_db)):
     item, _ = saved_result(db, user, record_id)
     values = json.loads(item.input_json)
+    # «Usar como base» crea un cálculo independiente; no lo marca como
+    # rectificación ni reutiliza por accidente un motivo anterior.
+    values.pop("rectifies_record_id", None)
+    values.pop("rectification_reason", None)
     if values.get("kind") == "salary":
         # Copying a historical snapshot is explicit; it is not a live source link.
         values.update(attendance_source_id="", attendance_source_sha256="", attendance_override="on")
