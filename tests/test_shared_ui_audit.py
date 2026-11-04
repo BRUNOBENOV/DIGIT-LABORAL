@@ -61,3 +61,20 @@ def test_post_forms_in_critical_modules_contain_csrf_fields():
         )
         for form in forms:
             assert "csrf_token" in form, f"Formulario POST sin CSRF en {filename}"
+
+
+def test_all_html_templates_compile_with_registered_jinja_filters():
+    """Detectar errores de sintaxis incluso en pantallas no abiertas por la suite."""
+    from app import main as core
+    names = core.templates.env.list_templates(extensions=["html"])
+    assert len(names) >= 70
+    for name in names:
+        core.templates.env.get_template(name)
+
+
+def test_shared_assets_reference_files_that_exist_in_static_folder():
+    html = TEMPLATE.read_text(encoding="utf-8")
+    references = re.findall(r"url_for\('static', path='([^']+)'\)", html)
+    assert len(references) >= 40
+    for path in references:
+        assert (STATIC / path).is_file(), f"Recurso estático inexistente: {path}"
