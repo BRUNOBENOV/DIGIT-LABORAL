@@ -10,7 +10,7 @@ from datetime import date, datetime
 from math import ceil
 from typing import Any
 
-from sqlalchemy import String, cast, func, literal, select, union_all
+from sqlalchemy import String, cast, func, literal, or_, select, union_all
 from sqlalchemy.orm import Session, selectinload
 
 from .legacy_notice_import import EVENT_TYPE as NOTICE_EVENT_TYPE, legacy_notice_data
@@ -28,7 +28,7 @@ def _normalized_date(column):
 
 def _unified_page(
     db: Session, live_query, archived_query, live_model, archived_kind: str,
-    *, page: int, page_size: int,
+    *, page: int, page_size: int, sort_order: str = "recent",
 ) -> dict[str, Any]:
     if not 1 <= page_size <= MAX_PAGE_SIZE:
         raise ValueError("Tamaño de página fuera del rango permitido.")
@@ -38,9 +38,14 @@ def _unified_page(
     total = int(db.scalar(select(func.count()).select_from(union)) or 0)
     pages = max(1, ceil(total / page_size))
     page = max(1, min(int(page), pages))
+    order = (
+        (union.c.record_date.asc(), union.c.origin.asc(), union.c.record_id.asc())
+        if sort_order == "oldest"
+        else (union.c.record_date.desc(), union.c.origin, union.c.record_id.desc())
+    )
     keys = db.execute(
         select(union.c.origin, union.c.record_id)
-        .order_by(union.c.record_date.desc(), union.c.origin, union.c.record_id.desc())
+        .order_by(*order)
         .offset((page - 1) * page_size).limit(page_size)
     ).all()
 
@@ -118,7 +123,7 @@ def _live_vacation(record: Vacation) -> dict:
         used_days=record.used_days,
         balance=record.entitled_days - record.used_days,
         start_date=record.start_date, end_date=record.end_date,
-        url=None, record=record, can_use_document=False,
+        url=f"/app/vacations/{record.id}", record=record, can_use_document=False,
     )
 
 
@@ -193,19 +198,63 @@ def vacation_history_page(
     db: Session, company_ids: list[int] | set[int],
     *, company_id: int | None = None, employee_id: int | None = None,
     page: int = 1, page_size: int = DEFAULT_PAGE_SIZE,
+    q: str = "", source: str = "all", status: str = "all",
+    sort_order: str = "recent",
 ) -> dict[str, Any]:
+    """Filtros sobre TODOS los movimientos antes de paginar, sin traer miles de filas al navegador.
+
+    Importados siguen siendo evidencia histórica: no se les inventan estados,
+    días utilizados ni saldos operativos.
+    """
+    if source not in {"all", "current", "imported"}:
+        raise ValueError("Origen de vacaciones no válido.")
+    if status not in {
+        "all", "Pendiente", "Aprobada", "Completada", "Anulada",
+        "Rechazada", "Cancelada", "Sin conciliar",
+    }:
+        raise ValueError("Estado de vacaciones no válido.")
+    if sort_order not in {"recent", "oldest"}:
+        raise ValueError("Orden de vacaciones no válido.")
     ids = tuple(company_ids)
     live = select(Vacation).join(Employee).where(Employee.company_id.in_(ids)) \
         if ids else select(Vacation).where(False)
     archive = select(EmployeeEvent).join(Employee).where(
         Employee.company_id.in_(ids), EmployeeEvent.event_type == VACATION_EVENT_TYPE
     ) if ids else select(EmployeeEvent).where(False)
+
     if company_id is not None:
         live = live.where(Employee.company_id == company_id)
         archive = archive.where(Employee.company_id == company_id)
     if employee_id is not None:
         live = live.where(Vacation.employee_id == employee_id)
         archive = archive.where(EmployeeEvent.employee_id == employee_id)
+
+    term = q.strip().lower()
+    if term:
+        # Buscar por nombre, CI, legajo y año/período histórico en toda la base,
+        # no únicamente entre los 25 movimientos cargados en pantalla.
+        person = or_(
+            func.lower(Employee.full_name).contains(term, autoescape=True),
+            func.lower(Employee.document_number).contains(term, autoescape=True),
+            cast(Employee.employee_code, String).contains(term, autoescape=True),
+        )
+        live = live.where(or_(
+            person, cast(Vacation.period_year, String).contains(term, autoescape=True)
+        ))
+        archive = archive.where(or_(
+            person, func.lower(EmployeeEvent.detail).contains(term, autoescape=True)
+        ))
+
+    if source == "current":
+        archive = archive.where(False)
+    elif source == "imported":
+        live = live.where(False)
+    if status == "Sin conciliar":
+        live = live.where(False)
+    elif status != "all":
+        live = live.where(Vacation.status == status)
+        archive = archive.where(False)
+
     live_ids = live.with_only_columns(
         literal("current").label("origin"),
         Vacation.id.label("record_id"),
@@ -216,5 +265,7 @@ def vacation_history_page(
         EmployeeEvent.id.label("record_id"),
         _normalized_date(EmployeeEvent.effective_date).label("record_date"),
     ).order_by(None)
-    return _unified_page(db, live_ids, archive_ids, Vacation, "vacation",
-                         page=page, page_size=page_size)
+    return _unified_page(
+        db, live_ids, archive_ids, Vacation, "vacation",
+        page=page, page_size=page_size, sort_order=sort_order,
+    )
