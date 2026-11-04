@@ -5831,9 +5831,16 @@ def _revalidate_calculation_before_approval(item: CalculationRecord, db: Session
             ):
                 raise HTTPException(409, "Los días remunerados ya no coinciden con los movimientos aprobados.")
             if saved_inputs.get("novelties_attendance_confirmed") == "on":
+                try:
+                    unchanged_hours = (
+                        Decimal(proposal["observed_ordinary_hours"])
+                        == Decimal(str(saved_inputs.get("hours_worked") or "0"))
+                    )
+                except (ValueError, ArithmeticError):
+                    unchanged_hours = False
                 if (not proposal["daily_attendance"]
                     or str(proposal["observed_worked_days"]) != str(saved_inputs.get("days_worked"))
-                    or Decimal(proposal["observed_ordinary_hours"]) != Decimal(str(saved_inputs.get("hours_worked") or "0"))):
+                    or not unchanged_hours):
                     raise HTTPException(409, "Los días u horas trabajados cambiaron antes de aprobar el cálculo.")
 
     legacy_general_sources = {"Cálculo automático", "Calculadora", "Calculadora v2.4"}
