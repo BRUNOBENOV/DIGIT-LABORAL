@@ -346,6 +346,8 @@ def test_professional_no_ips_salary_exports_zero_base_without_inventing_an_ips_c
     item.amount = result["net"]
     employee.ips_contributor = False
     detail.payment_method = ""
+    detail.days_worked = 27
+    detail.hours_worked = Decimal("216")
     detail.source_sha256 = source.calculation_fingerprint(item)
     db = FakeSession([item], employee, detail)
     rows, errors = exporter.prepare_import(
