@@ -28,6 +28,7 @@
   <link rel="stylesheet" href="{{ url_for('static', path='sort-controls.css') }}?v={{ app_version }}">
   <link rel="stylesheet" href="{{ url_for('static', path='pagination.css') }}?v={{ app_version }}">
   <link rel="stylesheet" href="{{ url_for('static', path='entity-selects.css') }}?v={{ app_version }}">
+  {% if kind == 'salary' and active_path.startswith('/app/liquidaciones') %}<link rel="stylesheet" href="{{ url_for('static', path='salary-novelties.css') }}?v={{ app_version }}-novedades1">{% endif %}
   <link rel="stylesheet" href="{{ url_for('static', path='brand-adjustments-267.css') }}?v={{ app_version }}">
   <link rel="stylesheet" href="{{ url_for('static', path='medical-exams-2618.css') }}?v={{ app_version }}">
   <link rel="stylesheet" href="{{ url_for('static', path='calculation-operations-2619.css') }}?v={{ app_version }}">
