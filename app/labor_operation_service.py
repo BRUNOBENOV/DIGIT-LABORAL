@@ -23,7 +23,7 @@ OPERATION_STATUSES = {
     "discipline": ("Registrado", "Aprobado", "Anulado"),
     "telegram": ("Borrador", "Listo para imprimir", "Enviado", "Anulado"),
 }
-DISCIPLINE_TYPES = ("Amonestación", "Suspensión", "Permiso", "Reposo")
+DISCIPLINE_TYPES = ("Amonestación", "Suspensión", "Permiso", "Reposo", "Ausencia", "Licencia")
 
 
 def _text(value: Any, field: str, maximum: int, *, required: bool = False) -> str:
@@ -144,8 +144,8 @@ def validate_labor_operation(payload: dict[str, Any], *, today: date | None = No
     elif kind == "discipline":
         subtype = _text(payload.get("subtype"), "El tipo de novedad", 40, required=True)
         if subtype not in DISCIPLINE_TYPES:
-            raise ValueError("Elegí Amonestación, Suspensión, Permiso o Reposo.")
-        if subtype in {"Suspensión", "Permiso", "Reposo"} and not values["end_date"]:
+            raise ValueError("Elegí un tipo de novedad laboral válido.")
+        if subtype in {"Suspensión", "Permiso", "Reposo", "Ausencia", "Licencia"} and not values["end_date"]:
             raise ValueError("La fecha de fin es obligatoria para suspensiones y permisos.")
         quantity_raw = payload.get("quantity")
         quantity = _decimal(quantity_raw, "La cantidad", maximum=24) if quantity_raw not in (None, "") else None
