@@ -12,6 +12,32 @@ def test_salary_monthly_keeps_divisor_30():
     assert {"label": "Modalidad salarial", "value": "Mensualizado · divisor 30"} in result["facts"]
 
 
+def test_salary_daily_wage_alone_is_sufficient_for_18_paid_days():
+    result = calculate(salary(
+        salary="", pay_basis="daily", daily_rate="117077",
+        days_paid="18", days_worked="18", hours_worked="144",
+    ))
+    assert result["gross"] == 2_107_386
+    assert result["net"] == 1_917_721
+    assert any(row["label"] == "Jornales del período"
+               and row["amount"] == 2_107_386 for row in result["earnings"])
+    assert any(row["label"] == "Base IPS" and "2.107.386" in row["value"]
+               for row in result["facts"])
+
+
+def test_salary_daily_zero_monthly_reference_is_not_a_required_salary():
+    result = calculate(salary(
+        salary="0", pay_basis="daily", daily_rate="117077", days_paid="18",
+    ))
+    assert result["gross"] == 2_107_386
+
+
+def test_monthly_without_salary_still_fails_validation():
+    with pytest.raises(CalculationError) as error:
+        calculate(salary(salary="", pay_basis="monthly", days_paid="30"))
+    assert error.value.field == "salary"
+
+
 def test_salary_daily_reproduces_journal_reference_without_importing_mensual_divisor():
     result = calculate(salary(salary="3044000", days_paid="30", pay_basis="daily"))
     assert result["gross"] == 3_512_308
@@ -227,3 +253,39 @@ def test_direct_save_rejects_invalid_salary_without_creating_record(web_case):
         CalculationRecord.calculation_type == "suite_salary",
         CalculationRecord.employee_id == employee.id,
     )).all() == []
+
+
+
+def test_jornalero_form_submits_with_only_daily_rate_and_valid_dates(web_case):
+    from sqlalchemy import select
+    from app.models import CalculationRecord
+    from tests.test_labor_suite import token, salary as salary_inputs
+    client, db, _box, company, employee, *_ = web_case
+    csrf = token(client, f"/app/liquidaciones?tipo=salary&company_id={company.id}&employee_id={employee.id}")
+    payload = salary_inputs(
+        csrf_token=csrf, company_id=str(company.id), employee_id=str(employee.id),
+        month="2026-10", pay_basis="daily", salary="", daily_rate="117077",
+        days_paid="18", days_worked="18", hours_worked="144",
+        period_start="2026-10-01", period_end="2026-10-31", apply_ips="on",
+    )
+    response = client.post("/app/liquidaciones/guardar", data=payload, follow_redirects=False)
+    assert response.status_code == 303, response.text[:400]
+    db.expire_all()
+    record = db.scalar(select(CalculationRecord).where(
+        CalculationRecord.employee_id == employee.id,
+        CalculationRecord.calculation_type == "suite_salary",
+    ))
+    assert record is not None
+    assert record.amount == 1_917_721
+    assert record.reference_period == "2026-10"
+
+
+def test_jornalero_page_only_requires_daily_wage_and_does_not_assume_26_paid_days():
+    from pathlib import Path
+    html = (Path(__file__).resolve().parents[1] / "app/templates/labor_workbench.html").read_text(encoding="utf-8")
+    assert "salaryInput.required = !jornalero" in html
+    assert "jornalInput.required = jornalero" in html
+    assert 'monthlySalaryField.style.display = jornalero ? "none" : ""' in html
+    routes = (Path(__file__).resolve().parents[1] / "app/calculator_routes.py").read_text(encoding="utf-8")
+    assert 'values["days_paid"] = "" if is_daily else "30"' in routes
+    assert 'values["days_paid"] = "26" if is_daily' not in routes
