@@ -8682,7 +8682,7 @@ def vacations_page(
                   vacation_imported_on_page=sum(r["origin"] == "imported" for r in history["rows"]))
 
 
-@app.get("/app/vacations/{record_id}", response_class=HTMLResponse)
+@app.get("/app/vacations/{record_id:int}", response_class=HTMLResponse)
 def current_vacation_detail_page(
     record_id: int,
     request: Request,
