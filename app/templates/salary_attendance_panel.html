@@ -19,7 +19,32 @@
       <p class="dl-caption" data-attendance-status role="status" aria-live="polite">{% if values.get('attendance_source_id') %}Asistencia del cálculo aprobado #{{ values.attendance_source_id }}.{% else %}Sin asistencia aprobada para este mes; indicá los días reales.{% endif %}</p>
     </details>
   </div>
-  {% if employee and not salary_history %}
+  <section class="dl-salary-novelties" data-salary-novelties aria-labelledby="salary-novelties-heading">
+    <input type="hidden" name="novelties_applied" value="{{ values.get('novelties_applied','') }}">
+    <input type="hidden" name="novelties_attendance_confirmed" value="{{ values.get('novelties_attendance_confirmed','') }}">
+    <input type="hidden" name="novelties_fingerprint" value="{{ values.get('novelties_fingerprint','') }}">
+    <h3 id="salary-novelties-heading">Conciliación del salario con las novedades</h3>
+    <p class="dl-caption" data-novelties-status role="status" aria-live="polite">Consultando vacaciones, sanciones, permisos, reposos y jornadas registradas.</p>
+    <div class="dl-novelties-metrics">
+      <div><small>Días sin goce identificados</small><strong data-novelties-paid>—</strong></div>
+      <div><small>Jornadas con horas registradas</small><strong data-novelties-work>—</strong></div>
+      <div><small>Horas ordinarias registradas</small><strong data-novelties-hours>—</strong></div>
+    </div>
+    <ul data-novelties-events aria-label="Movimientos del mes"></ul>
+    <ul data-novelties-warnings aria-label="Pendientes de revisión"></ul>
+    <div class="dl-novelties-actions">
+      <button type="button" class="dl-button dl-outline" data-apply-paid-days disabled>Aplicar días remunerados revisados</button>
+    </div>
+    <label class="dl-novelties-complete"><input type="checkbox" data-attendance-complete>
+      Confirmo que los registros diarios aprobados cubren toda la asistencia del mes y que revisé descansos, feriados y ausencias.
+    </label>
+    <div class="dl-novelties-actions">
+      <button type="button" class="dl-button dl-outline" data-apply-attendance disabled>Usar jornadas y horas registradas</button>
+      <a href="/app/calculation-operations?tipo=discipline&amp;company_id={{ company_id }}&amp;employee_id={{ employee_id }}" class="dl-button dl-outline">Revisar permisos y sanciones</a>
+    </div>
+    <p class="dl-caption">No se descuentan automáticamente vacaciones remuneradas ni reposos sin tratamiento confirmado. Los días pagados no equivalen siempre a los efectivamente trabajados.</p>
+  </section>
+  {% if employee and not salary_history %>
   <details class="dl-inline-editor" {% if values.get('salary_base_verified') == 'on' %}open{% endif %}>
     <summary>Verificar salario sin historial</summary>
     <p class="dl-caption">El salario de la ficha no tiene vigencia histórica registrada. Confirmá la base de este mes solo si tenés respaldo.</p>
