@@ -5,31 +5,31 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#05256D">
   <title>{% block title %}Digit Laboral{% endblock %}</title>
-  <link rel="icon" type="image/svg+xml" href="/static/branding/digit-laboral-favicon.svg?v=20261023a">
-  <link rel="stylesheet" href="{{ url_for('static', path='app.css') }}">
-  <link rel="stylesheet" href="{{ url_for('static', path='modern.css') }}">
-  <link rel="stylesheet" href="{{ url_for('static', path='v17.css') }}">
-  <link rel="stylesheet" href="{{ url_for('static', path='v20.css') }}">
-  <link rel="stylesheet" href="{{ url_for('static', path='v22-dashboard.css') }}">
-  <link rel="stylesheet" href="{{ url_for('static', path='v23.css') }}?v=20261022c">
-  <link rel="stylesheet" href="{{ url_for('static', path='v24.css') }}">
-  <link rel="stylesheet" href="{{ url_for('static', path='notifications.css') }}?v=2">
-  <link rel="stylesheet" href="{{ url_for('static', path='labor-suite.css') }}?v=20260929b">
+  <link rel="icon" type="image/svg+xml" href="/static/branding/digit-laboral-favicon.svg?v={{ app_version }}">
+  <link rel="stylesheet" href="{{ url_for('static', path='app.css') }}?v={{ app_version }}">
+  <link rel="stylesheet" href="{{ url_for('static', path='modern.css') }}?v={{ app_version }}">
+  <link rel="stylesheet" href="{{ url_for('static', path='v17.css') }}?v={{ app_version }}">
+  <link rel="stylesheet" href="{{ url_for('static', path='v20.css') }}?v={{ app_version }}">
+  <link rel="stylesheet" href="{{ url_for('static', path='v22-dashboard.css') }}?v={{ app_version }}">
+  <link rel="stylesheet" href="{{ url_for('static', path='v23.css') }}?v={{ app_version }}">
+  <link rel="stylesheet" href="{{ url_for('static', path='v24.css') }}?v={{ app_version }}">
+  <link rel="stylesheet" href="{{ url_for('static', path='notifications.css') }}?v={{ app_version }}">
+  <link rel="stylesheet" href="{{ url_for('static', path='labor-suite.css') }}?v={{ app_version }}">
   <link rel="stylesheet" href="{{ url_for('static', path='traceability-2691.css') }}?v={{ app_version }}">
-  <link rel="stylesheet" href="{{ url_for('static', path='experience.css') }}?v=20261027a">
-  <link rel="stylesheet" href="{{ url_for('static', path='brand-identity.css') }}?v=20261024c">
-  <link rel="stylesheet" href="{{ url_for('static', path='certificate-premium.css') }}?v=20261029b">
+  <link rel="stylesheet" href="{{ url_for('static', path='experience.css') }}?v={{ app_version }}">
+  <link rel="stylesheet" href="{{ url_for('static', path='brand-identity.css') }}?v={{ app_version }}">
+  <link rel="stylesheet" href="{{ url_for('static', path='certificate-premium.css') }}?v={{ app_version }}">
 {% if certificate_autofill_data is defined %}<link rel="stylesheet" href="{{ url_for('static', path='contract-simplified.css') }}?v={{ app_version }}">{% endif %}
 {% if certificate_autofill_data is defined %}<link rel="stylesheet" href="{{ url_for('static', path='notice-simplified.css') }}?v={{ app_version }}">{% endif %}
-  <link rel="stylesheet" href="{{ url_for('static', path='theme-261.css') }}?v=20261030d">
-  <link rel="stylesheet" href="{{ url_for('static', path='maintenance-workspace-263.css') }}?v=20261027c">
-  <link rel="stylesheet" href="{{ url_for('static', path='ui-system-264.css') }}?v=20261030a">
+  <link rel="stylesheet" href="{{ url_for('static', path='theme-261.css') }}?v={{ app_version }}">
+  <link rel="stylesheet" href="{{ url_for('static', path='maintenance-workspace-263.css') }}?v={{ app_version }}">
+  <link rel="stylesheet" href="{{ url_for('static', path='ui-system-264.css') }}?v={{ app_version }}">
   <link rel="stylesheet" href="{{ url_for('static', path='sort-controls.css') }}?v={{ app_version }}">
   <link rel="stylesheet" href="{{ url_for('static', path='pagination.css') }}?v={{ app_version }}">
   <link rel="stylesheet" href="{{ url_for('static', path='entity-selects.css') }}?v={{ app_version }}">
-  <link rel="stylesheet" href="{{ url_for('static', path='brand-adjustments-267.css') }}?v=20261028b">
-  <link rel="stylesheet" href="{{ url_for('static', path='medical-exams-2618.css') }}?v=20261028a">
-  <link rel="stylesheet" href="{{ url_for('static', path='calculation-operations-2619.css') }}?v=20261030b">
+  <link rel="stylesheet" href="{{ url_for('static', path='brand-adjustments-267.css') }}?v={{ app_version }}">
+  <link rel="stylesheet" href="{{ url_for('static', path='medical-exams-2618.css') }}?v={{ app_version }}">
+  <link rel="stylesheet" href="{{ url_for('static', path='calculation-operations-2619.css') }}?v={{ app_version }}">
   {% if kind in ['salary','settlement'] %}<link rel="stylesheet" href="{{ url_for('static', path='calculator-quick.css') }}?v={{ app_version }}">{% endif %}
 
   <style>
@@ -64,9 +64,10 @@
 </head>
 <body class="{% if user %}app-body{% else %}public-body{% endif %}">
 {% if user %}
+  <a class="app-skip-link" href="#app-main-content">Saltar al contenido principal</a>
   <header class="modern-topbar">
     <a class="modern-brand" href="{{ '/admin' if user.role == 'superadmin' else '/app' }}">
-      <img class="modern-brand-full-logo" src="/static/branding/digit-laboral-logo-267.webp?v=20261028a" alt="Digit Laboral" width="500" height="207">
+      <img class="modern-brand-full-logo" src="/static/branding/digit-laboral-logo-267.webp?v={{ app_version }}" alt="Digit Laboral" width="500" height="207">
     </a>
     <div class="app-version-indicator" title="Versión {{ app_version }} · rama {{ app_branch }}{% if app_commit %} · commit completo {{ app_commit }}{% else %} · código local sin commit de despliegue{% endif %}" aria-label="Versión {{ app_version }}, compilación {{ app_build }}">
       <span class="app-version-label">VERSIÓN</span>
@@ -167,10 +168,10 @@
       {% endif %}
 
       {% if user.role != 'superadmin' %}
-      <div class="workspace-sidebar-bottom"><img class="workspace-sidebar-bottom-full-logo" src="/static/branding/digit-laboral-logo-blanco.svg?v=20261028b" alt="Digit Laboral" width="500" height="207"></div>
+      <div class="workspace-sidebar-bottom"><img class="workspace-sidebar-bottom-full-logo" src="/static/branding/digit-laboral-logo-blanco.svg?v={{ app_version }}" alt="Digit Laboral" width="500" height="207"></div>
       {% endif %}
     </nav>
-    <main class="main-content">{% block content %}{% endblock %}</main>
+    <main class="main-content" id="app-main-content" tabindex="-1">{% block content %}{% endblock %}</main>
   </div>
 {% else %}
   {% block public_content %}{% endblock %}
@@ -180,11 +181,11 @@
 {% if active_calculation_type == 'notice' %}<script src="{{ url_for('static', path='notice-auto.js') }}?v={{ app_version }}" defer></script>{% endif %}
 {% if certificate_autofill_data is defined %}<script src="{{ url_for('static', path='certificate-autofill.js') }}?v={{ app_version }}" defer></script><script src="{{ url_for('static', path='contract-simplified.js') }}?v={{ app_version }}" defer></script>{% endif %}
 {% if certificate_autofill_data is defined %}<script src="{{ url_for('static', path='notice-simplified.js') }}?v={{ app_version }}" defer></script>{% endif %}
-<script src="{{ url_for('static', path='v17.js') }}"></script>
+<script src="{{ url_for('static', path='v17.js') }}?v={{ app_version }}"></script>
 <script src="{{ url_for('static', path='v20.js') }}?v={{ app_version }}"></script>
-<script src="{{ url_for('static', path='v22-dashboard.js') }}"></script>
-<script src="{{ url_for('static', path='v23.js') }}?v=20261023b"></script>
-<script src="{{ url_for('static', path='v24.js') }}"></script>
+<script src="{{ url_for('static', path='v22-dashboard.js') }}?v={{ app_version }}"></script>
+<script src="{{ url_for('static', path='v23.js') }}?v={{ app_version }}"></script>
+<script src="{{ url_for('static', path='v24.js') }}?v={{ app_version }}"></script>
 <script src="{{ url_for('static', path='labor-suite.js') }}?v={{ app_version }}" defer></script>
 {% if kind == 'settlement' %}<script src="{{ url_for('static', path='settlement-presets.js') }}?v={{ app_version }}" defer></script><script src="{{ url_for('static', path='settlement-preview.js') }}?v={{ app_version }}" defer></script>{% endif %}
 {% if kind == 'settlement' and private %}<script src="{{ url_for('static', path='payroll-average.js') }}?v={{ app_version }}" defer></script>{% endif %}
