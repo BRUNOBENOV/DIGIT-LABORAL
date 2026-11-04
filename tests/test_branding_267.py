@@ -21,7 +21,8 @@ def test_new_logo_is_used_across_app_and_auth_screens():
     two_factor = (ROOT / "app" / "templates" / "login_2fa.html").read_text(encoding="utf-8")
     public_nav = (ROOT / "app" / "templates" / "labor_public_nav.html").read_text(encoding="utf-8")
     public_footer = (ROOT / "app" / "templates" / "labor_public_footer.html").read_text(encoding="utf-8")
-    for text in (base, login, reset, forgot, two_factor, public_nav, public_footer):
+    assert "digit-laboral-logo-267.webp?v={{ app_version }}" in base
+    for text in (login, reset, forgot, two_factor, public_nav, public_footer):
         assert "digit-laboral-logo-267.webp?v=20261028a" in text
     assert "brand-adjustments-267.css" in base
     assert "digit-laboral-mark.svg?v=20261024a" not in base
