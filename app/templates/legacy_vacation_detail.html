@@ -1,6 +1,6 @@
 {% extends "base.html" %}
-{% block title %}Antecedente LSVAC #{{ event.id }} | DIGIT-LABORAL{% endblock %}
-{% block page_name %}Antecedente histórico de vacaciones{% endblock %}
+{% block title %}Vacaciones #{{ event.id }} | DIGIT-LABORAL{% endblock %}
+{% block page_name %}Historial de vacaciones{% endblock %}
 {% block content %}
 <style>
 .legacy-record{max-width:1070px;margin:0 auto}
@@ -18,9 +18,9 @@
 </style>
 <div class="legacy-record">
   <header class="legacy-record-header">
-    <small style="letter-spacing:.11em">ARCHIVO HISTÓRICO · LSVAC</small>
-    <h1>Registro original de vacaciones #{{ event.id }}</h1>
-    <p>Antecedente trazable del sistema DOS, vinculado al expediente de un funcionario existente.</p>
+    <small style="letter-spacing:.11em">DIGIT-LABORAL · HISTORIAL DE VACACIONES</small>
+    <h1>Registro de vacaciones #{{ event.id }}</h1>
+    <p>Movimiento conservado en el historial de DIGIT-LABORAL y vinculado al expediente del funcionario.</p>
   </header>
   <div class="legacy-actionbar">
     <a class="btn ghost" href="/app/vacations?company_id={{ event.employee.company_id }}&amp;employee_id={{ event.employee_id }}">← Volver a vacaciones</a>
@@ -32,12 +32,12 @@
   </div>
   <p class="legacy-review-note" role="note">
     <b>Estado: sin conciliar.</b>
-    Este registro demuestra que existe un dato en el sistema anterior; no confirma por sí solo
+    Este movimiento histórico todavía requiere respaldo o conciliación: por sí solo no acredita
     vacaciones efectivamente usufructuadas, autorización, pago, saldo pendiente ni presentación al MTESS.
-    Ningún importe o día se transfiere automáticamente al sistema operativo.
+    Los importes y días no modifican automáticamente los saldos ni las liquidaciones.
   </p>
   <section class="panel" style="padding:18px">
-    <div class="panel-head"><div><span>IDENTIFICACIÓN</span><h2>Relación con el expediente actual</h2></div></div>
+    <div class="panel-head"><div><span>IDENTIFICACIÓN</span><h2>Datos del funcionario</h2></div></div>
     <dl class="legacy-record-facts">
       <div><dt>Funcionario</dt><dd><a href="/app/employees/{{ event.employee_id }}">{{ event.employee.full_name }}</a></dd></div>
       <div><dt>Empresa</dt><dd>{{ event.employee.company.legal_name }}</dd></div>
@@ -48,26 +48,26 @@
     </dl>
   </section>
   <section class="panel" style="padding:18px;margin-top:13px">
-    <div class="panel-head"><div><span>DATOS CONSERVADOS</span><h2>Vacaciones según LSVAC</h2></div></div>
+    <div class="panel-head"><div><span>DATOS CONSERVADOS</span><h2>Datos del movimiento</h2></div></div>
     <dl class="legacy-record-facts">
       <div><dt>Período devengado desde</dt><dd>{{ source.period_from or '—' }}</dd></div>
       <div><dt>Período devengado hasta</dt><dd>{{ source.period_to or '—' }}</dd></div>
       <div><dt>Inicio de vacaciones</dt><dd>{{ source.vacation_start or '—' }}</dd></div>
       <div><dt>Fin de vacaciones</dt><dd>{{ source.vacation_end or '—' }}</dd></div>
       <div><dt>Días informados</dt><dd>{{ source.days if source.days is not none else 'Sin dato' }}</dd></div>
-      <div><dt>Fecha de registro de origen</dt><dd>{{ source.registered_on or 'Sin dato' }}</dd></div>
-      <div><dt>Salario de origen (Gs.)</dt><dd>{{ source.salary_snapshot if source.salary_snapshot is not none else 'Sin dato' }}</dd></div>
-      <div><dt>Jornal de origen (Gs.)</dt><dd>{{ source.daily_wage if source.daily_wage is not none else 'Sin dato' }}</dd></div>
-      <div><dt>Importe vacaciones de origen (Gs.)</dt><dd>{{ source.vacation_amount if source.vacation_amount is not none else 'Sin dato' }}</dd></div>
-      <div><dt>Descuento IPS de origen (Gs.)</dt><dd>{{ source.ips_discount if source.ips_discount is not none else 'Sin dato' }}</dd></div>
+      <div><dt>Fecha registrada</dt><dd>{{ source.registered_on or 'Sin dato' }}</dd></div>
+      <div><dt>Salario registrado (Gs.)</dt><dd>{{ source.salary_snapshot if source.salary_snapshot is not none else 'Sin dato' }}</dd></div>
+      <div><dt>Jornal registrado (Gs.)</dt><dd>{{ source.daily_wage if source.daily_wage is not none else 'Sin dato' }}</dd></div>
+      <div><dt>Importe registrado de vacaciones (Gs.)</dt><dd>{{ source.vacation_amount if source.vacation_amount is not none else 'Sin dato' }}</dd></div>
+      <div><dt>Descuento IPS registrado (Gs.)</dt><dd>{{ source.ips_discount if source.ips_discount is not none else 'Sin dato' }}</dd></div>
       <div><dt>Indicador IPS original</dt><dd>{{ source.ips_flag or 'Sin dato' }}</dd></div>
       <div><dt>Fila original del archivo</dt><dd>{{ source.source_row if source.source_row is not none else 'Sin dato' }}</dd></div>
     </dl>
   </section>
   <section class="panel" style="padding:18px;margin-top:13px">
-    <div class="panel-head"><div><span>TRAZABILIDAD</span><h2>Origen e integridad</h2></div></div>
+    <div class="panel-head"><div><span>TRAZABILIDAD</span><h2>Integridad del registro</h2></div></div>
     <dl class="legacy-record-facts">
-      <div><dt>Clave única LSVAC</dt><dd style="font-size:.76rem">{{ source.legacy_key }}</dd></div>
+      <div><dt>Identificador de respaldo</dt><dd style="font-size:.76rem">{{ source.legacy_key }}</dd></div>
       <div><dt>Huella SHA-256</dt><dd style="font-size:.68rem">{{ source.source_hash }}</dd></div>
       <div><dt>Importado por</dt><dd>{{ event.created_by or 'Sistema' }}</dd></div>
     </dl>
