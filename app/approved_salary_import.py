@@ -102,6 +102,22 @@ def choose_salary_source(db: Session, company_id: int, period: str, requested: s
     return "approved" if summary["total"] or summary["without_employee"] else "payroll"
 
 
+REOP_PAYMENT_METHODS = {
+    "1": "Efectivo",
+    "2": "Cheque",
+    "3": "Banco",
+    "4": "Giro",
+}
+
+
+def _saved_no_ips(inputs: dict) -> bool:
+    """Solo inferir ausencia de descuento si el snapshot guardó IPS desactivado."""
+    if "apply_ips" not in inputs:
+        return False
+    raw = inputs["apply_ips"]
+    return raw is False or (isinstance(raw, str) and raw.strip().lower() in {"", "false", "off", "no", "0"})
+
+
 def _professional_line(item: CalculationRecord, inputs: dict, saved: dict, errors: list[str]):
     """Relaciona etiquetas del motor profesional; conceptos no reconocidos bloquean."""
     incomes = {
@@ -137,7 +153,10 @@ def _professional_line(item: CalculationRecord, inputs: dict, saved: dict, error
                 errors.append(f"concepto «{label or 'sin nombre'}» sin mapeo comprobado para exportar")
                 continue
             values[mapping[label]] += _whole(concept.get("amount"), label, errors)
-    # La base IPS es un hecho conservado por el motor; no asumir que coincide con bruto.
+    # La base IPS debe proceder del snapshot, sin reconstruirla a partir del sueldo.
+    # Para un salario guardado explícitamente SIN IPS, cero es el importe correcto:
+    # el motor no genera una base imponible ni descuento en ese caso.
+    no_ips = _saved_no_ips(inputs)
     base_raw = str(inputs.get("ips_base") or "").strip()
     if base_raw:
         ips_base = _whole(base_raw, "base IPS", errors)
@@ -146,9 +165,11 @@ def _professional_line(item: CalculationRecord, inputs: dict, saved: dict, error
         base_fact = next((str(f.get("value", "")) for f in facts
                           if isinstance(f, dict) and f.get("label") == "Base IPS"), "")
         digits = re.sub(r"[^0-9]", "", base_fact)
-        ips_base = _whole(digits if digits else None, "base IPS", errors)
-    if inputs.get("apply_ips") in (False, "false", "off"):
+        ips_base = 0 if no_ips and not digits else _whole(digits if digits else None, "base IPS", errors)
+    if no_ips:
         rate = Decimal("0")
+        if values["ips_employee"]:
+            errors.append("el cálculo marca IPS desactivado pero conserva un descuento IPS; revisá el cálculo aprobado")
     else:
         raw_rate = inputs.get("employee_rate", inputs.get("ips_rate"))
         if raw_rate is None or str(raw_rate).strip() == "":
@@ -264,7 +285,8 @@ def salary_excluded_records(db: Session, company_id: int, period: str, *, author
     return excluded
 
 
-def approved_salary_records(db: Session, company, period: str, *, authority: str = "REOP", employee_id: int | None = None) -> tuple[list[tuple], list[str], list[dict]]:
+def approved_salary_records(db: Session, company, period: str, *, authority: str = "REOP",
+                            employee_id: int | None = None, payment_code: str = "") -> tuple[list[tuple], list[str], list[dict]]:
     """Selecciona la aprobación vigente por legajo, sin resucitar anulaciones."""
     query = select(CalculationRecord).where(
         CalculationRecord.company_id == company.id,
@@ -356,8 +378,16 @@ def approved_salary_records(db: Session, company, period: str, *, authority: str
                 item_errors.append("las horas ordinarias guardadas son inválidas (rango 0-744)")
         elif authority == "REOP" and hours <= 0:
             item_errors.append("faltan horas ordinarias efectivamente trabajadas (no usar divisor horario del salario)")
+        # El medio elegido por el usuario en REOP sirve para registros sin
+        # forma guardada. Solo se aplica a esta exportación, nunca altera el
+        # cálculo aprobado ni un medio de pago ya registrado.
+        payment_from_export = (authority == "REOP"
+                               and not str(supplementary.get("payment_method") or "").strip()
+                               and payment_code in REOP_PAYMENT_METHODS)
+        if payment_from_export:
+            supplementary["payment_method"] = REOP_PAYMENT_METHODS[payment_code]
         if authority == "REOP" and not supplementary.get("payment_method"):
-            item_errors.append("falta forma de pago verificada")
+            item_errors.append("seleccioná la forma de pago real para este trabajador")
         start = date.fromisoformat(period + "-01")
         end = date.fromisoformat(period + "-01")
         from calendar import monthrange
@@ -392,6 +422,7 @@ def approved_salary_records(db: Session, company, period: str, *, authority: str
         diagnostics.append(dict(id=item.id, employee=employee.full_name, status=item.status,
                                 warnings=item_errors, origin=item.source or item.calculation_type,
                                 attendance_origins=supplementary.get("attendance_origins", {}),
+                                payment_from_export=payment_from_export,
                                 supplement={
                                     "days_worked": supplementary.get("days_worked", ""),
                                     "hours_worked": supplementary.get("hours_worked", ""),
