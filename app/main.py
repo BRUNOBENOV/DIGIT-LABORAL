@@ -8656,13 +8656,25 @@ def vacations_page(
     }
     history_prev_query = urlencode({**history_filters, "history_page": history["page"] - 1})
     history_next_query = urlencode({**history_filters, "history_page": history["page"] + 1})
-    vacation_source_links = {
-        item: "/app/vacations?" + urlencode({
-            **{key: value for key, value in history_filters.items() if key != "source"},
-            **({"source": item} if item != "all" else {}),
-        })
-        for item in ("all", "current", "imported")
-    }
+    vacation_source_links = {}
+    for item in ("all", "current", "imported"):
+        # Cambiar a Históricos DOS no debe conservar por accidente un
+        # estado operativo como Aprobada (ni viceversa).
+        selected_status = (
+            status if item == "all" or
+            (item == "current" and status != "Sin conciliar") or
+            (item == "imported" and status in {"all", "Sin conciliar"})
+            else "all"
+        )
+        tab_filters = {
+            key: value for key, value in history_filters.items()
+            if key not in {"source", "status"}
+        }
+        if item != "all":
+            tab_filters["source"] = item
+        if selected_status != "all":
+            tab_filters["status"] = selected_status
+        vacation_source_links[item] = "/app/vacations?" + urlencode(tab_filters)
     history_export_query = urlencode({
         key: value for key, value in {
             "company_id": selected_company_id, "employee_id": selected_employee_id,
