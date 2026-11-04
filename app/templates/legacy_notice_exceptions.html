@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Pendientes LSPRE | DIGIT-LABORAL{% endblock %}
+{% block title %}Pendientes de preavisos | DIGIT-LABORAL{% endblock %}
 {% block page_name %}Conciliación de preavisos históricos{% endblock %}
 {% block content %}
 <style>
@@ -48,7 +48,7 @@
         {% for row in exception_report.rows %}
         {% set r=row.source %}
         <tr>
-          <td><b>{{ r.source_row }}</b><div class="mini">LSPRE</div></td>
+          <td><b>{{ r.source_row }}</b><div class="mini">Registro de preaviso</div></td>
           <td>{{ r.company_code }}<div class="mini">{{ row.company.legal_name }}</div></td>
           <td><b>{{ r.employee_code }}</b><div class="mini">{{ 'BORRAD=S' if r.deleted_marker_raw == 'S' else 'Sin marca BORRAD' }}</div></td>
           <td>{{ r.notice_date_source or '—' }}</td>
