@@ -119,18 +119,28 @@ def test_vacation_current_detail_restricted_to_visible_worker(web_case):
 
 def test_vacation_create_checks_dates_days_and_redirects_to_detail(web_case):
     client, db, _, company, employee, _ = web_case
+    employee.admission_date = date(2020, 1, 1)
+    db.commit()
     csrf = token(client, "/app/vacations")
     data = {
         "csrf_token": csrf, "employee_id": str(employee.id), "period_year": "2026",
-        "entitled_days": "18", "used_days": "5", "status": "Pendiente",
+        "entitled_days": "18", "used_days": "5", "status": "Completada",
         "start_date": "2026-08-01", "end_date": "2026-08-18",
         "notes": "Cargado con respaldo sintético",
     }
-    assert client.post("/app/vacations", data={**data, "used_days": "20"}).status_code == 422
-    assert client.post("/app/vacations", data={**data, "start_date": "2026-08-25"}).status_code == 422
-    assert client.post("/app/vacations", data={**data, "entitled_days": "-5"}).status_code == 422
-    assert client.post("/app/vacations", data={**data, "status": "Desconocido"}).status_code == 422
-    assert db.scalars(select(Vacation).where(Vacation.employee_id == employee.id)).all() == []
+    # El flujo profesional v24 devuelve al formulario con el error, en vez
+    # de mostrar una página HTTP 422; no debe guardar el movimiento inválido.
+    for bad in (
+        {**data, "used_days": "20"},
+        {**data, "start_date": "2026-08-25"},
+        {**data, "entitled_days": "-5"},
+        {**data, "status": "Desconocido"},
+        {**data, "status": "Pendiente"},  # Días usados sin estado Completada.
+    ):
+        invalid = client.post("/app/vacations", data=bad, follow_redirects=False)
+        assert invalid.status_code == 303
+        assert "form_error=" in invalid.headers["location"]
+        assert db.scalars(select(Vacation).where(Vacation.employee_id == employee.id)).all() == []
     response = client.post("/app/vacations", data=data, follow_redirects=False)
     assert response.status_code == 303
     assert response.headers["location"].startswith("/app/vacations/")
