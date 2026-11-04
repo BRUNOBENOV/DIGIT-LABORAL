@@ -20,7 +20,7 @@ ENTITY = "lspre_excepcion"
 ACTION = "pendiente_conciliacion"
 SOURCE = "LSPRE"
 KNOWN_TYPES = {
-    "trabajador_no_migrado": "Trabajador en fuente DOS, no migrado",
+    "trabajador_no_migrado": "Trabajador sin vinculación al legajo",
     "trabajador_no_identificado": "Sin trabajador identificado",
     "conflicto_fuente": "Conflicto entre filas de origen",
 }
