@@ -5811,6 +5811,30 @@ def _revalidate_calculation_before_approval(item: CalculationRecord, db: Session
             verify_attendance_inheritance(db, db.get(Employee, item.employee_id), saved_inputs)
         except CalculationError as exc:
             raise HTTPException(409, str(exc)) from None
+        if saved_inputs.get("novelties_applied") == "on" or saved_inputs.get("novelties_attendance_confirmed") == "on":
+            from .salary_novelties import salary_novelties
+            employee = db.get(Employee, item.employee_id)
+            if not employee or employee.company_id != item.company_id:
+                raise HTTPException(409, "No se pudo validar la titularidad del cálculo salarial.")
+            try:
+                proposal = salary_novelties(
+                    db, item.company_id, item.employee_id, saved_inputs.get("month", ""),
+                    saved_inputs.get("pay_basis") or "monthly",
+                )
+            except ValueError as exc:
+                raise HTTPException(409, str(exc)) from None
+            if proposal["fingerprint"] != saved_inputs.get("novelties_fingerprint"):
+                raise HTTPException(409, "Las novedades o la asistencia cambiaron desde la liquidación. Rectificá el cálculo antes de aprobar.")
+            if saved_inputs.get("novelties_applied") == "on" and (
+                not proposal["can_apply_paid_days"]
+                or str(proposal["suggested_paid_days"]) != str(saved_inputs.get("days_paid"))
+            ):
+                raise HTTPException(409, "Los días remunerados ya no coinciden con los movimientos aprobados.")
+            if saved_inputs.get("novelties_attendance_confirmed") == "on":
+                if (not proposal["daily_attendance"]
+                    or str(proposal["observed_worked_days"]) != str(saved_inputs.get("days_worked"))
+                    or Decimal(proposal["observed_ordinary_hours"]) != Decimal(str(saved_inputs.get("hours_worked") or "0"))):
+                    raise HTTPException(409, "Los días u horas trabajados cambiaron antes de aprobar el cálculo.")
 
     legacy_general_sources = {"Cálculo automático", "Calculadora", "Calculadora v2.4"}
     if (item.source or "").strip() in legacy_general_sources:
