@@ -8,6 +8,21 @@
 .vac-header-actions{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:8px}
 .vac-header-actions .btn{min-height:39px;font-size:12px}
 .vac-filters.panel{padding:18px 19px;border-radius:14px;margin:0 0 16px}
+/* Aislar los filtros del layout flex global de .search-form. */
+.app-body .main-content form.vac-filters.search-form{
+ display:grid;
+ grid-template-columns:minmax(0,1fr);
+ align-items:stretch;
+ gap:0;
+ width:100%;
+ max-width:none;
+ container:vacation-filters/inline-size;
+}
+.vac-filter-top,.vac-filter-bottom{width:100%;min-width:0}
+.vac-filter-top>label,.vac-filter-bottom>label{width:100%;min-width:0}
+.vac-filters .entity-select,.vac-filters .entity-select-control{min-width:0;max-width:100%}
+.vac-filter-buttons{flex-wrap:wrap}
+
 .vac-filters label{display:grid;gap:6px;color:#334765;font-size:12px;font-weight:750;min-width:0}
 .vac-filters :is(input,select){width:100%;min-width:0;min-height:43px!important;border-radius:9px!important;font-size:12px!important}
 .vac-filters input[type=search]{padding-left:13px!important}
@@ -117,5 +132,18 @@
  .vac-modal .vac-modal-card{padding:18px}
  .vac-modal-form{grid-template-columns:1fr!important}.vac-modal-form>.span-2{grid-column:1!important}
  .vac-detail-grid{grid-template-columns:1fr}
+}
+/* El menú lateral reduce el espacio útil aunque el viewport siga siendo ancho. */
+@container vacation-filters (max-width:650px){
+ .vac-filter-top{grid-template-columns:minmax(0,1fr)}
+ .vac-filter-bottom{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .vac-search-label{grid-column:1/-1}
+ .vac-filter-bottom>label:nth-child(4){grid-column:auto}
+ .vac-filter-buttons{grid-column:1/-1;justify-content:flex-start}
+}
+@container vacation-filters (max-width:380px){
+ .vac-filter-bottom{grid-template-columns:minmax(0,1fr)}
+ .vac-search-label,.vac-filter-buttons{grid-column:1}
+ .vac-filter-buttons .btn{flex:1 1 0;min-width:0}
 }
 @media print{.vac-filters,.vac-header-actions,.vac-source-tabs,.vac-pagination,.vac-detail-links{display:none!important}}
