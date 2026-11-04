@@ -204,7 +204,16 @@ def calculate(data, *, judicial_evidence_verified=False):
     proposed_ips_base = 0
     salary = ZERO
     if kind in {"salary", "settlement", "vacation"}:
-        salary = positive(data, "salary", "salario mensual")
+        # En jornalero, el jornal pactado es suficiente para liquidar:
+        # la referencia mensual (jornal × 26) sirve solo para otros
+        # controles del motor, NO se suma ni se utiliza como sueldo fijo.
+        daily_basis = kind == "salary" and str(data.get("pay_basis") or "monthly") == "daily"
+        explicit_jornal = str(data.get("daily_rate") or "").strip()
+        reference_monthly = str(data.get("salary") or "").strip()
+        if daily_basis and explicit_jornal and reference_monthly in {"", "0", "0.0", "0.00"}:
+            salary = positive(data, "daily_rate", "jornal pactado") * Decimal("26")
+        else:
+            salary = positive(data, "salary", "salario mensual")
     if kind in {"salary", "settlement"}:
         pay_basis = str(data.get("pay_basis") or "monthly") if kind == "salary" else "monthly"
         if pay_basis not in {"monthly", "daily"}:
