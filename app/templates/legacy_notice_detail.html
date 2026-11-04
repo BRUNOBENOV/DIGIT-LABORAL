@@ -15,8 +15,8 @@
 @media(max-width:680px){.lspre-facts{grid-template-columns:repeat(2,minmax(0,1fr))}}
 </style>
 <div class="lspre-detail">
-<header class="lspre-detail-hero"><small>ARCHIVO DEL SISTEMA ANTERIOR · LSPRE</small>
-<h1>Preaviso histórico #{{ event.id }}</h1><p>Registro importado del sistema DOS, conservado como antecedente de solo lectura.</p></header>
+<header class="lspre-detail-hero"><small>DIGIT-LABORAL · HISTORIAL DE PREAVISOS</small>
+<h1>Preaviso histórico #{{ event.id }}</h1><p>Registro conservado en el historial del funcionario para consulta y auditoría.</p></header>
 <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
 <a class="btn ghost" href="/app/legacy-notices?company_id={{ event.employee.company_id }}&amp;employee_id={{ event.employee_id }}">← Volver al listado</a>
 <a class="btn ghost" href="/app/employees/{{ event.employee_id }}">Abrir expediente</a>
@@ -25,7 +25,7 @@
 <a class="btn ghost" href="/app/liquidaciones?tipo=settlement&amp;company_id={{ event.employee.company_id }}&amp;employee_id={{ event.employee_id }}">Liquidación final</a>
 {% endif %}</div>
 <div class="lspre-caution"><b>Sin conciliación documental.</b> Este registro no demuestra entrega del preaviso, recepción por el trabajador, cumplimiento de plazo, despido, finalización efectiva de la relación ni pago indemnizatorio.
-{% if source.deleted_source %}<b>Además fue marcado BORRAD=S en el sistema anterior.</b>{% endif %}</div>
+{% if source.deleted_source %}<b>El registro tiene la marca de origen BORRAD=S (borrado).</b>{% endif %}</div>
 <section class="panel" style="padding:18px">
 <div class="panel-head"><div><span>RELACIÓN CON LEGADO</span><h2>Identificación</h2></div></div>
 <dl class="lspre-facts">
@@ -34,7 +34,7 @@
 <div><dt>CODEMP original</dt><dd>{{ source.company_code }}</dd></div>
 <div><dt>CODTRA original</dt><dd>{{ source.employee_code }}</dd></div>
 <div><dt>Legajo actual</dt><dd>{{ event.employee.employee_code or '—' }}</dd></div>
-<div><dt>Estado en DOS</dt><dd>{{ 'BORRAD=S' if source.deleted_source else 'Sin marca BORRAD' }}</dd></div>
+<div><dt>Marca del registro</dt><dd>{{ 'BORRAD=S' if source.deleted_source else 'Sin marca BORRAD' }}</dd></div>
 </dl></section>
 <section class="panel" style="padding:18px;margin-top:13px">
 <div class="panel-head"><div><span>VALORES FIELES AL ORIGEN</span><h2>Fechas y plazo registrado</h2></div></div>
