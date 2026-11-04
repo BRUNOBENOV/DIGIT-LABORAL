@@ -253,6 +253,10 @@ def calculate_scoped(data, db, scoped):
                 "La propuesta de días remunerados ya no coincide con el cálculo. Volvé a revisar las novedades.", "days_paid"
             )
         if complete:
+            if data.get("attendance_source_id") and data.get("attendance_override") != "on":
+                raise CalculationError(
+                    "Para sustituir la asistencia de un cálculo aprobado, activá «Editar asistencia cargada».", "days_worked"
+                )
             if (not novelties["daily_attendance"]
                     or str(data.get("days_worked") or "") != str(novelties["observed_worked_days"])):
                 raise CalculationError(
