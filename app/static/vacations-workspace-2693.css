@@ -106,6 +106,7 @@
  .vac-records-meta{padding:9px 13px;gap:8px}
  .vac-table-wrap{padding:9px}
  .vac-table tbody tr{grid-template-columns:minmax(0,1fr) auto;gap:10px;padding:13px}
+ .vac-table tbody td[data-label]::before{content:attr(data-label);display:block;font-size:10px;font-weight:780;text-transform:uppercase;letter-spacing:.06em;color:#7d8da4;margin-bottom:3px}
  .vac-table tbody td[data-label="Funcionario"]{grid-column:1/-1}
  .vac-table tbody td[data-label="Período"]{grid-column:1}
  .vac-table tbody td[data-label="Origen"]{grid-column:2;text-align:right}
