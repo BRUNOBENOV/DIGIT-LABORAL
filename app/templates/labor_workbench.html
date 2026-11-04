@@ -232,7 +232,14 @@
     <span class="dl-trace-count">{{ labor_history.total }} registros</span>
   </summary>
   <div class="dl-trace-body">
-    <div class="dl-trace-intro">Cada corrección genera un nuevo borrador vinculado al original. Los registros aprobados anteriores permanecen disponibles.</div>
+    <div class="dl-trace-intro">Se muestra una sola versión vigente de cada cálculo salarial rectificado. El original deja de aparecer después de aprobar la rectificación y sigue disponible para auditoría. Los borradores no reemplazan cálculos aprobados.</div>
+    {% if labor_history.superseded_count %}
+    <div class="dl-trace-versions">
+      <a class="dl-trace-action" href="/app/liquidaciones?{{ labor_toggle_query }}#labor-history">
+        {{ 'Ocultar versiones anteriores' if show_superseded_salary else 'Ver versiones anteriores (' ~ labor_history.superseded_count ~ ')' }}
+      </a>
+    </div>
+    {% endif %}
     <div class="dl-table-wrap">
       <table class="dl-trace-table">
         <thead><tr><th>Registrado</th><th>Funcionario y concepto</th><th>Período</th><th>Importe</th><th>Estado</th><th>Acciones</th></tr></thead>
@@ -246,11 +253,11 @@
           </td>
           <td>{{ row.period }}{% if row.origin == 'imported' and row.detail %}<small class="dl-trace-detail">{{ row.detail }}</small>{% endif %}</td>
           <td class="dl-trace-amount">{% if row.amount is none %}—{% elif row.origin == 'current' %}Gs. {{ row.amount|gs }}{% else %}{{ row.amount }}{% endif %}</td>
-          <td><span class="dl-trace-status {{ 'is-approved' if row.status in ['Aprobado','Validado'] else 'is-void' if row.status in ['Anulado','Borrado en origen'] else 'is-draft' }}">{{ row.status }}</span></td>
+          <td><span class="dl-trace-status {{ 'is-void' if row.superseded else 'is-approved' if row.status in ['Aprobado','Validado'] else 'is-void' if row.status in ['Anulado','Borrado en origen'] else 'is-draft' }}">{{ row.display_status }}</span></td>
           <td><div class="dl-trace-actions">
           {% if row.origin == 'current' and row.record.source == 'Centro laboral' %}
             <a href="/app/liquidaciones/{{ row.id }}" class="dl-trace-action">Ver</a>
-            {% if user.role in ['administrador','contador','auxiliar'] and row.record.calculation_type == 'suite_salary' and row.status != 'Anulado' %}
+            {% if user.role in ['administrador','contador','auxiliar'] and row.record.calculation_type == 'suite_salary' and row.status != 'Anulado' and not row.superseded %}
               <a href="/app/liquidaciones/{{ row.id }}/rectificar" class="dl-trace-action dl-trace-correct">Rectificar</a>
             {% endif %}
           {% elif row.url %}<a href="{{ row.url }}" class="dl-trace-action">Ver</a>
