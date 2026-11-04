@@ -41,7 +41,7 @@
     <form method="post" action="/app/import/legacy-vacations/preview" enctype="multipart/form-data">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <div class="lsvac-file">
-        <input type="file" name="file" accept=".xlsx" required aria-label="Archivo LSVAC en Excel">
+        <input type="file" name="file" accept=".xlsx" required aria-label="Planilla de vacaciones en Excel">
         <button type="submit" class="btn primary">Analizar coincidencias</button>
       </div>
     </form>
