@@ -49,7 +49,7 @@ def base_payload(operation_type: str, **overrides):
 def test_operation_catalog_covers_the_new_submodules():
     assert OPERATION_TYPES == ("hours", "advance", "discipline", "telegram")
     assert set(OPERATION_LABELS) == set(OPERATION_TYPES)
-    assert DISCIPLINE_TYPES == ("Amonestación", "Suspensión", "Permiso")
+    assert DISCIPLINE_TYPES == ("Amonestación", "Suspensión", "Permiso", "Reposo")
 
 
 def test_hours_operation_calculates_and_preserves_the_assumptions():
