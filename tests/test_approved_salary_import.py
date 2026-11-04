@@ -223,7 +223,17 @@ def test_a_company_export_with_one_draft_and_one_approved_keeps_eligible_snapsho
     draft.employee_id = 777
     draft.status = "Borrador"
     draft.created_at = datetime(2026, 10, 31)
-    db = FakeSession([draft, item], employee, detail)
+    pending_employee = SimpleNamespace(**vars(employee))
+    pending_employee.id = 777
+    pending_employee.ips_contributor = True
+
+    class MultiSession(FakeSession):
+        def scalars(self, stmt):
+            if stmt.column_descriptions[0]["entity"] is Employee:
+                return [employee, pending_employee]
+            return super().scalars(stmt)
+
+    db = MultiSession([draft, item], employee, detail)
     rows, errors = exporter.prepare_import(
         db, company, "2026-10", "REOP",
         source_type="approved", payment_code="1",
@@ -297,11 +307,12 @@ def test_rei_approved_source_includes_only_active_ips_yes_saved_salary():
     assert len(rows) == 1
     assert rows[0][2] == employee.document_number
     assert rows[0][7] == 3000000
-    # Al contrario, REOP no usa el filtro de afiliación/estado de REI.
+    # Ambos organismos excluyen IPS No. REOP conserva otros estados con IPS Sí.
     reop_rows, _reop_errors, _reop_diagnostics = source.approved_salary_records(
         db, company, "2026-10", authority="REOP",
     )
-    assert len(reop_rows) == 4
+    assert len(reop_rows) == 3
+    assert {worker.id for _, worker, _ in reop_rows} == {employee.id, inactive.id, archived.id}
 
 
 def test_rei_draft_warning_ignores_non_ips_and_inactive_workers():
@@ -323,12 +334,12 @@ def test_rei_draft_warning_ignores_non_ips_and_inactive_workers():
     db = MultiSession([draft, item], employee, detail)
     assert not source.salary_excluded_records(db, company.id, "2026-10", authority="REI")
     excluded_reop = source.salary_excluded_records(db, company.id, "2026-10")
-    assert len(excluded_reop) == 1 and excluded_reop[0]["employee_id"] == 77
+    assert excluded_reop == []  # El borrador IPS No no aparece ni exige exportación parcial.
     choices = source.approved_employee_choices(db, company.id, "2026-10", authority="REI")
     assert [person.id for person in choices] == [employee.id]
 
 
-def test_professional_no_ips_salary_exports_zero_base_without_inventing_an_ips_charge():
+def test_professional_no_ips_salary_is_not_exported_even_with_approved_calculation():
     from app.labor_calculator import calculate
     from tests.test_labor_suite import salary
     item, employee, company, detail = case()
@@ -353,13 +364,10 @@ def test_professional_no_ips_salary_exports_zero_base_without_inventing_an_ips_c
     rows, errors = exporter.prepare_import(
         db, company, "2026-10", "REOP", payment_code="1", source_type="approved",
     )
-    assert not errors, errors
-    assert len(rows) == 1 and len(rows[0]) == 32
-    assert rows[0][4] == 1
-    assert rows[0][25] == 0
-    assert rows[0][9] == 3_044_000
-    assert rows[0][5] == 27
-    assert rows[0][7] == 216
+    assert rows == []
+    assert any("IPS marcado Sí" in error for error in errors)
+    assert source.approved_employee_choices(db, company.id, "2026-10", authority="REOP") == []
+    assert source.salary_source_summary(db, company.id, "2026-10")["approved"] == 0
     assert json.loads(item.input_json)["ips_base"] == ""
     assert detail.payment_method == ""  # No se reescribe el origen.
 

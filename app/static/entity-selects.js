@@ -138,7 +138,11 @@
       url.searchParams.set("q", query); url.searchParams.set("limit", "10");
       url.searchParams.set("scope", this.select.dataset.entityScope || "all");
       const company = this.company?.value;
-      if (this.kind === "employee" && company && company !== "0") url.searchParams.set("company_id", company);
+      if (this.kind === "employee") {
+        if (company && company !== "0") url.searchParams.set("company_id", company);
+        if (this.select.dataset.ipsOnly === "true") url.searchParams.set("ips_only", "true");
+        if (this.select.dataset.ipsActiveOnly === "true") url.searchParams.set("active_only", "true");
+      }
       return url;
     }
 
