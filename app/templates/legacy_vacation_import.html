@@ -29,9 +29,9 @@
 </style>
 <div class="lsvac-page">
   <header class="lsvac-hero">
-    <div style="font-size:.69rem;letter-spacing:.12em;font-weight:800">MIGRACIÓN · SISTEMA ANTERIOR DOS</div>
-    <h1>Vacaciones históricas (LSVAC)</h1>
-    <p>Incorporá los movimientos del Excel anterior al historial de los funcionarios ya migrados. Se conservan fechas, días y valores originales sin recalcular ni modificar saldos vigentes.</p>
+    <div style="font-size:.69rem;letter-spacing:.12em;font-weight:800">DIGIT-LABORAL · GESTIÓN DE HISTORIAL</div>
+    <h1>Importar historial de vacaciones</h1>
+    <p>Incorporá movimientos desde una planilla Excel al historial de DIGIT-LABORAL. Se conservan las fechas, los días y los importes registrados sin recalcular ni modificar saldos vigentes.</p>
   </header>
   <div style="margin:0 0 14px"><a href="/app/vacations" class="btn ghost">← Volver a Vacaciones</a></div>
   {% if request.query_params.get("error") %}<div class="lsvac-warning" role="alert">{{ request.query_params.get("error") }}</div>{% endif %}
