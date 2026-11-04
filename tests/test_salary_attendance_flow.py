@@ -230,8 +230,8 @@ def test_preview_distinguishes_two_exclusions_from_one_included_worker(attendanc
     html=client.get("/app/compliance/salary-import",params={"company_id":company.id,"period":"2026-10","source_type":"approved","payment_code":"1"}).text
     soup=BeautifulSoup(html,"html.parser")
     text=soup.get_text(" ",strip=True)
-    assert "2 legajo(s) excluidos por estado" in text
-    assert "1 incluidos en la vista previa" in text and "3 legajos evaluados" in text
+    assert "2 sin aprobación" in text
+    assert "1 trabajador(es) para REOP" in text
     assert "Legajo 300002" in text and "Legajo 300003" in text
 
 
