@@ -223,7 +223,17 @@ def test_a_company_export_with_one_draft_and_one_approved_keeps_eligible_snapsho
     draft.employee_id = 777
     draft.status = "Borrador"
     draft.created_at = datetime(2026, 10, 31)
-    db = FakeSession([draft, item], employee, detail)
+    pending_employee = SimpleNamespace(**vars(employee))
+    pending_employee.id = 777
+    pending_employee.ips_contributor = True
+
+    class MultiSession(FakeSession):
+        def scalars(self, stmt):
+            if stmt.column_descriptions[0]["entity"] is Employee:
+                return [employee, pending_employee]
+            return super().scalars(stmt)
+
+    db = MultiSession([draft, item], employee, detail)
     rows, errors = exporter.prepare_import(
         db, company, "2026-10", "REOP",
         source_type="approved", payment_code="1",
