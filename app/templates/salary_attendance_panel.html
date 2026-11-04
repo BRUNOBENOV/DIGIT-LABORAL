@@ -44,7 +44,7 @@
     </div>
     <p class="dl-caption">No se descuentan automáticamente vacaciones remuneradas ni reposos sin tratamiento confirmado. Los días pagados no equivalen siempre a los efectivamente trabajados.</p>
   </section>
-  {% if employee and not salary_history %>
+  {% if employee and not salary_history %}
   <details class="dl-inline-editor" {% if values.get('salary_base_verified') == 'on' %}open{% endif %}>
     <summary>Verificar salario sin historial</summary>
     <p class="dl-caption">El salario de la ficha no tiene vigencia histórica registrada. Confirmá la base de este mes solo si tenés respaldo.</p>
