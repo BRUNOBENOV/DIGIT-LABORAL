@@ -125,9 +125,9 @@ def test_module_navigation_and_assets_are_versioned():
     base = (root / "app/templates/base.html").read_text(encoding="utf-8")
     css = (root / "app/static/experience.css").read_text(encoding="utf-8")
 
-    assert "v23.js') }}?v=20261023b" in base
-    assert "v23.css') }}?v=20261022c" in base
-    assert "experience.css') }}?v=20261027a" in base
+    assert "v23.js') }}?v={{ app_version }}" in base
+    assert "v23.css') }}?v={{ app_version }}" in base
+    assert "experience.css') }}?v={{ app_version }}" in base
     assert ".calculation-index-card" in css
 
 
@@ -140,7 +140,7 @@ def test_sidebar_uses_consolidated_brand_navy_and_original_white_logo():
     assert "sidebar-brand-theme-2624.css" not in base
     assert ".app-body .modern-mobile-nav.workspace-sidebar{" in theme
     assert "background:#05256D!important;" in theme
-    assert 'src="/static/branding/digit-laboral-logo-blanco.svg?v=20261028b"' in base
+    assert 'src="/static/branding/digit-laboral-logo-blanco.svg?v={{ app_version }}"' in base
     # The white variant embeds and recolors the exact original wordmark, rather than redrawing it.
     assert "digit-laboral-logo-267.webp" in white_logo
     assert 'href="data:image/webp;base64,' in white_logo
@@ -165,7 +165,7 @@ def test_official_brand_identity_assets_are_used_across_the_product():
     assert mark.startswith(b"RIFF") and mark[8:12] == b"WEBP"
     assert wordmark.startswith(b"RIFF") and wordmark[8:12] == b"WEBP"
     assert "#0B2D78" in favicon
-    assert "brand-identity.css" in base and "v=20261023b" in base
+    assert "brand-identity.css') }}?v={{ app_version }}" in base
     assert "digit-laboral-logo-267.webp" in base
     assert "digit-laboral-logo-267.webp" in login
     assert "digit-laboral-logo-267.webp" in public_nav
