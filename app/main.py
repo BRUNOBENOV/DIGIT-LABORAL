@@ -8458,10 +8458,10 @@ def legacy_notices_export(
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
     write_audit(db, user, "exportar", "historico_preaviso", str(employee_id or company_id or "todos"),
-                f"Exportación LSPRE: {count} antecedentes sin conciliación documental.")
+                f"Exportación de historial de preavisos: {count} registros pendientes de conciliación documental.")
     db.commit()
     return Response(content=content, media_type="text/csv; charset=utf-8",
-                    headers={"Content-Disposition": 'attachment; filename="historico_preaviso_lspre.csv"',
+                    headers={"Content-Disposition": 'attachment; filename="digit_laboral_historial_preavisos.csv"',
                              "Cache-Control": "no-store"})
 
 
@@ -8734,14 +8734,14 @@ def historical_vacations_csv_download(
     write_audit(
         db, user, "exportar", "vacaciones_historicas",
         str(employee_id or company_id or "todas"),
-        f"Exportación LSVAC CSV: {count} antecedentes; sin conciliación de saldos.",
+        f"Exportación de historial de vacaciones CSV: {count} registros sin conciliación de saldos.",
     )
     db.commit()
     return Response(
         content=content,
         media_type="text/csv; charset=utf-8",
         headers={
-            "Content-Disposition": 'attachment; filename="vacaciones_historicas_lsvac.csv"',
+            "Content-Disposition": 'attachment; filename="digit_laboral_historial_vacaciones.csv"',
             "Cache-Control": "no-store",
         },
     )
