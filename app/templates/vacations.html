@@ -7,7 +7,7 @@
     <div class="vac-page-heading">
       <span class="vac-kicker">CÁLCULO · DESCANSO ANUAL</span>
       <h1>Control de vacaciones</h1>
-      <p>Consultá derechos, días utilizados y antecedentes históricos de cada funcionario, sin confundir registros importados con saldos vigentes.</p>
+      <p>Consultá períodos, días utilizados y movimientos del historial de DIGIT-LABORAL. Los saldos pendientes de conciliación se identifican por separado.</p>
     </div>
     <div class="vac-header-actions">
       <a class="btn ghost" href="/app/calculations?tipo=vacation">Ir a calculadora</a>
@@ -100,8 +100,8 @@
         <p>{{ history_page.total }} resultado(s) para los filtros seleccionados. Mostrando {{ history_page.first }}–{{ history_page.last }}.</p>
       </div>
       <a class="vac-export" href="/app/vacations/history.csv{% if history_export_query %}?{{ history_export_query }}{% endif %}"
-         title="El CSV contiene únicamente antecedentes del sistema anterior, no movimientos actuales.">
-         Exportar antecedentes DOS · CSV
+         title="El CSV contiene los registros históricos del historial; no incluye movimientos operativos recientes.">
+         Exportar historial · CSV
       </a>
     </header>
 
@@ -111,13 +111,13 @@
       <a href="{{ vacation_source_links.current }}#vacations-records" {{ 'aria-current=page' if vacation_source == 'current' }}
          class="{{ 'is-active' if vacation_source == 'current' }}">Registros actuales</a>
       <a href="{{ vacation_source_links.imported }}#vacations-records" {{ 'aria-current=page' if vacation_source == 'imported' }}
-         class="{{ 'is-active' if vacation_source == 'imported' }}">Históricos DOS</a>
+         class="{{ 'is-active' if vacation_source == 'imported' }}">Registros históricos</a>
     </nav>
 
     <div class="vac-records-meta">
       <span><strong>{{ vacation_current_on_page }}</strong> actuales en esta página</span>
       <span><strong>{{ vacation_imported_on_page }}</strong> históricos en esta página</span>
-      <span class="vac-meta-note">Los históricos no tienen saldo conciliado</span>
+      <span class="vac-meta-note">Los saldos históricos pendientes se identifican como «Sin conciliar»</span>
     </div>
 
     <div class="table-wrap vac-table-wrap">
@@ -126,7 +126,7 @@
           <tr>
             <th scope="col">Funcionario / Empresa</th>
             <th scope="col">Período y fechas</th>
-            <th scope="col">Origen</th>
+            <th scope="col">Tipo de registro</th>
             <th scope="col">Días</th>
             <th scope="col">Estado</th>
             <th scope="col">Acciones</th>
@@ -153,8 +153,8 @@
             </td>
             <td data-label="Origen">
               {% if row.origin == 'imported' %}
-                <span class="vac-origin vac-origin-old">Histórico DOS</span>
-                <small class="vac-origin-hint">Archivo importado · #{{ row.id }}</small>
+                <span class="vac-origin vac-origin-old">Registro histórico</span>
+                <small class="vac-origin-hint">Historial #{{ row.id }}</small>
               {% else %}
                 <span class="vac-origin vac-origin-new">Registro actual</span>
                 <small class="vac-origin-hint">Movimiento #{{ row.id }}</small>
@@ -173,7 +173,7 @@
                 {% endif %}
               </div>
               {% if row.origin == 'imported' and row.amount is not none %}
-                <span class="vac-source-amount">Importe original: Gs. {{ row.amount }}</span>
+                <span class="vac-source-amount">Importe registrado: Gs. {{ row.amount }}</span>
               {% endif %}
             </td>
             <td data-label="Estado"><span class="vac-status vac-status-{{ row.status|lower|replace(' ', '-') }}">{{ row.status }}</span></td>
