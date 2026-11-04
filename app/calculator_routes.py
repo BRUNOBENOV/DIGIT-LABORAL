@@ -186,7 +186,8 @@ def page(request, kind, data=None, result=None, error=None, db=None, user=None, 
     # Same traceability stream as the calculation module, including old and
     # current records; no historical source is promoted to an approved calculation.
     labor_history = None
-    labor_prev_query, labor_next_query = "", ""
+    labor_prev_query, labor_next_query, labor_toggle_query = "", "", ""
+    show_superseded_salary = False
     if private and db is not None and user is not None:
         try:
             requested_page = int(request.query_params.get("history_page", "1"))
@@ -212,6 +213,7 @@ def page(request, kind, data=None, result=None, error=None, db=None, user=None, 
         labor_toggle_query = urlencode({
             **{key: value for key, value in filters.items() if key != "history_all"},
             **({} if show_superseded_salary else {"history_all": "1"}),
+            "history_page": 1,
         })
         labor_prev_query = urlencode({**filters, "history_page": labor_history["page"] - 1})
         labor_next_query = urlencode({**filters, "history_page": labor_history["page"] + 1})
@@ -225,8 +227,8 @@ def page(request, kind, data=None, result=None, error=None, db=None, user=None, 
                     row["rectifies"] = None
     ctx.update(labor_history=labor_history,
                labor_prev_query=labor_prev_query, labor_next_query=labor_next_query,
-               labor_toggle_query=locals().get("labor_toggle_query", ""),
-               show_superseded_salary=locals().get("show_superseded_salary", False))
+               labor_toggle_query=labor_toggle_query,
+               show_superseded_salary=show_superseded_salary)
     ctx.update(private, salary_history_data=salary_history_data, result=result,
                average_suggestion_label=suggestion_label,
                live_summary=calculation_summary(result) if result else None, error=str(error or ""),
