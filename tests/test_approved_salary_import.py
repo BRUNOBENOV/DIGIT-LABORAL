@@ -153,7 +153,8 @@ def test_rei_only_requires_days_not_reop_hours_or_payment():
     )
     assert len(reop_rows) == 1
     assert any("horas ordinarias" in e for e in reop_errors)
-    assert any("forma de pago" in e for e in reop_errors)
+    assert not any("forma de pago" in e for e in reop_errors)
+    assert reop_rows[0][4] == 1  # Elección expresa para la exportación REOP.
 
 
 def test_legacy_salary_ips_rate_comes_from_approved_inputs():
@@ -325,3 +326,68 @@ def test_rei_draft_warning_ignores_non_ips_and_inactive_workers():
     assert len(excluded_reop) == 1 and excluded_reop[0]["employee_id"] == 77
     choices = source.approved_employee_choices(db, company.id, "2026-10", authority="REI")
     assert [person.id for person in choices] == [employee.id]
+
+
+def test_professional_no_ips_salary_exports_zero_base_without_inventing_an_ips_charge():
+    from app.labor_calculator import calculate
+    from tests.test_labor_suite import salary
+    item, employee, company, detail = case()
+    inputs = salary(
+        month="2026-10", salary="3044000", days_paid="30",
+        apply_ips="", ips_base="", days_worked="27", hours_worked="216",
+        period_start="2026-10-01", period_end="2026-10-31",
+        payment_method="",
+    )
+    result = calculate(inputs)
+    item.calculation_type = "suite_salary"
+    item.source = "Centro laboral"
+    item.input_json = json.dumps(inputs)
+    item.result_json = json.dumps(result)
+    item.amount = result["net"]
+    employee.ips_contributor = False
+    detail.payment_method = ""
+    detail.source_sha256 = source.calculation_fingerprint(item)
+    db = FakeSession([item], employee, detail)
+    rows, errors = exporter.prepare_import(
+        db, company, "2026-10", "REOP", payment_code="1", source_type="approved",
+    )
+    assert not errors, errors
+    assert len(rows) == 1 and len(rows[0]) == 32
+    assert rows[0][4] == 1
+    assert rows[0][25] == 0
+    assert rows[0][9] == 3_044_000
+    assert rows[0][5] == 27
+    assert rows[0][7] == 216
+    assert json.loads(item.input_json)["ips_base"] == ""
+    assert detail.payment_method == ""  # No se reescribe el origen.
+
+
+def test_missing_ips_base_is_still_blocked_when_approved_salary_applied_ips():
+    saved = {
+        "earnings": [{"label": "Salario del período", "amount": 3044000}],
+        "deductions": [], "gross": 3044000, "discounts": 0,
+        "net": 3044000, "facts": [],
+    }
+    errors = []
+    line, _ = source._professional_line(None, {"apply_ips": "on", "ips_rate": "9"}, saved, errors)
+    assert line.ips_base == 0
+    assert any("falta el importe guardado de base IPS" in x for x in errors)
+
+
+def test_selected_reop_method_fills_only_missing_method_not_existing_method():
+    item, employee, company, detail = case()
+    detail.payment_method = ""
+    db = FakeSession([item], employee, detail)
+    rows, errors = exporter.prepare_import(db, company, "2026-10", "REOP",
+                                          payment_code="1", source_type="approved")
+    assert not errors, errors
+    assert rows[0][4] == 1
+    assert detail.payment_method == ""
+    _, missing_errors, _ = source.approved_salary_records(db, company, "2026-10", authority="REOP")
+    assert any("forma de pago" in msg for msg in missing_errors)
+    detail.payment_method = "Transferencia"
+    _, source_errors, details = source.approved_salary_records(
+        db, company, "2026-10", authority="REOP", payment_code="1",
+    )
+    assert not source_errors
+    assert details[0]["supplement"]["payment_method"] == "Transferencia"
