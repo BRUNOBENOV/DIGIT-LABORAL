@@ -74,15 +74,15 @@ def test_vacation_workspace_has_one_search_controls_and_clear_origin_badges(web_
     assert len(section.select("tbody tr")) == 2
     assert len(soup.select("#vacationFilters input[name=q]")) == 1
     assert section.select_one("table[data-ui-no-enhance]") is not None
-    assert "Histórico DOS" in section.get_text(" ", strip=True)
+    assert "Registro histórico" in section.get_text(" ", strip=True)
     assert "Registro actual" in section.get_text(" ", strip=True)
     assert "/app/vacations/history/" in page.text
     assert "Ver detalle" in page.text
-    assert "no tienen saldo conciliado" in page.text
+    assert "saldos históricos pendientes" in page.text
     assert "vacations-workspace-2693.css" in page.text
     assert "vacations-workspace-2693.js" in page.text
 
-    for source, wanted in (("current", "Registro actual"), ("imported", "Histórico DOS")):
+    for source, wanted in (("current", "Registro actual"), ("imported", "Registro histórico")):
         filtered = client.get("/app/vacations", params={**params, "source": source})
         markup = BeautifulSoup(filtered.text, "html.parser")
         assert len(markup.select("#vacations-records tbody tr")) == 1
