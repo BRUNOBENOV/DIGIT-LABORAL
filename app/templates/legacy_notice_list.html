@@ -2,7 +2,7 @@
 {% block title %}Preavisos históricos LSPRE | DIGIT-LABORAL{% endblock %}
 {% block page_name %}Preavisos históricos{% endblock %}
 {% block content %}
-<div class="page-header"><div><span class="eyebrow">LSPRE · HISTORIAL DEL SISTEMA ANTERIOR</span>
+<div class="page-header"><div><span class="eyebrow">DIGIT-LABORAL · HISTORIAL DE PREAVISOS</span>
 <h1>Preavisos históricos</h1><p>Datos enlazados a expedientes. No acreditan por sí solos un aviso practicado, cumplido o indemnización pagada.</p></div>
 <div class="header-actions">{% if user.role in ['administrador','contador'] %}<a class="btn primary" href="/app/import/legacy-notices">Importar LSPRE</a><a class="btn ghost" href="/app/legacy-notices/exceptions">Revisar pendientes de conciliación</a>{% endif %}
 <a class="btn ghost" href="/app/calculations?tipo=notice">Cálculo de preaviso</a></div></div>
@@ -25,7 +25,7 @@
 <td><a href="/app/employees/{{ row.event.employee_id }}"><b>{{ row.event.employee.full_name }}</b></a><small>CODTRA {{ row.source.employee_code }}</small></td>
 <td>{{ row.event.employee.company.legal_name }}</td><td>{{ row.source.notice_date_source }}</td><td>{{ row.source.departure_date_source }}</td>
 <td>{{ row.source.days if row.source.days is not none else 'No informado' }}</td>
-<td>{% if row.source.deleted_source %}<span class="status-pill">Borrado en DOS</span>{% else %}Archivo LSPRE{% endif %}</td>
+<td>{% if row.source.deleted_source %}<span class="status-pill">Marcado como borrado</span>{% else %}Registro histórico{% endif %}</td>
 <td><a href="/app/legacy-notices/{{ row.event.id }}">Ver antecedente #{{ row.event.id }}</a></td>
 </tr>{% else %}<tr><td colspan="7" class="empty-state">No hay preavisos históricos vinculados para esta selección.</td></tr>{% endfor %}</tbody></table></div>
 <nav style="display:flex;gap:12px;align-items:center;justify-content:flex-end;margin:12px 0;font-size:.8rem">
