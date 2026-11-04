@@ -264,3 +264,72 @@ def test_saved_salary_exposes_review_and_returns_to_the_document_after_approval(
     assert approved.status_code==303 and approved.headers["location"]==location
     html=client.get(location).text
     assert "Exportar REOP / REI" in html
+
+
+@pytest.mark.parametrize("authority", ["REOP", "REI"])
+def test_ips_no_never_appears_in_export_selector_preview_or_partials(attendance_case, authority):
+    client, db, _, company, employee, _, item = attendance_case
+    worker = Employee(
+        company_id=company.id, employee_code=900021, full_name="TRABAJADOR SIN IPS",
+        document_number="9000021", ips_contributor=False,
+        admission_date=date(2024, 1, 1), status="Activo",
+    )
+    db.add(worker)
+    db.flush()
+    for status in ("Aprobado", "Borrador"):
+        db.add(CalculationRecord(
+            company_id=company.id, employee_id=worker.id, calculation_type="salary",
+            reference_period="2026-10", source="Calculadora v2.4", status=status,
+            input_json=item.input_json, result_json=item.result_json, amount=item.amount,
+        ))
+    db.commit()
+    params = {
+        "company_id": company.id, "period": "2026-10",
+        "authority": authority, "source_type": "approved",
+        "payment_code": "1", "name_order": "apellido_primero", "rei_category": "E",
+    }
+    page = client.get("/app/compliance/salary-import", params=params)
+    assert page.status_code == 200
+    soup = BeautifulSoup(page.text, "html.parser")
+    assert "TRABAJADOR SIN IPS" not in soup.get_text(" ", strip=True)
+    assert "TRABAJADOR SIN IPS" not in str(soup.select_one('[name="employee_id"]'))
+    assert "1 trabajador(es)" in soup.get_text(" ", strip=True)
+    assert not salary_excluded_records(db, company.id, "2026-10", authority=authority)
+    summary = salary_source_summary(db, company.id, "2026-10", authority=authority)
+    assert summary["approved"] == 1 and summary["pending"] == 0
+    assert client.get("/app/compliance/salary-import",
+                      params={**params, "employee_id": worker.id}).status_code == 422
+    assert client.post("/app/compliance/salary-import/export", data={
+        **params, "employee_id": str(worker.id),
+        "csrf_token": token(client), "confirmed": "si",
+    }).status_code == 422
+
+
+def test_reop_payroll_selector_excludes_ips_no(attendance_case):
+    client, db, _, company, employee, _, _ = attendance_case
+    no_ips = Employee(
+        company_id=company.id, employee_code=900022, full_name="PAGO SIN IPS",
+        document_number="9000022", ips_contributor=False,
+        admission_date=date(2024, 1, 1),
+    )
+    db.add(no_ips)
+    db.flush()
+    payroll = Payroll(company_id=company.id, period="2026-10",
+                      status="Cerrada", closed_at=datetime(2026, 10, 31))
+    db.add(payroll)
+    db.flush()
+    db.add_all([
+        PayrollLine(payroll_id=payroll.id, employee_id=employee.id),
+        PayrollLine(payroll_id=payroll.id, employee_id=no_ips.id),
+    ])
+    db.commit()
+    response = client.get("/app/compliance/salary-import", params={
+        "company_id": company.id, "period": "2026-10",
+        "authority": "REOP", "source_type": "payroll", "payment_code": "1",
+    })
+    assert response.status_code == 200
+    soup = BeautifulSoup(response.text, "html.parser")
+    selector = soup.select_one('[name="employee_id"]')
+    assert selector is not None
+    assert "PAGO SIN IPS" not in selector.get_text(" ", strip=True)
+    assert "PEREZ GOMEZ JUAN LUIS" in selector.get_text(" ", strip=True)
