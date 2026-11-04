@@ -322,7 +322,7 @@
 })();
 </script>
 {% endif %}
-{% if private and kind == 'salary' %}<script src="{{ url_for('static', path='salary-attendance.js') }}?v={{ app_version }}" defer></script>{% endif %}
+{% if private and kind == 'salary' %}<script src="{{ url_for('static', path='salary-attendance.js') }}?v={{ app_version }}" defer></script><script src="{{ url_for('static', path='salary-novelties.js') }}?v={{ app_version }}-novedades1" defer></script>{% endif %}
 {% endmacro %}
 {% block content %}{{ workbench() }}{% endblock %}
 {% block public_content %}{% include "labor_public_nav.html" %}{{ workbench() }}{% include "labor_public_footer.html" %}{% endblock %}
