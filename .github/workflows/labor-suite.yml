@@ -46,6 +46,8 @@ jobs:
           node-version: "22"
       - name: Validate syntax of all frontend JavaScript files
         run: find app/static -maxdepth 1 -name '*.js' -print0 | xargs -0 -n1 node --check
+      - name: Test frontend interactions with simulated data
+        run: node --test tests/frontend/*.test.cjs
       - name: Run complete automated test suite
         run: python -m pytest -q --junitxml=/tmp/labor-tests.xml -o faulthandler_timeout=90
       - name: Full startup and deployment smoke gates
