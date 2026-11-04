@@ -16,6 +16,7 @@
   <link rel="stylesheet" href="{{ url_for('static', path='notifications.css') }}?v={{ app_version }}">
   <link rel="stylesheet" href="{{ url_for('static', path='labor-suite.css') }}?v={{ app_version }}">
   <link rel="stylesheet" href="{{ url_for('static', path='traceability-2691.css') }}?v={{ app_version }}">
+  {% if active_path.startswith('/app/vacations') %}<link rel="stylesheet" href="{{ url_for('static', path='vacations-workspace-2693.css') }}?v={{ app_version }}">{% endif %}
   <link rel="stylesheet" href="{{ url_for('static', path='experience.css') }}?v={{ app_version }}">
   <link rel="stylesheet" href="{{ url_for('static', path='brand-identity.css') }}?v={{ app_version }}">
   <link rel="stylesheet" href="{{ url_for('static', path='certificate-premium.css') }}?v={{ app_version }}">
@@ -186,6 +187,7 @@
 <script src="{{ url_for('static', path='v22-dashboard.js') }}?v={{ app_version }}"></script>
 <script src="{{ url_for('static', path='v23.js') }}?v={{ app_version }}"></script>
 <script src="{{ url_for('static', path='v24.js') }}?v={{ app_version }}"></script>
+{% if active_path.startswith('/app/vacations') %}<script src="{{ url_for('static', path='vacations-workspace-2693.js') }}?v={{ app_version }}" defer></script>{% endif %}
 <script src="{{ url_for('static', path='labor-suite.js') }}?v={{ app_version }}" defer></script>
 {% if kind == 'settlement' %}<script src="{{ url_for('static', path='settlement-presets.js') }}?v={{ app_version }}" defer></script><script src="{{ url_for('static', path='settlement-preview.js') }}?v={{ app_version }}" defer></script>{% endif %}
 {% if kind == 'settlement' and private %}<script src="{{ url_for('static', path='payroll-average.js') }}?v={{ app_version }}" defer></script>{% endif %}

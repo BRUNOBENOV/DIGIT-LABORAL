@@ -46,6 +46,7 @@
 
   // Filtro local de tablas: no modifica ni elimina los registros del servidor.
   document.querySelectorAll(".table-panel").forEach(panel => {
+    if (panel.hasAttribute("data-server-search")) return;
     if (panel.querySelector(".experience-filter")) return;
     // Si ya hay un buscador de servidor en esta sección, evitamos duplicar controles.
     if (panel.querySelector("form.search-form")) return;

@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Vacaciones #{{ item.id }} | Digit Laboral{% endblock %}
+{% block page_name %}Detalle de vacaciones{% endblock %}
+{% block content %}
+<div class="vac-detail-page" aria-labelledby="vac-detail-title">
+  <header class="vac-detail-header">
+    <span class="vac-kicker">MOVIMIENTO OPERATIVO · VACACIONES</span>
+    <h1 id="vac-detail-title">Vacaciones · período {{ item.period_year }}</h1>
+    <p>Registro #{{ item.id }} · {{ employee.full_name }} · {{ company.legal_name }}</p>
+  </header>
+  <nav class="vac-detail-links" aria-label="Regresar a otras secciones">
+    <a class="btn ghost" href="/app/vacations?company_id={{ company.id }}&amp;employee_id={{ employee.id }}#vacations-records">← Volver a trazabilidad</a>
+    <a class="btn ghost" href="/app/employees/{{ employee.id }}">Expediente del funcionario</a>
+    <a class="btn ghost" href="/app/calculations?tipo=vacation&amp;company_id={{ company.id }}&amp;employee_id={{ employee.id }}">Abrir calculadora</a>
+  </nav>
+  <section class="panel vac-detail-panel" aria-label="Datos del movimiento">
+    <h2>Identificación y estado</h2>
+    <div class="vac-detail-grid">
+      <dl><dt>Funcionario</dt><dd>{{ employee.full_name }}</dd></dl>
+      <dl><dt>Legajo</dt><dd>{{ employee.employee_code if employee.employee_code is not none else 'Sin código' }}</dd></dl>
+      <dl><dt>Empresa</dt><dd>{{ company.legal_name }}</dd></dl>
+      <dl><dt>Período de referencia</dt><dd>{{ item.period_year }}</dd></dl>
+      <dl><dt>Estado registrado</dt><dd><span class="vac-status vac-status-{{ item.status|lower|replace(' ', '-') }}">{{ item.status }}</span></dd></dl>
+      <dl><dt>Fecha de creación</dt><dd>{{ item.created_at|fecha }}</dd></dl>
+    </div>
+  </section>
+  <section class="panel vac-detail-panel" aria-label="Días y fechas">
+    <h2>Derecho y utilización</h2>
+    <div class="vac-detail-grid">
+      <dl><dt>Días concedidos</dt><dd>{{ item.entitled_days }}</dd></dl>
+      <dl><dt>Días utilizados</dt><dd>{{ item.used_days }}</dd></dl>
+      <dl><dt>Saldo calculado de este registro</dt><dd>{{ item.entitled_days - item.used_days }}</dd></dl>
+      <dl><dt>Desde</dt><dd>{{ item.start_date|fecha if item.start_date else 'No indicado' }}</dd></dl>
+      <dl><dt>Hasta</dt><dd>{{ item.end_date|fecha if item.end_date else 'No indicado' }}</dd></dl>
+    </div>
+    {% if item.notes %}
+    <div class="vac-detail-note"><b>Observaciones del registro</b><p>{{ item.notes }}</p></div>
+    {% endif %}
+    <p class="vac-detail-note" role="note">Este es un movimiento operativo guardado. El saldo corresponde únicamente a este registro; para evaluar el derecho anual completo revisá todos los movimientos y solicitudes del período. No se deduce que un antecedente DOS haya sido conciliado.</p>
+  </section>
+</div>
+{% endblock %}

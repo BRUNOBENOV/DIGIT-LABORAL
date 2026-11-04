@@ -8614,6 +8614,11 @@ def vacations_page(
     company_id: OptionalQueryId = None,
     employee_id: OptionalQueryId = None,
     history_page: int = 1,
+    q: str = "",
+    source: str = "all",
+    status: str = "all",
+    sort: str = "recent",
+    page_size: int = 25,
     user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ):
@@ -8621,29 +8626,87 @@ def vacations_page(
     selected_company_id, selected_employee_id = default_labor_context(
         request, db, user, company_ids, company_id, employee_id
     )
+    if len(q) > 120:
+        raise HTTPException(422, "La búsqueda no puede superar los 120 caracteres.")
+    if page_size not in (25, 50, 100):
+        raise HTTPException(422, "Elegí 25, 50 o 100 registros por página.")
+    if source not in ("all", "current", "imported"):
+        raise HTTPException(422, "Origen de vacaciones inválido.")
+    if status not in ("all", "Pendiente", "Aprobada", "Completada", "Anulada",
+                      "Rechazada", "Cancelada", "Sin conciliar"):
+        raise HTTPException(422, "Estado de vacaciones inválido.")
+    if sort not in ("recent", "oldest"):
+        raise HTTPException(422, "Orden de vacaciones inválido.")
     employee_query = select(Employee).where(Employee.company_id.in_(company_ids), Employee.status == "Activo") if company_ids else select(Employee).where(False)
     if selected_company_id:
         employee_query = employee_query.where(Employee.company_id == selected_company_id)
     employees = seed_choices(db, employee_query.order_by(Employee.full_name), Employee, request=request)
     history = vacation_history_page(
         db, company_ids, company_id=selected_company_id,
-        employee_id=selected_employee_id, page=history_page, page_size=60,
+        employee_id=selected_employee_id, page=history_page, page_size=page_size,
+        q=q.strip(), source=source, status=status, sort_order=sort,
     )
     history_filters = {
         key: value for key, value in {
             "company_id": selected_company_id, "employee_id": selected_employee_id,
-        }.items() if value is not None
+            "q": q.strip(), "source": source if source != "all" else None,
+            "status": status if status != "all" else None,
+            "sort": sort if sort != "recent" else None, "page_size": page_size,
+        }.items() if value is not None and value != ""
     }
     history_prev_query = urlencode({**history_filters, "history_page": history["page"] - 1})
     history_next_query = urlencode({**history_filters, "history_page": history["page"] + 1})
-    history_export_query = urlencode(history_filters)
+    vacation_source_links = {}
+    for item in ("all", "current", "imported"):
+        # Cambiar a Históricos DOS no debe conservar por accidente un
+        # estado operativo como Aprobada (ni viceversa).
+        selected_status = (
+            status if item == "all" or
+            (item == "current" and status != "Sin conciliar") or
+            (item == "imported" and status in {"all", "Sin conciliar"})
+            else "all"
+        )
+        tab_filters = {
+            key: value for key, value in history_filters.items()
+            if key not in {"source", "status"}
+        }
+        if item != "all":
+            tab_filters["source"] = item
+        if selected_status != "all":
+            tab_filters["status"] = selected_status
+        vacation_source_links[item] = "/app/vacations?" + urlencode(tab_filters)
+    history_export_query = urlencode({
+        key: value for key, value in {
+            "company_id": selected_company_id, "employee_id": selected_employee_id,
+        }.items() if value is not None
+    })
     companies = seed_choices(db, select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name), Company, request=request) if company_ids else []
     filter_employees = seed_choices(db, select(Employee).where(Employee.company_id.in_(company_ids)).order_by(Employee.full_name), Employee, request=request) if company_ids else []
     return render(request, "vacations.html", db, user, employees=employees, filter_employees=filter_employees,
                   companies=companies, selected_company_id=selected_company_id,
                   selected_employee_id=selected_employee_id,
                   history_page=history, history_prev_query=history_prev_query,
-                  history_next_query=history_next_query, history_export_query=history_export_query)
+                  history_next_query=history_next_query, history_export_query=history_export_query,
+                  vacation_q=q.strip(), vacation_source=source, vacation_status=status,
+                  vacation_sort=sort, vacation_page_size=page_size,
+                  vacation_source_links=vacation_source_links,
+                  vacation_current_on_page=sum(r["origin"] == "current" for r in history["rows"]),
+                  vacation_imported_on_page=sum(r["origin"] == "imported" for r in history["rows"]))
+
+
+@app.get("/app/vacations/{record_id:int}", response_class=HTMLResponse)
+def current_vacation_detail_page(
+    record_id: int,
+    request: Request,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    """Consulta solo lectura; evita que los movimientos actuales sean filas sin detalle."""
+    item = db.get(Vacation, record_id)
+    if not item or item.employee.company_id not in company_ids_for_user(db, user):
+        raise HTTPException(404, "Registro de vacaciones no encontrado.")
+    return render(request, "vacation_detail.html", db, user, item=item,
+                  employee=item.employee, company=item.employee.company)
 
 
 @app.get("/app/vacations/history.csv")
@@ -8721,7 +8784,17 @@ def create_vacation(
     employee = db.get(Employee, employee_id)
     if not employee or employee.company_id not in company_ids_for_user(db, user):
         raise HTTPException(404)
-    item = Vacation(employee_id=employee_id, period_year=period_year, entitled_days=max(0, entitled_days), used_days=max(0, used_days), start_date=start_date, end_date=end_date, status=status_value, notes=notes.strip())
+    if not 1990 <= period_year <= current_paraguay_date().year + 2:
+        raise HTTPException(422, "El año del período de vacaciones está fuera del rango permitido.")
+    if not 0 <= entitled_days <= 365 or not 0 <= used_days <= entitled_days:
+        raise HTTPException(422, "Verificá los días concedidos y usados: no pueden ser negativos ni superar el derecho.")
+    if start_date and end_date and end_date < start_date:
+        raise HTTPException(422, "La fecha final no puede ser anterior a la inicial.")
+    if status_value not in {"Pendiente", "Aprobada", "Completada", "Anulada", "Rechazada", "Cancelada"}:
+        raise HTTPException(422, "Estado de vacaciones no válido.")
+    if len(notes) > 4000:
+        raise HTTPException(422, "Las observaciones superan el límite permitido.")
+    item = Vacation(employee_id=employee_id, period_year=period_year, entitled_days=entitled_days, used_days=used_days, start_date=start_date, end_date=end_date, status=status_value, notes=notes.strip())
     db.add(item)
     db.flush()
     if item.start_date:
@@ -8733,7 +8806,7 @@ def create_vacation(
         )
     write_audit(db, user, "crear", "vacaciones", str(item.id), employee.full_name)
     db.commit()
-    return RedirectResponse("/app/vacations", status_code=303)
+    return RedirectResponse(f"/app/vacations/{item.id}", status_code=303)
 
 
 @app.get("/app/aguinaldo", response_class=HTMLResponse)
