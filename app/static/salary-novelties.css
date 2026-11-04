@@ -1,0 +1,17 @@
+/* Panel de conciliación de novedades salariales: aislado del resto de módulos. */
+.dl-salary-novelties{margin:14px 0;padding:16px 18px;border:1px solid #ccdbec;border-radius:13px;background:#f8fbff;color:#243c5c}
+.dl-salary-novelties h3{margin:0 0 6px;color:#183a70;font-size:1rem}
+.dl-salary-novelties p{font-size:.81rem;line-height:1.5}
+.dl-novelties-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin:12px 0}
+.dl-novelties-metrics>div{border:1px solid #dae5f2;border-radius:9px;background:#fff;padding:10px}
+.dl-novelties-metrics small{display:block;font-size:.71rem;color:#596c87}
+.dl-novelties-metrics strong{display:block;font-size:1.1rem;font-variant-numeric:tabular-nums;color:#183a70}
+.dl-salary-novelties ul{margin:8px 0 11px;padding-left:19px;font-size:.8rem;line-height:1.55}
+.dl-salary-novelties li+li{margin-top:4px}
+.dl-salary-novelties [data-novelties-warnings]{color:#765123}
+.dl-novelties-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.dl-novelties-actions button{min-height:37px;font-size:.8rem}
+.dl-novelties-actions button:disabled{opacity:.5;cursor:not-allowed}
+.dl-novelties-complete{display:flex;align-items:flex-start;gap:8px;font-size:.79rem;line-height:1.45;margin:12px 0}
+.dl-novelties-complete input{margin-top:3px;flex:none}
+@media(max-width:680px){.dl-novelties-metrics{grid-template-columns:1fr}.dl-novelties-actions button{width:100%}}
