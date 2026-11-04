@@ -29,6 +29,8 @@ Se revisaron los flujos del motor profesional, los controles de guardado y aprob
 
 **P1.3. Rectificación y aprobación.** Existe rectificación salarial no destructiva, que crea borrador y conserva el original. La prueba pendiente con datos sintéticos debe cubrir múltiples versiones del mismo funcionario/mes, anulación, aprobación, documentos y exportación posterior. No sobrescribir aprobados; un error ya declarado ante autoridad exige procedimiento externo de rectificación.
 
+**P1.4. Consulta de asistencia capaz de bloquear el guardado (corregido en esta rama).** El navegador impedía enviar el formulario mientras esperaba una consulta remota sin plazo máximo. Se agregó un límite de 8 segundos y recuperación a edición manual si la consulta no responde; el servidor conserva la validación y no inventa jornadas. La prueba de frontend simula un servicio colgado y verifica que el formulario se desbloquee.
+
 ### P2 — estética, accesibilidad y experiencia
 **P2.1. Recursos visuales con caché desigual (corregido en esta rama).** El layout base contenía 25 enlaces a CSS y 22 etiquetas de script (algunas condicionales). Varios estaban sin parámetro de versión o con versiones fijas antiguas, lo que puede dejar CSS/JS desactualizados en navegador después de una publicación. Se unificaron 47 recursos estáticos bajo `?v={{ app_version }}`, además de favicon y logos.
 
@@ -62,7 +64,8 @@ Se revisaron los flujos del motor profesional, los controles de guardado y aprob
 1. Unificación del invalidado de caché para 47 recursos CSS/JS del template base, favicon y logos.
 2. Acceso por teclado **Saltar al contenido principal** con foco visible.
 3. Aumento de legibilidad de notas, datos base y pie del resumen de cálculo salarial.
-4. Pruebas automatizadas nuevas para estos puntos y cobertura CSRF de las plantillas críticas.
+4. Pruebas automatizadas nuevas para estos puntos, cobertura CSRF de plantillas críticas, compilación de todas las plantillas y sintaxis de todo el JavaScript.
+5. Consulta de asistencia con tiempo máximo (8 segundos) y recuperación manual segura en caso de indisponibilidad, probada con simulación JavaScript.
 
 Estas correcciones son pequeñas y verificables. **No cambian fórmulas, trabajadores, base de datos, permisos, importaciones ni documentos guardados**.
 
