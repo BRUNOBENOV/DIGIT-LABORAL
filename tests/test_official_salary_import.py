@@ -63,6 +63,37 @@ def test_reop_32_exact_columns_and_excel_dates(monkeypatch):
         assert int(cells["C2"].find("m:v", ns).text) > 46000
 
 
+def test_reop_payment_codes_export_as_official_numeric_values(monkeypatch):
+    company, _, _, _ = fixture_records(monkeypatch)
+    from openpyxl import load_workbook
+
+    for code, label in (
+        ("1", "Efectivo"),
+        ("2", "Cheque"),
+        ("3", "Banco"),
+        ("4", "Giro"),
+    ):
+        rows, errors = service.prepare_import(
+            None, company, "2026-10", "REOP", payment_code=code
+        )
+        assert not errors, f"{label}: {errors}"
+        assert rows[0][4] == int(code)
+        workbook = load_workbook(io.BytesIO(service.build_reop_xlsx(rows)), read_only=True)
+        assert workbook.active.cell(2, 5).value == int(code)
+        workbook.close()
+
+
+def test_reop_payment_selector_names_are_visible_to_accountant():
+    from pathlib import Path
+    template = (Path(__file__).resolve().parents[1] / "app/templates/salary_import.html").read_text(
+        encoding="utf-8"
+    )
+    for option in ("('1','Efectivo')", "('2','Cheque')",
+                   "('3','Banco (depósito o transferencia)')", "('4','Giro')"):
+        assert option in template
+    assert "Código {{ value }} — confirmar significado en REOP" not in template
+
+
 def test_rei_2016_tabbed_text_no_headers(monkeypatch):
     company, _, _, _ = fixture_records(monkeypatch)
     rows, errors = service.prepare_import(SimpleNamespace(scalar=lambda query: None), company, "2026-10", "REI",
