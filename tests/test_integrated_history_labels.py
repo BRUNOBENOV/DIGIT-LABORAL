@@ -49,3 +49,13 @@ def test_notice_history_remains_auditable_without_old_system_branding():
     assert "Sin conciliación documental" in page
     assert "source.source_hash" in page
     assert "BORRAD=S" in page
+
+
+def test_history_download_names_and_audit_labels_belong_to_digit():
+    routes = (ROOT / "app/main.py").read_text(encoding="utf-8")
+    assert "digit_laboral_historial_vacaciones.csv" in routes
+    assert "digit_laboral_historial_preavisos.csv" in routes
+    assert "vacaciones_historicas_lsvac.csv" not in routes
+    assert "historico_preaviso_lspre.csv" not in routes
+    assert "Exportación de historial de vacaciones CSV" in routes
+    assert "Exportación de historial de preavisos" in routes
