@@ -75,6 +75,8 @@ def entity_options(
     company_id: OptionalQueryId = None,
     selected_id: OptionalQueryId = None,
     scope: str = "all",
+    ips_only: bool = False,
+    active_only: bool = False,
     limit: int = 10,
     user: User = Depends(core.require_user),
     db: Session = Depends(core.get_db),
@@ -115,6 +117,12 @@ def entity_options(
         query = select(Employee.id, Employee.employee_code, Employee.full_name, Employee.document_number, Employee.company_id, Employee.status, Company.company_code, Company.legacy_code, Company.legal_name).join(Company).where(Employee.company_id.in_(allowed))
         if company_id is not None:
             query = query.where(Employee.company_id == company_id)
+        # Filtro de selección de exportación REOP/REI, aplicado también al
+        # lookup por selected_id. No afecta otros selectores de Funcionarios.
+        if ips_only:
+            query = query.where(Employee.ips_contributor.is_(True))
+        if active_only:
+            query = query.where(Employee.status == "Activo")
         if scope == "active":
             query = query.where(Employee.status == "Activo", Company.status == "Activa")
         elif scope == "current":
