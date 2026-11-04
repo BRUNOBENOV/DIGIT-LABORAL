@@ -16,7 +16,7 @@
 {% if rectification_origin %}
 <section class="dl-rectify-lineage">
   <strong>Rectificación del cálculo #{{ rectification_origin.id }}</strong>
-  <span>El original permanece disponible para consulta. Esta versión tiene su propia aprobación.</span>
+  <span>Importe anterior: <b>Gs. {{ rectification_origin.amount|gs }}</b> · Importe rectificado: <b>Gs. {{ item.amount|gs }}</b>. Esta versión requiere su propia aprobación.</span>
   <a href="/app/liquidaciones/{{ rectification_origin.id }}">Ver cálculo original</a>
 </section>
 {% endif %}
