@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Preaviso histórico #{{ event.id }} | DIGIT-LABORAL{% endblock %}
-{% block page_name %}Antecedente histórico LSPRE{% endblock %}
+{% block page_name %}Historial de preavisos{% endblock %}
 {% block content %}
 <style>
 .lspre-detail{max-width:1050px;margin:0 auto}
@@ -27,7 +27,7 @@
 <div class="lspre-caution"><b>Sin conciliación documental.</b> Este registro no demuestra entrega del preaviso, recepción por el trabajador, cumplimiento de plazo, despido, finalización efectiva de la relación ni pago indemnizatorio.
 {% if source.deleted_source %}<b>El registro tiene la marca de origen BORRAD=S (borrado).</b>{% endif %}</div>
 <section class="panel" style="padding:18px">
-<div class="panel-head"><div><span>RELACIÓN CON LEGADO</span><h2>Identificación</h2></div></div>
+<div class="panel-head"><div><span>IDENTIFICACIÓN</span><h2>Identificación</h2></div></div>
 <dl class="lspre-facts">
 <div><dt>Funcionario actual</dt><dd><a href="/app/employees/{{ event.employee_id }}">{{ event.employee.full_name }}</a></dd></div>
 <div><dt>Empresa actual</dt><dd>{{ event.employee.company.legal_name }}</dd></div>
@@ -55,7 +55,7 @@
 <dl class="lspre-facts">
 <div><dt>Archivo original</dt><dd>{{ source.source_filename }}</dd></div>
 <div><dt>Fila original</dt><dd>{{ source.source_row }}</dd></div>
-<div><dt>Clave LSPRE</dt><dd>{{ source.legacy_key }}</dd></div>
+<div><dt>Identificador de respaldo</dt><dd>{{ source.legacy_key }}</dd></div>
 <div><dt>Huella de fuente SHA-256</dt><dd style="font-size:.7rem">{{ source.source_hash }}</dd></div>
 <div><dt>Importado por</dt><dd>{{ event.created_by or 'Sistema' }}</dd></div>
 </dl></section>
