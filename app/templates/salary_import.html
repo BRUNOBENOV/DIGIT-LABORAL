@@ -60,7 +60,7 @@
       </div>
       <div class="import-salary-grid" style="margin-top:12px">
         <label>Alcance de la exportación
-          <select name="employee_id" data-searchable-entity="employee" data-entity-scope="company">
+          <select name="employee_id" data-searchable-entity="employee" data-entity-scope="all" data-ips-only="true" data-ips-active-only="{{ 'true' if authority == 'REI' else 'false' }}">
             <option value="" {{ 'selected' if not selected_employee }}>{{ 'Toda la empresa · solo IPS Sí (activos)' if authority == 'REI' else 'Toda la empresa · solo IPS Sí' }}</option>
             {% for worker in approved_choices %}
             <option value="{{ worker.id }}" {{ 'selected' if selected_employee and selected_employee.id == worker.id }}>
