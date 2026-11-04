@@ -121,7 +121,7 @@ def test_copy_is_independent_and_approved_put_cannot_overwrite(web_case):
     before = first.input_json
     mutated = client.put(f"/api/calculations/{first.id}", json={
         "kind": "salary", "salary": "10", "month": "2026-10",
-    })
+    }, headers={"x-csrf-token": token(client, f"/app/liquidaciones/{first.id}")})
     assert mutated.status_code == 409
     db.expire_all()
     assert db.get(CalculationRecord, first.id).input_json == before
