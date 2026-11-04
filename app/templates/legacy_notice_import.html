@@ -77,7 +77,7 @@
 </section>
 <section class="lspre-section">
 <h2>3 · Confirmación controlada</h2>
-<p class="lspre-help">Se incorporarán <b>{{ preview.summary.ready }}</b> antecedentes documentales LSPRE a sus expedientes, sin modificar registros operativos. El sistema excluye conflictos, duplicados y legajos no identificados.</p>
+<p class="lspre-help">Se incorporarán <b>{{ preview.summary.ready }}</b> antecedentes documentales a sus expedientes, sin modificar registros operativos. El sistema excluye conflictos, duplicados y legajos no identificados.</p>
 <form method="post" action="/app/import/legacy-notices/{{ token }}/confirm">
 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 <label class="lspre-verify"><input type="checkbox" name="verified" value="si" required> Verifiqué las coincidencias. Autorizo cargar exclusivamente los registros vinculados como antecedentes sin valor de notificación ni pago demostrado.</label>
