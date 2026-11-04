@@ -189,7 +189,19 @@ def test_rei_payroll_filters_ips_no_inactive_and_archived_without_blocking(monke
         payment_code="1",
     )
     assert not reop_errors
-    assert len(reop_rows) == 4
+    assert len(reop_rows) == 3  # REOP también excluye al trabajador IPS No.
+    assert all(row[1] != non_ips.document_number for row in reop_rows)
+
+
+def test_reop_never_exports_payroll_worker_marked_ips_no(monkeypatch):
+    company, _line, employee, _detail = fixture_records(monkeypatch)
+    employee.ips_contributor = False
+    rows, errors = service.prepare_import(
+        SimpleNamespace(scalar=lambda query: None), company, "2026-10", "REOP",
+        source_type="payroll", payment_code="1",
+    )
+    assert rows == []
+    assert any("IPS marcado Sí" in item for item in errors)
 
 
 def test_rei_does_not_export_inactive_or_ips_no_employee_even_with_loaded_salary(monkeypatch):
