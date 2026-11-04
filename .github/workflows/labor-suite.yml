@@ -41,6 +41,11 @@ jobs:
         run: |
           python -m compileall -q app alembic tests/test_labor_suite.py
           python -c "from jinja2 import Environment, FileSystemLoader; e=Environment(loader=FileSystemLoader('app/templates')); [e.parse(e.loader.get_source(e,n)[0]) for n in e.list_templates()]"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Validate syntax of all frontend JavaScript files
+        run: find app/static -maxdepth 1 -name '*.js' -print0 | xargs -0 -n1 node --check
       - name: Run complete automated test suite
         run: python -m pytest -q --junitxml=/tmp/labor-tests.xml -o faulthandler_timeout=90
       - name: Full startup and deployment smoke gates
