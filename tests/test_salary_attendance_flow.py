@@ -333,3 +333,37 @@ def test_reop_payroll_selector_excludes_ips_no(attendance_case):
     assert selector is not None
     assert "PAGO SIN IPS" not in selector.get_text(" ", strip=True)
     assert "PEREZ GOMEZ JUAN LUIS" in selector.get_text(" ", strip=True)
+
+
+def test_reop_rei_async_employee_selector_filters_ips_yes_at_api_level(attendance_case):
+    from pathlib import Path
+    client, db, _, company, employee, _, _ = attendance_case
+    excluded = Employee(
+        company_id=company.id, employee_code=900025, full_name="EXCLUIDO IPS NO",
+        document_number="9000025", ips_contributor=False,
+        admission_date=date(2024, 1, 1), status="Activo",
+    )
+    db.add(excluded)
+    db.commit()
+    endpoint = "/api/selectors/employees"
+    params = {"company_id": company.id, "ips_only": "true"}
+    results = client.get(endpoint, params={**params, "q": "EXCLUIDO IPS NO"})
+    assert results.status_code == 200 and results.json()["items"] == []
+    assert client.get(endpoint, params={
+        **params, "selected_id": excluded.id,
+    }).status_code == 404
+    kept = client.get(endpoint, params={**params, "selected_id": employee.id})
+    assert kept.status_code == 200 and kept.json()["items"][0]["id"] == employee.id
+
+    employee.status = "Desvinculado"
+    db.commit()
+    assert client.get(endpoint, params={
+        **params, "active_only": "true", "selected_id": employee.id,
+    }).status_code == 404
+    assert client.get(endpoint, params={
+        **params, "selected_id": employee.id,
+    }).status_code == 200  # REOP conserva los IPS Sí desvinculados.
+
+    script = (Path(__file__).resolve().parents[1] / "app/static/entity-selects.js").read_text("utf-8")
+    assert 'url.searchParams.set("ips_only", "true")' in script
+    assert 'url.searchParams.set("active_only", "true")' in script
