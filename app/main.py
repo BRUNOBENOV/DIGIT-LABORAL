@@ -7831,15 +7831,20 @@ def salary_settlement_report_pdf(
 
     item, company, employee = _salary_report_record(db, user, calculation_id)
     model = build_salary_report_model(db, item, company, employee)
-    if not model["can_reprint"]:
-        raise HTTPException(409, "No se puede reimprimir un cálculo anulado.")
+    # Un cálculo anulado NO puede reimprimirse como vigente, pero su copia
+    # histórica debe poder consultarse sin obtener un enlace PDF roto.
+    # Generar ANTES de auditar para evitar registrar descargas que fallaron.
+    payload = build_salary_report_pdf(model)
+    if not payload.startswith(b"%PDF"):
+        raise HTTPException(500, "No se pudo generar un archivo PDF válido.")
     write_audit(
-        db, user, "reimpresion_pdf_liquidacion_salario", "liquidacion_salario", str(item.id),
-        f"PDF · período {model['period']} · neto Gs. {format_gs(model['net'])}",
+        db, user,
+        "descarga_pdf_anulado" if model["is_annulled"] else "reimpresion_pdf_liquidacion_salario",
+        "liquidacion_salario", str(item.id),
+        f"{'Copia anulada' if model['is_annulled'] else 'PDF'} · período {model['period']} · neto Gs. {format_gs(model['net'])}",
     )
     db.commit()
-    payload = build_salary_report_pdf(model)
-    filename = f"digit-laboral-liquidacion-salario-{item.id:06d}.pdf"
+    filename = f"digit-laboral-{model['code']}{'-ANULADO' if model['is_annulled'] else ''}.pdf"
     return Response(
         content=payload, media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"', "Cache-Control": "no-store"},
