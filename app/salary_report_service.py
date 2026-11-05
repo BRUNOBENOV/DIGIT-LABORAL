@@ -23,6 +23,20 @@ from .models import AuditLog, CalculationRecord, Company, CompanyBranding, Emplo
 SALARY_CALCULATION_TYPES = ("salary", "suite_salary")
 
 
+_RECEIPT_MONTHS_ES = (
+    "enero", "febrero", "marzo", "abril", "mayo", "junio",
+    "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+)
+
+
+def _receipt_long_date(value: date | None) -> str:
+    """Formatea fechas reales como el recibo MTESS, sin inferir fechas faltantes."""
+    if value is None:
+        return "No registrado"
+    return f"{value.day:02d} de {_RECEIPT_MONTHS_ES[value.month - 1]} de {value.year}"
+
+
+
 def _dict_json(raw: str | None) -> dict[str, Any]:
     try:
         parsed = json.loads(raw or "{}")
@@ -212,6 +226,8 @@ def build_salary_report_model(
         "period_end": period_end,
         "period_from_display": period_start.strftime("%d/%m/%Y") if period_start else "No registrado",
         "period_to_display": period_end.strftime("%d/%m/%Y") if period_end else "No registrado",
+        "period_from_mtess_display": _receipt_long_date(period_start),
+        "period_to_mtess_display": _receipt_long_date(period_end),
         "days_worked_display": quantity("days_worked"),
         "hours_worked_display": quantity("hours_worked"),
         "pieces_or_tasks_display": pieces_display,
