@@ -345,10 +345,33 @@ def calculate(data, *, judicial_evidence_verified=False):
                         "Se cargaron horas feriadas junto con otras categorías horarias. Verificá que no representen las mismas horas y revisá la acumulación legal de recargos antes de aprobar."
                     )
             elif manual_overtime:
-                add("Horas extras (importe manual)", manual_overtime, "Importe manual informado")
-                result["warnings"].append(
-                    "Se utilizó un importe manual de horas extras por compatibilidad o excepción. Verificá su respaldo y que no duplique horas incorporadas en otro concepto."
-                )
+                manual_type = str(data.get("overtime_manual_type") or "")
+                documented_hours = number(data, "overtime_manual_hours", "cantidad de horas extras manuales", maximum="744", decimals=2)
+                evidence = clean(data.get("overtime_manual_evidence"), 300)
+                if manual_type and manual_type not in {"day", "night"}:
+                    raise CalculationError("Seleccioná una clasificación válida de horas extras manuales.", "overtime_manual_type")
+                if manual_type and (documented_hours <= 0 or len(evidence) < 10):
+                    raise CalculationError(
+                        "Para clasificar el importe manual completá horas extras reales y referencia del respaldo (mínimo 10 caracteres).",
+                        "overtime_manual_hours",
+                    )
+                if not manual_type and documented_hours:
+                    raise CalculationError("Clasificá las horas extras manuales como diurnas o nocturnas.", "overtime_manual_type")
+                label = {
+                    "day": "Horas extraordinarias diurnas (mínimo 50 %)",
+                    "night": "Horas extraordinarias nocturnas (100 %)",
+                }.get(manual_type, "Horas extras (importe manual)")
+                add(label, manual_overtime,
+                    f"Importe documentado · {documented_hours} horas · {evidence}" if manual_type
+                    else "Importe manual informado sin clasificación",
+                    "No se suma otra vez al importe calculado por horas")
+                if not manual_type:
+                    result["warnings"].append(
+                        "Importe manual de horas extras sin cantidad, tipo y respaldo documental. "
+                        "Se puede revisar el recibo, pero la exportación REOP de este concepto quedará bloqueada."
+                    )
+            elif str(data.get("overtime_manual_type") or "").strip() or str(data.get("overtime_manual_hours") or "").strip():
+                raise CalculationError("No informes clasificación ni horas manuales si no existe un importe manual.", "overtime")
         else:
             add("Horas extras", number(data, "overtime"), "Importe informado")
         for key, label in (("commissions", "Comisiones"),
