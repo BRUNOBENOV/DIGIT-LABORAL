@@ -11,14 +11,11 @@ from tests.test_labor_suite import salary
 
 def approved_case(**changes):
     item, employee, company, detail = case()
-    data = salary(
-        kind="salary",
-        salary="3044000",
-        days_paid="30", days_worked="21", hours_worked="168",
-        month="2026-10", payment_method="Transferencia",
-        commissions="351168",
-        **changes,
-    )
+    base = dict(kind="salary", salary="3044000", days_paid="30",
+                days_worked="21", hours_worked="168", month="2026-10",
+                payment_method="Transferencia", commissions="351168")
+    base.update(changes)
+    data = salary(**base)
     result = calculate(data)
     item.calculation_type = "suite_salary"
     item.source = "Centro laboral"
