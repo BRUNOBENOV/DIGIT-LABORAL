@@ -5853,6 +5853,14 @@ def _revalidate_calculation_before_approval(item: CalculationRecord, db: Session
                     or not unchanged_hours):
                     raise HTTPException(409, "Los días u horas trabajados cambiaron antes de aprobar el cálculo.")
 
+    if item.source == "Importación Excel REOP":
+        from .reop_salary_ingest import validate_imported_reop_salary_for_approval
+        try:
+            validate_imported_reop_salary_for_approval(db, item, saved_inputs, saved_results)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from None
+        return
+
     legacy_general_sources = {"Cálculo automático", "Calculadora", "Calculadora v2.4"}
     if (item.source or "").strip() in legacy_general_sources:
         # Los registros históricos con fuentes conocidas (incluida la variante
@@ -5995,7 +6003,9 @@ def calculation_status(
     write_audit(db, user, "actualizar_estado", "calculo", str(item.id), status_value)
     db.commit()
     target = f"/app/calculations?tipo={quote(item.calculation_type)}" if item.calculation_type in CALCULATION_MODULES else "/app/calculations"
-    if item.calculation_type == "suite_salary" and item.source == "Centro laboral":
+    if item.calculation_type in {"salary", "suite_salary"} and item.employee_id:
+        target = f"/app/reports/liquidaciones-salarios/{item.id}"
+    elif item.calculation_type == "suite_salary" and item.source == "Centro laboral":
         target = f"/app/liquidaciones/{item.id}"
     return RedirectResponse(target, status_code=303)
 
