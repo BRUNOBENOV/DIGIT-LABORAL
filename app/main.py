@@ -343,6 +343,8 @@ class CSRFMiddleware:
             # los demás formularios del calculador conservan el límite de 64 KiB.
             if path == "/app/liquidaciones/conciliar-planilla":
                 limit = 2 * 1024 * 1024 + 32768  # espacio multipart/control CSRF
+            elif path == "/app/liquidaciones/salarios/importar-reop/previsualizar":
+                limit = 5 * 1024 * 1024 + 32768  # XLSX REOP con protección CSRF
             elif path.startswith("/herramientas/") or path.startswith("/app/liquidaciones/"):
                 limit = 64000
             else:
