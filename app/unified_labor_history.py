@@ -90,7 +90,9 @@ def _live_calculation(record: CalculationRecord) -> dict:
         period=record.reference_period or "—",
         amount=record.amount, status=record.status,
         detail="", source=None, days=None, used_days=None, balance=None,
-        url=f"/app/calculations/{record.id}/certificate",
+        url=(f"/app/reports/liquidaciones-salarios/{record.id}"
+             if record.calculation_type in {"salary", "suite_salary"}
+             else f"/app/calculations/{record.id}/certificate"),
         record=record, can_use_document=True,
     )
 
