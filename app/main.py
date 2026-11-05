@@ -5853,6 +5853,14 @@ def _revalidate_calculation_before_approval(item: CalculationRecord, db: Session
                     or not unchanged_hours):
                     raise HTTPException(409, "Los días u horas trabajados cambiaron antes de aprobar el cálculo.")
 
+    if item.source == "Importación Excel REOP":
+        from .reop_salary_ingest import validate_imported_reop_salary_for_approval
+        try:
+            validate_imported_reop_salary_for_approval(db, item, saved_inputs, saved_results)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from None
+        return
+
     legacy_general_sources = {"Cálculo automático", "Calculadora", "Calculadora v2.4"}
     if (item.source or "").strip() in legacy_general_sources:
         # Los registros históricos con fuentes conocidas (incluida la variante
@@ -5995,7 +6003,9 @@ def calculation_status(
     write_audit(db, user, "actualizar_estado", "calculo", str(item.id), status_value)
     db.commit()
     target = f"/app/calculations?tipo={quote(item.calculation_type)}" if item.calculation_type in CALCULATION_MODULES else "/app/calculations"
-    if item.calculation_type == "suite_salary" and item.source == "Centro laboral":
+    if item.calculation_type in {"salary", "suite_salary"} and item.employee_id:
+        target = f"/app/reports/liquidaciones-salarios/{item.id}"
+    elif item.calculation_type == "suite_salary" and item.source == "Centro laboral":
         target = f"/app/liquidaciones/{item.id}"
     return RedirectResponse(target, status_code=303)
 
@@ -7898,6 +7908,7 @@ def save_salary_receipt_details(
 @app.get("/app/reports/liquidaciones-salarios/{calculation_id}/pdf")
 def salary_settlement_report_pdf(
     calculation_id: int,
+    vista: bool = False,
     user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ):
@@ -7905,23 +7916,27 @@ def salary_settlement_report_pdf(
 
     item, company, employee = _salary_report_record(db, user, calculation_id)
     model = build_salary_report_model(db, item, company, employee)
-    # Un cálculo anulado NO puede reimprimirse como vigente, pero su copia
-    # histórica debe poder consultarse sin obtener un enlace PDF roto.
-    # Generar ANTES de auditar para evitar registrar descargas que fallaron.
+    # Se usa el MISMO PDF para vista previa y descarga. La vista previa es
+    # una consulta interna, no una reimpresión: no debe registrar una descarga.
     payload = build_salary_report_pdf(model)
     if not payload.startswith(b"%PDF"):
         raise HTTPException(500, "No se pudo generar un archivo PDF válido.")
-    write_audit(
-        db, user,
-        "descarga_pdf_anulado" if model["is_annulled"] else "reimpresion_pdf_liquidacion_salario",
-        "liquidacion_salario", str(item.id),
-        f"{'Copia anulada' if model['is_annulled'] else 'PDF'} · período {model['period']} · neto Gs. {format_gs(model['net'])}",
-    )
-    db.commit()
+    if not vista:
+        write_audit(
+            db, user,
+            "descarga_pdf_anulado" if model["is_annulled"] else "reimpresion_pdf_liquidacion_salario",
+            "liquidacion_salario", str(item.id),
+            f"{'Copia anulada' if model['is_annulled'] else 'PDF'} · período {model['period']} · neto Gs. {format_gs(model['net'])}",
+        )
+        db.commit()
     filename = f"digit-laboral-{model['code']}{'-ANULADO' if model['is_annulled'] else ''}.pdf"
+    disposition = "inline" if vista else "attachment"
     return Response(
         content=payload, media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"', "Cache-Control": "no-store"},
+        headers={
+            "Content-Disposition": f'{disposition}; filename="{filename}"',
+            "Cache-Control": "private, no-store",
+        },
     )
 
 

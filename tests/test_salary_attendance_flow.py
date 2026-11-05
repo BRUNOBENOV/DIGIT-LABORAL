@@ -261,8 +261,12 @@ def test_saved_salary_exposes_review_and_returns_to_the_document_after_approval(
     assert 'value="Aprobado"' not in client.get(location).text
     box["user"].role="contador";db.commit()
     approved=client.post(action,data={"csrf_token":token(client),"status":"Aprobado"},follow_redirects=False)
-    assert approved.status_code==303 and approved.headers["location"]==location
-    html=client.get(location).text
+    expected_detail="/app/reports/liquidaciones-salarios/"+location.rsplit("/",1)[-1]
+    assert approved.status_code==303 and approved.headers["location"]==expected_detail
+    detail=client.get(expected_detail)
+    assert detail.status_code==200
+    assert 'id="salary-mtess-pdf"' in detail.text
+    html=client.get(location).text  # La vista anterior sigue siendo consultable.
     assert "Exportar REOP / REI" in html
 
 

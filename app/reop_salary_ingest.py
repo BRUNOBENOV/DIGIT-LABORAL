@@ -264,3 +264,120 @@ def parse_reop_workbook(content: bytes, filename: str, *,
         }
     finally:
         book.close()
+
+
+def validate_imported_reop_salary_for_approval(db, item, inputs: dict, saved: dict) -> None:
+    """Revalidar el snapshot del Excel, sin sustituirlo por un cálculo nuevo.
+
+    La importación preserva haberes declarados, no un cálculo reproducible por
+    nuestro motor. La aprobación aquí es INTERNA y exige consistencia exacta,
+    identidad vinculada, patronal vigente y ausencia de otro salario aprobado.
+    """
+    from calendar import monthrange
+    from sqlalchemy import select
+    from .models import Branch, BranchComplianceProfile, CalculationRecord, Company, Employee
+
+    def refuse(reason: str) -> None:
+        raise ValueError("No se puede aprobar el salario REOP importado: " + reason)
+
+    if item.source != "Importación Excel REOP" or item.calculation_type != "suite_salary":
+        refuse("tipo u origen incorrecto.")
+    company = db.get(Company, item.company_id)
+    employee = db.get(Employee, item.employee_id) if item.employee_id else None
+    if not company or not employee or employee.company_id != company.id:
+        refuse("empresa o funcionario vinculado no coincide con el registro.")
+    if inputs.get("kind") != "salary" or saved.get("kind") != "salary":
+        refuse("falta el tipo de liquidación salarial en los datos guardados.")
+    period = str(item.reference_period or "")
+    if not re.fullmatch(r"20\d{2}-(0[1-9]|1[0-2])", period):
+        refuse("el período registrado no es válido.")
+    if str(inputs.get("month") or "") != period or str(saved.get("period") or "") != period:
+        refuse("el período no coincide entre los datos guardados.")
+    try:
+        start = date.fromisoformat(str(inputs.get("period_start") or ""))
+        end = date.fromisoformat(str(inputs.get("period_end") or ""))
+        year, month = (int(v) for v in period.split("-"))
+        if not date(year, month, 1) <= start <= end <= date(year, month, monthrange(year, month)[1]):
+            refuse("las fechas DESDE/HASTA no pertenecen al período.")
+    except ValueError:
+        refuse("las fechas de la liquidación no son válidas.")
+
+    source_hash = str(inputs.get("reop_import_sha256") or "")
+    if not re.fullmatch(r"[a-f0-9]{64}", source_hash):
+        refuse("falta la huella SHA-256 del Excel original.")
+    try:
+        source_row = int(inputs.get("reop_import_source_row"))
+    except (ValueError, TypeError):
+        source_row = 0
+    if source_row < 2:
+        refuse("falta la fila de origen verificable.")
+    if _digits(inputs.get("ci")) != _digits(employee.document_number):
+        refuse("la C.I. vinculada no coincide con la declarada.")
+    identity = saved.get("identity")
+    if not isinstance(identity, dict) or _digits(identity.get("ci")) != _digits(employee.document_number):
+        refuse("la identidad del recibo no coincide con el legajo.")
+    patronal = _digits(inputs.get("reop_employer_number"))
+    allowed = {_digits(company.mtess_employer_number)}
+    branch_query = select(BranchComplianceProfile.mtess_employer_number).join(
+        Branch, Branch.id == BranchComplianceProfile.branch_id,
+    ).where(Branch.company_id == company.id)
+    allowed.update(_digits(value) for value in db.scalars(branch_query))
+    allowed.discard("")
+    if not patronal or patronal not in allowed:
+        refuse("el número patronal del Excel no coincide con la empresa registrada.")
+
+    def integer_amount(value, name: str) -> int:
+        if type(value) is not int or not 0 <= value <= MAX_AMOUNT:
+            refuse(f"el importe de {name} no es un número entero válido.")
+        return value
+
+    def amounts(section: str) -> int:
+        rows = saved.get(section)
+        if not isinstance(rows, list) or len(rows) > 100:
+            refuse(f"los conceptos de {section} no son válidos.")
+        total = 0
+        for index, row in enumerate(rows, 1):
+            if not isinstance(row, dict) or not str(row.get("label") or "").strip():
+                refuse(f"falta la descripción del concepto {index} en {section}.")
+            total += integer_amount(row.get("amount"), f"{section} #{index}")
+        return total
+
+    incomes = amounts("earnings")
+    deductions = amounts("deductions")
+    gross = integer_amount(saved.get("gross"), "total ingresos")
+    discounts = integer_amount(saved.get("discounts"), "total egresos")
+    net = integer_amount(saved.get("net"), "total a cobrar")
+    if gross <= 0 or incomes != gross or deductions != discounts or gross < discounts:
+        refuse("los conceptos no suman exactamente los totales declarados.")
+    if gross - discounts != net or net != item.amount:
+        refuse("el importe neto no coincide con el cálculo guardado.")
+    try:
+        days = Decimal(str(inputs.get("days_worked")))
+        hours = Decimal(str(inputs.get("hours_worked")))
+        pieces = Decimal(str(inputs.get("pieces_or_tasks")))
+        if not all(x.is_finite() for x in (days, hours, pieces)):
+            raise ValueError
+        if not (0 <= days <= 31 and days == days.to_integral_value()
+                and 0 <= hours <= 744
+                and 0 <= pieces <= 100000000 and pieces == pieces.to_integral_value()):
+            raise ValueError
+    except (InvalidOperation, TypeError, ValueError):
+        refuse("los días, horas o piezas declarados no son válidos.")
+    if inputs.get("payment_method") not in REOP_PAYMENT_METHODS.values():
+        refuse("la forma de pago no coincide con el modelo REOP.")
+    original_nocturnal_total = inputs.get("reop_original_night_total_control")
+    if original_nocturnal_total not in (None, 0) and not (
+        isinstance(inputs.get("reop_import_options"), dict)
+        and inputs["reop_import_options"].get("night_column_is_total") is True
+    ):
+        refuse("el tratamiento del total nocturno duplicado no está documentado.")
+    existing = db.scalar(select(CalculationRecord.id).where(
+        CalculationRecord.company_id == item.company_id,
+        CalculationRecord.employee_id == item.employee_id,
+        CalculationRecord.reference_period == period,
+        CalculationRecord.calculation_type.in_(("salary", "suite_salary")),
+        CalculationRecord.status.in_(("Aprobado", "Validado")),
+        CalculationRecord.id != item.id,
+    ).limit(1))
+    if existing is not None:
+        refuse("ya hay otra liquidación aprobada para este trabajador y período.")
