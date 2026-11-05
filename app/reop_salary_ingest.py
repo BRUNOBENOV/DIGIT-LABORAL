@@ -217,6 +217,7 @@ def parse_reop_workbook(content: bytes, filename: str, *,
                 "hours_worked": hours, "extra_hours": extra_hours,
                 "earnings": earnings, "deductions": deductions,
                 "gross": gross, "discounts": discounts, "net": net,
+                "night_total_control": amounts[12] if suspected_gross else None,
                 "errors": errors, "warnings": warnings,
             })
         if not prepared:
