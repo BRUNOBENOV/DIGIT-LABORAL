@@ -99,6 +99,7 @@ def test_browser_uses_pdf_not_a_separate_html_replica():
     html = (Path(__file__).resolve().parents[1] /
             "app/templates/salary_settlement_detail.html").read_text(encoding="utf-8")
     assert 'id="salary-mtess-pdf"' in html
-    assert "createObjectURL" in html
-    assert "fetch('/app/reports/liquidaciones-salarios/" in html
+    assert 'src="/app/reports/liquidaciones-salarios/{{ item.id }}/pdf?vista=1' in html
+    assert "createObjectURL" not in html  # CSP default-src self impide blob: en iframe.
+    assert "Abrir visor en otra pestaña" in html
     assert "ANULADO · COPIA HISTÓRICA" in html
