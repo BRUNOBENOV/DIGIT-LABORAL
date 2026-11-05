@@ -79,16 +79,34 @@ def test_real_night_surcharge_is_preserved_when_not_duplicate():
     assert any(item["label"] == "Recargo horario Nocturno" for item in row["earnings"])
 
 
-def test_excel_swapped_day_month_needs_explicit_opt_in():
+def test_excel_reop_mmdd_swapped_day_month_is_automatic():
     blob = _workbook(_excel_rows(start=date(2026, 1, 10)))
-    default = parse_reop_workbook(blob, "source.xlsx", night_column_is_total=True)["rows"][0]
-    assert default["errors"]
-    assert any("inversión día/mes" in issue for issue in default["errors"])
-    corrected = parse_reop_workbook(blob, "source.xlsx",
-        night_column_is_total=True, correct_swapped_start=True)["rows"][0]
-    assert corrected["errors"] == []
-    assert corrected["period_start"] == "2026-10-01"
-    assert corrected["period"] == "2026-10"
+    actual = parse_reop_workbook(blob, "source.xlsx", night_column_is_total=True)["rows"][0]
+    assert actual["errors"] == []
+    assert actual["period_start"] == "2026-10-01"
+    assert actual["source_period_start"] == "2026-01-10"
+    assert actual["date_auto_normalized"] is True
+    assert actual["period"] == "2026-10"
+    assert actual["date_swap_proposal"]["format"] == "REOP MM/DD/YYYY"
+
+
+def test_reop_text_dates_mmdd_are_understood_without_swapping_a_valid_date():
+    text_row = _excel_rows()[0]
+    text_row[2] = "10/01/2026"
+    text_row[3] = "10/31/2026"
+    stored = parse_reop_workbook(
+        _workbook([text_row]), "source.xlsx", night_column_is_total=True,
+    )["rows"][0]
+    assert stored["period_start"] == "2026-10-01"
+    assert stored["period_end"] == "2026-10-31"
+    assert stored["date_auto_normalized"] is False
+    assert stored["errors"] == []
+    valid = parse_reop_workbook(
+        _workbook(_excel_rows(start=date(2026, 10, 1))),
+        "source.xlsx", night_column_is_total=True,
+    )["rows"][0]
+    assert valid["period_start"] == "2026-10-01"
+    assert valid["date_auto_normalized"] is False
 
 
 def test_mixed_periods_are_supported_without_blending_months():
@@ -139,7 +157,7 @@ def _test_company():
 
 def test_upload_preview_confirm_creates_draft_once_with_correct_provenance():
     company_id, employee_id, ci = _test_company()
-    # Intentionally ambiguous workbook, requiring both explicit options.
+    # REOP normaliza fechas automáticamente; solo el total nocturno se confirma.
     blob = _workbook(_excel_rows(start=date(2026, 1, 10), ci=ci))
     url = "/app/liquidaciones/salarios/importar-reop"
     with TestClient(app) as client:
@@ -157,26 +175,15 @@ def test_upload_preview_confirm_creates_draft_once_with_correct_provenance():
         preview_url = upload.headers["location"]
         preview = client.get(preview_url)
         assert preview.status_code == 200
-        assert "Fechas DESDE invertidas" in preview.text
+        assert "Fechas REOP interpretadas automáticamente" in preview.text
         assert "Posible total bruto" in preview.text
-        assert "2026-10 · pendiente" in preview.text
+        assert "2026-10" in preview.text
+        assert "Aplicar corrección" not in preview.text
         assert 'type="checkbox"' not in preview.text
-        assert "6.500.000" in preview.text  # Hasta autorizar el total de control, se muestra el bruto literal.
-        # Resoluciones separadas: antes de autorizarlas no hay salario apto.
-        dates = client.post(preview_url + "/resolver",
+        assert "6.500.000" in preview.text  # Antes de revisar el total de control.
+        assert client.post(preview_url + "/resolver",
             data={"csrf_token": csrf, "action": "fecha_invertida"},
-            follow_redirects=False)
-        assert dates.status_code == 303
-        assert "Fechas revisadas" in client.get(preview_url).text
-        undo = client.post(preview_url + "/resolver",
-            data={"csrf_token": csrf, "action": "deshacer_fecha"},
-            follow_redirects=False)
-        assert undo.status_code == 303
-        assert "Fechas DESDE invertidas" in client.get(preview_url).text
-        dates_again = client.post(preview_url + "/resolver",
-            data={"csrf_token": csrf, "action": "fecha_invertida"},
-            follow_redirects=False)
-        assert dates_again.status_code == 303
+            follow_redirects=False).status_code == 422  # Ya no hay acción manual de fechas.
         night = client.post(preview_url + "/resolver",
             data={"csrf_token": csrf, "action": "total_nocturno"},
             follow_redirects=False)
@@ -206,7 +213,14 @@ def test_upload_preview_confirm_creates_draft_once_with_correct_provenance():
             assert inputs["reop_import_source_row"] == 2
             assert inputs["reop_original_night_total_control"] == 3_250_000
             assert inputs["period_start"] == "2026-10-01"
+            assert inputs["reop_original_period_start"] == "2026-01-10"
+            assert inputs["reop_date_auto_normalized"] is True
             assert inputs["payment_method"] == "Efectivo"
+            record_id = record.id
+        detail = client.get(f"/app/reports/liquidaciones-salarios/{record_id}")
+        assert detail.status_code == 200, detail.text[:400]
+        assert "Liquidación de Salarios" in detail.text
+        assert 'id="salary-mtess-pdf"' in detail.text
         assert client.get(preview_url).status_code == 410
         reupload = client.post(url + "/previsualizar", data={
             "csrf_token": csrf, "company_id": str(company_id),
@@ -214,15 +228,13 @@ def test_upload_preview_confirm_creates_draft_once_with_correct_provenance():
         follow_redirects=False)
         next_preview = reupload.headers["location"]
         assert client.post(next_preview + "/resolver", data={
-            "csrf_token": csrf, "action": "fecha_invertida"}, follow_redirects=False).status_code == 303
-        assert client.post(next_preview + "/resolver", data={
             "csrf_token": csrf, "action": "total_nocturno"}, follow_redirects=False).status_code == 303
         check = client.get(next_preview)
         assert "YA EXISTE" in check.text
         assert "No se sobrescribe" in check.text
 
 
-def test_reop_realistic_file_without_nocturnal_surcharge_only_suggests_date_fix():
+def test_reop_realistic_file_without_nocturnal_surcharge_auto_normalizes_dates():
     first = _excel_rows(start=date(2026, 1, 10), duplicate_night=False)[0]
     first[12] = 0
     second = _excel_rows(start=date(2025, 1, 10), year=2025, ci=7654322, duplicate_night=False)[0]
@@ -232,7 +244,6 @@ def test_reop_realistic_file_without_nocturnal_surcharge_only_suggests_date_fix(
     assert all(row["date_swap_proposal"] for row in payload["rows"])
     assert all(row["night_total_proposal"] is None for row in payload["rows"])
     assert [row["period_hint"] for row in payload["rows"]] == ["2026-10", "2025-10"]
-    resolved = parse_reop_workbook(_workbook([first, second]), "octubre.xlsx",
-                                  correct_swapped_start=True)
-    assert [row["period"] for row in resolved["rows"]] == ["2026-10", "2025-10"]
-    assert all(not row["errors"] for row in resolved["rows"])
+    assert [row["period"] for row in payload["rows"]] == ["2026-10", "2025-10"]
+    assert all(row["date_auto_normalized"] for row in payload["rows"])
+    assert all(not row["errors"] for row in payload["rows"])
