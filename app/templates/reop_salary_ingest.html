@@ -102,7 +102,7 @@
       <div><small>Empresa de destino</small><strong>{{ selected.legal_name }}</strong></div>
       <div><small>Archivo original</small><strong>{{ preview.filename }}</strong></div>
     </div>
-    <p class="reop-ingest-note">Confirmá que el archivo corresponde a esta empresa: el nombre del Excel no acredita el empleador. Integridad SHA-256: <code>{{ preview.sha256[:16] }}…</code>. Los salarios todavía no se guardaron.</p>
+    <p class="reop-ingest-note"><strong>N.º patronal del archivo:</strong> {{ summary.patronales|join(', ') or 'No registrado' }}. Verificá que corresponda a la empresa seleccionada: el nombre del Excel no acredita el empleador. Integridad SHA-256: <code>{{ preview.sha256[:16] }}…</code>. Los salarios todavía no se guardaron.</p>
     <div class="reop-ingest-kpis">
       <div class="reop-ingest-kpi"><strong>{{ summary.total }}</strong><span>Filas examinadas</span></div>
       <div class="reop-ingest-kpi"><strong>{{ summary.ready }}</strong><span>Aptas para crear</span></div>
@@ -126,7 +126,15 @@
         </form>
       </section>
     {% elif summary.date_suggestions and summary.date_applied %}
-      <section class="issue-panel is-resolved"><h3>Fechas revisadas</h3><p>Se aplicó la corrección autorizada a {{ summary.date_suggestions }} fechas DESDE en la vista previa. El archivo original permanece intacto.</p></section>
+      <section class="issue-panel is-resolved">
+        <h3>Fechas revisadas</h3>
+        <p>Se aplicó la corrección autorizada a {{ summary.date_suggestions }} fechas DESDE en la vista previa. El archivo original permanece intacto.</p>
+        <form method="post" action="/app/liquidaciones/salarios/importar-reop/{{ token }}/resolver">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="action" value="deshacer_fecha">
+          <button class="btn ghost" type="submit">Deshacer corrección de fechas</button>
+        </form>
+      </section>
     {% endif %}
     {% if summary.night_suggestions and not summary.night_applied %}
       <section class="issue-panel" aria-label="Posible importe de control duplicado">
@@ -140,7 +148,15 @@
         </form>
       </section>
     {% elif summary.night_suggestions and summary.night_applied %}
-      <section class="issue-panel is-resolved"><h3>Duplicación de haberes revisada</h3><p>Se excluyó el valor nocturno identificado expresamente como total de control; los importes originales se conservan como evidencia.</p></section>
+      <section class="issue-panel is-resolved">
+        <h3>Duplicación de haberes revisada</h3>
+        <p>Se excluyó el valor nocturno identificado expresamente como total de control; los importes originales se conservan como evidencia.</p>
+        <form method="post" action="/app/liquidaciones/salarios/importar-reop/{{ token }}/resolver">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="action" value="deshacer_nocturno">
+          <button class="btn ghost" type="submit">Deshacer tratamiento del total</button>
+        </form>
+      </section>
     {% endif %}
     {% if summary.blocked or summary.missing_employee %}
       <p class="reop-ingest-warn">Hay registros que requieren revisión. Los trabajadores sin un C.I. coincidente deben verificarse en <a href="/app/employees">Mantenimientos → Funcionarios</a>. Las demás filas aptas podrán importarse sin alterar esos casos.</p>
