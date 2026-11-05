@@ -53,12 +53,18 @@ def _date(value, label: str, errors: list[str]) -> date | None:
             pass
         match = re.fullmatch(r"(\d{1,2})/(\d{1,2})/(\d{4})", value)
         if match:
-            x, y, year = map(int, match.groups())
-            if x > 12 and y <= 12:
-                return date(year, y, x)
-            if y > 12 and x <= 12:
-                return date(year, x, y)
-            errors.append(f"{label}: fecha ambigua {value}; usá fecha real de Excel o AAAA-MM-DD.")
+            first, second, year = map(int, match.groups())
+            try:
+                # La exportación REOP usa MES/DÍA/AÑO (p. ej. 10/01 = 1 de octubre).
+                # Aceptar DÍA/MES/AÑO solo cuando el primer número > 12
+                # y por tanto no puede ser un mes.
+                if 1 <= first <= 12:
+                    return date(year, first, second)
+                if 1 <= second <= 12:
+                    return date(year, second, first)
+            except ValueError:
+                pass
+            errors.append(f"{label}: fecha REOP inválida {value} (formato MES/DÍA/AÑO).")
             return None
     errors.append(f"{label}: fecha vacía o inválida.")
     return None
@@ -107,7 +113,7 @@ def _income_rows(values: list[int], skip_night: bool) -> list[dict]:
 
 
 def parse_reop_workbook(content: bytes, filename: str, *,
-                        correct_swapped_start: bool = False,
+                        correct_swapped_start: bool = True,
                         night_column_is_total: bool = False) -> dict:
     """Validación estricta; jamás infiere correcciones sin opción explícita."""
     if not filename or not filename.lower().endswith(".xlsx"):
@@ -163,14 +169,18 @@ def parse_reop_workbook(content: bytes, filename: str, *,
                         "original": start.isoformat(), "suggested": corrected.isoformat(),
                         "original_display": start.strftime("%d/%m/%Y"),
                         "suggested_display": corrected.strftime("%d/%m/%Y"),
+                        "format": "REOP MM/DD/YYYY",
                     }
                     if correct_swapped_start:
-                        warnings.append(f"Fecha DESDE corregida expresamente de {start.isoformat()} a {corrected.isoformat()}.")
+                        warnings.append(
+                            f"Fecha DESDE normalizada automáticamente al formato REOP MES/DÍA/AÑO: "
+                            f"{start.strftime('%d/%m/%Y')} → {corrected.strftime('%d/%m/%Y')}."
+                        )
                         start = corrected
                     else:
                         errors.append(
                             f"DESDE {start.strftime('%d/%m/%Y')} no coincide con HASTA; "
-                            "posible inversión día/mes. Autorizá la corrección en la pantalla."
+                            "posible inversión día/mes; la fecha no pudo normalizarse con seguridad."
                         )
                 else:
                     errors.append("DESDE y HASTA corresponden a meses distintos.")
@@ -232,6 +242,7 @@ def parse_reop_workbook(content: bytes, filename: str, *,
                 "period_start": start.isoformat() if start else "",
                 "source_period_start": original_start,
                 "date_swap_proposal": date_swap_proposal,
+                "date_auto_normalized": bool(date_swap_proposal and correct_swapped_start),
                 "night_total_proposal": amounts[12] if suspected_gross else None,
                 "period_end": end.isoformat() if end else "",
                 "payment_code": payment_code, "payment_method": REOP_PAYMENT_METHODS.get(payment_code, ""),
@@ -248,6 +259,7 @@ def parse_reop_workbook(content: bytes, filename: str, *,
             "filename": filename[:160], "sha256": sha256(content).hexdigest(),
             "rows": prepared, "source_rows": len(prepared),
             "flags": {"correct_swapped_start": correct_swapped_start,
+                      "reop_date_format": "MM/DD/YYYY",
                       "night_column_is_total": night_column_is_total},
         }
     finally:
