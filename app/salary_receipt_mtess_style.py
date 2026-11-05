@@ -144,11 +144,11 @@ def build_mtess_style_salary_pdf(model: dict) -> bytes:
         story.append(Spacer(1, 3*mm))
         # Como en el recibo MTESS: etiquetas azules alternadas con el valor blanco.
         story.append(table([[
-            p("HORAS<br/>TRABAJADAS", white),
+            p("HORAS\nTRABAJADAS", white),
             p(model.get("hours_worked_display") or "No registrado", centered_bold),
-            p("CANTIDAD DE DÍAS<br/>TRABAJADOS", white),
+            p("CANTIDAD DE DÍAS\nTRABAJADOS", white),
             p(model.get("days_worked_display") or "No registrado", centered_bold),
-            p("CANTIDAD DE<br/>PIEZAS O TAREAS", white),
+            p("CANTIDAD DE\nPIEZAS O TAREAS", white),
             p(model.get("pieces_or_tasks_display") or "No registrado", centered_bold),
         ]], [30*mm]*6,
         special=[
