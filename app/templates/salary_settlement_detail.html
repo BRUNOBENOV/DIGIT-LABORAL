@@ -37,6 +37,44 @@
 @media(max-width:720px){.salary-slip-reop-head{flex-direction:column}.salary-slip-reop-fields{grid-template-columns:1fr 1fr}.salary-slip-reop-result-form{grid-template-columns:1fr}}
 @media print{@page{size:A4;margin:12mm}.salary-slip-hero,.salary-slip-actions,.workspace-sidebar,.modern-topbar,.salary-slip-history,.salary-slip-audit,.salary-slip-online-note,.salary-slip-reop-panel{display:none!important}.salary-slip-page{max-width:none;margin:0}.salary-slip-paper{padding:0;border:none;border-radius:0;box-shadow:none}.salary-slip-document-head h2{font-size:16pt}.salary-slip-section{break-inside:avoid}.salary-slip-data{font-size:9pt}.salary-slip-info-grid{background:white}.salary-slip-alert,.salary-slip-warning{print-color-adjust:exact;-webkit-print-color-adjust:exact}.salary-slip-signatures{break-inside:avoid;margin-top:35mm}}
 </style>
+<style>
+/* Layout basado en secciones del modelo de recibo MTESS, identidad propia DIGIT-LABORAL */
+.salary-mtess-copy{max-width:850px;margin:16px auto 22px;padding:24px;border:1px solid #d0dbe7;border-radius:5px;box-shadow:0 10px 30px #14315a0a}
+.salary-mtess-duplicate{display:none}
+.salary-mtess-header{display:grid;grid-template-columns:minmax(0,1fr) minmax(245px,40%);gap:16px;align-items:stretch;margin-bottom:16px}
+.salary-mtess-identity{display:flex;align-items:center;gap:11px;color:#244768}
+.salary-mtess-monogram{display:grid;place-items:center;width:54px;height:54px;border-radius:10px;background:#284c70;color:#fff;font-size:1.2rem;font-weight:950;letter-spacing:-.06em}
+.salary-mtess-identity strong{display:block;font-size:1rem;letter-spacing:-.035em}.salary-mtess-identity small{display:block;font-size:.69rem;color:#64758a;line-height:1.35;margin-top:3px}
+.salary-mtess-heading{background:#284c70;color:white;padding:12px 14px;display:grid;gap:5px;border-bottom:5px solid #a13731}.salary-mtess-heading strong{font-size:.92rem}.salary-mtess-heading span{font-size:.76rem}.salary-mtess-heading b{font-size:.67rem;color:#e9f1fa;letter-spacing:.08em}
+.salary-mtess-group{margin:9px 0}.salary-mtess-table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:.76rem;color:#203247}
+.salary-mtess-table th,.salary-mtess-table td{border:1px solid #304356;padding:8px 9px;text-align:left;vertical-align:middle;overflow-wrap:anywhere}
+.salary-mtess-table th{background:#284c70;color:#fff;font-size:.7rem;font-weight:850;line-height:1.3}
+.salary-mtess-ident th:first-child,.salary-mtess-ident td:first-child{width:74%}
+.salary-mtess-period th:first-child,.salary-mtess-period td:first-child{width:15%}
+.salary-mtess-period th:nth-child(2),.salary-mtess-period td:nth-child(2),.salary-mtess-period th:nth-child(3),.salary-mtess-period td:nth-child(3){width:21%}
+.salary-mtess-period th:nth-child(4),.salary-mtess-period td:nth-child(4){width:23%}
+.salary-mtess-period th:last-child,.salary-mtess-period td:last-child{width:20%}
+.salary-mtess-period td,.salary-mtess-metrics td{text-align:center}
+.salary-mtess-metrics th{text-align:center}.salary-mtess-metrics td{font-weight:850;font-size:.9rem;padding:12px 7px}
+.salary-mtess-concepts th:first-child{width:16%}.salary-mtess-concepts th:nth-child(2){width:48%}
+.salary-mtess-concepts th:nth-child(3),.salary-mtess-concepts th:nth-child(4){width:18%}
+.salary-mtess-concepts td:first-child{color:#254b75;font-weight:850;font-size:.65rem}.salary-mtess-concepts .money{text-align:right;font-variant-numeric:tabular-nums;font-weight:750}
+.salary-mtess-totals th{width:67%;font-size:.72rem}.salary-mtess-totals td{font-weight:800;font-variant-numeric:tabular-nums}.salary-mtess-net td{background:#edf3fa;font-size:.98rem;color:#173e70}
+.salary-mtess-signatures{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:18px 0 14px}.salary-mtess-sign-blank{height:76px;border:1px solid #334557}.salary-mtess-sign-label{background:#284c70;color:white;font-weight:900;padding:8px 10px;font-size:.73rem;margin-top:5px}.salary-mtess-signatures small{display:block;color:#526578;font-size:.66rem;margin-top:4px}
+.salary-mtess-disclaimer{font-size:.68rem;color:#556779;line-height:1.55;margin-top:14px}.salary-mtess-observations{padding:9px;background:#fffaf0;border:1px solid #e8d6b5;color:#795624;font-size:.69rem}.salary-mtess-observations p{margin:4px 0}
+@media(max-width:720px){.salary-mtess-copy{padding:11px;overflow-x:auto}.salary-mtess-header{grid-template-columns:1fr}.salary-mtess-table{min-width:590px}.salary-mtess-signatures{min-width:490px}}
+@media print{
+  @page{size:A4;margin:12mm}
+  .salary-mtess-copy{display:block!important;width:100%;max-width:none;margin:0;padding:0;border:none;box-shadow:none;break-inside:auto}
+  .salary-mtess-duplicate{break-before:page;page-break-before:always}
+  .salary-mtess-table{font-size:8pt;min-width:0!important}
+  .salary-mtess-table th{font-size:7pt}.salary-mtess-group{break-inside:avoid}
+  .salary-mtess-signatures{break-inside:avoid;min-width:0!important}
+  .salary-mtess-sign-blank{height:22mm}.salary-mtess-header{grid-template-columns:minmax(0,1fr) minmax(0,40%)}
+  .salary-mtess-table th,.salary-mtess-table td{padding:5pt 6pt}
+  .salary-mtess-identity,.salary-mtess-heading,.salary-mtess-table th,.salary-mtess-sign-label{print-color-adjust:exact;-webkit-print-color-adjust:exact}
+}
+</style>
 <div class="salary-slip-page">
   <section class="salary-slip-hero"><div><span class="eyebrow">INFORME LABORAL · RECIBO INTERNO</span><h1>Liquidación de Salarios</h1><p>Documento generado a partir del cálculo guardado. Los importes se conservan tal como fueron calculados; las validaciones pendientes se muestran para revisión.</p><span class="salary-slip-state">{{ model.status }}</span></div><div class="salary-slip-meta"><b>{{ model.code }}</b>Empresa: {{ model.employer_name }}<br>Funcionario: {{ model.employee_name }}<br>Período: {{ model.period_display }}</div></section>
 
@@ -139,38 +177,69 @@
     </div>
   </section>
 
-  <article class="salary-slip-paper" id="salary-slip-document">
-    <header class="salary-slip-document-head"><div><div class="salary-slip-brand">DIGIT-LABORAL · DOCUMENTO INTERNO</div><h2>LIQUIDACIÓN DE SALARIOS</h2><div style="font-size:.75rem;color:#63738c">Referencia {{ model.code }} · Cálculo guardado #{{ item.id }}</div></div><div class="salary-slip-meta"><b>{{ model.period_display }}</b>Fecha de emisión: {{ model.issued_date }}<br>Forma de pago: {{ model.payment_method }}</div></header>
+  <p class="salary-slip-online-note" style="font-size:.78rem;color:#586d88;margin:12px 0">Vista previa del <strong>Original</strong>. Al imprimir o descargar el PDF se generan dos copias, <strong>Original (empleador)</strong> y <strong>Duplicado (trabajador)</strong>, con el mismo número {{ model.code }}. Sin código QR.</p>
+  {% for copy in ['ORIGINAL · EMPLEADOR', 'DUPLICADO · TRABAJADOR'] %}
+  <article class="salary-slip-paper salary-mtess-copy {{ 'salary-mtess-duplicate' if loop.index == 2 else '' }}" id="{{ 'salary-slip-document' if loop.first else 'salary-slip-document-duplicate' }}">
+    <header class="salary-mtess-header">
+      <div class="salary-mtess-identity">
+        <span class="salary-mtess-monogram" aria-hidden="true">DL</span>
+        <span><strong>DIGIT-LABORAL</strong><small>Gestión de remuneraciones<br>Recibo salarial interno</small></span>
+      </div>
+      <div class="salary-mtess-heading"><strong>LIQUIDACIÓN DE SALARIO</strong><span>N.º {{ model.code }}</span><b>{{ copy }}</b></div>
+    </header>
 
-    <section class="salary-slip-section"><h3>Datos del empleador</h3><div class="salary-slip-info-grid">
-      <div class="salary-slip-field"><small>Razón social</small><b>{{ model.employer_name }}</b></div><div class="salary-slip-field"><small>RUC</small><b>{{ model.employer_ruc }}</b></div>
-      <div class="salary-slip-field"><small>N.º patronal IPS</small><b>{{ model.ips_employer_number or 'No registrado' }}</b></div><div class="salary-slip-field"><small>Registro MTESS</small><b>{{ model.mtess_employer_number or 'No registrado' }}</b></div>
-      <div class="salary-slip-field"><small>Dirección</small><b>{{ model.employer_address or 'No registrada' }}</b></div><div class="salary-slip-field"><small>Ciudad</small><b>{{ model.employer_city or 'No registrada' }}</b></div>
-      <div class="salary-slip-field"><small>Teléfono</small><b>{{ model.employer_phone or 'No registrado' }}</b></div><div class="salary-slip-field"><small>Representante legal</small><b>{{ model.representative or 'No registrado' }}</b></div>
-    </div></section>
-
-    <section class="salary-slip-section"><h3>Datos del funcionario y período</h3><div class="salary-slip-info-grid">
-      <div class="salary-slip-field"><small>Nombre completo</small><b>{{ model.employee_name }}</b></div><div class="salary-slip-field"><small>Cédula de identidad</small><b>{{ model.employee_ci }}</b></div>
-      <div class="salary-slip-field"><small>Código</small><b>{{ model.employee_code or 'No registrado' }}</b></div><div class="salary-slip-field"><small>Cargo</small><b>{{ model.employee_position or 'No registrado' }}</b></div>
-      <div class="salary-slip-field"><small>Fecha de ingreso</small><b>{{ model.admission_date.strftime('%d/%m/%Y') if model.admission_date else 'No registrada' }}</b></div><div class="salary-slip-field"><small>Período liquidado</small><b>{% if model.period_start and model.period_end %}{{ model.period_start.strftime('%d/%m/%Y') }} al {{ model.period_end.strftime('%d/%m/%Y') }}{% else %}{{ model.period_display }}{% endif %}</b></div>
-    </div></section>
-
-    <section class="salary-slip-section"><h3>Detalle de haberes y descuentos</h3><table class="salary-slip-data"><thead><tr><th>Concepto</th><th>Importe (Gs.)</th></tr></thead><tbody>
-      <tr><td colspan="2" style="background:#f4f7fc;font-weight:850;color:#17335e">HABERES</td></tr>
-      {% for concept in model.earnings %}<tr><td>{{ concept.label }}{% if concept.formula %}<div style="font-size:.66rem;color:#7a879b;margin-top:3px">{{ concept.formula }}{% if concept.legal %} · {{ concept.legal }}{% endif %}</div>{% endif %}</td><td class="salary-slip-amount">{{ concept.amount|gs }}</td></tr>{% endfor %}
-      <tr><td>Total haberes</td><td class="salary-slip-amount">{{ model.gross|gs }}</td></tr>
-      <tr><td colspan="2" style="background:#f4f7fc;font-weight:850;color:#17335e">DESCUENTOS</td></tr>
-      {% for concept in model.deductions %}<tr><td>{{ concept.label }}{% if concept.formula %}<div style="font-size:.66rem;color:#7a879b;margin-top:3px">{{ concept.formula }}{% if concept.legal %} · {{ concept.legal }}{% endif %}</div>{% endif %}</td><td class="salary-slip-amount">{{ concept.amount|gs }}</td></tr>{% endfor %}
-      <tr><td>Total descuentos</td><td class="salary-slip-amount">{{ model.discounts|gs }}</td></tr>
-      <tr class="total-net"><td>NETO A COBRAR</td><td class="salary-slip-amount">Gs. {{ model.net|gs }}</td></tr>
-    </tbody></table></section>
-
-    {% if model.notes %}<section class="salary-slip-section"><h3>Observaciones del cálculo</h3><p class="salary-slip-note">{{ model.notes }}</p></section>{% endif %}
-    {% if model.warnings %}<section class="salary-slip-section"><h3>Validaciones pendientes</h3>{% for warning in model.warnings %}<div class="salary-slip-warning">{{ warning }}</div>{% endfor %}</section>{% endif %}
-
-    <div class="salary-slip-signatures"><div class="salary-slip-signature"><strong>{{ model.representative or 'Empleador / representante legal' }}</strong>Firma del empleador<small>Fecha: ____ / ____ / ______</small></div><div class="salary-slip-signature"><strong>{{ model.employee_name }}</strong>Firma del funcionario<small>Fecha: ____ / ____ / ______</small></div></div>
-    <footer class="salary-slip-disclaimer">DIGIT-LABORAL · Registro de cálculo #{{ item.id }} · Período {{ model.period_display }} · Registrado por {{ model.created_by or 'No registrado' }} el {{ item.created_at.strftime('%d/%m/%Y %H:%M') if item.created_at else 'fecha no disponible' }}. Este documento refleja un cálculo guardado, no certifica el pago ni reemplaza los formularios oficiales de las instituciones.</footer>
+    <section class="salary-mtess-group" aria-label="DATOS DEL EMPLEADOR">
+      <table class="salary-mtess-table salary-mtess-ident"><thead><tr><th>EMPLEADOR</th><th>RUC N.º</th></tr></thead>
+      <tbody><tr><td>{{ model.employer_name }}</td><td>{{ model.employer_ruc }}</td></tr></tbody></table>
+    </section>
+    <section class="salary-mtess-group" aria-label="DATOS DEL FUNCIONARIO Y PERÍODO">
+      <table class="salary-mtess-table salary-mtess-ident"><thead><tr><th>NOMBRE Y APELLIDO DEL TRABAJADOR</th><th>C.I. N.º</th></tr></thead>
+      <tbody><tr><td>{{ model.employee_name }}</td><td>{{ model.employee_ci }}</td></tr></tbody></table>
+    </section>
+    <section class="salary-mtess-group" aria-label="Período y forma de pago">
+      <table class="salary-mtess-table salary-mtess-period"><thead><tr><th>PERÍODO<br>DE PAGO</th><th>DESDE</th><th>HASTA</th><th>FECHA DE PAGO</th><th>FORMA DE PAGO</th></tr></thead>
+      <tbody><tr><td>{{ model.period_display }}</td><td>{{ model.period_from_display }}</td><td>{{ model.period_to_display }}</td><td>{{ model.payment_date_display }}</td><td>{{ model.payment_method }}</td></tr></tbody></table>
+    </section>
+    <section class="salary-mtess-group" aria-label="Jornadas y horas">
+      <table class="salary-mtess-table salary-mtess-metrics"><thead><tr><th>HORAS TRABAJADAS</th><th>CANTIDAD DE DÍAS TRABAJADOS</th><th>CANTIDAD DE PIEZAS O TAREAS</th></tr></thead>
+      <tbody><tr><td>{{ model.hours_worked_display }}</td><td>{{ model.days_worked_display }}</td><td>{{ model.pieces_or_tasks_display }}</td></tr></tbody></table>
+    </section>
+    <section class="salary-mtess-group" aria-label="Ingresos y egresos del período">
+      <table class="salary-mtess-table salary-mtess-concepts">
+        <thead><tr><th>TIPO</th><th>CONCEPTO</th><th>INGRESOS · GS.</th><th>EGRESOS · GS.</th></tr></thead>
+        <tbody>
+          {% for concept in model.earnings if concept.amount %}
+          <tr><td>{{ 'INGRESOS' if loop.first else '' }}</td><td>{{ concept.label }}</td><td class="money">{{ concept.amount|gs }}</td><td></td></tr>
+          {% else %}
+          <tr><td>INGRESOS</td><td>Sin ingresos desglosados</td><td></td><td></td></tr>
+          {% endfor %}
+          {% for concept in model.deductions if concept.amount %}
+          <tr><td>{{ 'EGRESOS' if loop.first else '' }}</td><td>{{ concept.label }}</td><td></td><td class="money">{{ concept.amount|gs }}</td></tr>
+          {% else %}
+          <tr><td>EGRESOS</td><td>Sin descuentos registrados</td><td></td><td></td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+    <section class="salary-mtess-group" aria-label="Totales y neto salarial">
+      <table class="salary-mtess-table salary-mtess-totals"><tbody>
+        <tr><th>MONTO TOTAL DE INGRESOS</th><td>Gs. {{ model.gross|gs }}</td></tr>
+        <tr><th>MONTO TOTAL DE EGRESOS</th><td>Gs. {{ model.discounts|gs }}</td></tr>
+        <tr class="salary-mtess-net"><th>MONTO TOTAL A COBRAR · NETO A COBRAR</th><td>Gs. {{ model.net|gs }}</td></tr>
+      </tbody></table>
+    </section>
+    <section class="salary-mtess-signatures" aria-label="Espacios para firmas">
+      <div><div class="salary-mtess-sign-blank"></div><div class="salary-mtess-sign-label">FIRMA DEL EMPLEADOR</div><small>{{ model.representative or 'Empleador / representante legal' }}</small></div>
+      <div><div class="salary-mtess-sign-blank"></div><div class="salary-mtess-sign-label">FIRMA DEL FUNCIONARIO</div><small>{{ model.employee_name }}</small></div>
+    </section>
+    {% if model.warnings %}
+    <section class="salary-mtess-observations"><strong>VALIDACIONES PENDIENTES</strong>
+      {% for warning in model.warnings[:3] %}<p>{{ warning }}</p>{% endfor %}
+    </section>
+    {% endif %}
+    <footer class="salary-mtess-disclaimer">Recibo generado por <strong>DIGIT-LABORAL</strong> a partir de un cálculo guardado ({{ model.status }}). No es un formulario emitido por el MTESS, no acredita presentación en REOP ni confirma por sí solo el pago efectivo. <strong>Original: empleador. Duplicado: trabajador.</strong></footer>
   </article>
+  {% endfor %}
 
   <section class="salary-slip-history"><h2>Historial y versiones anteriores del período</h2><table><thead><tr><th>Versión</th><th>Fecha</th><th>Origen</th><th>Estado</th><th>Neto (Gs.)</th><th></th></tr></thead><tbody>
   {% for version in history %}<tr><td>V{{ version.version }}{% if version.current %} <span class="current-version">· actual</span>{% endif %}</td><td>{{ version.created_at.strftime('%d/%m/%Y %H:%M') if version.created_at else '—' }}</td><td>{{ version.calculation_type }}</td><td>{{ version.status }}</td><td>{{ version.amount|gs }}</td><td>{% if not version.current %}<a href="/app/reports/liquidaciones-salarios/{{ version.id }}">Abrir versión</a>{% else %}En pantalla{% endif %}</td></tr>{% endfor %}
