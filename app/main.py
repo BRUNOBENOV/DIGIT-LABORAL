@@ -8740,6 +8740,36 @@ def current_vacation_detail_page(
                   employee=item.employee, company=item.employee.company)
 
 
+@app.post("/app/vacations/{record_id:int}/payment")
+def register_vacation_payment(
+    record_id: int,
+    paid_amount: Annotated[int, Form()],
+    payment_date: Annotated[str, Form()] = "",
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    """Vincula el importe realmente abonado con el movimiento ya registrado."""
+    item = db.get(Vacation, record_id)
+    if not item or item.employee.company_id not in company_ids_for_user(db, user):
+        raise HTTPException(404, "Vacaciones no encontradas.")
+    if item.status in {"Anulada", "Rechazada", "Cancelada"}:
+        raise HTTPException(409, "No se puede conciliar un movimiento de vacaciones anulado.")
+    if paid_amount < 0 or paid_amount > 1000000000000:
+        raise HTTPException(422, "Ingresá un importe vacacional válido.")
+    try:
+        paid_date = date.fromisoformat(payment_date) if payment_date else None
+    except ValueError:
+        raise HTTPException(422, "La fecha de pago es inválida.") from None
+    if paid_amount and paid_date is None:
+        raise HTTPException(422, "Registrá la fecha real del pago vacacional.")
+    item.paid_amount = paid_amount
+    item.payment_date = paid_date
+    write_audit(db, user, "conciliar_pago_vacaciones", "vacaciones", str(item.id),
+                f"Importe Gs. {paid_amount}, fecha {paid_date.isoformat() if paid_date else 'sin fecha'}")
+    db.commit()
+    return RedirectResponse(f"/app/vacations/{item.id}?payment_saved=1", status_code=303)
+
+
 @app.get("/app/vacations/history.csv")
 def historical_vacations_csv_download(
     company_id: OptionalQueryId = None,
@@ -11042,6 +11072,8 @@ def _vacation_api_record(item: Vacation) -> dict:
         "end_date": item.end_date.isoformat() if item.end_date else None,
         "status": item.status,
         "notes": item.notes or "",
+        "paid_amount": item.paid_amount,
+        "payment_date": item.payment_date.isoformat() if item.payment_date else None,
         "created_at": item.created_at.isoformat() if item.created_at else None,
     }
 
@@ -11193,6 +11225,14 @@ async def api_update_vacation(
     notes = str(payload.get("notes", item.notes or "")).strip()
     if len(notes) > 3000:
         raise HTTPException(422, "Las observaciones superan el máximo de 3.000 caracteres.")
+    if "paid_amount" in payload:
+        amount_value = payload["paid_amount"]
+        item.paid_amount = (_api_int(amount_value, "paid_amount", maximum=1000000000000)
+                            if amount_value is not None else None)
+    if "payment_date" in payload:
+        item.payment_date = _api_date(payload["payment_date"], "payment_date")
+    if item.paid_amount and not item.payment_date:
+        raise HTTPException(422, "La fecha de pago es obligatoria cuando hay pago vacacional.")
     item.period_year, item.entitled_days, item.used_days = year, entitled, used
     item.start_date, item.end_date, item.status, item.notes = start, end, status_value, notes
     write_audit(db, user, "actualizar_api", "vacaciones", str(item.id), f"{item.employee.full_name} · {status_value}")
