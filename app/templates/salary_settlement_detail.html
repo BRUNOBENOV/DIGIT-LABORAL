@@ -75,13 +75,31 @@
   .salary-mtess-table th,.salary-mtess-table td{padding:5pt 6pt}
   .salary-mtess-identity,.salary-mtess-heading,.salary-mtess-table th,.salary-mtess-sign-label{print-color-adjust:exact;-webkit-print-color-adjust:exact}
 }
+.salary-mtess-copy{border-radius:0!important;box-shadow:0 6px 16px #14315a0b!important}
+.salary-mtess-heading{border-bottom:6px solid #961e1a}
+.salary-mtess-group{margin:11px 0}
+.salary-mtess-table th{background:#284b70;color:white}
+.salary-mtess-metrics{table-layout:fixed}
+.salary-mtess-metrics th,.salary-mtess-metrics td{width:16.666666%!important}
+.salary-mtess-metrics th{text-align:left!important;font-size:.69rem;line-height:1.4}
+.salary-mtess-metrics td{text-align:center!important;font-weight:850;font-size:.96rem}
+.salary-mtess-concepts th:nth-child(1){width:16%}.salary-mtess-concepts th:nth-child(2){width:44%}
+.salary-mtess-concepts th:nth-child(3),.salary-mtess-concepts th:nth-child(4){width:20%}
+.salary-mtess-concepts th:nth-child(n+2){text-align:center}
+.salary-mtess-totals th{background:#284b70;color:white!important}
+.salary-mtess-totals td{background:white!important;color:#263b58!important;font-weight:850}
+.salary-mtess-totals .salary-mtess-net td{background:white!important}
+.salary-mtess-sign-blank{height:82px}.salary-mtess-sign-label{text-align:left}
+.salary-mtess-annulled{background:#9a2824;color:white;text-align:center;font-weight:900;letter-spacing:.075em;padding:9px;margin-bottom:13px}
+.salary-slip-review{margin-top:15px}.salary-slip-review ul{padding-left:18px;margin:6px 0;line-height:1.5}
+@media print{.salary-slip-review{display:none!important}.salary-mtess-copy{box-shadow:none!important}}
 </style>
 <div class="salary-slip-page">
   <section class="salary-slip-hero"><div><span class="eyebrow">INFORME LABORAL · RECIBO INTERNO</span><h1>Liquidación de Salarios</h1><p>Documento generado a partir del cálculo guardado. Los importes se conservan tal como fueron calculados; las validaciones pendientes se muestran para revisión.</p><span class="salary-slip-state">{{ model.status }}</span></div><div class="salary-slip-meta"><b>{{ model.code }}</b>Empresa: {{ model.employer_name }}<br>Funcionario: {{ model.employee_name }}<br>Período: {{ model.period_display }}</div></section>
 
   <div class="salary-slip-actions">
     <a class="btn ghost" href="/app/reports/liquidaciones-salarios">← Historial de liquidaciones</a>
-    <a class="btn ghost" href="/app/reports/liquidaciones-salarios/{{ item.id }}/pdf">Descargar PDF</a>
+    <a class="btn ghost" href="/app/reports/liquidaciones-salarios/{{ item.id }}/pdf">{{ 'Descargar copia ANULADA (PDF)' if model.is_annulled else 'Descargar PDF · Original y Duplicado' }}</a>
     {% if model.can_reprint %}
     <form method="post" action="/app/reports/liquidaciones-salarios/{{ item.id }}/reimprimir"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn primary" type="submit">Imprimir con registro</button></form>
     {% endif %}
@@ -181,12 +199,13 @@
   <p class="salary-slip-online-note" style="font-size:.78rem;color:#586d88;margin:12px 0">Vista previa del <strong>Original</strong>. Al imprimir o descargar el PDF se generan dos copias, <strong>Original (empleador)</strong> y <strong>Duplicado (trabajador)</strong>, con el mismo número {{ model.code }}. Sin código QR.</p>
   {% for copy in ['ORIGINAL · EMPLEADOR', 'DUPLICADO · TRABAJADOR'] %}
   <article class="salary-slip-paper salary-mtess-copy {{ 'salary-mtess-duplicate' if loop.index == 2 else '' }}" id="{{ 'salary-slip-document' if loop.first else 'salary-slip-document-duplicate' }}">
+    {% if model.is_annulled %}<div class="salary-mtess-annulled" role="status">ANULADO · COPIA HISTÓRICA · NO UTILIZAR COMO RECIBO VIGENTE</div>{% endif %}
     <header class="salary-mtess-header">
       <div class="salary-mtess-identity">
         <span class="salary-mtess-monogram" aria-hidden="true">DL</span>
         <span><strong>DIGIT-LABORAL</strong><small>Gestión de remuneraciones<br>Recibo salarial interno</small></span>
       </div>
-      <div class="salary-mtess-heading"><strong>LIQUIDACIÓN DE SALARIO</strong><span>N.º {{ model.code }}</span><b>{{ copy }}</b></div>
+      <div class="salary-mtess-heading"><strong>LIQUIDACIÓN DE SALARIO</strong><span>N.º {{ model.code }}</span><b>{{ copy }}{{ ' · ANULADO' if model.is_annulled else '' }}</b></div>
     </header>
 
     <section class="salary-mtess-group" aria-label="DATOS DEL EMPLEADOR">
@@ -198,16 +217,19 @@
       <tbody><tr><td>{{ model.employee_name }}</td><td>{{ model.employee_ci }}</td></tr></tbody></table>
     </section>
     <section class="salary-mtess-group" aria-label="Período y forma de pago">
-      <table class="salary-mtess-table salary-mtess-period"><thead><tr><th>PERÍODO<br>DE PAGO</th><th>DESDE</th><th>HASTA</th><th>FECHA DE PAGO</th><th>FORMA DE PAGO</th></tr></thead>
+      <table class="salary-mtess-table salary-mtess-period"><thead><tr><th>PERÍODO<br>DE PAGO</th><th>DESDE</th><th>HASTA</th><th>FECHA</th><th>FORMA DE PAGO</th></tr></thead>
       <tbody><tr><td>{{ model.period_display }}</td><td>{{ model.period_from_display }}</td><td>{{ model.period_to_display }}</td><td>{{ model.payment_date_display }}</td><td>{{ model.payment_method }}</td></tr></tbody></table>
     </section>
     <section class="salary-mtess-group" aria-label="Jornadas y horas">
-      <table class="salary-mtess-table salary-mtess-metrics"><thead><tr><th>HORAS TRABAJADAS</th><th>CANTIDAD DE DÍAS TRABAJADOS</th><th>CANTIDAD DE PIEZAS O TAREAS</th></tr></thead>
-      <tbody><tr><td>{{ model.hours_worked_display }}</td><td>{{ model.days_worked_display }}</td><td>{{ model.pieces_or_tasks_display }}</td></tr></tbody></table>
+      <table class="salary-mtess-table salary-mtess-metrics"><tbody><tr>
+        <th>HORAS<br>TRABAJADAS</th><td>{{ model.hours_worked_display }}</td>
+        <th>CANTIDAD DE DÍAS<br>TRABAJADOS</th><td>{{ model.days_worked_display }}</td>
+        <th>CANTIDAD DE<br>PIEZAS O TAREAS</th><td>{{ model.pieces_or_tasks_display }}</td>
+      </tr></tbody></table>
     </section>
     <section class="salary-mtess-group" aria-label="Ingresos y egresos del período">
       <table class="salary-mtess-table salary-mtess-concepts">
-        <thead><tr><th>TIPO</th><th>CONCEPTO</th><th>INGRESOS · GS.</th><th>EGRESOS · GS.</th></tr></thead>
+        <thead><tr><th></th><th>CONCEPTO</th><th>MONTO EN GS.</th><th>MONTO EN GS.</th></tr></thead>
         <tbody>
           {% for concept in model.earnings if concept.amount %}
           <tr><td>{{ 'INGRESOS' if loop.first else '' }}</td><td>{{ concept.label }}</td><td class="money">{{ concept.amount|gs }}</td><td></td></tr>
@@ -224,24 +246,24 @@
     </section>
     <section class="salary-mtess-group" aria-label="Totales y neto salarial">
       <table class="salary-mtess-table salary-mtess-totals"><tbody>
-        <tr><th>MONTO TOTAL DE INGRESOS</th><td>Gs. {{ model.gross|gs }}</td></tr>
-        <tr><th>MONTO TOTAL DE EGRESOS</th><td>Gs. {{ model.discounts|gs }}</td></tr>
-        <tr class="salary-mtess-net"><th>MONTO TOTAL A COBRAR · NETO A COBRAR</th><td>Gs. {{ model.net|gs }}</td></tr>
+        <tr><th>MONTO TOTAL DE INGRESO</th><td>{{ model.gross|gs }}</td></tr>
+        <tr><th>MONTO TOTAL DE EGRESO</th><td>{{ model.discounts|gs }}</td></tr>
+        <tr class="salary-mtess-net"><th>MONTO TOTAL A COBRAR</th><td>{{ model.net|gs }}</td></tr>
       </tbody></table>
     </section>
     <section class="salary-mtess-signatures" aria-label="Espacios para firmas">
       <div><div class="salary-mtess-sign-blank"></div><div class="salary-mtess-sign-label">FIRMA DEL EMPLEADOR</div><small>{{ model.representative or 'Empleador / representante legal' }}</small></div>
-      <div><div class="salary-mtess-sign-blank"></div><div class="salary-mtess-sign-label">FIRMA DEL FUNCIONARIO</div><small>{{ model.employee_name }}</small></div>
+      <div><div class="salary-mtess-sign-blank"></div><div class="salary-mtess-sign-label">FIRMA DEL EMPLEADO</div><small>{{ model.employee_name }}</small></div>
     </section>
-    {% if model.warnings %}
-    <section class="salary-mtess-observations"><strong>VALIDACIONES PENDIENTES</strong>
-      {% for warning in model.warnings[:3] %}<p>{{ warning }}</p>{% endfor %}
-    </section>
-    {% endif %}
-    <footer class="salary-mtess-disclaimer">Recibo generado por <strong>DIGIT-LABORAL</strong> a partir de un cálculo guardado ({{ model.status }}). No es un formulario emitido por el MTESS, no acredita presentación en REOP ni confirma por sí solo el pago efectivo. <strong>Original: empleador. Duplicado: trabajador.</strong></footer>
+    <footer class="salary-mtess-disclaimer">Recibo interno generado por <strong>DIGIT-LABORAL</strong> con datos del empleador. No acredita presentación en REOP ni por sí solo el pago efectivo. <strong>Original: empleador. Duplicado: trabajador.</strong></footer>
   </article>
   {% endfor %}
 
+  {% if model.warnings %}
+  <aside class="salary-slip-alert salary-slip-review" role="status"><strong>Validaciones del documento (no se imprimen):</strong>
+    <ul>{% for warning in model.warnings[:6] %}<li>{{ warning }}</li>{% endfor %}</ul>
+  </aside>
+  {% endif %}
   <section class="salary-slip-history"><h2>Historial y versiones anteriores del período</h2><table><thead><tr><th>Versión</th><th>Fecha</th><th>Origen</th><th>Estado</th><th>Neto (Gs.)</th><th></th></tr></thead><tbody>
   {% for version in history %}<tr><td>V{{ version.version }}{% if version.current %} <span class="current-version">· actual</span>{% endif %}</td><td>{{ version.created_at.strftime('%d/%m/%Y %H:%M') if version.created_at else '—' }}</td><td>{{ version.calculation_type }}</td><td>{{ version.status }}</td><td>{{ version.amount|gs }}</td><td>{% if not version.current %}<a href="/app/reports/liquidaciones-salarios/{{ version.id }}">Abrir versión</a>{% else %}En pantalla{% endif %}</td></tr>{% endfor %}
   </tbody></table></section>
