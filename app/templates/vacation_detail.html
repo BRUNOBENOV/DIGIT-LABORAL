@@ -33,6 +33,25 @@
       <dl><dt>Desde</dt><dd>{{ item.start_date|fecha if item.start_date else 'No indicado' }}</dd></dl>
       <dl><dt>Hasta</dt><dd>{{ item.end_date|fecha if item.end_date else 'No indicado' }}</dd></dl>
     </div>
+    <div class="vac-detail-grid">
+      <dl><dt>Remuneración vacacional abonada</dt><dd>{{ ('Gs. ' ~ (item.paid_amount|gs)) if item.paid_amount is not none else 'Pendiente de conciliación' }}</dd></dl>
+      <dl><dt>Fecha real de pago</dt><dd>{{ item.payment_date|fecha if item.payment_date else 'No registrada' }}</dd></dl>
+    </div>
+    {% if request.query_params.get('payment_saved') %}<p class="vac-detail-note" role="status">Pago vacacional registrado. La exportación de salarios podrá vincular este movimiento.</p>{% endif %}
+    {% if user.role in ['administrador','contador'] and item.status not in ['Anulada','Rechazada','Cancelada'] %}
+    <form method="post" action="/app/vacations/{{ item.id }}/payment" class="form-grid" style="margin-top:18px">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <h3 class="span-2">Conciliar pago para liquidación de salarios y REOP</h3>
+      <p class="span-2">Indicá el importe total realmente pagado por estas vacaciones y la fecha del recibo. No lo agregaremos otra vez al salario ni lo repartiremos automáticamente entre meses.</p>
+      <label>Remuneración total abonada (Gs.)
+        <input type="number" name="paid_amount" min="0" step="1" max="1000000000000" value="{{ item.paid_amount if item.paid_amount is not none else '' }}" required>
+      </label>
+      <label>Fecha de pago
+        <input type="date" name="payment_date" value="{{ item.payment_date.isoformat() if item.payment_date else '' }}">
+      </label>
+      <div class="span-2"><button class="btn primary" type="submit">Guardar conciliación del pago</button></div>
+    </form>
+    {% endif %}
     {% if item.notes %}
     <div class="vac-detail-note"><b>Observaciones del registro</b><p>{{ item.notes }}</p></div>
     {% endif %}
