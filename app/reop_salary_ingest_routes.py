@@ -112,7 +112,11 @@ def _match_rows(db: Session, company: Company, payload: dict) -> tuple[list[dict
              "date_suggestions": sum(bool(row.get("date_swap_proposal")) for row in payload["rows"]),
              "night_suggestions": sum(bool(row.get("night_total_proposal")) for row in payload["rows"]),
              "date_applied": bool(flags.get("correct_swapped_start")),
-             "night_applied": bool(flags.get("night_column_is_total"))}
+             "night_applied": bool(flags.get("night_column_is_total")),
+             "date_example": next((r["date_swap_proposal"] for r in payload["rows"]
+                                   if r.get("date_swap_proposal")), None),
+             "night_example": next((r["night_total_proposal"] for r in payload["rows"]
+                                    if r.get("night_total_proposal")), None)}
     for item in payload["rows"]:
         row = dict(item)
         problems = list(item.get("errors") or [])
