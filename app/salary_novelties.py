@@ -124,9 +124,15 @@ def salary_novelties(db, company_id: int, employee_id: int, period: str, pay_bas
     for item in vacations:
         when = _days(item.start_date, item.end_date, first, last)
         paid.update(when)
+        payment_note = (
+            f" · Recibo documentado: Gs. {item.paid_amount:,} "
+            f"(pagado el {item.payment_date:%d/%m/%Y})"
+            if item.paid_amount is not None and item.payment_date else
+            " · Importe/fecha de pago pendiente de conciliación en Vacaciones"
+        )
         entries.append({"type": "Vacaciones", "title": f"Período {item.period_year}",
                         "status": item.status, "days": len(when),
-                        "detail": "Descanso remunerado; no equivale a horas trabajadas",
+                        "detail": "Descanso remunerado; no equivale a horas trabajadas" + payment_note,
                         "id": f"vacaciones:{item.id}"})
 
     requests = db.scalars(select(CompanyRequest).where(
