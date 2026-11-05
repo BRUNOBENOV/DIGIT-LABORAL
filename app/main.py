@@ -7821,6 +7821,74 @@ def salary_settlement_reprint(
     return RedirectResponse(f"/app/reports/liquidaciones-salarios/{item.id}?imprimir=1", status_code=303)
 
 
+@app.post("/app/reports/liquidaciones-salarios/{calculation_id}/datos-recibo")
+def save_salary_receipt_details(
+    calculation_id: int,
+    period_start: Annotated[date, Form()],
+    period_end: Annotated[date, Form()],
+    days_worked: Annotated[int, Form()],
+    hours_worked: Annotated[Decimal, Form()],
+    payment_method: Annotated[str, Form()] = "",
+    payment_date: Annotated[str, Form()] = "",
+    pieces_or_tasks: Annotated[str, Form()] = "",
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    """Anexo declarativo auditable: no recalcula ni modifica los haberes."""
+    from .salary_data import calculation_fingerprint
+
+    item, company, employee = _salary_report_record(db, user, calculation_id)
+    if item.status == "Anulado":
+        raise HTTPException(409, "Un cálculo anulado solo admite consulta histórica. Creá o rectificá uno vigente.")
+    if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", str(item.reference_period or "")):
+        raise HTTPException(422, "Período salarial inválido.")
+    from calendar import monthrange
+    year, month = map(int, item.reference_period.split("-"))
+    first, last = date(year, month, 1), date(year, month, monthrange(year, month)[1])
+    if not first <= period_start <= period_end <= last:
+        raise HTTPException(422, "Las fechas deben corresponder al período liquidado.")
+    if not 0 <= days_worked <= 31 or not Decimal("0") <= hours_worked <= Decimal("744"):
+        raise HTTPException(422, "Días u horas efectivas fuera de rango.")
+    method = clean_text(payment_method, max_length=100)
+    if not method or method not in {"Efectivo", "Cheque", "Banco", "Transferencia", "Giro", "Otro documentado"}:
+        raise HTTPException(422, "Indicá una forma de pago válida.")
+    try:
+        paid_on = date.fromisoformat(payment_date) if payment_date.strip() else None
+    except ValueError:
+        raise HTTPException(422, "Fecha real de pago inválida.") from None
+    if paid_on and paid_on < period_start:
+        raise HTTPException(422, "La fecha del pago no puede ser anterior al período liquidado sin una justificación documental.")
+    try:
+        pieces = int(pieces_or_tasks) if pieces_or_tasks.strip() else None
+    except ValueError:
+        raise HTTPException(422, "Cantidad de piezas o tareas inválida.") from None
+    if pieces is not None and not 0 <= pieces <= 100000000:
+        raise HTTPException(422, "Cantidad de piezas o tareas fuera de rango.")
+    detail = db.scalar(select(SalaryImportDetail).where(
+        SalaryImportDetail.company_id == company.id,
+        SalaryImportDetail.calculation_record_id == item.id,
+    ))
+    if detail is None:
+        detail = SalaryImportDetail(company_id=company.id, calculation_record_id=item.id)
+        db.add(detail)
+    detail.source_sha256 = calculation_fingerprint(item)
+    detail.period_start, detail.period_end = period_start, period_end
+    detail.days_worked, detail.hours_worked = days_worked, hours_worked
+    detail.payment_method = method
+    detail.payment_date, detail.pieces_or_tasks = paid_on, pieces
+    detail.updated_by = user.email
+    write_audit(
+        db, user, "datos_recibo_salarial", "liquidacion_salario", str(item.id),
+        f"Anexo {period_start} a {period_end}; jornadas {days_worked}; horas {hours_worked}; "
+        f"medio {method}; fecha de pago {paid_on or 'pendiente'}; piezas {pieces if pieces is not None else 'pendiente'}",
+    )
+    db.commit()
+    return RedirectResponse(
+        f"/app/reports/liquidaciones-salarios/{item.id}?datos_guardados=1",
+        status_code=303,
+    )
+
+
 @app.get("/app/reports/liquidaciones-salarios/{calculation_id}/pdf")
 def salary_settlement_report_pdf(
     calculation_id: int,
