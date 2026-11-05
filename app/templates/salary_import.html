@@ -33,6 +33,7 @@
   <div style="margin-bottom:15px;display:flex;gap:9px;flex-wrap:wrap">
     <a href="/app/compliance{% if selected_company %}?company_id={{ selected_company.id }}{% endif %}" class="btn ghost">← Volver a Cumplimiento</a>
     <a href="/app/liquidaciones/conciliar-planilla" class="btn ghost">Conciliar planilla contable antes de exportar</a>
+    <a href="/app/liquidaciones/salarios/importar-reop" class="btn ghost">Importar salarios desde REOP</a>
   </div>
   <p class="import-salary-info"><strong>Criterios de días:</strong> REOP mensualizados = días remunerados del mes (incluidos descansos legales pagados); REOP jornaleros = jornadas efectivamente trabajadas. REI utiliza los días remunerados guardados y su propia base imponible IPS. Las horas ordinarias REOP siempre deben corresponder a asistencia real, no a un divisor de salario.</p>
   <section class="import-salary-card">

@@ -343,6 +343,8 @@ class CSRFMiddleware:
             # los demás formularios del calculador conservan el límite de 64 KiB.
             if path == "/app/liquidaciones/conciliar-planilla":
                 limit = 2 * 1024 * 1024 + 32768  # espacio multipart/control CSRF
+            elif path == "/app/liquidaciones/salarios/importar-reop/previsualizar":
+                limit = 5 * 1024 * 1024 + 32768  # XLSX REOP con protección CSRF
             elif path.startswith("/herramientas/") or path.startswith("/app/liquidaciones/"):
                 limit = 64000
             else:
@@ -11533,3 +11535,7 @@ app.include_router(entity_select_router)
 # Isolated, administrator-only post-import correction wizard.
 from .post_import_reactivation_routes import router as post_import_reactivation_router
 app.include_router(post_import_reactivation_router)
+
+# Importación REOP al cálculo salarial, sin sobrescribir liquidaciones.
+from .reop_salary_ingest_routes import router as reop_salary_ingest_router
+app.include_router(reop_salary_ingest_router)

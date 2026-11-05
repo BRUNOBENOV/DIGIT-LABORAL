@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% block title %}Importar salarios desde REOP | DIGIT-LABORAL{% endblock %}
+{% block content %}
+<style>
+.reop-ingest{max-width:1180px;margin:0 auto;color:#18324e}
+.reop-ingest-hero{background:linear-gradient(120deg,#0a2549,#184c83);padding:24px 27px;border-radius:15px;color:#fff;margin-bottom:16px}
+.reop-ingest-hero h1{font-size:1.65rem;color:#fff;margin:4px 0}
+.reop-ingest-hero p{font-size:.8rem;color:#e0edff;margin:0;line-height:1.6}
+.reop-ingest-card{background:#fff;border:1px solid #d6e1ed;border-radius:12px;padding:18px;margin:14px 0}
+.reop-ingest-card h2{font-size:1.02rem;color:#214263;margin:0 0 12px}
+.reop-ingest-grid{display:grid;grid-template-columns:1.3fr 1fr;gap:14px}
+.reop-ingest label.field{font-weight:750;font-size:.8rem;display:grid;gap:7px;color:#405671}
+.reop-ingest select,.reop-ingest input[type=file]{width:100%;padding:10px;border:1px solid #bacbdd;border-radius:8px;background:#fff;color:#1b3551}
+.reop-ingest-options{display:grid;gap:11px;margin-top:15px}
+.reop-ingest-options label{display:flex;gap:10px;align-items:flex-start;font-size:.82rem;line-height:1.45;color:#334d6a}
+.reop-ingest-options input{margin-top:3px;accent-color:#235ca7}
+.reop-ingest-note{color:#55687c;font-size:.77rem;line-height:1.65}
+.reop-ingest-warn{background:#fff9eb;border-left:3px solid #ad761f;padding:12px 14px;margin:12px 0;border-radius:5px;font-size:.79rem;line-height:1.6;color:#6a4b17}
+.reop-ingest-success{background:#f0f9f3;border-left:3px solid #298255;padding:12px 14px;margin:12px 0;border-radius:5px;font-size:.81rem}
+.reop-ingest-kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin:15px 0}
+.reop-ingest-kpi{border:1px solid #d4e0ed;border-radius:9px;padding:10px;background:#f9fbfe}
+.reop-ingest-kpi strong{display:block;font-size:1.3rem;color:#163d68;font-variant-numeric:tabular-nums}
+.reop-ingest-kpi span{font-size:.71rem;color:#536a82}
+.reop-ingest-scroller{width:100%;overflow:auto;border:1px solid #d9e2ed;border-radius:9px}
+.reop-ingest table{width:100%;border-collapse:collapse;font-size:.75rem;min-width:960px}
+.reop-ingest th{background:#ebf2fa;color:#264565;font-weight:750;text-align:left;padding:10px;white-space:nowrap}
+.reop-ingest td{padding:10px;border-top:1px solid #e5edf4;vertical-align:top}
+.reop-ingest td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.reop-ingest td.help{max-width:290px;min-width:185px;font-size:.71rem}
+.reop-ingest .s-ready{color:#157248;font-weight:800}
+.reop-ingest .s-blocked{color:#9a5611;font-weight:800}
+.reop-ingest .s-existing{color:#596e85;font-weight:800}
+.reop-ingest .s-missing_employee{color:#b04a31;font-weight:800}
+.reop-ingest li{margin:0 0 5px}
+.reop-ingest-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:15px}
+.reop-ingest-actions button{padding:10px 16px;border:0;border-radius:8px;background:#174a87;color:#fff;font-weight:800;cursor:pointer}
+.reop-ingest-actions button:disabled{cursor:not-allowed;opacity:.45}
+.reop-ingest-confirm{display:flex;align-items:flex-start;gap:9px;font-size:.82rem;color:#2d475f;margin-top:12px}
+.reop-ingest-confirm input{margin-top:4px}
+@media(max-width:760px){.reop-ingest-grid{grid-template-columns:1fr}.reop-ingest-kpis{grid-template-columns:repeat(2,1fr)}}
+</style>
+<div class="reop-ingest">
+  <header class="reop-ingest-hero">
+    <p style="font-weight:800;letter-spacing:.11em">CÁLCULO · SALARIOS · IMPORTACIÓN</p>
+    <h1>Importar planilla salarial desde REOP</h1>
+    <p>Incorporá a DIGIT-LABORAL los conceptos y descuentos de una planilla Excel REOP de 32 columnas. Se conservan los importes del archivo y las liquidaciones nuevas quedan en <strong>Borrador</strong> para revisión.</p>
+  </header>
+  <div class="reop-ingest-actions">
+    <a class="btn ghost" href="/app/liquidaciones?tipo=salary">← Volver a Salarios</a>
+    <a class="btn ghost" href="/app/reports/liquidaciones-salarios">Ver liquidaciones guardadas</a>
+    <a class="btn ghost" href="/app/compliance/salary-import">Exportar a REOP/REI</a>
+  </div>
+  {% if imported %}
+    <p class="reop-ingest-success" role="status">Se guardaron <strong>{{ imported }}</strong> liquidaciones en estado Borrador. Las filas no aptas y los duplicados no fueron modificados. Consultalas en Informes → Liquidación de Salarios.</p>
+  {% endif %}
+  {% if error %}
+    <p class="reop-ingest-warn" role="alert">{{ error }}</p>
+  {% endif %}
+  {% if not preview %}
+  <section class="reop-ingest-card">
+    <h2>1. Seleccionar empresa y archivo REOP</h2>
+    <form method="post" action="/app/liquidaciones/salarios/importar-reop/previsualizar" enctype="multipart/form-data">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="reop-ingest-grid">
+        <label class="field">Empresa que recibirá las liquidaciones
+          <select name="company_id" required data-searchable-entity="company" data-entity-scope="all">
+            <option value="">Seleccioná empresa</option>
+            {% for company in companies|entity_choices %}
+              <option value="{{ company.id }}" {{ 'selected' if selected and selected.id == company.id else '' }}>{{ company.legacy_code or (company.company_code if company.company_code is not none else 'Sin código') }} · {{ company.legal_name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label class="field">Excel REOP (.xlsx)
+          <input type="file" name="file" accept=".xlsx" required>
+        </label>
+      </div>
+      <div class="reop-ingest-warn">
+        <strong>Revisiones especiales:</strong> algunas planillas provenientes de Excel pueden contener fechas DESDE invertidas por configuración regional o un total bruto duplicado en la columna «Recargo horario Nocturno». Por defecto, el sistema bloquea las filas afectadas.
+      </div>
+      <div class="reop-ingest-options">
+        <label><input type="checkbox" name="correct_swapped_start" value="true"> <span><strong>Autorizar corrección de fechas invertidas:</strong> intercambiar día y mes solo si el resultado pertenece al mismo período que HASTA. Se registra la corrección.</span></label>
+        <label><input type="checkbox" name="night_column_is_total" value="true"> <span><strong>Tratar total duplicado como control:</strong> si «Recargo horario Nocturno» coincide exactamente con la suma de todos los demás ingresos, NO duplicarlo como haber. En los demás casos se conserva como recargo real.</span></label>
+        <label><input type="checkbox" name="allow_patronal_unverified" value="true"> <span><strong>Autorizo cargar a la empresa seleccionada sin N.º patronal configurado:</strong> usar solo si verificaste manualmente que el número patronal de la planilla le corresponde. No permite importar si existe otro N.º patronal configurado que no coincide.</span></label>
+      </div>
+      <div class="reop-ingest-actions"><button type="submit">Previsualizar y comprobar</button></div>
+      <p class="reop-ingest-note">No se guardan salarios al previsualizar. El proceso identifica trabajadores por C.I. dentro de la empresa elegida, comprueba el número patronal, detecta liquidaciones existentes y permite varias mensualidades en un mismo Excel. Límite: 5 MB y 3.000 filas.</p>
+    </form>
+  </section>
+  {% else %}
+  <section class="reop-ingest-card">
+    <h2>2. Resultado de la validación</h2>
+    <p class="reop-ingest-note"><strong>Empresa:</strong> {{ selected.legal_name }} · <strong>Archivo:</strong> {{ preview.filename }} · <strong>SHA-256:</strong> <code>{{ preview.sha256[:16] }}…</code></p>
+    <div class="reop-ingest-kpis">
+      <div class="reop-ingest-kpi"><strong>{{ summary.total }}</strong><span>Filas examinadas</span></div>
+      <div class="reop-ingest-kpi"><strong>{{ summary.ready }}</strong><span>Aptas para crear</span></div>
+      <div class="reop-ingest-kpi"><strong>{{ summary.blocked }}</strong><span>Con observaciones</span></div>
+      <div class="reop-ingest-kpi"><strong>{{ summary.existing }}</strong><span>Ya existentes</span></div>
+      <div class="reop-ingest-kpi"><strong>{{ summary.missing_employee }}</strong><span>Sin C.I. único</span></div>
+    </div>
+    <p class="reop-ingest-note">Períodos detectados: {{ summary.periods|join(', ') or 'No válidos' }}. Solo se crearán las filas <strong>Aptas</strong>; nunca se reemplazarán recibos ni cálculos existentes. Se mostrarán hasta 100 filas de la vista previa.</p>
+    {% if summary.blocked or summary.missing_employee %}
+      <div class="reop-ingest-warn">Existen filas que necesitan revisión. Podés regresar, corregir el Excel o activar los tratamientos explícitos para fechas y totales duplicados, y volver a previsualizar. Las demás filas aptas pueden importarse por separado.</div>
+    {% endif %}
+    <div class="reop-ingest-scroller"><table>
+      <thead><tr><th>Fila</th><th>Período</th><th>C.I.</th><th>Funcionario</th><th>Estado</th><th>Bruto Gs.</th><th>Descuentos</th><th>Neto Gs.</th><th>Validaciones</th></tr></thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td>{{ row.source_row }}</td>
+          <td>{{ row.period or 'Inválido' }}</td>
+          <td>{{ row.ci }}</td>
+          <td>{{ row.employee_name }}</td>
+          <td class="s-{{ row.status }}">{{ {'ready':'APTA','blocked':'REVISAR','existing':'YA EXISTE','missing_employee':'SIN LEGAJO'}[row.status] }}</td>
+          <td class="num">{{ row.gross|gs }}</td>
+          <td class="num">{{ row.discounts|gs }}</td>
+          <td class="num"><strong>{{ row.net|gs }}</strong></td>
+          <td class="help">
+            {% if row.problems %}<ul>{% for issue in row.problems %}<li>{{ issue }}</li>{% endfor %}</ul>{% endif %}
+            {% if row.warnings %}<ul>{% for warning in row.warnings %}<li>{{ warning }}</li>{% endfor %}</ul>{% endif %}
+            {% if not row.problems and not row.warnings %}Validada para importar{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody></table></div>
+    {% if summary.ready %}
+      <form method="post" action="/app/liquidaciones/salarios/importar-reop/{{ token }}/confirmar">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label class="reop-ingest-confirm"><input type="checkbox" name="confirm" value="true" required><span>Revisé la planilla y las observaciones. Confirmo importar únicamente las <strong>{{ summary.ready }}</strong> filas aptas como <strong>Borrador</strong>, sin sustituir registros existentes ni atribuirles aceptación oficial por REOP.</span></label>
+        <div class="reop-ingest-actions">
+          <button type="submit">Importar {{ summary.ready }} salarios a DIGIT-LABORAL</button>
+          <a class="btn ghost" href="/app/liquidaciones/salarios/importar-reop?company_id={{ selected.id }}">Cargar otro archivo o corregir opciones</a>
+        </div>
+      </form>
+    {% else %}
+      <div class="reop-ingest-actions"><a class="btn ghost" href="/app/liquidaciones/salarios/importar-reop?company_id={{ selected.id }}">Volver y corregir</a></div>
+    {% endif %}
+  </section>
+  {% endif %}
+</div>
+{% endblock %}
