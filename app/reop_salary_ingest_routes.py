@@ -109,6 +109,7 @@ def _match_rows(db: Session, company: Company, payload: dict) -> tuple[list[dict
     stats = {"ready": 0, "blocked": 0, "existing": 0, "missing_employee": 0,
              "total": len(payload["rows"]), "periods": sorted(periods),
              "periods_suggested": sorted({row.get("period_hint") for row in payload["rows"] if row.get("period_hint")}),
+             "patronales": sorted({row.get("patronal") for row in payload["rows"] if row.get("patronal")}),
              "date_suggestions": sum(bool(row.get("date_swap_proposal")) for row in payload["rows"]),
              "night_suggestions": sum(bool(row.get("night_total_proposal")) for row in payload["rows"]),
              "date_applied": bool(flags.get("correct_swapped_start")),
