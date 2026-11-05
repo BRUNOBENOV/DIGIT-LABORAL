@@ -7,6 +7,7 @@ from openpyxl import Workbook
 from app.salary_accounting_audit import (
     AccountingPayrollError, reconcile_accounting_payroll,
 )
+from tests.test_labor_suite import web_case, token
 
 
 def workbook_bytes(*, mismatch=True):
@@ -65,7 +66,6 @@ def test_invalid_uploads_are_rejected(payload, period):
 
 
 def test_accounting_preview_is_private_and_does_not_create_calculations(web_case):
-    from tests.test_labor_suite import token
     client, db, *_ = web_case
     payload = workbook_bytes()
     from app.models import CalculationRecord
