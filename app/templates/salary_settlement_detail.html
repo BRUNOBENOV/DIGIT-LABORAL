@@ -301,11 +301,7 @@
     }
   })();
   </script>
-          {% for concept in model.deductions if concept.amount %}
-          <tr><td>{{ 'EGRESOS' if loop.first else '' }}</td><td>{{ concept.label }}</td><td></td><td class="money">{{ concept.amount|gs }}</td></tr>
-          {% else %}
-          <tr><td>EGRESOS</td><td>Sin descuentos registrados</td><td></td><td></td></tr>
-          {% endfor %}
+
         </tbody>
       </table>
     </section>
