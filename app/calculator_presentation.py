@@ -22,7 +22,7 @@ def quick_steps(kind):
         sections = [
             ("Datos base", "Período, salario y días", [groups["Salario del período"]]),
             ("Horas y recargos", "Nocturnas, extras y feriados", [groups["Horas nocturnas, extras y feriados"], groups["Bases horarias y ajustes excepcionales"]]),
-            ("Otros haberes", "Comisiones, bonificaciones y asignación familiar", [groups[t] for t in ("Haberes adicionales", "Asignación familiar", "Mínimo legal especial", "Conceptos separados")]),
+            ("Otros haberes", "Comisiones, bonificaciones y asignación familiar", [groups[t] for t in ("Haberes adicionales", "Clasificación de otros haberes para REOP", "Asignación familiar", "Mínimo legal especial", "Conceptos separados")]),
             ("Aportes y descuentos", "Base IPS y retenciones", [groups["Aportes y descuentos"]]),
         ]
     sections.append(("Confirmación y documento", "Identificación, revisión y descarga", [groups["Revisar un recibo"], groups["Datos del documento"]]))
