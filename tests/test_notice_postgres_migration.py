@@ -28,7 +28,7 @@ def test_postgres_notice_migration_fresh_upgrade_and_read_only_rls():
 
     def verify():
         with engine.connect() as connection:
-            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0021_notice_rules"
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0022_vacation_payment"
             assert connection.scalar(text("SELECT count(*) FROM notice_rule_sets")) == 1
             assert list(connection.execute(text("SELECT max_service_months,notice_days FROM notice_rule_bands ORDER BY position"))) == [(12,30),(60,45),(120,60),(None,90)]
             assert connection.scalar(text("SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relname IN ('notice_rule_sets','notice_rule_bands') AND c.relrowsecurity")) == 2
