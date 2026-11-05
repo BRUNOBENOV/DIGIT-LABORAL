@@ -12,7 +12,7 @@ from decimal import Decimal
 from zoneinfo import ZoneInfo
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -380,7 +380,7 @@ def accounting_salary_audit_page(
 async def accounting_salary_audit_upload(
     request: Request,
     upload: UploadFile = File(...),
-    period: str = "",
+    period: str = Form(""),
     user: User = Depends(core.require_roles("administrador", "contador", "auxiliar")),
     db: Session = Depends(core.get_db),
 ):
