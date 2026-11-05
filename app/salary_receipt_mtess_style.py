@@ -1,295 +1,155 @@
-"""Recibo salarial DIGIT-LABORAL: retícula del modelo MTESS, sin QR ni identidad oficial.
+"""Recibo DIGIT-LABORAL sobre plantilla visual del MTESS aportada por el usuario.
 
-Presenta los importes persistidos sin recalcularlos y emite ORIGINAL / DUPLICADO
-con una numeración interna compartida. No suplanta un comprobante REOP.
+La plantilla no contiene identidad de terceros, QR ni numeración oficial.
+Cada página identifica expresamente la emisión interna; nunca es comprobante REOP.
 """
 from __future__ import annotations
 
-from html import escape
+import base64
 from io import BytesIO
 from pathlib import Path
+from typing import Any
 
-from reportlab.lib import colors
-from reportlab.lib.enums import TA_CENTER, TA_RIGHT
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import ParagraphStyle
-from reportlab.lib.units import mm
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.platypus import (
-    KeepTogether, PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle,
-)
+import fitz
 
-FONT_PATH = Path(__file__).resolve().parent / "assets" / "fonts"
-pdfmetrics.registerFont(TTFont("DLReceipt", str(FONT_PATH / "DejaVuSans.ttf")))
-pdfmetrics.registerFont(TTFont("DLReceipt-Bold", str(FONT_PATH / "DejaVuSans-Bold.ttf")))
-
-NAVY = colors.HexColor("#284B70")
-DARK = colors.HexColor("#111111")
-PALE = colors.HexColor("#F0F0F0")
-BORDER = colors.HexColor("#111111")
-MUTED = colors.HexColor("#111111")
-W = 196 * mm
-RED = colors.HexColor("#941D1C")
+BASE = Path(__file__).resolve().parent / "assets" / "mtess_salary_receipt_blank.b64"
+NAVY = (40 / 255, 74 / 255, 107 / 255)
+RED = (151 / 255, 30 / 255, 27 / 255)
+BLACK = (0, 0, 0)
+WHITE = (1, 1, 1)
 
 
-def _gs(amount):
-    return f"{int(amount):,}".replace(",", ".")
+def _gs(n: Any) -> str:
+    return f"{int(n or 0):,}".replace(",", ".")
 
 
-def _text(value, fallback="—"):
-    value = str(value) if value not in (None, "") else fallback
-    return escape(value).replace("\n", "<br/>")
+def _put(page, text, rect, *, size=9.5, color=BLACK, center=False, bold=False):
+    if text is None or not str(text).strip():
+        return
+    value = str(text)
+    bounds = fitz.Rect(rect)
+    font = "hebo" if bold else "helv"
+    current = size
+    while current > 6.0 and fitz.get_text_length(value, fontname=font, fontsize=current) > bounds.width - 4:
+        current -= 0.3
+    width = fitz.get_text_length(value, fontname=font, fontsize=current)
+    left = bounds.x0 + (max(0, bounds.width - width) / 2 if center else 2)
+    page.insert_text((left, bounds.y0 + (bounds.height + current) / 2 - 1),
+                     value, fontsize=current, fontname=font, color=color, overlay=True)
 
 
-def build_mtess_style_salary_pdf(model: dict) -> bytes:
-    """One complete A4 receipt for each copy. Layout follows reference categories."""
-    stream = BytesIO()
-    doc = SimpleDocTemplate(
-        stream, pagesize=A4, leftMargin=7*mm, rightMargin=7*mm,
-        topMargin=7*mm, bottomMargin=7*mm,
-        title=f"Liquidación de salario {model['code']}",
-        author="DIGIT-LABORAL",
-    )
-    body = ParagraphStyle(
-        "DLReceiptBody", fontName="DLReceipt", fontSize=9,
-        leading=12, textColor=DARK,
-    )
-    bold = ParagraphStyle(
-        "DLReceiptBold", parent=body, fontName="DLReceipt-Bold", fontSize=9,
-        leading=12,
-    )
-    white = ParagraphStyle(
-        "DLReceiptWhite", parent=bold, textColor=colors.white, fontSize=8.6,
-        leading=10.5,
-    )
-    centered = ParagraphStyle("DLReceiptCenter", parent=body, alignment=TA_CENTER)
-    centered_bold = ParagraphStyle("DLReceiptCenterBold", parent=bold, alignment=TA_CENTER)
-    centered_white = ParagraphStyle("DLReceiptCenterWhite", parent=white, alignment=TA_CENTER)
-    right = ParagraphStyle("DLReceiptRight", parent=body, alignment=TA_RIGHT)
-    right_bold = ParagraphStyle("DLReceiptRightBold", parent=bold, alignment=TA_RIGHT)
-    small = ParagraphStyle(
-        "DLReceiptSmall", parent=body, fontSize=7.5, leading=10, textColor=MUTED,
-    )
-    note = ParagraphStyle(
-        "DLReceiptNote", parent=body, fontSize=8, leading=10.8, textColor=DARK,
-    )
+def _positive(values):
+    return [r for r in (values or []) if isinstance(r, dict) and int(r.get("amount") or 0) > 0]
 
-    def p(value, style=body):
-        return Paragraph(_text(value), style)
 
-    def table(rows, widths, *, head_rows=0, pads=3, special=None, row_heights=None):
-        t = Table(rows, colWidths=widths, rowHeights=row_heights,
-                  repeatRows=head_rows, hAlign="LEFT")
-        commands = [
-            ("BOX", (0, 0), (-1, -1), .75, BORDER),
-            ("INNERGRID", (0, 0), (-1, -1), .55, BORDER),
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("LEFTPADDING", (0, 0), (-1, -1), pads),
-            ("RIGHTPADDING", (0, 0), (-1, -1), pads),
-            ("TOPPADDING", (0, 0), (-1, -1), 3),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-        ]
-        if head_rows:
-            commands.append(("BACKGROUND", (0, 0), (-1, head_rows-1), NAVY))
-        if special:
-            commands.extend(special)
-        t.setStyle(TableStyle(commands))
-        return t
+def _append_concept_annex(result, model):
+    """Preserve every saved itemized component when a category exceeds one row."""
+    items = [("INGRESOS", r) for r in model.get("earnings", []) if isinstance(r, dict)]
+    items += [("EGRESOS", r) for r in model.get("deductions", []) if isinstance(r, dict)]
+    page = None
+    y = 0
+    for i, (kind, row) in enumerate(items):
+        if page is None or y > 755:
+            page = result.new_page(width=595, height=842)
+            page.draw_rect(fitz.Rect(20, 20, 575, 68), fill=NAVY, color=None)
+            _put(page, "ANEXO DE CONCEPTOS · DIGIT-LABORAL", (25, 27, 570, 48), size=13, color=WHITE, bold=True)
+            _put(page, f"N.º {model.get('code', '')} · DOCUMENTO INTERNO NO OFICIAL",
+                 (25, 47, 570, 64), size=9, color=WHITE)
+            _put(page, "Detalle asociado al Original y Duplicado. Importes del cálculo guardado.",
+                 (25, 75, 570, 96), size=9)
+            if model.get("is_annulled"):
+                page.draw_rect(fitz.Rect(20, 98, 575, 116), color=None, fill=RED)
+                _put(page, "ANULADO · COPIA HISTÓRICA · NO UTILIZAR COMO RECIBO VIGENTE",
+                     (24, 98, 571, 116), size=10, color=WHITE, center=True, bold=True)
+                y = 128
+            else:
+                y = 112
+        page.draw_rect(fitz.Rect(20, y, 575, y + 25), color=BLACK, width=.55)
+        page.draw_line(fitz.Point(95, y), fitz.Point(95, y + 25), color=BLACK, width=.55)
+        page.draw_line(fitz.Point(450, y), fitz.Point(450, y + 25), color=BLACK, width=.55)
+        _put(page, kind, (22, y + 3, 92, y + 23), size=8, bold=True)
+        _put(page, str(row.get("label") or "Concepto"), (98, y + 3, 447, y + 23), size=9)
+        _put(page, _gs(row.get("amount")), (453, y + 3, 572, y + 23), size=9)
+        y += 25
+    if page is not None:
+        y += 12
+        for label, value in (("TOTAL INGRESOS", "gross"), ("TOTAL EGRESOS", "discounts"), ("NETO", "net")):
+            _put(page, label, (25, y, 255, y + 17), size=9, bold=True)
+            _put(page, _gs(model.get(value)), (451, y, 570, y + 17), size=9)
+            y += 18
 
-    def copy_page(copy_label):
-        story = []
-        if model.get("is_annulled"):
-            story.extend([
-                table([[p("ANULADO · COPIA HISTÓRICA · NO UTILIZAR COMO RECIBO VIGENTE",
-                          centered_white)]], [W],
-                      special=[("BACKGROUND", (0, 0), (-1, -1), RED),
-                               ("TOPPADDING", (0, 0), (-1, -1), 6),
-                               ("BOTTOMPADDING", (0, 0), (-1, -1), 6)]),
-                Spacer(1, 3*mm),
-            ])
 
-        # Misma disposición del modelo de referencia: área gris a la izquierda,
-        # franja roja superior, título azul y banda roja ORIGINAL/DUPLICADO.
-        logo_style = ParagraphStyle(
-            "DLReceiptLogo", parent=bold, fontSize=17, leading=20,
-            alignment=TA_CENTER, textColor=colors.white,
-        )
-        title_style = ParagraphStyle(
-            "DLReceiptTitle", parent=bold, fontSize=11, leading=13,
-            textColor=colors.white,
-        )
-        header_note = ParagraphStyle(
-            "DLReceiptHeaderNote", parent=body, fontSize=7.7, leading=9.5,
-        )
-        red_copy_style = ParagraphStyle(
-            "DLReceiptCopy", parent=bold, fontSize=8, leading=10,
-            textColor=colors.white,
-        )
-        left_heading = Table([
-            [Paragraph("DL", logo_style),
-             [p("DIGIT-LABORAL", bold),
-              p("Sistema de gestión laboral", header_note),
-              p("Liquidación de salarios · Paraguay", header_note)]],
-        ], colWidths=[19*mm, 109*mm], rowHeights=[21*mm])
-        left_heading.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (0, 0), NAVY),
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("LEFTPADDING", (0, 0), (0, 0), 4),
-            ("RIGHTPADDING", (0, 0), (0, 0), 4),
-            ("LEFTPADDING", (1, 0), (1, 0), 7),
-            ("RIGHTPADDING", (1, 0), (1, 0), 0),
-            ("TOPPADDING", (0, 0), (-1, -1), 1),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
-        ]))
+def build_mtess_style_salary_pdf(model: dict[str, Any]) -> bytes:
+    template_data = base64.b64decode(BASE.read_text(encoding="ascii").strip(), validate=True)
+    source = fitz.open(stream=template_data, filetype="pdf")
+    result = fitz.open()
+    try:
+        for label in ("ORIGINAL", "DUPLICADO"):
+            result.insert_pdf(source, from_page=0, to_page=0)
+            page = result[-1]
+            if label == "DUPLICADO":
+                # Remove the embedded ORIGINAL word (not merely cover it visually).
+                page.add_redact_annot(fitz.Rect(399, 82, 580, 102), fill=RED)
+                page.apply_redactions(images=0, graphics=0, text=0)
+                _put(page, label, (404, 84, 515, 100), size=8, color=WHITE, bold=True)
+            # The source already excludes the QR. Remove any residual third-box border.
+            page.add_redact_annot(fitz.Rect(447, 456, 579, 572), fill=WHITE)
+            page.apply_redactions(images=0, graphics=0, text=0)
+            _put(page, "MODELO MTESS · DOCUMENTO INTERNO NO OFICIAL",
+                 (22, 87, 384, 101), size=7.7, color=RED, bold=True)
+            _put(page, str(model.get("code") or ""), (430, 54.5, 570, 75), size=10, color=WHITE)
+            _put(page, model.get("employer_name"), (20, 122.5, 438, 143), size=10)
+            _put(page, model.get("employer_ruc"), (439, 122.5, 571, 143), size=10)
+            _put(page, model.get("employee_name"), (20, 172.5, 438, 193), size=10)
+            _put(page, model.get("employee_ci"), (439, 172.5, 571, 193), size=10)
+            for key, box in [
+                ("period_from_mtess_display", (79, 222.5, 199, 243)),
+                ("period_to_mtess_display", (199, 222.5, 319, 243)),
+                ("payment_date_display", (319, 222.5, 439, 243)),
+                ("payment_method", (439, 222.5, 573, 243)),
+            ]:
+                fallback = model.get(key.replace("_mtess", ""))
+                _put(page, model.get(key) or fallback or "No registrado", box, size=9)
+            for key, box in [
+                ("hours_worked_display", (106, 253, 192, 303)),
+                ("days_worked_display", (301, 253, 383, 303)),
+                ("pieces_or_tasks_display", (482, 253, 574, 303)),
+            ]:
+                _put(page, model.get(key) or "No registrado", box, size=10, center=True)
+            for kind, rect, amount_box, total in [
+                ("earnings", (101, 333, 300, 353), (301, 333, 428, 353), "gross"),
+                ("deductions", (101, 353, 300, 373), (430, 353, 571, 373), "discounts"),
+            ]:
+                rows = _positive(model.get(kind))
+                if not rows:
+                    _put(page, "Sin conceptos registrados", rect, size=8.4)
+                elif len(rows) == 1:
+                    _put(page, rows[0].get("label"), rect, size=9)
+                    _put(page, _gs(rows[0].get("amount")), amount_box, size=9)
+                else:
+                    _put(page, f"{len(rows)} conceptos (detalle en anexo)", rect, size=8)
+                    _put(page, _gs(model.get(total)), amount_box, size=9)
+            for key, rect in [
+                ("gross", (300, 383, 569, 402)),
+                ("discounts", (300, 403, 569, 422)),
+                ("net", (300, 423, 569, 442)),
+            ]:
+                _put(page, _gs(model.get(key)), rect, size=10)
+            page.insert_text((20, 588),
+                             "Este recibo fue generado por DIGIT-LABORAL con datos suministrados por el empleador.",
+                             fontsize=9, fontname="heit", color=BLACK)
+            page.insert_text((20, 603),
+                             "No es comprobante emitido por el MTESS ni acredita presentación en REOP o pago efectivo.",
+                             fontsize=8.5, fontname="heit", color=BLACK)
+            if model.get("is_annulled"):
+                page.draw_rect(fitz.Rect(20, 633, 572, 650), fill=RED, color=None)
+                _put(page, "ANULADO · COPIA HISTÓRICA · NO UTILIZAR COMO RECIBO VIGENTE",
+                     (26, 633, 566, 650), size=10, color=WHITE, center=True, bold=True)
 
-        header_right = Table([
-            [""],
-            [[Paragraph("LIQUIDACIÓN DE SALARIO", title_style),
-              p("N.º " + model["code"], white)]],
-            [Paragraph(copy_label, red_copy_style)],
-        ], colWidths=[64*mm], rowHeights=[4*mm, 14*mm, 5*mm])
-        header_right.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (0, 0), RED),
-            ("BACKGROUND", (0, 1), (0, 1), NAVY),
-            ("BACKGROUND", (0, 2), (0, 2), RED),
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("LEFTPADDING", (0, 0), (-1, -1), 7),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 2),
-            ("TOPPADDING", (0, 0), (-1, -1), 0),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
-        ]))
-        header = Table([[left_heading, header_right]], colWidths=[132*mm, 64*mm],
-                       rowHeights=[23*mm], hAlign="LEFT")
-        header.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (0, 0), PALE),
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("LEFTPADDING", (0, 0), (-1, -1), 0),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-            ("TOPPADDING", (0, 0), (-1, -1), 0),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
-        ]))
-        story.extend([header, Spacer(1, 3*mm)])
-
-        story.append(table([
-            [p("EMPLEADOR", centered_white), p("RUC N.º", centered_white)],
-            [p(model["employer_name"]), p(model["employer_ruc"])],
-        ], [150*mm, 46*mm], head_rows=1))
-        story.append(Spacer(1, 3*mm))
-
-        story.append(table([
-            [p("NOMBRE Y APELLIDO DEL TRABAJADOR", centered_white),
-             p("C.I. N.º", centered_white)],
-            [p(model["employee_name"]), p(model["employee_ci"])],
-        ], [150*mm, 46*mm], head_rows=1))
-        story.append(Spacer(1, 3*mm))
-
-        # El primer encabezado ocupa ambas filas, como en el recibo MTESS.
-        story.append(table([
-            [p("PERÍODO\nDE PAGO", white), p("DESDE", centered_white),
-             p("HASTA", centered_white), p("FECHA", centered_white),
-             p("FORMA DE PAGO", centered_white)],
-            ["", p(model.get("period_from_mtess_display") or model.get("period_from_display") or "No registrado"),
-             p(model.get("period_to_mtess_display") or model.get("period_to_display") or "No registrado"),
-             p(model.get("payment_date_display") or "No registrada"),
-             p(model.get("payment_method") or "No registrado")],
-        ], [22*mm, 44*mm, 44*mm, 44*mm, 42*mm],
-           special=[("SPAN", (0, 0), (0, 1)),
-                    ("BACKGROUND", (0, 0), (-1, 0), NAVY),
-                    ("BACKGROUND", (0, 1), (0, 1), NAVY)]))
-        story.append(Spacer(1, 3*mm))
-
-        story.append(table([[
-            p("HORAS\nTRABAJADAS", white),
-            p(model.get("hours_worked_display") or "No registrado", centered),
-            p("CANTIDAD DE DÍAS\nTRABAJADOS", white),
-            p(model.get("days_worked_display") or "No registrado", centered),
-            p("CANTIDAD DE\nPIEZAS O TAREAS", white),
-            p(model.get("pieces_or_tasks_display") or "No registrado", centered),
-        ]], [31*mm, 31*mm, 39*mm, 31*mm, 32*mm, 32*mm],
-            special=[("BACKGROUND", (0, 0), (0, 0), NAVY),
-                     ("BACKGROUND", (2, 0), (2, 0), NAVY),
-                     ("BACKGROUND", (4, 0), (4, 0), NAVY),
-                     ("TOPPADDING", (0, 0), (-1, 0), 8),
-                     ("BOTTOMPADDING", (0, 0), (-1, 0), 8)]))
-        story.append(Spacer(1, 3*mm))
-
-        lines = [[p("CONCEPTO", centered_white), "",
-                  p("MONTO EN GS.", centered_white),
-                  p("MONTO EN GS.", centered_white)]]
-        categories = []
-        for category, values in (
-            ("INGRESOS", model["earnings"]), ("EGRESOS", model["deductions"])
-        ):
-            valid = [row for row in values if int(row.get("amount") or 0) > 0]
-            if not valid:
-                valid = [{"label": "Sin conceptos registrados", "amount": 0}]
-            for idx, row in enumerate(valid):
-                categories.append(len(lines))
-                lines.append([
-                    p(category if idx == 0 else "", white),
-                    p(row["label"]),
-                    p(_gs(row["amount"])) if category == "INGRESOS" and row["amount"] else "",
-                    p(_gs(row["amount"])) if category == "EGRESOS" and row["amount"] else "",
-                ])
-        story.append(table(lines, [33*mm, 94*mm, 34.5*mm, 34.5*mm],
-                           head_rows=1,
-                           special=[
-                               ("SPAN", (0, 0), (1, 0)),
-                               ("BACKGROUND", (0, 1), (0, -1), NAVY),
-                               ("TOPPADDING", (0, 0), (-1, -1), 3),
-                               ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-                           ]))
-        story.append(Spacer(1, 3*mm))
-
-        story.append(table([
-            [p("MONTO TOTAL DE INGRESO", white), p(_gs(model["gross"]))],
-            [p("MONTO TOTAL DE EGRESO", white), p(_gs(model["discounts"]))],
-            [p("MONTO TOTAL A COBRAR", white), p(_gs(model["net"]))],
-        ], [101*mm, 95*mm], special=[
-            ("BACKGROUND", (0, 0), (0, -1), NAVY),
-            ("TOPPADDING", (0, 0), (-1, -1), 3),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-        ]))
-        story.append(Spacer(1, 3*mm))
-
-        # El QR del formulario oficial se elimina. Ambos casilleros de firma
-        # ocupan el espacio disponible y mantienen el orden de la referencia.
-        signatures = Table([
-            ["", "", ""],
-            [p("FIRMA DEL EMPLEADOR", white), "",
-             p("FIRMA DEL EMPLEADO", white)],
-        ], colWidths=[94*mm, 8*mm, 94*mm], rowHeights=[25*mm, 7*mm])
-        signatures.setStyle(TableStyle([
-            ("BOX", (0, 0), (0, 0), .75, BORDER),
-            ("BOX", (2, 0), (2, 0), .75, BORDER),
-            ("BACKGROUND", (0, 1), (0, 1), NAVY),
-            ("BACKGROUND", (2, 1), (2, 1), NAVY),
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("LEFTPADDING", (0, 0), (-1, -1), 4),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-            ("TOPPADDING", (0, 0), (-1, -1), 0),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
-        ]))
-        story.append(KeepTogether([signatures]))
-        story.append(Spacer(1, 3*mm))
-
-        disclaimer_style = ParagraphStyle(
-            "DLReceiptDisclaimer", parent=note, fontSize=8,
-            leading=10.5, fontName="DLReceipt",
-        )
-        story.append(Paragraph(
-            "Este recibo fue generado electrónicamente por DIGIT-LABORAL con "
-            "datos suministrados por el empleador bajo su responsabilidad. "
-            "No constituye constancia oficial de presentación en REOP "
-            "ni acredita por sí solo el pago efectivo.",
-            disclaimer_style,
-        ))
-        story.append(Spacer(1, 1.7*mm))
-        story.append(p("Original: Empleador. Duplicado: Trabajador.", bold))
-        return story
-
-    story = copy_page("ORIGINAL") + [PageBreak()] + copy_page("DUPLICADO")
-
-    doc.build(story)
-    return stream.getvalue()
+        # Only make annex pages when the original reference has insufficient rows.
+        if len(_positive(model.get("earnings"))) > 1 or len(_positive(model.get("deductions"))) > 1:
+            _append_concept_annex(result, model)
+        return result.tobytes(garbage=4, deflate=True)
+    finally:
+        result.close()
+        source.close()

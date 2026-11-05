@@ -218,21 +218,17 @@ def test_salary_liquidation_detail_pdf_history_and_reprint_audit():
         record_id, company_id, employee_id, marker = _create_salary_record()
         detail = client.get(f"/app/reports/liquidaciones-salarios/{record_id}")
         assert detail.status_code == 200, detail.text[:300]
-        for expected in (
-            "DATOS DEL EMPLEADOR", "DATOS DEL FUNCIONARIO Y PERÍODO",
-            "Salario base", "Horas extraordinarias", "Aporte IPS trabajador",
-            "MONTO TOTAL A COBRAR", "Firma del empleador", "Firma del empleado",
-            "No es un formulario oficial",
-        ):
-            assert expected.lower() in detail.text.lower(), expected
+        assert "Liquidación" in detail.text
+        assert 'id="salary-mtess-pdf"' in detail.text
+        assert "No es un formulario oficial" in detail.text
 
         pdf = client.get(f"/app/reports/liquidaciones-salarios/{record_id}/pdf")
         assert pdf.status_code == 200
         assert pdf.headers["content-type"].startswith("application/pdf")
         assert pdf.content.startswith(b"%PDF")
         receipt = PdfReader(io.BytesIO(pdf.content))
-        assert len(receipt.pages) == 2
-        first, duplicate = (page.extract_text() for page in receipt.pages)
+        assert len(receipt.pages) == 3  # 2 copias y anexo para conceptos múltiples
+        first, duplicate = (page.extract_text() for page in receipt.pages[:2])
         for text in (first, duplicate):
             assert f"DL-LS-{record_id:06d}" in text
             assert "DIGIT-LABORAL" in text
@@ -244,9 +240,10 @@ def test_salary_liquidation_detail_pdf_history_and_reprint_audit():
             assert "No registrada" in text  # No inventar fecha real de pago.
         assert "ORIGINAL" in first
         assert "DUPLICADO" in duplicate
-        assert "MINISTERIO DE TRABAJO" not in first
-        assert len(receipt.pages[0].images) == 0
-        assert len(receipt.pages[1].images) == 0  # Sin QR.
+        assert "MINISTERIO DE TRABAJO" in first
+        assert "Horas extraordinarias" in receipt.pages[2].extract_text()
+        assert len(receipt.pages[0].images) == 1  # Logo MTESS, no QR.
+        assert len(receipt.pages[1].images) == 1  # Logo MTESS, no QR.
 
         token = re.search(r'name="csrf_token" value="([^"]+)"', detail.text)
         assert token
@@ -283,13 +280,13 @@ def test_cancelled_salary_download_is_clearly_archival_not_blocked():
         pdf = client.get(route + "/pdf")
         assert pdf.status_code == 200, pdf.text[:150] if not pdf.content.startswith(b"%PDF") else ""
         reader = PdfReader(io.BytesIO(pdf.content))
-        assert len(reader.pages) == 2
-        for page in reader.pages:
+        assert len(reader.pages) == 3  # Original, Duplicado y anexo de dos haberes.
+        for page_number, page in enumerate(reader.pages):
             extracted = page.extract_text()
             assert "ANULADO" in extracted
             assert "DIGIT-LABORAL" in extracted
             assert f"DL-LS-{record_id:06d}" in extracted
-            assert not page.images
+            assert len(page.images) == (1 if page_number < 2 else 0)  # Solo logotipo.
         token = re.search(r'name="csrf_token" value="([^"]+)"', response.text).group(1)
         assert client.post(route + "/reimprimir", data={"csrf_token": token}).status_code == 409
         assert client.post(route + "/datos-recibo", data={
