@@ -132,12 +132,60 @@ def build_salary_report_model(
     if item.status == "Anulado":
         warnings.append("Este cálculo está anulado. Solo se permite consultar su historial; no se puede volver a imprimir.")
 
+    # La asistencia y el medio de pago provienen del cálculo guardado o su
+    # anexo vinculado, no de valores estimados. Nunca confundir fecha de
+    # emisión con fecha efectiva de pago.
+    from .salary_data import attendance_data
+    attendance = attendance_data(db, item)
+    actual_start = actual_end = None
+    try:
+        start_text = str(attendance.get("period_start") or "")
+        end_text = str(attendance.get("period_end") or "")
+        if start_text and end_text:
+            actual_start, actual_end = date.fromisoformat(start_text), date.fromisoformat(end_text)
+            if (period_start and period_end and
+                    (actual_start < period_start or actual_end > period_end or actual_end < actual_start)):
+                raise ValueError("Fuera de mes")
+    except (ValueError, TypeError):
+        warnings.append("Las fechas de asistencia vinculada no son válidas para el período. Verificá el anexo.")
+        actual_start = actual_end = None
+    if actual_start is not None and actual_end is not None:
+        period_start, period_end = actual_start, actual_end
+
+    payment_date_raw = (
+        saved.get("payment_date") or saved.get("paid_on") or
+        inputs.get("payment_date") or inputs.get("paid_on")
+    )
+    payment_date_display = "No registrada"
+    if payment_date_raw:
+        try:
+            payment_date_display = date.fromisoformat(str(payment_date_raw)).strftime("%d/%m/%Y")
+        except (ValueError, TypeError):
+            warnings.append("La fecha de pago guardada no es válida y no fue sustituida por la fecha de emisión.")
+
+    def quantity(key: str, fallback: str = "No registrado") -> str:
+        value = attendance.get(key)
+        if value in (None, ""):
+            return fallback
+        try:
+            from decimal import Decimal
+            parsed = Decimal(str(value))
+            if not parsed.is_finite() or parsed < 0:
+                raise ValueError
+            return str(int(parsed)) if parsed == parsed.to_integral_value() else format(parsed.normalize(), "f")
+        except (ValueError, ArithmeticError, TypeError):
+            warnings.append(f"El campo {key} contiene un valor inválido; revisá la asistencia guardada.")
+            return fallback
+
+    pieces_raw = saved.get("pieces_or_tasks", inputs.get("pieces_or_tasks", inputs.get("tasks_count")))
+    pieces_display = clean_text(str(pieces_raw), max_length=90) if pieces_raw not in (None, "") else "No registrado"
+
     branding = db.scalar(select(CompanyBranding).where(CompanyBranding.company_id == company.id))
     issued_date = clean_text(str(saved.get("issued_date") or ""), max_length=40)
     if not issued_date and item.created_at:
         issued_date = item.created_at.strftime("%d/%m/%Y")
     representative = clean_text(str(company.legal_representative or (branding.signature_name if branding else "") or company.responsible_name or ""), max_length=180)
-    payment_method = clean_text(str(identity.get("payment_method") or inputs.get("payment_method") or "No registrado"), max_length=80)
+    payment_method = clean_text(str(attendance.get("payment_method") or identity.get("payment_method") or inputs.get("payment_method") or "No registrado"), max_length=80)
 
     return {
         "code": f"DL-LS-{item.id:06d}",
@@ -146,6 +194,12 @@ def build_salary_report_model(
         "period_display": period_display,
         "period_start": period_start,
         "period_end": period_end,
+        "period_from_display": period_start.strftime("%d/%m/%Y") if period_start else "No registrado",
+        "period_to_display": period_end.strftime("%d/%m/%Y") if period_end else "No registrado",
+        "days_worked_display": quantity("days_worked"),
+        "hours_worked_display": quantity("hours_worked"),
+        "pieces_or_tasks_display": pieces_display,
+        "payment_date_display": payment_date_display,
         "issued_date": issued_date or "No registrada",
         "employer_name": employer_name,
         "employer_ruc": employer_ruc,
@@ -207,114 +261,6 @@ def salary_report_history(db: Session, item: CalculationRecord) -> list[dict[str
 
 
 def build_salary_report_pdf(model: dict[str, Any]) -> bytes:
-    stream = BytesIO()
-    doc = SimpleDocTemplate(
-        stream, pagesize=A4, rightMargin=18 * mm, leftMargin=18 * mm,
-        topMargin=15 * mm, bottomMargin=20 * mm, title="Liquidación de salarios",
-        author="Digit Laboral",
-    )
-    styles = getSampleStyleSheet()
-    navy = colors.HexColor("#05256d")
-    pale = colors.HexColor("#eef3fb")
-    muted = colors.HexColor("#52627a")
-    body = ParagraphStyle("ReceiptBody", parent=styles["BodyText"], fontName="Helvetica", fontSize=8.5, leading=12, textColor=colors.HexColor("#17243a"))
-    small = ParagraphStyle("ReceiptSmall", parent=body, fontSize=7.3, leading=10, textColor=muted)
-    heading = ParagraphStyle("ReceiptHeading", parent=styles["Heading1"], fontName="Helvetica-Bold", fontSize=17, leading=20, textColor=navy, spaceAfter=3)
-    subheading = ParagraphStyle("ReceiptSubheading", parent=styles["Heading2"], fontName="Helvetica-Bold", fontSize=9.5, leading=12, textColor=navy, spaceBefore=7, spaceAfter=5)
-    centered = ParagraphStyle("ReceiptCenter", parent=body, alignment=TA_CENTER)
-    amount_style = ParagraphStyle("ReceiptAmount", parent=body, alignment=TA_RIGHT, fontName="Helvetica-Bold")
-    header_style = ParagraphStyle("ReceiptTableHeader", parent=small, textColor=colors.white, fontName="Helvetica-Bold")
-
-    def p(value: Any, style=body):
-        return Paragraph(escape(str(value or "")).replace("\n", "<br/>"), style)
-
-    def gs(value: Any) -> str:
-        return "Gs. " + f"{_whole_amount(value):,}".replace(",", ".")
-
-    story = [
-        p("DIGIT-LABORAL · DOCUMENTO INTERNO", small),
-        Spacer(1, 3 * mm),
-        p("LIQUIDACIÓN DE SALARIOS", heading),
-        p(f"Referencia: {model['code']} · Estado del cálculo: {model['status']}", small),
-        Spacer(1, 4 * mm),
-    ]
-    company_rows = [
-        [p("EMPLEADOR", small), p(model["employer_name"]), p("RUC", small), p(model["employer_ruc"])],
-        [p("N.º patronal IPS", small), p(model["ips_employer_number"] or "No registrado"), p("MTESS", small), p(model["mtess_employer_number"] or "No registrado")],
-        [p("Dirección", small), p(model["employer_address"] or "No registrada"), p("Ciudad", small), p(model["employer_city"] or "No registrada")],
-    ]
-    company_table = Table(company_rows, colWidths=[25*mm, 63*mm, 18*mm, 58*mm])
-    company_table.setStyle(TableStyle([
-        ("BACKGROUND", (0,0), (-1,-1), pale), ("BOX",(0,0),(-1,-1),0.5,colors.HexColor("#d5deea")),
-        ("INNERGRID",(0,0),(-1,-1),0.35,colors.HexColor("#d5deea")),
-        ("VALIGN",(0,0),(-1,-1),"MIDDLE"), ("LEFTPADDING",(0,0),(-1,-1),6),
-        ("RIGHTPADDING",(0,0),(-1,-1),6), ("TOPPADDING",(0,0),(-1,-1),6), ("BOTTOMPADDING",(0,0),(-1,-1),6),
-    ]))
-    story.extend([p("DATOS DEL EMPLEADOR", subheading), company_table, Spacer(1, 3*mm)])
-    employee_rows = [
-        [p("FUNCIONARIO", small), p(model["employee_name"]), p("Cédula", small), p(model["employee_ci"])],
-        [p("Código", small), p(model["employee_code"] or "—"), p("Cargo", small), p(model["employee_position"] or "No registrado")],
-        [p("Ingreso", small), p(model["admission_date"].strftime("%d/%m/%Y") if model["admission_date"] else "No registrado"), p("Periodo", small), p(model["period_display"])],
-        [p("Pago", small), p(model["payment_method"]), p("Emisión", small), p(model["issued_date"])],
-    ]
-    employee_table = Table(employee_rows, colWidths=[25*mm, 63*mm, 18*mm, 58*mm])
-    employee_table.setStyle(TableStyle([
-        ("BACKGROUND",(0,0),(-1,-1),colors.white),("BOX",(0,0),(-1,-1),0.5,colors.HexColor("#d5deea")),
-        ("INNERGRID",(0,0),(-1,-1),0.35,colors.HexColor("#d5deea")),("VALIGN",(0,0),(-1,-1),"MIDDLE"),
-        ("LEFTPADDING",(0,0),(-1,-1),6),("RIGHTPADDING",(0,0),(-1,-1),6),
-        ("TOPPADDING",(0,0),(-1,-1),6),("BOTTOMPADDING",(0,0),(-1,-1),6),
-    ]))
-    story.extend([p("DATOS DEL FUNCIONARIO Y PERÍODO", subheading), employee_table, Spacer(1, 2*mm)])
-
-    lines = [[p("CONCEPTO", header_style), p("IMPORTE", header_style)]]
-    for row in model["earnings"]:
-        lines.append([p(row["label"]), p(gs(row["amount"]), amount_style)])
-    lines.append([p("TOTAL HABERES", subheading), p(gs(model["gross"]), amount_style)])
-    lines.append([p("DESCUENTOS", small), p("", small)])
-    for row in model["deductions"]:
-        lines.append([p(row["label"]), p(gs(row["amount"]), amount_style)])
-    lines.append([p("TOTAL DESCUENTOS", subheading), p(gs(model["discounts"]), amount_style)])
-    net_style = ParagraphStyle("NetTitle", parent=subheading, fontSize=11)
-    net_amount_style = ParagraphStyle("NetAmount", parent=amount_style, fontSize=12, textColor=navy)
-    lines.append([p("NETO A COBRAR", net_style), p(gs(model["net"]), net_amount_style)])
-    concept_table = Table(lines, colWidths=[116*mm, 48*mm], repeatRows=1)
-    concept_table.setStyle(TableStyle([
-        ("BACKGROUND",(0,0),(-1,0),navy),("TEXTCOLOR",(0,0),(-1,0),colors.white),
-        ("BOX",(0,0),(-1,-1),0.6,colors.HexColor("#cbd6e5")),("INNERGRID",(0,0),(-1,-1),0.3,colors.HexColor("#dfe5ee")),
-        ("VALIGN",(0,0),(-1,-1),"MIDDLE"),("LEFTPADDING",(0,0),(-1,-1),7),
-        ("RIGHTPADDING",(0,0),(-1,-1),7),("TOPPADDING",(0,0),(-1,-1),5),("BOTTOMPADDING",(0,0),(-1,-1),5),
-        ("BACKGROUND",(0,len(lines)-1),(-1,len(lines)-1),pale),
-    ]))
-    story.extend([p("DETALLE DE REMUNERACIONES Y DESCUENTOS", subheading), concept_table, Spacer(1, 4*mm)])
-    if model["notes"]:
-        story.extend([p("OBSERVACIONES", subheading), p(model["notes"], body), Spacer(1, 2*mm)])
-    if model["warnings"]:
-        story.append(p("VALIDACIONES PENDIENTES", subheading))
-        for warning in model["warnings"][:10]:
-            story.append(p("• " + warning, small))
-    story.extend([
-        Spacer(1, 7*mm),
-        p("Las firmas acreditan la suscripción del presente recibo, pero no sustituyen la verificación del pago efectivo ni la revisión profesional de los conceptos y bases aplicables.", small),
-        Spacer(1, 15*mm),
-    ])
-    signature_rows = [
-        [p("____________________________________", centered), p("____________________________________", centered)],
-        [p(model["representative"] or "Empleador / representante legal", centered), p(model["employee_name"], centered)],
-        [p("Firma del empleador · Fecha: ____/____/______", small), p("Firma del funcionario · Fecha: ____/____/______", small)],
-    ]
-    sig_table = Table(signature_rows, colWidths=[82*mm,82*mm])
-    sig_table.setStyle(TableStyle([("VALIGN",(0,0),(-1,-1),"TOP"),("LEFTPADDING",(0,0),(-1,-1),4),("RIGHTPADDING",(0,0),(-1,-1),4),("TOPPADDING",(0,0),(-1,-1),3),("BOTTOMPADDING",(0,0),(-1,-1),3)]))
-    story.extend([sig_table, Spacer(1, 5*mm), p(f"Generado por DIGIT-LABORAL · Registro #{model['record_id']} · Versión guardada e inmutable · No es un formulario oficial de MTESS ni IPS.", small)])
-
-    def footer(canvas, document):
-        canvas.saveState()
-        canvas.setStrokeColor(colors.HexColor("#d5deea"))
-        canvas.line(18*mm, 14*mm, A4[0] - 18*mm, 14*mm)
-        canvas.setFont("Helvetica", 7)
-        canvas.setFillColor(muted)
-        canvas.drawString(18*mm, 9*mm, "DIGIT-LABORAL · Liquidación de Salarios")
-        canvas.drawRightString(A4[0] - 18*mm, 9*mm, f"Página {document.page}")
-        canvas.restoreState()
-
-    doc.build(story, onFirstPage=footer, onLaterPages=footer)
-    return stream.getvalue()
+    """Imprime original y duplicado con referencia DIGIT-LABORAL; sin QR."""
+    from .salary_receipt_mtess_style import build_mtess_style_salary_pdf
+    return build_mtess_style_salary_pdf(model)
