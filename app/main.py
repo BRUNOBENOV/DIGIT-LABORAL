@@ -339,7 +339,15 @@ class CSRFMiddleware:
             if message.get("type") != "http.request":
                 continue
             body_size += len(message.get("body", b""))
-            if (path.startswith("/herramientas/") or path.startswith("/app/liquidaciones/")) and body_size > 64000:
+            # La conciliación salarial acepta XLSX efímeros de hasta 2 MiB;
+            # los demás formularios del calculador conservan el límite de 64 KiB.
+            if path == "/app/liquidaciones/conciliar-planilla":
+                limit = 2 * 1024 * 1024 + 32768  # espacio multipart/control CSRF
+            elif path.startswith("/herramientas/") or path.startswith("/app/liquidaciones/"):
+                limit = 64000
+            else:
+                limit = None
+            if limit is not None and body_size > limit:
                 await Response("Formulario demasiado grande.", status_code=413)(scope, receive, send)
                 return
             body_parts.append(message.get("body", b""))
