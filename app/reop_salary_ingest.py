@@ -152,11 +152,18 @@ def parse_reop_workbook(content: bytes, filename: str, *,
                 errors.append("N.º patronal y C.I. son obligatorios.")
             start = _date(raw[2], "DESDE", errors)
             end = _date(raw[3], "HASTA", errors)
+            original_start = start.isoformat() if start else ""
+            date_swap_proposal = None
             if start and end and (start.year, start.month) != (end.year, end.month):
                 corrected = None
                 if start.day <= 12 and start.month <= 12:
                     corrected = date(start.year, start.day, start.month)
                 if corrected and (corrected.year, corrected.month) == (end.year, end.month) and corrected <= end:
+                    date_swap_proposal = {
+                        "original": start.isoformat(), "suggested": corrected.isoformat(),
+                        "original_display": start.strftime("%d/%m/%Y"),
+                        "suggested_display": corrected.strftime("%d/%m/%Y"),
+                    }
                     if correct_swapped_start:
                         warnings.append(f"Fecha DESDE corregida expresamente de {start.isoformat()} a {corrected.isoformat()}.")
                         start = corrected
@@ -167,7 +174,9 @@ def parse_reop_workbook(content: bytes, filename: str, *,
                         )
                 else:
                     errors.append("DESDE y HASTA corresponden a meses distintos.")
-            if start and end and (end < start or (end - start).days > 30):
+            if start and end and (end < start or (end - start).days > 30) and not (
+                date_swap_proposal and not correct_swapped_start
+            ):
                 errors.append("El rango DESDE/HASTA no es válido para una liquidación mensual.")
             period = start.strftime("%Y-%m") if start and end and start.year == end.year and start.month == end.month else ""
             payment_code = _quantity(raw[4], "Forma de pago", Decimal(4), errors, integer=True)
@@ -219,7 +228,11 @@ def parse_reop_workbook(content: bytes, filename: str, *,
             # No se inventa una fecha de pago: el archivo solo contiene la forma.
             prepared.append({
                 "source_row": sheet_row, "patronal": patronal, "ci": ci,
-                "period": period, "period_start": start.isoformat() if start else "",
+                "period": period, "period_hint": end.strftime("%Y-%m") if end else "",
+                "period_start": start.isoformat() if start else "",
+                "source_period_start": original_start,
+                "date_swap_proposal": date_swap_proposal,
+                "night_total_proposal": amounts[12] if suspected_gross else None,
                 "period_end": end.isoformat() if end else "",
                 "payment_code": payment_code, "payment_method": REOP_PAYMENT_METHODS.get(payment_code, ""),
                 "days_worked": days, "pieces_or_tasks": pieces,

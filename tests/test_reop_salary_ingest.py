@@ -148,18 +148,42 @@ def test_upload_preview_confirm_creates_draft_once_with_correct_provenance():
         assert before.status_code == 200
         csrf = re.search(r'name="csrf_token" value="([^"]+)"', before.text).group(1)
         assert "Importar planilla salarial desde REOP" in before.text
+        assert 'type="checkbox"' not in before.text
         upload = client.post(url + "/previsualizar", data={
             "csrf_token": csrf, "company_id": str(company_id),
-            "correct_swapped_start": "true",
-            "night_column_is_total": "true",
         }, files={"file":("reop.xlsx",blob,"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
         follow_redirects=False)
         assert upload.status_code == 303, upload.text[:400]
         preview_url = upload.headers["location"]
         preview = client.get(preview_url)
         assert preview.status_code == 200
-        assert "APTA" in preview.text
-        assert "3.250.000" in preview.text
+        assert "Fechas DESDE invertidas" in preview.text
+        assert "Posible total bruto" in preview.text
+        assert "2026-10 · pendiente" in preview.text
+        assert 'type="checkbox"' not in preview.text
+        assert "6.500.000" in preview.text  # Hasta autorizar el total de control, se muestra el bruto literal.
+        # Resoluciones separadas: antes de autorizarlas no hay salario apto.
+        dates = client.post(preview_url + "/resolver",
+            data={"csrf_token": csrf, "action": "fecha_invertida"},
+            follow_redirects=False)
+        assert dates.status_code == 303
+        assert "Fechas revisadas" in client.get(preview_url).text
+        undo = client.post(preview_url + "/resolver",
+            data={"csrf_token": csrf, "action": "deshacer_fecha"},
+            follow_redirects=False)
+        assert undo.status_code == 303
+        assert "Fechas DESDE invertidas" in client.get(preview_url).text
+        dates_again = client.post(preview_url + "/resolver",
+            data={"csrf_token": csrf, "action": "fecha_invertida"},
+            follow_redirects=False)
+        assert dates_again.status_code == 303
+        night = client.post(preview_url + "/resolver",
+            data={"csrf_token": csrf, "action": "total_nocturno"},
+            follow_redirects=False)
+        assert night.status_code == 303
+        corrected_preview = client.get(preview_url).text
+        assert "APTA" in corrected_preview
+        assert "3.250.000" in corrected_preview
         with SessionLocal() as db:
             assert not db.scalar(select(CalculationRecord.id).where(
                 CalculationRecord.company_id == company_id,
@@ -186,9 +210,29 @@ def test_upload_preview_confirm_creates_draft_once_with_correct_provenance():
         assert client.get(preview_url).status_code == 410
         reupload = client.post(url + "/previsualizar", data={
             "csrf_token": csrf, "company_id": str(company_id),
-            "correct_swapped_start": "true", "night_column_is_total": "true",
         }, files={"file":("reop.xlsx",blob,"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
         follow_redirects=False)
-        check = client.get(reupload.headers["location"])
+        next_preview = reupload.headers["location"]
+        assert client.post(next_preview + "/resolver", data={
+            "csrf_token": csrf, "action": "fecha_invertida"}, follow_redirects=False).status_code == 303
+        assert client.post(next_preview + "/resolver", data={
+            "csrf_token": csrf, "action": "total_nocturno"}, follow_redirects=False).status_code == 303
+        check = client.get(next_preview)
         assert "YA EXISTE" in check.text
         assert "No se sobrescribe" in check.text
+
+
+def test_reop_realistic_file_without_nocturnal_surcharge_only_suggests_date_fix():
+    first = _excel_rows(start=date(2026, 1, 10), duplicate_night=False)[0]
+    first[12] = 0
+    second = _excel_rows(start=date(2025, 1, 10), year=2025, ci=7654322, duplicate_night=False)[0]
+    second[12] = 0
+    payload = parse_reop_workbook(_workbook([first, second]), "octubre.xlsx")
+    assert payload["source_rows"] == 2
+    assert all(row["date_swap_proposal"] for row in payload["rows"])
+    assert all(row["night_total_proposal"] is None for row in payload["rows"])
+    assert [row["period_hint"] for row in payload["rows"]] == ["2026-10", "2025-10"]
+    resolved = parse_reop_workbook(_workbook([first, second]), "octubre.xlsx",
+                                  correct_swapped_start=True)
+    assert [row["period"] for row in resolved["rows"]] == ["2026-10", "2025-10"]
+    assert all(not row["errors"] for row in resolved["rows"])
