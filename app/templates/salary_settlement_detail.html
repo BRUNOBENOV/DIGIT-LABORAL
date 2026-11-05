@@ -101,7 +101,7 @@
 @media(max-width:720px){.salary-slip-receipt-form{grid-template-columns:1fr 1fr}}
 @media print{.salary-slip-receipt-details{display:none!important}}
 .salary-slip-review{margin-top:15px}.salary-slip-review ul{padding-left:18px;margin:6px 0;line-height:1.5}
-@media print{.salary-slip-review{display:none!important}.salary-mtess-copy{box-shadow:none!important}}
+@media print{.salary-slip-review,.salary-slip-alert{display:none!important}.salary-mtess-copy{box-shadow:none!important}}
 </style>
 <div class="salary-slip-page">
   <section class="salary-slip-hero"><div><span class="eyebrow">INFORME LABORAL · RECIBO INTERNO</span><h1>Liquidación de Salarios</h1><p>Documento generado a partir del cálculo guardado. Los importes se conservan tal como fueron calculados; las validaciones pendientes se muestran para revisión.</p><span class="salary-slip-state">{{ model.status }}</span></div><div class="salary-slip-meta"><b>{{ model.code }}</b>Empresa: {{ model.employer_name }}<br>Funcionario: {{ model.employee_name }}<br>Período: {{ model.period_display }}</div></section>
