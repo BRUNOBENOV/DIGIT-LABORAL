@@ -39,9 +39,13 @@
   <div><span class="eyebrow">INFORMES · REMUNERACIONES</span><h1>Liquidación de Salarios</h1><p>Consultá cálculos salariales guardados, revisá versiones, imprimí el recibo interno o descargá un PDF con haberes, descuentos, neto y espacio para firmas.</p></div>
   <div class="salary-reports-count"><b>{{ total }}</b><span>registros encontrados</span></div>
 </section>
-<div class="salary-report-notice"><strong>Documento interno de trabajo.</strong> Se presentan los importes guardados por Cálculo sin volver a calcularlos. La plantilla imprimible no es un formulario oficial emitido por MTESS o IPS y no acredita por sí sola el pago realizado.</div>
+<div class="salary-report-notice"><strong>Recibo de liquidación salarial con formato inspirado en MTESS.</strong> Se presentan los importes guardados por Cálculo sin volver a calcularlos. El PDF contiene Original y Duplicado con numeración DIGIT-LABORAL, sin QR. Es un documento interno, no un formulario oficial del MTESS ni constancia de pago.</div>
+<div style="display:flex;justify-content:flex-end;gap:10px;margin:9px 0 15px">
+  <a class="btn ghost" href="/app/reports/liquidaciones-salarios{{ '?' ~ history_toggle_query if history_toggle_query else '' }}">{{ 'Ocultar versiones anteriores' if show_superseded else 'Ver versiones anteriores' }}</a>
+</div>
 <form method="get" action="/app/reports/liquidaciones-salarios" id="salaryReportFilters" data-paginated-filters class="salary-report-filters">
 <input type="hidden" name="direction" value="{{ filters.direction }}">
+{% if show_superseded %}<input type="hidden" name="history_all" value="1">{% endif %}
     <label>Buscar<input type="search" name="q" value="{{ filters.q }}" placeholder="Empresa, RUC o funcionario"></label>
   <label>Empresa<select name="company_id" data-searchable-entity="company" data-entity-scope="all"><option value="">Todas las autorizadas</option>{% for company in companies|entity_choices %}<option value="{{ company.id }}" {{ 'selected' if selected_company == company.id }}>{{ company.legacy_code or (company.company_code if company.company_code is not none else 'Sin código') }} - {{ company.legal_name }}</option>{% endfor %}</select></label>
   <label>Funcionario<select name="employee_id" data-searchable-entity="employee" data-entity-scope="all"><option value="">Todos</option>{% for employee in employees|entity_choices %}<option value="{{ employee.id }}" {{ 'selected' if selected_employee == employee.id }} data-company="{{ employee.company_id }}">{{ employee.employee_code if employee.employee_code is not none else 'Sin legajo' }} - {{ employee.full_name }}</option>{% endfor %}</select></label>
@@ -50,7 +54,7 @@
   <label>Ordenar por<select name="sort" id="salaryReportSort" data-sort-control data-sort-server="true" data-sort-direction="{{ filters.direction|default('asc') }}">{% for key,label in [('period','Período'),('date','Fecha'),('company','Empresa'),('employee','Funcionario'),('amount','Neto guardado'),('status','Estado')] %}<option value="{{ key }}" {{ 'selected' if filters.sort|default('period') == key }}>{{ label }}</option>{% endfor %}</select></label>
   <button class="btn primary" type="submit">Aplicar filtros</button>
 </form>
-<div class="salary-report-summary"><span><strong>{{ total }}</strong> cálculos salariales · página {{ page }} de {{ pages }}</span><span>Origen: módulo Cálculo · registros persistidos</span></div>
+<div class="salary-report-summary"><span><strong>{{ total }}</strong> cálculos salariales {{ 'incluidas las versiones anteriores' if show_superseded else 'vigentes y borradores' }} · página {{ page }} de {{ pages }}</span><span>Origen: módulo Cálculo · recibos DL-LS</span></div>
 <section class="salary-report-table-shell"><div class="salary-report-scroll"><table class="salary-report-table" id="salaryReportTable" data-server-paginated data-sort-selector="salaryReportSort">
 <thead><tr><th data-sort-key="date">Registro / fecha</th><th data-sort-key="company">Empresa</th><th data-sort-key="employee">Funcionario</th><th data-sort-key="period">Período</th><th data-sort-key="status">Estado</th><th data-sort-key="amount">Neto guardado</th><th>Acciones</th></tr></thead>
 <tbody>
