@@ -161,7 +161,7 @@ def test_upload_preview_confirm_creates_draft_once_with_correct_provenance():
         assert "Posible total bruto" in preview.text
         assert "2026-10 · pendiente" in preview.text
         assert 'type="checkbox"' not in preview.text
-        assert "3.250.000" in preview.text
+        assert "6.500.000" in preview.text  # Hasta autorizar el total de control, se muestra el bruto literal.
         # Resoluciones separadas: antes de autorizarlas no hay salario apto.
         dates = client.post(preview_url + "/resolver",
             data={"csrf_token": csrf, "action": "fecha_invertida"},
@@ -181,7 +181,9 @@ def test_upload_preview_confirm_creates_draft_once_with_correct_provenance():
             data={"csrf_token": csrf, "action": "total_nocturno"},
             follow_redirects=False)
         assert night.status_code == 303
-        assert "APTA" in client.get(preview_url).text
+        corrected_preview = client.get(preview_url).text
+        assert "APTA" in corrected_preview
+        assert "3.250.000" in corrected_preview
         with SessionLocal() as db:
             assert not db.scalar(select(CalculationRecord.id).where(
                 CalculationRecord.company_id == company_id,
