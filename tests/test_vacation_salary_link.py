@@ -2,8 +2,9 @@
 from datetime import date
 
 from app.labor_calculator import calculate
-from app.models import Vacation
-from app.vacation_salary_link import vacation_links_for_period
+from app.database import Base
+from app.models import ComplianceEvent, Vacation
+from app.vacation_salary_link import vacation_links_for_period, synchronize_vacation_draft
 from tests.test_unified_labor_history import setup_records
 from tests.test_labor_suite import salary
 
@@ -75,3 +76,40 @@ def test_vacation_monthly_mode_preserves_existing_formula():
         legal_minimum="3044000", vacation_quantity="12",
     )
     assert calculate(data)["gross"] == 1217600
+
+
+def test_reop_vacation_draft_sync_only_updates_draft_not_presented():
+    db, engine = setup_records()
+    try:
+        Base.metadata.create_all(engine, tables=[ComplianceEvent.__table__])
+        vac = Vacation(id=450, employee_id=21, period_year=2025, entitled_days=12,
+                       used_days=12, status="Aprobada",
+                       start_date=date(2026, 10, 26), end_date=date(2026, 11, 7),
+                       paid_amount=1404924, payment_date=date(2026, 10, 23))
+        draft = ComplianceEvent(
+            id=701, company_id=11, employee_id=21, authority="REOP",
+            event_type="Vacaciones", event_date=date(2026, 10, 26),
+            status="Borrador", source_key="vacation:450:reop",
+            payload_json='{"vacation_id":450,"source_key":"vacation:450:reop"}',
+        )
+        presented = ComplianceEvent(
+            id=702, company_id=11, employee_id=21, authority="REOP",
+            event_type="Vacaciones", event_date=date(2026, 10, 26),
+            status="Presentado", source_key="vacation:451:reop",
+            payload_json='{"vacation_id":451,"paid_amount":1122}',
+        )
+        db.add_all([vac, draft, presented])
+        db.commit()
+        assert synchronize_vacation_draft(db, vac, 11)
+        db.commit()
+        assert '"paid_amount": 1404924' in draft.payload_json
+        assert '"payment_date": "2026-10-23"' in draft.payload_json
+        assert not synchronize_vacation_draft(db, vac, 12)
+        assert not synchronize_vacation_draft(db, vac, 11) is False
+        vac.id = 451
+        assert synchronize_vacation_draft(db, vac, 11) is False
+        assert '"paid_amount":1122' in presented.payload_json
+    finally:
+        db.rollback()
+        db.close()
+        engine.dispose()
