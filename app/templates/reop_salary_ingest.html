@@ -110,30 +110,15 @@
       <div class="reop-ingest-kpi"><strong>{{ summary.existing }}</strong><span>Ya existentes</span></div>
       <div class="reop-ingest-kpi"><strong>{{ summary.missing_employee }}</strong><span>Sin C.I. único</span></div>
     </div>
-    <p class="reop-ingest-note"><strong>Períodos según HASTA:</strong> {{ summary.periods_suggested|join(', ') or 'No identificados' }}. <strong>Períodos validados:</strong> {{ summary.periods|join(', ') or 'Pendientes de corrección' }}. Solo se importarán las filas aptas; nunca se sustituyen cálculos existentes.</p>
-    {% if summary.date_suggestions and not summary.date_applied %}
-      <section class="issue-panel" aria-label="Corrección de fechas detectada">
-        <h3>Fechas DESDE invertidas · {{ summary.date_suggestions }} filas</h3>
-        <p>Excel parece haber interpretado el día y el mes al revés. Se propone cambiar las fechas DESDE para que coincidan con el mes de HASTA.</p>
+    <p class="reop-ingest-note"><strong>Períodos de la planilla:</strong> {{ summary.periods_suggested|join(', ') or 'No identificados' }}. <strong>Formato de origen REOP:</strong> MES/DÍA/AÑO; el sistema presenta las fechas en DÍA/MES/AÑO. Solo se importarán las filas aptas; nunca se sustituirán cálculos existentes.</p>
+    {% if summary.date_suggestions %}
+      <section class="issue-panel is-resolved" aria-label="Fechas REOP interpretadas automáticamente">
+        <h3>Fechas REOP interpretadas automáticamente · {{ summary.date_suggestions }} filas</h3>
+        <p>El archivo REOP usa el orden <strong>MES/DÍA/AÑO</strong>. DIGIT-LABORAL reconoció las fechas guardadas por Excel con el día y el mes invertidos y las ajustó automáticamente al período salarial, sin intervención manual.</p>
         {% if summary.date_example %}
           <p class="example">{{ summary.date_example.original_display }} → {{ summary.date_example.suggested_display }}</p>
         {% endif %}
-        <p class="note">Revisá el período del archivo antes de aplicar. Esta operación modifica solo la vista previa; no modifica el Excel original ni crea liquidaciones.</p>
-        <form method="post" action="/app/liquidaciones/salarios/importar-reop/{{ token }}/resolver">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-          <input type="hidden" name="action" value="fecha_invertida">
-          <div class="reop-ingest-actions"><button type="submit">Aplicar corrección de {{ summary.date_suggestions }} fechas y volver a validar</button></div>
-        </form>
-      </section>
-    {% elif summary.date_suggestions and summary.date_applied %}
-      <section class="issue-panel is-resolved">
-        <h3>Fechas revisadas</h3>
-        <p>Se aplicó la corrección autorizada a {{ summary.date_suggestions }} fechas DESDE en la vista previa. El archivo original permanece intacto.</p>
-        <form method="post" action="/app/liquidaciones/salarios/importar-reop/{{ token }}/resolver">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-          <input type="hidden" name="action" value="deshacer_fecha">
-          <button class="btn ghost" type="submit">Deshacer corrección de fechas</button>
-        </form>
+        <p class="note">Se conservan las fechas originales para auditoría. No se modifica el Excel ni se importan salarios hasta que confirmes la carga.</p>
       </section>
     {% endif %}
     {% if summary.night_suggestions and not summary.night_applied %}
