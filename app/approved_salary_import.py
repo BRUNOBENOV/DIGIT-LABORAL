@@ -210,7 +210,7 @@ def _professional_line(item: CalculationRecord, inputs: dict, saved: dict, error
         absences_discount=0,
         advances=values["advances"],
         other_discount=values["other_discount"],
-        other_discount_note=str(inputs.get("other_discount_reason") or ""),
+        other_discount_note=str(inputs.get("discount_reason") or inputs.get("other_discount_reason") or ""),
         ips_employee=values["ips_employee"],
         ips_base=ips_base,
         ips_rate=rate,
@@ -218,18 +218,33 @@ def _professional_line(item: CalculationRecord, inputs: dict, saved: dict, error
         total_discounts=_whole(saved.get("discounts"), "descuentos", errors),
         net=_whole(saved.get("net"), "neto", errors),
     )
+    manual_type = str(inputs.get("overtime_manual_type") or "").strip()
+    manual_hours = inputs.get("overtime_manual_hours")
     raw_extra_hours = (inputs.get("day_extra_hours"), inputs.get("night_extra_hours"))
+    if manual_type and manual_type not in {"day", "night"}:
+        errors.append("la categoría de horas extras manuales es inválida")
     try:
         extra_hours = sum((Decimal(str(value or "0")) for value in raw_extra_hours), Decimal("0"))
+        extra_hours += Decimal(str(manual_hours or "0"))
         if not extra_hours.is_finite() or extra_hours < 0 or extra_hours > 744:
             raise ValueError
-    except (ValueError, TypeError):
+    except (ValueError, TypeError, ArithmeticError):
         errors.append("horas extraordinarias guardadas inválidas")
         extra_hours = Decimal("0")
+    permitted = {"", "premios", "regalias", "gratificaciones", "grado", "dietas", "complemento", "antiguedad"}
+    bonus_category = str(inputs.get("reop_bonuses_category") or "")
+    other_category = str(inputs.get("reop_other_income_category") or "")
+    if bonus_category not in permitted or other_category not in permitted:
+        errors.append("la clasificación de otros ingresos REOP es inválida")
     complements = dict(overtime_day=values["overtime_day"], overtime_night=values["overtime_night"],
                        night_surcharge=values["night_surcharge"], holidays=values["holidays"],
                        family_allowance=values["family_allowance"], extra_hours=extra_hours,
-                       extra_hours_documented=bool(any(value not in (None, "") for value in raw_extra_hours)))
+                       extra_hours_documented=bool(any(value not in (None, "") for value in raw_extra_hours) or
+                                                   (manual_type and manual_hours not in (None, "", 0, "0"))),
+                       other_category_bonus=bonus_category,
+                       other_category_income=other_category,
+                       other_amount_bonus=values["bonuses"],
+                       other_amount_income=values["other_income"])
     return line, complements
 
 
@@ -423,8 +438,29 @@ def approved_salary_records(db: Session, company, period: str, *, authority: str
             supplementary.get("period_start") and supplementary.get("period_end")
         ):
             item_errors.append("período parcial sin fechas efectivas de liquidación documentadas")
+        raw_paid_days = inputs.get("days_paid")
+        pay_basis = str(inputs.get("pay_basis") or "monthly")
+        if pay_basis not in {"monthly", "daily"}:
+            item_errors.append("la modalidad de remuneración no está identificada")
+            pay_basis = "monthly"
+        try:
+            paid_number = Decimal(str(raw_paid_days))
+            if (not paid_number.is_finite() or paid_number != paid_number.to_integral_value()
+                or paid_number < 0 or paid_number > (31 if pay_basis == "daily" else 30)):
+                raise ValueError
+            days_paid = int(paid_number)
+        except (TypeError, ValueError, ArithmeticError):
+            days_paid = None
+            if raw_paid_days not in (None, ""):
+                item_errors.append("los días remunerados del cálculo son inválidos")
+        # REOP: mensualizados informan días pagados, incluidos los descansos legales.
+        # Jornaleros: jornadas efectivamente trabajadas. REI: días remunerados
+        # guardados en el cálculo; no inferirlos de las horas ordinarias.
+        days_reop = days_paid if pay_basis == "monthly" and days_paid is not None else days
+        days_rei = days_paid if days_paid is not None else days
         detail = SimpleNamespace(
-            days_worked=days, hours_worked=hours,
+            days_worked=days, days_reop=days_reop, days_rei=days_rei,
+            days_paid=days_paid, pay_basis=pay_basis, hours_worked=hours,
             period_start=p_start, period_end=p_end,
             payment_method=str(supplementary.get("payment_method") or ""),
             overtime_day=complements["overtime_day"],
@@ -436,6 +472,10 @@ def approved_salary_records(db: Session, company, period: str, *, authority: str
             vacation_pay=0,
             extra_hours=complements["extra_hours"],
             extra_hours_documented=complements["extra_hours_documented"],
+            other_amount_bonus=complements.get("other_amount_bonus", 0),
+            other_amount_income=complements.get("other_amount_income", 0),
+            other_category_bonus=complements.get("other_category_bonus", ""),
+            other_category_income=complements.get("other_category_income", ""),
         )
         for error in item_errors:
             errors.append(f"{employee.full_name} (cálculo #{item.id}): {error}.")
@@ -446,6 +486,8 @@ def approved_salary_records(db: Session, company, period: str, *, authority: str
                                 payment_from_export=payment_from_export,
                                 supplement={
                                     "days_worked": supplementary.get("days_worked", ""),
+                                    "days_reop": days_reop, "days_rei": days_rei,
+                                    "days_paid": days_paid,
                                     "hours_worked": supplementary.get("hours_worked", ""),
                                     "payment_method": supplementary.get("payment_method", ""),
                                     "period_start": supplementary.get("period_start", start.isoformat()),
