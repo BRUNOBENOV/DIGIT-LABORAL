@@ -230,14 +230,19 @@ def reop_salary_import_resolve(
     """Aplica una resolución explícita sobre la vista previa, nunca sobre el Excel."""
     payload = _load_preview(token, user)
     company = _company(db, user, int(payload["company_id"]))
-    if action not in {"fecha_invertida", "total_nocturno"}:
+    options = {
+        "fecha_invertida": ("correct_swapped_start", "date_swap_proposal", True),
+        "total_nocturno": ("night_column_is_total", "night_total_proposal", True),
+        "deshacer_fecha": ("correct_swapped_start", "date_swap_proposal", False),
+        "deshacer_nocturno": ("night_column_is_total", "night_total_proposal", False),
+    }
+    if action not in options:
         raise HTTPException(422, "Acción de revisión no reconocida.")
-    key = "correct_swapped_start" if action == "fecha_invertida" else "night_column_is_total"
-    candidate_key = "date_swap_proposal" if action == "fecha_invertida" else "night_total_proposal"
+    key, candidate_key, enabled = options[action]
     if not any(row.get(candidate_key) for row in payload["rows"]):
         raise HTTPException(409, "El archivo no presenta esa incidencia.")
-    if payload["flags"].get(key):
-        raise HTTPException(409, "Esta corrección ya había sido aplicada a la vista previa.")
+    if bool(payload["flags"].get(key)) == enabled:
+        raise HTTPException(409, "La vista previa ya tiene aplicado ese tratamiento.")
     path = _source_path(token)
     try:
         original = path.read_bytes()
@@ -246,7 +251,7 @@ def reop_salary_import_resolve(
     if hashlib.sha256(original).hexdigest() != payload["sha256"]:
         raise HTTPException(409, "La copia temporal del Excel fue modificada; cargá el archivo nuevamente.")
     flags = dict(payload["flags"])
-    flags[key] = True
+    flags[key] = enabled
     try:
         rechecked = parse_reop_workbook(
             original, payload["filename"],
