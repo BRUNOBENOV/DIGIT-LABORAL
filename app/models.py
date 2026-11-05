@@ -477,6 +477,8 @@ class SalaryImportDetail(Base):
     days_worked: Mapped[int] = mapped_column(Integer)
     hours_worked: Mapped[Decimal] = mapped_column(Numeric(10, 2))
     payment_method: Mapped[str] = mapped_column(String(100), default="")
+    payment_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    pieces_or_tasks: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     updated_by: Mapped[str] = mapped_column(String(180), default="")
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
 
