@@ -66,7 +66,7 @@
   <td>{{ item.reference_period or 'Sin período' }}</td>
   <td><span class="salary-report-state">{{ item.status }}</span></td>
   <td class="salary-report-money">Gs. {{ item.amount|gs }}</td>
-  <td><a href="/app/reports/liquidaciones-salarios/{{ item.id }}">Ver recibo</a><span class="salary-report-sub"><a href="/app/reports/liquidaciones-salarios/{{ item.id }}/pdf">PDF</a></span></td>
+  <td><a href="/app/reports/liquidaciones-salarios/{{ item.id }}">Ver recibo</a><span class="salary-report-sub"><a href="/app/reports/liquidaciones-salarios/{{ item.id }}/pdf" title="{{ 'Copia histórica anulada' if item.status == 'Anulado' else 'Original y duplicado, PDF' }}">{{ 'Copia anulada PDF' if item.status == 'Anulado' else 'PDF · 2 copias' }}</a></span></td>
 </tr>
 {% else %}<tr><td colspan="7" class="salary-report-empty">No se encontraron cálculos de salario guardados con estos filtros. Realizá y guardá un cálculo en el módulo Cálculo; este informe no inventa importes ni genera registros de prueba.</td></tr>{% endfor %}
 </tbody></table></div>
