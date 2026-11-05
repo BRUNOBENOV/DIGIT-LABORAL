@@ -11533,3 +11533,7 @@ app.include_router(entity_select_router)
 # Isolated, administrator-only post-import correction wizard.
 from .post_import_reactivation_routes import router as post_import_reactivation_router
 app.include_router(post_import_reactivation_router)
+
+# Importación REOP al cálculo salarial, sin sobrescribir liquidaciones.
+from .reop_salary_ingest_routes import router as reop_salary_ingest_router
+app.include_router(reop_salary_ingest_router)
