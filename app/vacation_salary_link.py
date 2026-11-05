@@ -8,9 +8,10 @@ from __future__ import annotations
 
 from calendar import monthrange
 from datetime import date
+import json
 from sqlalchemy import select
 
-from .models import Employee, Vacation
+from .models import ComplianceEvent, Employee, Vacation
 
 
 def vacation_links_for_period(db, company_id: int, period: str, employee_ids=None):
@@ -55,3 +56,32 @@ def vacation_links_for_period(db, company_id: int, period: str, employee_ids=Non
             "url": f"/app/vacations/{vac.id}",
         })
     return rows
+
+
+def synchronize_vacation_draft(db, vacation: Vacation, company_id: int) -> bool:
+    """Actualiza solo la comunicación REOP en borrador, nunca lo ya validado/presentado."""
+    event = db.scalar(select(ComplianceEvent).where(
+        ComplianceEvent.company_id == company_id,
+        ComplianceEvent.employee_id == vacation.employee_id,
+        ComplianceEvent.authority == "REOP",
+        ComplianceEvent.event_type == "Vacaciones",
+        ComplianceEvent.source_key == f"vacation:{vacation.id}:reop",
+        ComplianceEvent.status == "Borrador",
+    ))
+    if event is None:
+        return False
+    try:
+        payload = json.loads(event.payload_json or "{}")
+        if not isinstance(payload, dict):
+            payload = {}
+    except (TypeError, ValueError):
+        payload = {}
+    payload.update({
+        "vacation_id": vacation.id,
+        "period_year": vacation.period_year,
+        "end_date": vacation.end_date.isoformat() if vacation.end_date else "",
+        "paid_amount": vacation.paid_amount,
+        "payment_date": vacation.payment_date.isoformat() if vacation.payment_date else "",
+    })
+    event.payload_json = json.dumps(payload, ensure_ascii=False)
+    return True
