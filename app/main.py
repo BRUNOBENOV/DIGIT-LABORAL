@@ -8764,6 +8764,8 @@ def register_vacation_payment(
         raise HTTPException(422, "Registrá la fecha real del pago vacacional.")
     item.paid_amount = paid_amount
     item.payment_date = paid_date
+    from .vacation_salary_link import synchronize_vacation_draft
+    synchronize_vacation_draft(db, item, item.employee.company_id)
     write_audit(db, user, "conciliar_pago_vacaciones", "vacaciones", str(item.id),
                 f"Importe Gs. {paid_amount}, fecha {paid_date.isoformat() if paid_date else 'sin fecha'}")
     db.commit()
@@ -8873,7 +8875,8 @@ def create_vacation(
         ensure_compliance_event(
             db, company_id=employee.company_id, employee_id=employee.id, branch_id=employee.branch_id, authority="REOP", event_type="Vacaciones",
             event_date=item.start_date, due_date=None,
-            payload={"vacation_id": item.id, "period_year": item.period_year, "end_date": item.end_date.isoformat() if item.end_date else ""},
+            payload={"vacation_id": item.id, "period_year": item.period_year, "end_date": item.end_date.isoformat() if item.end_date else "",
+                     "paid_amount": item.paid_amount, "payment_date": item.payment_date.isoformat() if item.payment_date else ""},
             created_by=user.email, source_key=f"vacation:{item.id}:reop",
         )
     write_audit(db, user, "crear", "vacaciones", str(item.id), employee.full_name)
@@ -11213,7 +11216,8 @@ async def api_create_vacation(
         ensure_compliance_event(
             db, company_id=employee.company_id, employee_id=employee.id, branch_id=employee.branch_id,
             authority="REOP", event_type="Vacaciones", event_date=start, due_date=None,
-            payload={"vacation_id": item.id, "period_year": year, "end_date": end.isoformat() if end else ""},
+            payload={"vacation_id": item.id, "period_year": year, "end_date": end.isoformat() if end else "",
+                     "paid_amount": item.paid_amount, "payment_date": item.payment_date.isoformat() if item.payment_date else ""},
             created_by=user.email, source_key=f"vacation:{item.id}:reop",
         )
     write_audit(db, user, "crear_api", "vacaciones", str(item.id), employee.full_name)
@@ -11265,6 +11269,8 @@ async def api_update_vacation(
         raise HTTPException(422, "La fecha de pago es obligatoria cuando hay pago vacacional.")
     item.period_year, item.entitled_days, item.used_days = year, entitled, used
     item.start_date, item.end_date, item.status, item.notes = start, end, status_value, notes
+    from .vacation_salary_link import synchronize_vacation_draft
+    synchronize_vacation_draft(db, item, item.employee.company_id)
     write_audit(db, user, "actualizar_api", "vacaciones", str(item.id), f"{item.employee.full_name} · {status_value}")
     db.commit()
     db.refresh(item)
