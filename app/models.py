@@ -315,6 +315,8 @@ class Vacation(Base):
     end_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     status: Mapped[str] = mapped_column(String(30), default="Pendiente")
     notes: Mapped[str] = mapped_column(Text, default="")
+    paid_amount: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    payment_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
 
     employee: Mapped[Employee] = relationship()
