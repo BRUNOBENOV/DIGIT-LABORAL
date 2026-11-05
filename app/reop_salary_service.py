@@ -176,7 +176,8 @@ def build_reop_salary_payload(
             model.get("payment_method"), limit=100,
         ),
         "payment_date": _first_text(
-            payment_date, result.get("payment_date"), result.get("paid_on"),
+            payment_date, attendance.get("payment_date"),
+            result.get("payment_date"), result.get("paid_on"),
             inputs.get("payment_date"), inputs.get("paid_on"), limit=30,
         ),
         "days_worked": _first_text(
@@ -188,7 +189,8 @@ def build_reop_salary_payload(
             inputs.get("worked_hours"), limit=30,
         ),
         "pieces_or_tasks": _first_text(
-            pieces_or_tasks, result.get("pieces_or_tasks"), inputs.get("pieces_or_tasks"),
+            pieces_or_tasks, attendance.get("pieces_or_tasks"),
+            result.get("pieces_or_tasks"), inputs.get("pieces_or_tasks"),
             inputs.get("tasks_count"), limit=120,
         ),
         "earnings": [
