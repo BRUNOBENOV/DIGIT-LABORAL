@@ -196,7 +196,7 @@ def build_mtess_style_salary_pdf(model: dict) -> bytes:
             ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
             ("LEFTPADDING", (0,0), (-1,-1), 6),
         ]))
-        story.append(KeepTogether(signature_boxes))
+        story.append(KeepTogether([signature_boxes]))
         story.append(Spacer(1, 4*mm))
         story.append(p(
             f"Documento interno generado por DIGIT-LABORAL. Referencia {model['code']}. "
