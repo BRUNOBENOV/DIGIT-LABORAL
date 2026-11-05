@@ -240,8 +240,11 @@ def prepare_import(db: Session, company, period: str, authority: str, *,
             else:
                 boundary = -2 if len(parts) > 2 else -1
                 given, surname = " ".join(parts[:boundary]), " ".join(parts[boundary:])
+            # REI informa los días remunerados guardados, que pueden incluir
+            # vacaciones pagadas; no reutilizar las jornadas efectivas REOP.
+            rei_days = getattr(detail, "days_rei", days) if detail is not None else days
             fields = [
-                patronal, "", ci, surname, given, cat, days,
+                patronal, "", ci, surname, given, cat, rei_days,
                 line.ips_base if line.ips_base is not None else 0,
                 f"{start.month}{start.year}", "",
                 gross,
@@ -278,8 +281,21 @@ def prepare_import(db: Session, company, period: str, authority: str, *,
                 remainder = pool - sum(complements)
                 if remainder < 0:
                     err.append("los beneficios detallados superan bonos y otros ingresos del cálculo")
-                if remainder > 0 and not other_category:
-                    err.append("hay otros ingresos no clasificados: elegí su concepto oficial")
+                allocations = []
+                if effective_source == "approved":
+                    bonus_value = int(getattr(detail, "other_amount_bonus", 0))
+                    income_value = int(getattr(detail, "other_amount_income", 0))
+                    if bonus_value + income_value != remainder:
+                        err.append("el desglose de bonos/otros ingresos no coincide con el cálculo aprobado")
+                    allocations = [
+                        (bonus_value, getattr(detail, "other_category_bonus", "") or other_category, "bonificaciones"),
+                        (income_value, getattr(detail, "other_category_income", "") or other_category, "otros ingresos"),
+                    ]
+                elif remainder:
+                    allocations = [(remainder, other_category, "otros ingresos de nómina")]
+                for value, category, label in allocations:
+                    if value and category not in REOP_OTHER_COLUMNS:
+                        err.append(f"{label}: elegí la clasificación REOP respaldada para este funcionario")
                 if not 0 < hours <= 744 and effective_source != "approved":
                     # Approved-source preflight already emits this same issue
                     # with the calculation ID and worker context.
@@ -287,7 +303,8 @@ def prepare_import(db: Session, company, period: str, authority: str, *,
                 # Las 32 columnas corresponden a la plantilla proporcionada por el usuario.
                 continue_row = [
                     patronal, ci, dstart, dend, int(payment_code) if payment_code in {"1", "2", "3", "4"} else 0,
-                    days, 0, int(hours) if hours == int(hours) else float(hours),
+                    getattr(detail, "days_reop", days), 0,
+                    int(hours) if hours == int(hours) else float(hours),
                     int(extra_hours) if extra_hours == int(extra_hours) else float(extra_hours),
                     line.base_salary, line.commissions, overtime_day,
                     complements[0], overtime_night, 0, 0, 0, 0, 0,
@@ -299,8 +316,9 @@ def prepare_import(db: Session, company, period: str, authority: str, *,
                     _text(line.other_discount_note) or "Otros descuentos" if line.other_discount else None,
                     0, None,
                 ]
-                if remainder > 0 and other_category in REOP_OTHER_COLUMNS:
-                    continue_row[REOP_OTHER_COLUMNS[other_category]] += remainder
+                for value, category, _label in allocations:
+                    if value and category in REOP_OTHER_COLUMNS:
+                        continue_row[REOP_OTHER_COLUMNS[category]] += value
                 if sum(int(continue_row[i] or 0) for i in range(9, 24)) != gross:
                     err.append("los conceptos de ingreso REOP no concuerdan con el bruto guardado")
                 if (continue_row[24] + continue_row[25] + continue_row[26] + continue_row[28]) != discounts:
