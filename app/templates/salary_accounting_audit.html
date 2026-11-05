@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Conciliación de planilla salarial | DIGIT-LABORAL{% endblock %}
+{% block page_name %}Cálculo · Salarios{% endblock %}
+{% block content %}
+<style>
+.accounting-audit{max-width:1240px;margin:0 auto;color:#18304d}
+.accounting-audit-hero{background:linear-gradient(110deg,#091f49,#144b91);color:#fff;border-radius:15px;padding:23px 25px;margin-bottom:16px}
+.accounting-audit-hero small{font-weight:850;letter-spacing:.1em;color:#b5d2ff}.accounting-audit-hero h1{color:#fff;margin:7px 0}.accounting-audit-hero p{color:#e2eafa;max-width:880px;line-height:1.6}
+.audit-panel{border:1px solid #d5deeb;border-radius:12px;padding:17px;background:#fff;margin:13px 0}
+.audit-form{display:flex;gap:12px;align-items:end;flex-wrap:wrap}.audit-form label{display:grid;gap:6px;font-size:.78rem;font-weight:760;min-width:190px}.audit-form input{border:1px solid #bfcde1;border-radius:8px;background:#fff;padding:10px;color:#17253e;font:inherit}
+.audit-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:11px;margin:14px 0}.audit-stat{border:1px solid #dae4ef;border-radius:11px;padding:13px;background:#f8fbff}.audit-stat small{display:block;color:#64758c;font-size:.71rem}.audit-stat b{display:block;font-size:1.35rem;color:#183d70;margin-top:5px}
+.audit-group{margin-top:19px}.audit-group h2{color:#163b72;font-size:1.03rem}.audit-table-wrap{overflow-x:auto}.audit-table{width:100%;border-collapse:collapse;min-width:960px;font-size:.76rem}.audit-table th{background:#163d75;color:#fff;padding:10px 8px;text-align:left}.audit-table td{padding:10px 8px;border-bottom:1px solid #e5ebf4;vertical-align:top}.audit-table td.money{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}.audit-table tr.has-error{background:#fff7f4}.audit-table tr.has-warnings{background:#fffdf7}.audit-bullet{font-size:.7rem;color:#a64229;line-height:1.45;margin-top:5px}.audit-note{font-size:.77rem;color:#566a85;line-height:1.6}.audit-error{padding:12px 13px;border-radius:9px;color:#943b23;border:1px solid #f0c4ac;background:#fff4ed}.audit-alert{border-left:3px solid #bc8b39;background:#fffaf0;padding:11px 13px;color:#745521;font-size:.76rem}.audit-actions{display:flex;gap:10px;flex-wrap:wrap}
+@media(max-width:760px){.audit-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.accounting-audit-hero{padding:18px}.audit-form{display:grid}}
+</style>
+<div class="accounting-audit">
+<header class="accounting-audit-hero">
+<small>CÁLCULO → SALARIOS · CONTROL PREVIO</small>
+<h1>Conciliar planilla contable</h1>
+<p>Detectá diferencias en sueldos, comisiones, horas extras y aportes IPS antes de cargar o exportar la liquidación a REOP o REI. Este proceso <strong>no modifica liquidaciones, nóminas ni trabajadores</strong>.</p>
+</header>
+<div class="audit-actions">
+<a class="btn ghost" href="/app/liquidaciones?tipo=salary">Volver a Salarios</a>
+<a class="btn ghost" href="/app/compliance/salary-import">Verificar REOP / REI</a>
+</div>
+<section class="audit-panel">
+<h2>1. Revisar archivo de contabilidad</h2>
+<form method="post" enctype="multipart/form-data" class="audit-form" action="/app/liquidaciones/conciliar-planilla">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+<label>Mes de referencia<input type="month" name="period" value="{{ period or today.strftime('%Y-%m') }}" required></label>
+<label>Planilla contable Excel<input type="file" accept=".xlsx" name="upload" required></label>
+<button class="btn primary" type="submit">Analizar planilla</button>
+</form>
+<p class="audit-note">Reconoce bloques con empresa, empleado, sueldo mensual, comisiones, horas extras, bruto, IPS obrero y patronal. Máximo 2 MB. Los archivos se analizan en memoria y no se guardan. El modelo de 32 columnas REOP y el TXT REI son <strong>formatos de salida distintos</strong>; no se deben confundir con esta planilla.</p>
+</section>
+{% if error %}<div class="audit-error" role="alert"><strong>No se pudo analizar el archivo:</strong> {{ error }}</div>{% endif %}
+{% if report %}
+<div class="audit-grid">
+<div class="audit-stat"><small>Empresas detectadas</small><b>{{ report.companies }}</b></div>
+<div class="audit-stat"><small>Trabajadores / con haberes</small><b>{{ report.workers }} / {{ report.workers_paid }}</b></div>
+<div class="audit-stat"><small>Bruto contable</small><b>Gs. {{ report.gross|gs }}</b></div>
+<div class="audit-stat"><small>Inconsistencias</small><b>{{ report.errors }}</b></div>
+</div>
+{% for warning in report.general_warnings %}
+<div class="audit-alert">{{ warning }}</div>
+{% endfor %}
+{% for group in report.groups %}
+<section class="audit-panel audit-group">
+<h2>{{ group.name }} <small>· {{ group.rows|length }} filas · {{ group.sheet }}</small></h2>
+<p class="audit-note">Bruto: <strong>Gs. {{ group.totals.gross|gs }}</strong> · Comisiones: Gs. {{ group.totals.commissions|gs }} · Horas extras: Gs. {{ group.totals.overtime|gs }}</p>
+{% if group.warnings %}<p class="audit-alert">{{ group.warnings|join(' · ') }}</p>{% endif %}
+<div class="audit-table-wrap"><table class="audit-table"><thead>
+<tr><th>Fila</th><th>Funcionario</th><th>Salario</th><th>Comisiones</th><th>Horas extras</th><th>Bruto</th><th>IPS 9% planilla</th><th>IPS 9% referencia</th><th>IPS 16,5% planilla</th><th>Control</th></tr>
+</thead><tbody>
+{% for item in group.rows %}
+<tr class="{{ 'has-error' if item.errors else 'has-warnings' if item.warnings else '' }}">
+<td>{{ item.excel_row }}</td><td><strong>{{ item.name }}</strong></td><td class="money">{{ item.salary|gs }}</td><td class="money">{{ item.commissions|gs }}</td><td class="money">{{ item.overtime|gs }}</td><td class="money"><strong>{{ item.gross|gs }}</strong></td><td class="money">{{ item.ips_worker|gs }}</td><td class="money">{{ item.expected_ips_worker|gs }}</td><td class="money">{{ item.ips_employer|gs }}</td>
+<td>{% if item.errors %}<strong style="color:#ad3b24">Revisar</strong>{% else %}<strong style="color:#23734d">Importes conciliados</strong>{% endif %}
+{% for message in item.errors %}<div class="audit-bullet">{{ message }}</div>{% endfor %}
+{% for message in item.warnings %}<div class="audit-bullet" style="color:#80612c">{{ message }}</div>{% endfor %}
+</td></tr>
+{% endfor %}
+</tbody></table></div>
+</section>
+{% endfor %}
+<section class="audit-panel">
+<h2>2. Antes de exportar al MTESS o IPS</h2>
+<p class="audit-note">Vinculá cada trabajador mediante su <strong>cédula o legajo</strong>, elegí la modalidad salarial, cargá el período y forma efectiva de pago, los días y horas respaldados por asistencia, y documentá las horas extras por tipo. Las comisiones ingresan como concepto propio y se verifican contra la base IPS. Una fila con cero haberes requiere confirmar el motivo y la comunicación correspondiente.</p>
+<p class="audit-note">Esta auditoría no habilita por sí sola la presentación. Debés crear o revisar las liquidaciones en Cálculo, aprobarlas y utilizar la validación de <strong>REOP / REI</strong> para generar los formatos oficiales según el organismo.</p>
+<div class="audit-actions"><a class="btn primary" href="/app/liquidaciones?tipo=salary">Ir a Cálculo de Salarios</a><a class="btn ghost" href="/app/compliance/salary-import">Verificar exportaciones REOP / REI</a></div>
+</section>
+{% endif %}
+</div>
+{% endblock %}
