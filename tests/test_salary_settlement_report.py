@@ -249,8 +249,29 @@ def test_salary_liquidation_detail_pdf_history_and_reprint_audit():
         assert "Liquidación" in detail.text
         assert 'id="salary-mtess-pdf"' in detail.text
         assert "No es un formulario oficial" in detail.text
+        # No se deben utilizar URL blob: (bloqueadas por el CSP default-src self).
+        assert f'src="/app/reports/liquidaciones-salarios/{record_id}/pdf?vista=1' in detail.text
+        assert "createObjectURL" not in detail.text
+
+        with SessionLocal() as db:
+            audit_before = list(db.scalars(select(AuditLog.id).where(
+                AuditLog.entity == "liquidacion_salario",
+                AuditLog.entity_id == str(record_id),
+            )))
+        preview = client.get(f"/app/reports/liquidaciones-salarios/{record_id}/pdf?vista=1")
+        assert preview.status_code == 200
+        assert preview.headers["content-type"].startswith("application/pdf")
+        assert preview.headers["content-disposition"].startswith("inline;")
+        assert preview.content.startswith(b"%PDF")
+        with SessionLocal() as db:
+            audit_after = list(db.scalars(select(AuditLog.id).where(
+                AuditLog.entity == "liquidacion_salario",
+                AuditLog.entity_id == str(record_id),
+            )))
+        assert audit_after == audit_before  # Una vista previa NO es descarga o reimpresión.
 
         pdf = client.get(f"/app/reports/liquidaciones-salarios/{record_id}/pdf")
+        assert pdf.headers["content-disposition"].startswith("attachment;")
         assert pdf.status_code == 200
         assert pdf.headers["content-type"].startswith("application/pdf")
         assert pdf.content.startswith(b"%PDF")
