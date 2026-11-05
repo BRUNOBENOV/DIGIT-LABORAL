@@ -212,7 +212,9 @@ async def reop_salary_import_preview(
         raise HTTPException(500, "No se pudo crear la vista previa de salarios.") from exc
     core.write_audit(
         db, user, "previsualizar", "importacion_salarios_reop", token,
-        f"SHA-256 {parsed['sha256']}; filas={parsed['source_rows']}; empresa={company_id}; sin aplicar correcciones",
+        f"SHA-256 {parsed['sha256']}; filas={parsed['source_rows']}; empresa={company_id}; "
+        f"fechas REOP MM/DD/YYYY normalizadas automáticamente="
+        f"{sum(bool(row.get('date_auto_normalized')) for row in parsed['rows'])}",
     )
     db.commit()
     return RedirectResponse(PREFIX + "/" + token, status_code=303)
@@ -241,13 +243,11 @@ def reop_salary_import_resolve(
     user=Depends(core.require_roles("administrador", "contador", "auxiliar")),
     db: Session = Depends(core.get_db),
 ):
-    """Aplica una resolución explícita sobre la vista previa, nunca sobre el Excel."""
+    """Trata únicamente una incidencia monetaria, no las fechas REOP automáticas."""
     payload = _load_preview(token, user)
     company = _company(db, user, int(payload["company_id"]))
     options = {
-        "fecha_invertida": ("correct_swapped_start", "date_swap_proposal", True),
         "total_nocturno": ("night_column_is_total", "night_total_proposal", True),
-        "deshacer_fecha": ("correct_swapped_start", "date_swap_proposal", False),
         "deshacer_nocturno": ("night_column_is_total", "night_total_proposal", False),
     }
     if action not in options:
@@ -327,6 +327,9 @@ def reop_salary_import_confirm(
         inputs = {
             "kind": "salary", "month": row["period"], **identity,
             "period_start": row["period_start"], "period_end": row["period_end"],
+            "reop_original_period_start": row.get("source_period_start", ""),
+            "reop_date_format": "MM/DD/YYYY",
+            "reop_date_auto_normalized": row.get("date_auto_normalized", False),
             "days_worked": row["days_worked"], "hours_worked": row["hours_worked"],
             "extra_hours": row["extra_hours"], "pieces_or_tasks": row["pieces_or_tasks"],
             "reop_import_sha256": payload["sha256"], "reop_import_source_row": row["source_row"],
