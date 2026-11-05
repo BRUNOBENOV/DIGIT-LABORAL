@@ -143,9 +143,10 @@ def test_upload_preview_confirm_creates_draft_once_with_correct_provenance():
     blob = _workbook(_excel_rows(start=date(2026, 1, 10), ci=ci))
     url = "/app/liquidaciones/salarios/importar-reop"
     with TestClient(app) as client:
-        csrf = _login(client)
+        _login(client)
         before = client.get(url)
         assert before.status_code == 200
+        csrf = re.search(r'name="csrf_token" value="([^"]+)"', before.text).group(1)
         assert "Importar planilla salarial desde REOP" in before.text
         upload = client.post(url + "/previsualizar", data={
             "csrf_token": csrf, "company_id": str(company_id),
