@@ -130,6 +130,29 @@
   <section class="import-salary-card">
     <h2>2. {{ item_count }} trabajador(es) para {{ authority }}{% if errors %} · {{ errors|length }} dato(s) pendiente(s){% else %} · Listo para descargar{% endif %}</h2>
     <p class="import-salary-info">{{ selected_company.legal_name }} · {{ period }}{% if excluded_salary %} · {{ excluded_salary|length }} sin aprobación no se incluirán{% endif %}</p>
+    {% if authority == 'REOP' and vacation_links %}
+    <section class="import-salary-card" aria-label="Conciliación de vacaciones" style="margin:12px 0;background:#f7faff">
+      <h3>Vacaciones vinculadas al período ({{ vacation_links|length }})</h3>
+      <p class="import-salary-info">Recuperadas automáticamente de <strong>Vacaciones</strong>. La remuneración registrada en el movimiento se muestra como respaldo, <strong>no se suma nuevamente al salario</strong>. La plantilla REOP de 32 columnas no incluye un campo independiente de vacaciones: comunicá también el descanso y el pago en REOP → Vacaciones.</p>
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:.8rem">
+          <thead><tr><th>Funcionario</th><th>Vacaciones</th><th>Coincide con el mes</th><th>Importe del recibo</th><th>Conciliación</th></tr></thead>
+          <tbody>{% for vacation in vacation_links %}
+          <tr>
+            <td>{{ vacation.employee_name }}</td>
+            <td>{{ vacation.start|fecha }} – {{ vacation.end|fecha }}</td>
+            <td>{{ vacation.calendar_days_in_period }} días calendario</td>
+            <td>{{ ('Gs. ' ~ (vacation.paid_amount|gs)) if vacation.paid_amount is not none else 'Pendiente' }}</td>
+            <td>
+              {% if vacation.payment_verified %}Pago documentado · {{ vacation.payment_date|fecha }}{% else %}<strong>Falta conciliar pago</strong>{% endif %}
+              · <a href="{{ vacation.url }}">Abrir vacaciones #{{ vacation.id }}</a>
+            </td>
+          </tr>{% endfor %}</tbody>
+        </table>
+      </div>
+      <p class="import-salary-info">Los días calendario de vacaciones no sustituyen las jornadas efectivamente trabajadas. Para un jornalero, registrá en el cálculo salarial solo las jornadas reales y documentá por separado la parte ya abonada por vacaciones. No repartimos automáticamente el recibo entre meses ni recalculamos IPS.</p>
+    </section>
+    {% endif %}
     {% if preview_rows %}
     <details style="margin:10px 0 15px"><summary style="cursor:pointer;font-size:.8rem;font-weight:750;color:#17335e">Ver datos del Excel ({{ preview_rows|length }})</summary><div style="overflow-x:auto;margin:10px 0;border:1px solid #dce5f1;border-radius:9px">
       <table style="width:100%;border-collapse:collapse;font-size:.75rem">
