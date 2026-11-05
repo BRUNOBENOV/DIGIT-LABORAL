@@ -286,12 +286,19 @@
   (async function () {
     const frame = document.getElementById('salary-mtess-pdf');
     const message = document.getElementById('salary-mtess-pdf-message');
+    const printAfterLoad = {{ 'true' if auto_print else 'false' }};
     try {
       const response = await fetch('/app/reports/liquidaciones-salarios/{{ item.id }}/pdf', {credentials:'same-origin', cache:'no-store'});
       if (!response.ok) throw new Error('HTTP ' + response.status);
       const data = await response.blob();
       if (!data.type.includes('pdf') || data.size < 100) throw new Error('Respuesta no válida');
       const localPdf = URL.createObjectURL(new Blob([data], {type:'application/pdf'}));
+      if (printAfterLoad) {
+        frame.addEventListener('load', function () {
+          try { frame.contentWindow.focus(); frame.contentWindow.print(); }
+          catch (_) { message.style.display = 'block'; message.textContent = 'PDF preparado. Usá Descargar PDF para imprimirlo desde el visor.'; }
+        }, {once:true});
+      }
       frame.src = localPdf + '#toolbar=0&navpanes=0';
       frame.style.display = 'block';
       message.style.display = 'none';
@@ -314,5 +321,5 @@
   <section class="salary-slip-audit"><details><summary>Historial de reimpresiones y auditoría ({{ audit_events|length }})</summary>{% if audit_events %}<ul>{% for event in audit_events %}<li>{{ event.created_at.strftime('%d/%m/%Y %H:%M') if event.created_at else 'Fecha no disponible' }} · <strong>{{ event.action }}</strong> · {{ event.user_email }} · {{ event.detail }}</li>{% endfor %}</ul>{% else %}<p>Aún no hay eventos de auditoría registrados para este documento.</p>{% endif %}</details></section>
   <p class="salary-slip-online-note" style="font-size:.72rem;color:#748198;margin-top:12px">Las reimpresiones realizadas desde este botón o mediante descarga PDF quedan registradas en Auditoría. Usá una nueva versión de cálculo para corregir importes; no se modifica la versión ya guardada.</p>
 </div>
-{% if auto_print %}<script>window.addEventListener("load",()=>{const el=document.getElementById('salary-mtess-pdf');if(el){el.scrollIntoView({behavior:'smooth'});}});</script>{% endif %}
+
 {% endblock %}
