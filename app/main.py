@@ -7475,11 +7475,13 @@ def salary_settlements_report_page(
     page: int = 1,
     page_size: int = 100,
     sort: str = "period",
-    direction: str = "asc",
+    direction: str = "desc",
+    history_all: str = "",
     user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ):
     from .salary_report_service import SALARY_CALCULATION_TYPES
+    from .unified_labor_history import _superseded_salary_record_ids
 
     allowed_ids = company_ids_for_user(db, user)
     company_id, employee_id = default_labor_context(request, db, user, allowed_ids, company_id, employee_id)
@@ -7508,6 +7510,15 @@ def salary_settlements_report_page(
         CalculationRecord.calculation_type.in_(SALARY_CALCULATION_TYPES),
         CalculationRecord.employee_id.is_not(None),
     ]
+    # La aprobación de una rectificación hace que el original deje de
+    # aparecer en el informe principal; el registro permanece para auditoría.
+    show_superseded = history_all == "1"
+    superseded_ids = (
+        _superseded_salary_record_ids(db, tuple(allowed_ids), company_id, employee_id)
+        if not show_superseded else set()
+    )
+    if superseded_ids:
+        conditions.append(CalculationRecord.id.not_in(superseded_ids))
     if company_id:
         conditions.append(CalculationRecord.company_id == company_id)
     if employee_id:
@@ -7541,11 +7552,18 @@ def salary_settlements_report_page(
     sort_columns = {"date": CalculationRecord.created_at, "company": func.lower(Company.legal_name), "employee": func.lower(Employee.full_name), "period": CalculationRecord.reference_period, "status": CalculationRecord.status, "amount": CalculationRecord.amount}
     if sort not in sort_columns:
         sort = "period"
-    direction = "desc" if direction == "desc" else "asc"
+    direction = "asc" if direction == "asc" else "desc"
     pager = Pagination("/app/reports/liquidaciones-salarios", total, page, page_size, {
         "company_id": company_id, "employee_id": employee_id, "q": q, "period": period,
         "status": status, "sort": sort, "direction": direction,
+        "history_all": "1" if show_superseded else None,
     })
+    from urllib.parse import urlencode
+    toggle_fields = {key: value for key, value in request.query_params.items()
+                     if key not in {"history_all", "page"}}
+    if not show_superseded:
+        toggle_fields["history_all"] = "1"
+    history_toggle_query = urlencode(toggle_fields)
     page, page_size, pages = pager.page, pager.page_size, pager.pages
     ordered = sort_columns[sort].desc() if direction == "desc" else sort_columns[sort].asc()
     items = list(db.scalars(
@@ -7556,6 +7574,7 @@ def salary_settlements_report_page(
         companies=companies, employees=employees, items=items, total=total, page=page, pages=pages,
         page_size=page_size, selected_company=company_id, selected_employee=employee_id,
         filters={"period": period, "status": status, "q": q, "sort": sort, "direction": direction},
+        show_superseded=show_superseded, history_toggle_query=history_toggle_query,
         pager=pager,
     )
 
