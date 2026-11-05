@@ -153,8 +153,8 @@ def build_salary_report_model(
         period_start, period_end = actual_start, actual_end
 
     payment_date_raw = (
-        saved.get("payment_date") or saved.get("paid_on") or
-        inputs.get("payment_date") or inputs.get("paid_on")
+        attendance.get("payment_date") or saved.get("payment_date") or
+        saved.get("paid_on") or inputs.get("payment_date") or inputs.get("paid_on")
     )
     payment_date_display = "No registrada"
     if payment_date_raw:
@@ -177,9 +177,25 @@ def build_salary_report_model(
             warnings.append(f"El campo {key} contiene un valor inválido; revisá la asistencia guardada.")
             return fallback
 
-    pieces_raw = saved.get("pieces_or_tasks", inputs.get("pieces_or_tasks", inputs.get("tasks_count")))
+    pieces_raw = (attendance.get("pieces_or_tasks") if attendance.get("pieces_or_tasks") not in (None, "")
+                  else saved.get("pieces_or_tasks", inputs.get("pieces_or_tasks", inputs.get("tasks_count"))))
     pieces_display = clean_text(str(pieces_raw), max_length=90) if pieces_raw not in (None, "") else "No registrado"
 
+    missing_receipt = []
+    for key, name in (
+        ("days_worked", "días trabajados"),
+        ("hours_worked", "horas trabajadas"),
+        ("payment_method", "forma de pago"),
+        ("payment_date", "fecha real de pago"),
+        ("pieces_or_tasks", "piezas o tareas (indicar 0 cuando no corresponde)"),
+    ):
+        if (attendance.get(key) in (None, "") and
+                (key not in {"payment_date", "pieces_or_tasks"} or
+                 ((not payment_date_raw) if key == "payment_date" else pieces_raw in (None, "")))):
+            missing_receipt.append(name)
+    if missing_receipt:
+        warnings.append("Datos de recibo pendientes: " + ", ".join(missing_receipt) +
+                        ". Completalos desde el anexo del recibo sin recalcular importes.")
     branding = db.scalar(select(CompanyBranding).where(CompanyBranding.company_id == company.id))
     issued_date = clean_text(str(saved.get("issued_date") or ""), max_length=40)
     if not issued_date and item.created_at:
