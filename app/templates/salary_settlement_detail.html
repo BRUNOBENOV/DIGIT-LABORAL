@@ -150,11 +150,20 @@
 <div class="salary-slip-page">
   <section class="salary-slip-hero"><div><span class="eyebrow">INFORME LABORAL · RECIBO INTERNO</span><h1>Liquidación de Salarios</h1><p>Documento generado a partir del cálculo guardado. Los importes se conservan tal como fueron calculados; las validaciones pendientes se muestran para revisión.</p><span class="salary-slip-state">{{ model.status }}</span></div><div class="salary-slip-meta"><b>{{ model.code }}</b>Empresa: {{ model.employer_name }}<br>Funcionario: {{ model.employee_name }}<br>Período: {{ model.period_display }}</div></section>
 
+  {% if item.calculation_type == 'suite_salary' and item.source == 'Importación Excel REOP' and item.status in ['Borrador','Revisar'] %}
+  <p class="salary-slip-alert" role="status"><strong>Importación REOP pendiente de aprobación interna:</strong> los importes se conservaron tal como figuran en el Excel. Verificá haberes, descuentos, identidad y período. Un administrador o contador puede aprobar esta liquidación desde el botón superior después de revisarla. Esta aprobación interna no equivale a presentación oficial en REOP.</p>
+  {% endif %}
   <div class="salary-slip-actions">
     <a class="btn ghost" href="/app/reports/liquidaciones-salarios">← Historial de liquidaciones</a>
     <a class="btn ghost" href="/app/reports/liquidaciones-salarios/{{ item.id }}/pdf">{{ 'Descargar copia ANULADA (PDF)' if model.is_annulled else 'Descargar PDF · Original y Duplicado' }}</a>
     {% if model.can_reprint %}
     <form method="post" action="/app/reports/liquidaciones-salarios/{{ item.id }}/reimprimir"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn primary" type="submit">Imprimir con registro</button></form>
+    {% endif %}
+    {% if item.calculation_type == 'suite_salary' and user.role in ['administrador','contador'] and item.status in ['Borrador','Revisar'] %}
+    <form method="post" action="/app/calculations/{{ item.id }}/status" class="salary-slip-approval-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="btn primary" name="status" value="Aprobado" type="submit">Aprobar liquidación revisada</button>
+    </form>
     {% endif %}
   </div>
   <div class="salary-slip-alert"><strong>Importante:</strong> este recibo es un documento interno de DIGIT-LABORAL. No es un formulario oficial emitido por MTESS o IPS y no acredita por sí solo que el salario haya sido efectivamente pagado.</div>
@@ -273,42 +282,41 @@
   {% elif model.is_annulled %}
   <p class="salary-slip-alert">El cálculo está anulado: su PDF puede descargarse como copia histórica identificada. Para completar o corregir datos emití una nueva liquidación válida.</p>
   {% endif %}
-  <p class="salary-slip-online-note" style="font-size:.78rem;color:#586d88;margin:12px 0">Vista previa del <strong>Original</strong>. Al imprimir o descargar el PDF se generan dos copias, <strong>Original (empleador)</strong> y <strong>Duplicado (trabajador)</strong>, con el mismo número {{ model.code }}. Sin código QR.</p>
+  <p class="salary-slip-online-note" style="font-size:.78rem;color:#586d88;margin:12px 0">
+    Vista previa del mismo PDF que se descarga: <strong>Original y Duplicado</strong> con número {{ model.code }}, sin código QR.
+    <a href="/app/reports/liquidaciones-salarios/{{ item.id }}/pdf?vista=1" target="_blank" rel="noopener noreferrer">Abrir visor en otra pestaña</a>.
+  </p>
   <section class="salary-slip-paper salary-mtess-copy" style="padding:12px!important;min-height:720px;max-width:850px" aria-label="Vista previa del recibo MTESS">
     {% if model.is_annulled %}<div class="salary-mtess-annulled" role="status">ANULADO · COPIA HISTÓRICA · NO UTILIZAR COMO RECIBO VIGENTE</div>{% endif %}
-    <div id="salary-mtess-pdf-message" style="padding:14px 8px;color:#405776;font-size:.85rem">
-      Cargando el mismo PDF que se descarga e imprime…
-    </div>
-    <iframe id="salary-mtess-pdf" title="Recibo Liquidación de Salarios {{ model.code }} · Original y Duplicado" style="display:none;width:100%;min-height:1000px;border:1px solid #d4dfed;background:white" loading="eager"></iframe>
-    <noscript><a href="/app/reports/liquidaciones-salarios/{{ item.id }}/pdf">Abrir el recibo PDF</a></noscript>
+    <iframe
+      id="salary-mtess-pdf"
+      title="Recibo Liquidación de Salarios {{ model.code }} · Original y Duplicado"
+      src="/app/reports/liquidaciones-salarios/{{ item.id }}/pdf?vista=1#toolbar=0&navpanes=0"
+      style="display:block;width:100%;min-height:1040px;border:1px solid #d4dfed;background:white"
+      loading="eager"
+    ></iframe>
+    <p class="salary-slip-online-note" style="margin-top:8px;font-size:.74rem">
+      Si tu navegador no muestra PDFs dentro de la página,
+      <a href="/app/reports/liquidaciones-salarios/{{ item.id }}/pdf?vista=1" target="_blank" rel="noopener noreferrer">abrí el recibo en una pestaña nueva</a>
+      o utilizá <strong>Descargar PDF</strong>.
+    </p>
   </section>
+  {% if auto_print %}
   <script>
-  (async function () {
-    const frame = document.getElementById('salary-mtess-pdf');
-    const message = document.getElementById('salary-mtess-pdf-message');
-    const printAfterLoad = {{ 'true' if auto_print else 'false' }};
-    try {
-      const response = await fetch('/app/reports/liquidaciones-salarios/{{ item.id }}/pdf', {credentials:'same-origin', cache:'no-store'});
-      if (!response.ok) throw new Error('HTTP ' + response.status);
-      const data = await response.blob();
-      if (!data.type.includes('pdf') || data.size < 100) throw new Error('Respuesta no válida');
-      const localPdf = URL.createObjectURL(new Blob([data], {type:'application/pdf'}));
-      if (printAfterLoad) {
-        frame.addEventListener('load', function () {
-          try { frame.contentWindow.focus(); frame.contentWindow.print(); }
-          catch (_) { message.style.display = 'block'; message.textContent = 'PDF preparado. Usá Descargar PDF para imprimirlo desde el visor.'; }
-        }, {once:true});
-      }
-      frame.src = localPdf + '#toolbar=0&navpanes=0';
-      frame.style.display = 'block';
-      message.style.display = 'none';
-      window.addEventListener('pagehide', () => URL.revokeObjectURL(localPdf), {once:true});
-    } catch (error) {
-      message.textContent = 'No se pudo cargar la vista previa. Utilizá el botón Descargar PDF para abrir el recibo.';
-    }
-  })();
+    (function () {
+      const viewer = document.getElementById('salary-mtess-pdf');
+      if (!viewer) return;
+      viewer.addEventListener('load', function () {
+        try { viewer.contentWindow.focus(); viewer.contentWindow.print(); }
+        catch (_) {
+          const note = document.createElement('p');
+          note.textContent = 'El visor del navegador no permite imprimir automáticamente. Abrí el PDF en una pestaña nueva e imprimilo desde allí.';
+          viewer.after(note);
+        }
+      }, {once: true});
+    })();
   </script>
-
+  {% endif %}
   {% if model.warnings %}
   <aside class="salary-slip-alert salary-slip-review" role="status"><strong>Validaciones del documento (no se imprimen):</strong>
     <ul>{% for warning in model.warnings[:6] %}<li>{{ warning }}</li>{% endfor %}</ul>
