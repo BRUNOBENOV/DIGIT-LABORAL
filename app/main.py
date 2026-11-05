@@ -6009,6 +6009,10 @@ def calculation_to_certificate(
     item = db.get(CalculationRecord, calculation_id)
     if not item or item.company_id not in company_ids_for_user(db, user):
         raise HTTPException(404)
+    # Los salarios se consultan en el detalle de liquidación, nunca en un
+    # certificado de trabajo, independientemente de su origen (REOP o cálculo).
+    if item.calculation_type in {"salary", "suite_salary"}:
+        return RedirectResponse(f"/app/reports/liquidaciones-salarios/{item.id}", status_code=303)
     if item.source == "Centro laboral":
         return RedirectResponse(f"/app/liquidaciones/{item.id}", status_code=303)
     document_type = {
