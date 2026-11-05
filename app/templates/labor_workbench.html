@@ -256,7 +256,7 @@
           <td><span class="dl-trace-status {{ 'is-void' if row.superseded else 'is-approved' if row.status in ['Aprobado','Validado'] else 'is-void' if row.status in ['Anulado','Borrado en origen'] else 'is-draft' }}">{{ row.display_status }}</span></td>
           <td><div class="dl-trace-actions">
           {% if row.origin == 'current' and row.record.source == 'Centro laboral' %}
-            <a href="/app/liquidaciones/{{ row.id }}" class="dl-trace-action">Ver</a>
+            <a href="{{ '/app/reports/liquidaciones-salarios/' ~ row.id if row.record.calculation_type in ['salary','suite_salary'] else '/app/liquidaciones/' ~ row.id }}" class="dl-trace-action">Ver</a>
             {% if user.role in ['administrador','contador','auxiliar'] and row.record.calculation_type == 'suite_salary' and row.status != 'Anulado' and not row.superseded %}
               <a href="/app/liquidaciones/{{ row.id }}/rectificar" class="dl-trace-action dl-trace-correct">Rectificar</a>
             {% endif %}
