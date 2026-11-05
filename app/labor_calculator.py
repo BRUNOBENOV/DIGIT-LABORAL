@@ -207,7 +207,7 @@ def calculate(data, *, judicial_evidence_verified=False):
         # En jornalero, el jornal pactado es suficiente para liquidar:
         # la referencia mensual (jornal × 26) sirve solo para otros
         # controles del motor, NO se suma ni se utiliza como sueldo fijo.
-        daily_basis = kind == "salary" and str(data.get("pay_basis") or "monthly") == "daily"
+        daily_basis = kind in {"salary", "vacation"} and str(data.get("pay_basis") or "monthly") == "daily"
         explicit_jornal = str(data.get("daily_rate") or "").strip()
         reference_monthly = str(data.get("salary") or "").strip()
         if daily_basis and explicit_jornal and reference_monthly in {"", "0", "0.0", "0.00"}:
@@ -677,13 +677,28 @@ def calculate(data, *, judicial_evidence_verified=False):
         result["notes"].append("La base anual comprende remuneraciones computables; el aguinaldo se calcula antes de descuentos y no lleva aporte IPS.")
     if kind == "vacation":
         minimum = positive(data, "legal_minimum", "mínimo legal aplicable al período y actividad")
-        base = max(salary, minimum)
-        days = number(data, "vacation_quantity", "días hábiles", required=True, maximum="365", decimals=2)
+        days = number(data, "vacation_quantity", "días reconocidos", required=True, maximum="365", decimals=2)
         factor = 2 if checked(data, "vacation_double") else 1
-        add("Remuneración de vacaciones", base / 30 * days * factor,
-            f"Gs. {gs(base)} / 30 × {days} × {factor}", "Arts. 218, 220 y 223")
-        fact("Días hábiles", days)
-        result["notes"].append("Importe bruto a pagar por adelantado. Verificá el derecho y la duplicación; no sumes otra vez estos días a un salario mensual ya pagado. Los aportes se concilian en la nómina.")
+        vacation_basis = str(data.get("pay_basis") or "monthly")
+        if vacation_basis not in {"monthly", "daily"}:
+            raise CalculationError("Seleccioná la modalidad real del contrato.", "pay_basis")
+        if vacation_basis == "daily":
+            actual_jornal = (positive(data, "daily_rate", "jornal pactado") if
+                             str(data.get("daily_rate") or "").strip() else salary / Decimal("26"))
+            daily_minimum = minimum / Decimal("26")
+            daily_base = max(actual_jornal, daily_minimum)
+            add("Remuneración de vacaciones", daily_base * days * factor,
+                f"Jornal Gs. {daily_base:.4f} × {days} × {factor}",
+                "Arts. 218, 220 y 223; mínimo diario de referencia = mínimo mensual / 26")
+            fact("Modalidad vacacional", "Jornalero · jornal pactado o mínimo legal / 26")
+            fact("Jornal diario computable", f"Gs. {daily_base:.4f}")
+        else:
+            base = max(salary, minimum)
+            add("Remuneración de vacaciones", base / 30 * days * factor,
+                f"Gs. {gs(base)} / 30 × {days} × {factor}", "Arts. 218, 220 y 223")
+            fact("Modalidad vacacional", "Mensualizado · divisor 30")
+        fact("Días de vacaciones", days)
+        result["notes"].append("Importe bruto a pagar por adelantado. Verificá el derecho, la modalidad y la duplicación; no sumes otra vez los mismos pagos a la liquidación mensual. Los aportes se concilian en la nómina.")
     if kind == "hours":
         base = number(data, "hourly_base", "valor de la hora ordinaria", required=True, decimals=4)
         if base <= 0:
