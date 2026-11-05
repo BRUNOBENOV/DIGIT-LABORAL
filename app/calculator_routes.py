@@ -12,7 +12,7 @@ from decimal import Decimal
 from zoneinfo import ZoneInfo
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -362,6 +362,48 @@ def payroll_average_proposal(
 def public_page(request: Request, tipo: str = "salary", ejemplo: bool = False):
     values = example_values(tipo, context(tipo)["values"]) if ejemplo and tipo in {"salary", "settlement"} else None
     return page(request, tipo, values)
+
+
+@router.get("/app/liquidaciones/conciliar-planilla")
+def accounting_salary_audit_page(
+    request: Request,
+    user: User = Depends(core.require_roles("administrador", "contador", "auxiliar")),
+    db: Session = Depends(core.get_db),
+):
+    return core.render(
+        request, "salary_accounting_audit.html", db, user,
+        report=None, error="", period=request.query_params.get("period", ""),
+    )
+
+
+@router.post("/app/liquidaciones/conciliar-planilla")
+async def accounting_salary_audit_upload(
+    request: Request,
+    upload: UploadFile = File(...),
+    period: str = "",
+    user: User = Depends(core.require_roles("administrador", "contador", "auxiliar")),
+    db: Session = Depends(core.get_db),
+):
+    """Previsualización efímera sin crear ni modificar cálculos o legajos."""
+    from .salary_accounting_audit import (
+        AccountingPayrollError, MAX_UPLOAD, reconcile_accounting_payroll,
+    )
+    error = ""
+    report = None
+    try:
+        filename = str(upload.filename or "").lower()
+        if not filename.endswith(".xlsx"):
+            raise AccountingPayrollError("Subí un archivo .xlsx de la planilla contable.")
+        raw = await upload.read(MAX_UPLOAD + 1)
+        report = await run_in_threadpool(reconcile_accounting_payroll, raw, period=period)
+    except AccountingPayrollError as exc:
+        error = str(exc)
+    finally:
+        await upload.close()
+    return core.render(
+        request, "salary_accounting_audit.html", db, user,
+        report=report, error=error, period=period,
+    )
 
 
 @router.get("/app/liquidaciones")
