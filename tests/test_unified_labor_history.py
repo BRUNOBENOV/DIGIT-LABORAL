@@ -110,6 +110,38 @@ def test_calculations_include_notices_without_creating_calculation_records():
         engine.dispose()
 
 
+
+def test_salary_ver_link_opens_salary_report_not_work_certificate_for_both_sources():
+    db, engine = setup_records()
+    try:
+        db.add_all([
+            CalculationRecord(
+                id=103, company_id=11, employee_id=21,
+                calculation_type="suite_salary", reference_period="2026-10",
+                amount=3044000, status="Borrador", source="Importación Excel REOP",
+                created_at=datetime(2026, 10, 31),
+            ),
+            CalculationRecord(
+                id=104, company_id=11, employee_id=21,
+                calculation_type="suite_salary", reference_period="2026-11",
+                amount=3120000, status="Aprobado", source="Centro laboral",
+                created_at=datetime(2026, 11, 5),
+            ),
+        ])
+        db.commit()
+        history = calculation_history_page(
+            db, {11}, tipo="suite_salary", include_center_calculations=True,
+        )
+        assert history["total"] == 2
+        urls = {row["id"]: row["url"] for row in history["rows"]}
+        assert urls[103] == "/app/reports/liquidaciones-salarios/103"
+        assert urls[104] == "/app/reports/liquidaciones-salarios/104"
+        assert all("/certificate" not in url for url in urls.values())
+    finally:
+        db.close()
+        engine.dispose()
+
+
 def test_vacations_unify_rows_with_distinct_legal_status_and_no_fake_balances():
     db, engine = setup_records()
     try:
