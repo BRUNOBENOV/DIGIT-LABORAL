@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import io
 import re
+import zipfile
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from hashlib import sha256
@@ -114,7 +115,15 @@ def parse_reop_workbook(content: bytes, filename: str, *,
     if not content or len(content) > MAX_FILE_BYTES:
         raise ValueError("El archivo debe tener entre 1 byte y 5 MB.")
     try:
-        book = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+        with zipfile.ZipFile(io.BytesIO(content)) as archive:
+            members = archive.infolist()
+            if len(members) > 500 or sum(x.file_size for x in members) > 35 * 1024 * 1024:
+                raise ValueError("El archivo XLSX contiene demasiados datos internos.")
+            if any(x.file_size > 30 * 1024 * 1024 for x in members):
+                raise ValueError("El archivo XLSX supera el límite seguro de descompresión.")
+        book = load_workbook(io.BytesIO(content), read_only=True, data_only=True, keep_links=False)
+    except ValueError:
+        raise
     except Exception as exc:
         raise ValueError("No se pudo leer el archivo Excel REOP.") from exc
     try:
