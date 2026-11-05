@@ -168,6 +168,15 @@ def test_upload_preview_confirm_creates_draft_once_with_correct_provenance():
             follow_redirects=False)
         assert dates.status_code == 303
         assert "Fechas revisadas" in client.get(preview_url).text
+        undo = client.post(preview_url + "/resolver",
+            data={"csrf_token": csrf, "action": "deshacer_fecha"},
+            follow_redirects=False)
+        assert undo.status_code == 303
+        assert "Fechas DESDE invertidas" in client.get(preview_url).text
+        dates_again = client.post(preview_url + "/resolver",
+            data={"csrf_token": csrf, "action": "fecha_invertida"},
+            follow_redirects=False)
+        assert dates_again.status_code == 303
         night = client.post(preview_url + "/resolver",
             data={"csrf_token": csrf, "action": "total_nocturno"},
             follow_redirects=False)
