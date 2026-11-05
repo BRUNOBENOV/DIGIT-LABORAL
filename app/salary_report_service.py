@@ -130,7 +130,7 @@ def build_salary_report_model(
     if gross - discounts != net:
         warnings.append("El bruto menos los descuentos no coincide con el neto persistido. Revisá el cálculo de origen; no se alteraron los importes.")
     if item.status == "Anulado":
-        warnings.append("Este cálculo está anulado. Solo se permite consultar su historial; no se puede volver a imprimir.")
+        warnings.append("Este cálculo está anulado. La descarga es una copia histórica identificada como ANULADA, no un recibo vigente.")
 
     # La asistencia y el medio de pago provienen del cálculo guardado o su
     # anexo vinculado, no de valores estimados. Nunca confundir fecha de
@@ -230,6 +230,8 @@ def build_salary_report_model(
         "company_id": company.id,
         "employee_id": employee.id,
         "can_reprint": item.status != "Anulado",
+        "is_annulled": item.status == "Anulado",
+        "payment_date_iso": date.fromisoformat(str(payment_date_raw)).isoformat() if payment_date_display != "No registrada" else "",
         "partial": bool(saved.get("partial", False)),
     }
 
