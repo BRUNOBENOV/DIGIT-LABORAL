@@ -91,6 +91,15 @@
 .salary-mtess-totals .salary-mtess-net td{background:white!important}
 .salary-mtess-sign-blank{height:82px}.salary-mtess-sign-label{text-align:left}
 .salary-mtess-annulled{background:#9a2824;color:white;text-align:center;font-weight:900;letter-spacing:.075em;padding:9px;margin-bottom:13px}
+.salary-slip-receipt-details{margin:16px 0;border:1px solid #ccd8e8;background:#fbfcff;border-radius:9px;padding:14px 16px;color:#234366}
+.salary-slip-receipt-details summary{font-size:.86rem;font-weight:850;cursor:pointer}.salary-slip-receipt-details summary span{font-weight:550;color:#6e8195}
+.salary-slip-receipt-details p{font-size:.76rem;color:#536b87;line-height:1.5}
+.salary-slip-receipt-form{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:12px 0}
+.salary-slip-receipt-form label{font-size:.71rem;font-weight:800;display:grid;gap:6px}
+.salary-slip-receipt-form input{width:100%;min-width:0;border:1px solid #c8d5e7;border-radius:6px;padding:9px;background:#fff;color:#193655}
+.salary-slip-saved{background:#e9f8f0;color:#176545!important;padding:8px;border:1px solid #bce4ce;border-radius:6px}
+@media(max-width:720px){.salary-slip-receipt-form{grid-template-columns:1fr 1fr}}
+@media print{.salary-slip-receipt-details{display:none!important}}
 .salary-slip-review{margin-top:15px}.salary-slip-review ul{padding-left:18px;margin:6px 0;line-height:1.5}
 @media print{.salary-slip-review{display:none!important}.salary-mtess-copy{box-shadow:none!important}}
 </style>
@@ -196,6 +205,30 @@
     </div>
   </section>
 
+  {% if not model.is_annulled and user.role in ['administrador', 'contador'] %}
+  <details class="salary-slip-receipt-details" {% if model.days_worked_display == 'No registrado' or model.hours_worked_display == 'No registrado' or model.payment_method == 'No registrado' %}open{% endif %}>
+    <summary>Completar datos del recibo sin recalcular salarios <span>· Asistencia y pago</span></summary>
+    <p>Estos datos completan el recibo y sirven para la revisión de REOP. No cambian el importe bruto, IPS, descuentos ni neto del cálculo. Indicá únicamente valores respaldados; la fecha de pago se deja vacía si todavía no se pagó.</p>
+    {% if request.query_params.get('datos_guardados') %}<p role="status" class="salary-slip-saved">Datos de recibo guardados y vinculados al cálculo.</p>{% endif %}
+    <form method="post" action="/app/reports/liquidaciones-salarios/{{ item.id }}/datos-recibo">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="salary-slip-receipt-form">
+        <label>Desde<input type="date" name="period_start" value="{{ model.period_start.isoformat() if model.period_start else '' }}" required></label>
+        <label>Hasta<input type="date" name="period_end" value="{{ model.period_end.isoformat() if model.period_end else '' }}" required></label>
+        <label>Jornadas efectivamente trabajadas<input type="number" name="days_worked" step="1" min="0" max="31" value="{{ model.days_worked_display if model.days_worked_display != 'No registrado' else '' }}" required></label>
+        <label>Horas ordinarias efectivas<input type="number" name="hours_worked" step="0.25" min="0" max="744" value="{{ model.hours_worked_display if model.hours_worked_display != 'No registrado' else '' }}" required></label>
+        <label>Medio de pago<input name="payment_method" list="salary-receipt-payment-methods" value="{{ model.payment_method if model.payment_method != 'No registrado' else '' }}" required placeholder="Elegí medio de pago">
+          <datalist id="salary-receipt-payment-methods"><option value="Efectivo"><option value="Transferencia"><option value="Banco"><option value="Cheque"><option value="Giro"><option value="Otro documentado"></datalist>
+        </label>
+        <label>Fecha real del pago (si ya fue pagado)<input type="date" name="payment_date" value="{{ model.payment_date_iso or '' }}"></label>
+        <label>Cantidad de piezas/tareas<input type="number" name="pieces_or_tasks" step="1" min="0" max="100000000" value="{{ model.pieces_or_tasks_display if model.pieces_or_tasks_display != 'No registrado' else '' }}" placeholder="0 si no corresponde"></label>
+      </div>
+      <button type="submit" class="btn primary">Guardar datos del recibo</button>
+    </form>
+  </details>
+  {% elif model.is_annulled %}
+  <p class="salary-slip-alert">El cálculo está anulado: su PDF puede descargarse como copia histórica identificada. Para completar o corregir datos emití una nueva liquidación válida.</p>
+  {% endif %}
   <p class="salary-slip-online-note" style="font-size:.78rem;color:#586d88;margin:12px 0">Vista previa del <strong>Original</strong>. Al imprimir o descargar el PDF se generan dos copias, <strong>Original (empleador)</strong> y <strong>Duplicado (trabajador)</strong>, con el mismo número {{ model.code }}. Sin código QR.</p>
   {% for copy in ['ORIGINAL · EMPLEADOR', 'DUPLICADO · TRABAJADOR'] %}
   <article class="salary-slip-paper salary-mtess-copy {{ 'salary-mtess-duplicate' if loop.index == 2 else '' }}" id="{{ 'salary-slip-document' if loop.first else 'salary-slip-document-duplicate' }}">
