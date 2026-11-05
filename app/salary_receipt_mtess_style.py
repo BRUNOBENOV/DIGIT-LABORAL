@@ -95,23 +95,19 @@ def build_mtess_style_salary_pdf(model: dict) -> bytes:
         t.setStyle(TableStyle(commands))
         return t
 
-    def strip(label, heading):
-        return table([[p(label, white), p(heading, white)]], [135*mm, 45*mm],
-                     special=[("BACKGROUND", (0,0), (-1,-1), NAVY)])
-
     def copy_page(copy_label):
         story = []
         head_left = [
             p("DIGIT-LABORAL", ParagraphStyle(
                 "DLBrand", parent=bold, fontSize=15, leading=19, textColor=NAVY,
             )),
-            p("Liquidaciones y recibos laborales", small),
-            p("Documento generado desde el cálculo salarial guardado", small),
+            p("Gestión laboral y de remuneraciones", small),
+            p("Comprobante salarial interno · Paraguay", small),
         ]
         head_right = [
             p("LIQUIDACIÓN DE SALARIO", white),
             p(f"N.º {model['code']}", white),
-            p(copy_label, white),
+            p(copy_label + (" · ANULADO" if model.get("is_annulled") else ""), white),
         ]
         header = Table([[head_left, head_right]], colWidths=[104*mm, 76*mm])
         header.setStyle(TableStyle([
@@ -146,18 +142,26 @@ def build_mtess_style_salary_pdf(model: dict) -> bytes:
              p(period_to, centered), p(payment_date, centered), p(model.get("payment_method"), centered)],
         ], [30*mm, 39*mm, 39*mm, 37*mm, 35*mm], head_rows=1))
         story.append(Spacer(1, 3*mm))
-        story.append(table([
-            [p("HORAS TRABAJADAS", centered_white), p("CANTIDAD DE DÍAS TRABAJADOS", centered_white),
-             p("CANTIDAD DE PIEZAS O TAREAS", centered_white)],
-            [p(model.get("hours_worked_display") or "No registrado", centered_bold),
-             p(model.get("days_worked_display") or "No registrado", centered_bold),
-             p(model.get("pieces_or_tasks_display") or "No registrado", centered_bold)],
-        ], [60*mm, 60*mm, 60*mm], head_rows=1,
-            special=[("TOPPADDING",(0,1),(-1,1),9),("BOTTOMPADDING",(0,1),(-1,1),9)]))
+        # Como en el recibo MTESS: etiquetas azules alternadas con el valor blanco.
+        story.append(table([[
+            p("HORAS<br/>TRABAJADAS", white),
+            p(model.get("hours_worked_display") or "No registrado", centered_bold),
+            p("CANTIDAD DE DÍAS<br/>TRABAJADOS", white),
+            p(model.get("days_worked_display") or "No registrado", centered_bold),
+            p("CANTIDAD DE<br/>PIEZAS O TAREAS", white),
+            p(model.get("pieces_or_tasks_display") or "No registrado", centered_bold),
+        ]], [30*mm]*6,
+        special=[
+            ("BACKGROUND", (0,0), (0,0), NAVY),
+            ("BACKGROUND", (2,0), (2,0), NAVY),
+            ("BACKGROUND", (4,0), (4,0), NAVY),
+            ("TOPPADDING", (0,0), (-1,0), 13),
+            ("BOTTOMPADDING", (0,0), (-1,0), 13),
+        ]))
         story.append(Spacer(1, 3*mm))
 
-        lines = [[p("", white), p("CONCEPTO", white), p("INGRESOS EN GS.", centered_white),
-                  p("EGRESOS EN GS.", centered_white)]]
+        lines = [[p("", white), p("CONCEPTO", centered_white), p("MONTO EN GS.", centered_white),
+                  p("MONTO EN GS.", centered_white)]]
         for category, values in (("INGRESOS", model["earnings"]), ("EGRESOS", model["deductions"])):
             valid = [r for r in values if int(r.get("amount") or 0) > 0]
             for index, row in enumerate(valid):
@@ -173,22 +177,18 @@ def build_mtess_style_salary_pdf(model: dict) -> bytes:
         story.append(Spacer(1, 3*mm))
 
         totals = [
-            [p("MONTO TOTAL DE INGRESOS", white), p(f"Gs. {_gs(model['gross'])}", right_bold)],
-            [p("MONTO TOTAL DE EGRESOS", white), p(f"Gs. {_gs(model['discounts'])}", right_bold)],
-            [p("MONTO TOTAL A COBRAR", white), p(f"Gs. {_gs(model['net'])}", right_bold)],
+            [p("MONTO TOTAL DE INGRESO", white), p(_gs(model["gross"]), right_bold)],
+            [p("MONTO TOTAL DE EGRESO", white), p(_gs(model["discounts"]), right_bold)],
+            [p("MONTO TOTAL A COBRAR", white), p(_gs(model["net"]), right_bold)],
         ]
         story.append(table(totals, [118*mm, 62*mm], pads=7,
                            special=[("BACKGROUND", (0,0), (0,-1), NAVY),
                                     ("TOPPADDING", (0,2), (-1,2), 8),
                                     ("BOTTOMPADDING", (0,2), (-1,2), 8)]))
         story.append(Spacer(1, 4*mm))
-        if model.get("notes"):
-            story.append(p("Observaciones del cálculo: " + str(model["notes"]), small))
-            story.append(Spacer(1, 2*mm))
-
         signature_boxes = Table([
             [p("", centered), p("", centered)],
-            [p("FIRMA DEL EMPLEADOR", centered_white), p("FIRMA DEL TRABAJADOR", centered_white)],
+            [p("FIRMA DEL EMPLEADOR", centered_white), p("FIRMA DEL EMPLEADO", centered_white)],
             [p(model.get("representative") or "Empleador / representante legal", small),
              p(model.get("employee_name"), small)],
         ], colWidths=[90*mm, 90*mm], rowHeights=[23*mm, 8*mm, 10*mm])
@@ -202,17 +202,13 @@ def build_mtess_style_salary_pdf(model: dict) -> bytes:
         story.append(KeepTogether([signature_boxes]))
         story.append(Spacer(1, 4*mm))
         story.append(p(
-            f"Documento interno generado por DIGIT-LABORAL. Referencia {model['code']}. "
-            f"Fecha de emisión registrada: {model.get('issued_date') or 'No registrada'}. "
-            "No es un recibo emitido por el MTESS, ni constituye una constancia de presentación "
-            "o aceptación en REOP. Original: empleador. Duplicado: trabajador.",
+            f"Documento interno DIGIT-LABORAL N.º {model['code']}. "
+            f"Fecha de emisión: {model.get('issued_date') or 'No registrada'}. "
+            + ("COPIA ANULADA: solo consulta histórica, sin validez como recibo vigente. " if model.get("is_annulled") else "")
+            + "Los datos proceden del cálculo guardado por el empleador; no acredita pago ni presentación en REOP. "
+            "Original: empleador. Duplicado: trabajador.",
             note,
         ))
-        if model.get("warnings"):
-            story.append(Spacer(1, 2*mm))
-            story.append(p("Observaciones del cálculo guardado:", small))
-            for warning in model["warnings"][:3]:
-                story.append(p("• " + str(warning), small))
         return story
 
     story = copy_page("ORIGINAL · EMPLEADOR") + [PageBreak()] + copy_page("DUPLICADO · TRABAJADOR")
