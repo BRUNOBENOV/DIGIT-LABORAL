@@ -302,24 +302,6 @@
   })();
   </script>
 
-        </tbody>
-      </table>
-    </section>
-    <section class="salary-mtess-group" aria-label="Totales y neto salarial">
-      <table class="salary-mtess-table salary-mtess-totals"><tbody>
-        <tr><th>MONTO TOTAL DE INGRESO</th><td>{{ model.gross|gs }}</td></tr>
-        <tr><th>MONTO TOTAL DE EGRESO</th><td>{{ model.discounts|gs }}</td></tr>
-        <tr class="salary-mtess-net"><th>MONTO TOTAL A COBRAR</th><td>{{ model.net|gs }}</td></tr>
-      </tbody></table>
-    </section>
-    <section class="salary-mtess-signatures" aria-label="Espacios para firmas">
-      <div><div class="salary-mtess-sign-blank"></div><div class="salary-mtess-sign-label">FIRMA DEL EMPLEADOR</div></div>
-      <div><div class="salary-mtess-sign-blank"></div><div class="salary-mtess-sign-label">FIRMA DEL EMPLEADO</div></div>
-    </section>
-    <footer class="salary-mtess-disclaimer"><em>Este recibo fue generado electrónicamente por DIGIT-LABORAL con datos suministrados por el empleador bajo su responsabilidad. No constituye constancia oficial de presentación en REOP ni acredita por sí solo el pago efectivo.</em><strong>Original: Empleador. Duplicado: Trabajador.</strong></footer>
-  </article>
-  {% endfor %}
-
   {% if model.warnings %}
   <aside class="salary-slip-alert salary-slip-review" role="status"><strong>Validaciones del documento (no se imprimen):</strong>
     <ul>{% for warning in model.warnings[:6] %}<li>{{ warning }}</li>{% endfor %}</ul>
