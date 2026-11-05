@@ -159,7 +159,11 @@ def parse_reop_workbook(content: bytes, filename: str, *,
                 if start.day <= 12 and start.month <= 12:
                     corrected = date(start.year, start.day, start.month)
                 if corrected and (corrected.year, corrected.month) == (end.year, end.month) and corrected <= end:
-                    date_swap_proposal = {"original": start.isoformat(), "suggested": corrected.isoformat()}
+                    date_swap_proposal = {
+                        "original": start.isoformat(), "suggested": corrected.isoformat(),
+                        "original_display": start.strftime("%d/%m/%Y"),
+                        "suggested_display": corrected.strftime("%d/%m/%Y"),
+                    }
                     if correct_swapped_start:
                         warnings.append(f"Fecha DESDE corregida expresamente de {start.isoformat()} a {corrected.isoformat()}.")
                         start = corrected
@@ -170,7 +174,9 @@ def parse_reop_workbook(content: bytes, filename: str, *,
                         )
                 else:
                     errors.append("DESDE y HASTA corresponden a meses distintos.")
-            if start and end and (end < start or (end - start).days > 30):
+            if start and end and (end < start or (end - start).days > 30) and not (
+                date_swap_proposal and not correct_swapped_start
+            ):
                 errors.append("El rango DESDE/HASTA no es válido para una liquidación mensual.")
             period = start.strftime("%Y-%m") if start and end and start.year == end.year and start.month == end.month else ""
             payment_code = _quantity(raw[4], "Forma de pago", Decimal(4), errors, integer=True)
