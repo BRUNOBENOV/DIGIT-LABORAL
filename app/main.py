@@ -10238,6 +10238,17 @@ def salary_import_page(
     else:
         preview_headers = ["N.º patronal", "Cédula", "Apellidos", "Nombres", "Categoría", "Jornadas", "Base IPS"]
         preview_rows = [[item[0], item[2], item[3], item[4], item[5], item[6], item[7]] for item in rows[:20]]
+    from .vacation_salary_link import vacation_links_for_period
+    vacation_links = (
+        vacation_links_for_period(
+            db, company.id, period,
+            employee_ids=[item[1].id for item in (
+                _source_rows if preview and effective_source == "approved" else []
+            )] if preview and effective_source == "approved" else
+            ([employee_id] if selected_employee else None),
+        )
+        if preview and company and authority == "REOP" else []
+    )
     return render(
         request, "salary_import.html", db, user, companies=companies,
         selected_company=company, period=period, authority=authority,
@@ -10250,6 +10261,7 @@ def salary_import_page(
         employee_id=employee_id, selected_employee=selected_employee,
         excluded_salary=excluded_salary, approved_choices=approved_choices,
         preview_headers=preview_headers, preview_rows=preview_rows,
+        vacation_links=vacation_links,
     )
 
 
