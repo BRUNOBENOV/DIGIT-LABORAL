@@ -295,7 +295,7 @@ def prepare_import(db: Session, company, period: str, authority: str, *,
                     allocations = [(remainder, other_category, "otros ingresos de nómina")]
                 for value, category, label in allocations:
                     if value and category not in REOP_OTHER_COLUMNS:
-                        err.append(f"{label}: elegí la clasificación REOP respaldada para este funcionario")
+                        err.append(f"{label}: otros ingresos no clasificados; elegí la clasificación REOP respaldada para este funcionario")
                 if not 0 < hours <= 744 and effective_source != "approved":
                     # Approved-source preflight already emits this same issue
                     # with the calculation ID and worker context.
