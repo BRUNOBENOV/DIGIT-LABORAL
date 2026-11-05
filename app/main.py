@@ -7898,6 +7898,7 @@ def save_salary_receipt_details(
 @app.get("/app/reports/liquidaciones-salarios/{calculation_id}/pdf")
 def salary_settlement_report_pdf(
     calculation_id: int,
+    vista: bool = False,
     user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ):
@@ -7905,23 +7906,27 @@ def salary_settlement_report_pdf(
 
     item, company, employee = _salary_report_record(db, user, calculation_id)
     model = build_salary_report_model(db, item, company, employee)
-    # Un cálculo anulado NO puede reimprimirse como vigente, pero su copia
-    # histórica debe poder consultarse sin obtener un enlace PDF roto.
-    # Generar ANTES de auditar para evitar registrar descargas que fallaron.
+    # Se usa el MISMO PDF para vista previa y descarga. La vista previa es
+    # una consulta interna, no una reimpresión: no debe registrar una descarga.
     payload = build_salary_report_pdf(model)
     if not payload.startswith(b"%PDF"):
         raise HTTPException(500, "No se pudo generar un archivo PDF válido.")
-    write_audit(
-        db, user,
-        "descarga_pdf_anulado" if model["is_annulled"] else "reimpresion_pdf_liquidacion_salario",
-        "liquidacion_salario", str(item.id),
-        f"{'Copia anulada' if model['is_annulled'] else 'PDF'} · período {model['period']} · neto Gs. {format_gs(model['net'])}",
-    )
-    db.commit()
+    if not vista:
+        write_audit(
+            db, user,
+            "descarga_pdf_anulado" if model["is_annulled"] else "reimpresion_pdf_liquidacion_salario",
+            "liquidacion_salario", str(item.id),
+            f"{'Copia anulada' if model['is_annulled'] else 'PDF'} · período {model['period']} · neto Gs. {format_gs(model['net'])}",
+        )
+        db.commit()
     filename = f"digit-laboral-{model['code']}{'-ANULADO' if model['is_annulled'] else ''}.pdf"
+    disposition = "inline" if vista else "attachment"
     return Response(
         content=payload, media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"', "Cache-Control": "no-store"},
+        headers={
+            "Content-Disposition": f'{disposition}; filename="{filename}"',
+            "Cache-Control": "private, no-store",
+        },
     )
 
 
