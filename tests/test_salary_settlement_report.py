@@ -174,6 +174,44 @@ def test_salary_liquidation_report_shows_saved_records_and_filters():
         assert "origen: módulo cálculo" in response.text.lower()
 
 
+def test_report_list_hides_approved_superseded_original_but_preserves_audit_link():
+    original_id, company_id, employee_id, marker = _create_salary_record()
+    with SessionLocal() as db:
+        original = db.get(CalculationRecord, original_id)
+        amended = json.loads(original.input_json)
+        amended["rectifies_record_id"] = str(original.id)
+        revision = CalculationRecord(
+            company_id=company_id, employee_id=employee_id,
+            calculation_type="suite_salary", reference_period="2026-10",
+            input_json=json.dumps(amended, ensure_ascii=False),
+            result_json=original.result_json, amount=original.amount,
+            status="Aprobado", source="Centro laboral",
+            notes=marker, created_by="test-salary-report",
+        )
+        db.add(revision)
+        db.commit()
+        db.refresh(revision)
+        revision_id = revision.id
+
+    with TestClient(app) as client:
+        _login(client)
+        route = "/app/reports/liquidaciones-salarios"
+        params = {"company_id": company_id, "employee_id": employee_id,
+                  "period": "2026-10", "q": marker}
+        normal = client.get(route, params=params)
+        assert normal.status_code == 200
+        assert f'href="{route}/{revision_id}"' in normal.text
+        assert f'href="{route}/{original_id}"' not in normal.text
+        assert "Ver versiones anteriores" in normal.text
+
+        full = client.get(route, params={**params, "history_all": "1"})
+        assert full.status_code == 200
+        assert f'href="{route}/{original_id}"' in full.text
+        assert f'href="{route}/{revision_id}"' in full.text
+        # El historial se consulta, pero el original nunca se elimina.
+        assert client.get(f"{route}/{original_id}").status_code == 200
+
+
 def test_salary_liquidation_detail_pdf_history_and_reprint_audit():
     with TestClient(app) as client:
         _login(client)
