@@ -63,6 +63,50 @@ def test_reop_32_exact_columns_and_excel_dates(monkeypatch):
         assert int(cells["C2"].find("m:v", ns).text) > 46000
 
 
+def test_reop_blank_unused_discount_pairs_in_export(monkeypatch):
+    """REOP rejects numeric 0 with a blank concept (CONCEPTO_VACIO)."""
+    company, _, _, _ = fixture_records(monkeypatch)
+    rows, errors = service.prepare_import(None, company, "2026-10", "REOP", payment_code="1")
+    assert not errors
+    assert [rows[0][i] for i in (26, 28, 30)] == [0, 0, 0]
+
+    # Replicate the eight records / twenty-four errors returned by REOP.
+    data = service.build_reop_xlsx(rows * 8)
+    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        root = ElementTree.fromstring(archive.read("xl/worksheets/sheet1.xml"))
+    ns = {"m": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+    xmlrows = root.findall("m:sheetData/m:row", ns)
+    assert len(xmlrows) == 9
+    for i, xmlrow in enumerate(xmlrows[1:], start=2):
+        cells = {c.attrib["r"]: c for c in xmlrow}
+        for column in ("AA", "AB", "AC", "AD", "AE", "AF"):
+            assert f"{column}{i}" not in cells, f"{column}{i} must be blank"
+        assert cells[f"Z{i}"].find("m:v", ns).text == "270000"
+        assert cells[f"J{i}"].find("m:v", ns).text == "3000000"
+    # No changes to source salary calculations in memory.
+    assert rows[0][26] == 0
+
+
+def test_reop_positive_discount_requires_concept(monkeypatch):
+    company, _, _, _ = fixture_records(monkeypatch)
+    rows, errors = service.prepare_import(None, company, "2026-10", "REOP", payment_code="1")
+    assert not errors
+    row = list(rows[0])
+    row[26] = 125000
+    row[27] = "Descuento justificado"
+    data = service.build_reop_xlsx([row])
+    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        xml = ElementTree.fromstring(archive.read("xl/worksheets/sheet1.xml"))
+    ns = {"m": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+    cells = {c.attrib["r"]: c for c in xml.findall("m:sheetData/m:row", ns)[1]}
+    assert cells["AA2"].find("m:v", ns).text == "125000"
+    assert cells["AB2"].find("m:is/m:t", ns).text == "Descuento justificado"
+    row[27] = None
+    import pytest
+    with pytest.raises(service.SalaryImportError, match="Concepto descuentos 1"):
+        service.build_reop_xlsx([row])
+
+
 def test_reop_payment_codes_export_as_official_numeric_values(monkeypatch):
     company, _, _, _ = fixture_records(monkeypatch)
     from openpyxl import load_workbook
