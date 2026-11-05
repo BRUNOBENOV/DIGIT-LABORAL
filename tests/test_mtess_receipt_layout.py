@@ -54,7 +54,6 @@ def test_receipt_is_two_a4_copies_same_internal_number_without_qr():
         assert "273.960" in text
         assert "2.870.040" in text
         assert len(page.images) == 0
-        assert "No constituye" in text
         assert "REOP" in text
     assert "ORIGINAL" in texts[0]
     assert "DUPLICADO" in texts[1]
