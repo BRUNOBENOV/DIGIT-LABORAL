@@ -99,7 +99,7 @@ def test_new_approved_liquidation_replaces_original_only_after_approval(attendan
     db.expire_all()
     assert approved_salary(db,company.id,employee.id,"2026-10").id == draft.id
     rows, errors = prepare_import(db, company, "2026-10", "REOP", source_type="approved", payment_code="1")
-    assert not errors and len(rows) == 1 and rows[0][5] == 21 and rows[0][7] == Decimal("160")
+    assert not errors and len(rows) == 1 and rows[0][5] == 30 and rows[0][7] == Decimal("160")  # REOP mensual: días pagados; horas efectivas
 
 
 def test_changed_source_or_annulment_rejects_stale_inheritance(attendance_case):
