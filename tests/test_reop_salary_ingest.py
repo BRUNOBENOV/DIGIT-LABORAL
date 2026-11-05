@@ -221,6 +221,23 @@ def test_upload_preview_confirm_creates_draft_once_with_correct_provenance():
         assert detail.status_code == 200, detail.text[:400]
         assert "Liquidación de Salarios" in detail.text
         assert 'id="salary-mtess-pdf"' in detail.text
+        assert "Aprobar liquidación revisada" in detail.text
+        # Los importados arrancan en borrador y solamente un usuario autorizado
+        # puede aprobarlos después de comprobar la integridad financiera.
+        approval = client.post(f"/app/calculations/{record_id}/status",
+            data={"csrf_token": csrf, "status": "Aprobado"},
+            follow_redirects=False)
+        assert approval.status_code == 303, approval.text[:400]
+        assert approval.headers["location"] == f"/app/reports/liquidaciones-salarios/{record_id}"
+        approved_detail = client.get(approval.headers["location"])
+        assert approved_detail.status_code == 200
+        assert "Aprobado" in approved_detail.text
+        assert "Aprobar liquidación revisada" not in approved_detail.text
+        with SessionLocal() as db:
+            approved = db.get(CalculationRecord, record_id)
+            assert approved.status == "Aprobado"
+            assert approved.amount == 2_957_500  # Aprobar no recalcula.
+            assert json.loads(approved.result_json)["gross"] == 3_250_000
         assert client.get(preview_url).status_code == 410
         reupload = client.post(url + "/previsualizar", data={
             "csrf_token": csrf, "company_id": str(company_id),
@@ -247,3 +264,47 @@ def test_reop_realistic_file_without_nocturnal_surcharge_auto_normalizes_dates()
     assert [row["period"] for row in payload["rows"]] == ["2026-10", "2025-10"]
     assert all(row["date_auto_normalized"] for row in payload["rows"])
     assert all(not row["errors"] for row in payload["rows"])
+
+
+def test_reop_approval_rejects_tampered_amounts_even_with_explicit_status_request():
+    from app.reop_salary_ingest import validate_imported_reop_salary_for_approval
+
+    company_id, employee_id, ci = _test_company()
+    with SessionLocal() as db:
+        company = db.get(Company, company_id)
+        employee = db.get(Employee, employee_id)
+        inputs = {
+            "kind": "salary", "month": "2026-10",
+            "ci": employee.document_number, "period_start": "2026-10-01",
+            "period_end": "2026-10-31", "days_worked": "30",
+            "hours_worked": "216", "pieces_or_tasks": "0", "payment_method": "Efectivo",
+            "reop_import_sha256": "a" * 64, "reop_import_source_row": 2,
+            "reop_employer_number": "97163",
+            "reop_import_options": {"night_column_is_total": False},
+        }
+        saved = {
+            "kind": "salary", "period": "2026-10",
+            "identity": {"ci": employee.document_number},
+            "earnings": [{"label": "Salario", "amount": 3044000}],
+            "deductions": [{"label": "IPS", "amount": 273960}],
+            "gross": 3044000, "discounts": 273960, "net": 2770040,
+        }
+        item = CalculationRecord(
+            company_id=company_id, employee_id=employee_id,
+            calculation_type="suite_salary", reference_period="2026-10",
+            amount=2770040, source="Importación Excel REOP", status="Borrador",
+            input_json=json.dumps(inputs), result_json=json.dumps(saved),
+        )
+        db.add(item)
+        db.flush()
+        validate_imported_reop_salary_for_approval(db, item, inputs, saved)
+        altered = {**saved, "net": 2770041}
+        with pytest.raises(ValueError, match="importe neto"):
+            validate_imported_reop_salary_for_approval(db, item, inputs, altered)
+        altered = {**saved, "gross": 3045000}
+        with pytest.raises(ValueError, match="conceptos"):
+            validate_imported_reop_salary_for_approval(db, item, inputs, altered)
+        inputs_bad = {**inputs, "reop_employer_number": "000000"}
+        with pytest.raises(ValueError, match="patronal"):
+            validate_imported_reop_salary_for_approval(db, item, inputs_bad, saved)
+        db.rollback()
