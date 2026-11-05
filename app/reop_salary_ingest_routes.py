@@ -22,7 +22,7 @@ from .models import BranchComplianceProfile, CalculationRecord, Company, Employe
 from .reop_salary_ingest import MAX_FILE_BYTES, parse_reop_workbook, _digits
 
 router = APIRouter()
-PREFIX = "/app/liquidaciones/importar-reop"
+PREFIX = "/app/liquidaciones/salarios/importar-reop"
 TYPES = ("salary", "suite_salary")
 
 
