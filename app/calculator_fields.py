@@ -29,6 +29,21 @@ EXTRA_FIELDS = [
 ]
 EXTRAS = group("Otros haberes", EXTRA_FIELDS, True)
 SALARY_EXTRAS = group("Haberes adicionales", REMUNERATIVE_EXTRA_FIELDS, False)
+REOP_INCOME_CLASSIFICATION = group("Clasificación de otros haberes para REOP", [
+    field("reop_bonuses_category", "Categoría para bonificaciones remunerativas", "select", "",
+          options=[("", "Sin clasificar (bloquea exportación si hay importe)"),
+                   ("premios", "Premios"), ("regalias", "Regalías"),
+                   ("gratificaciones", "Gratificaciones"), ("grado", "Grado académico"),
+                   ("dietas", "Dietas"), ("complemento", "Complemento salarial"),
+                   ("antiguedad", "Antigüedad")],
+          help="Cada funcionario puede tener su clasificación propia; no aplica a comisiones."),
+    field("reop_other_income_category", "Categoría para otros haberes remunerativos", "select", "",
+          options=[("", "Sin clasificar (bloquea exportación si hay importe)"),
+                   ("premios", "Premios"), ("regalias", "Regalías"),
+                   ("gratificaciones", "Gratificaciones"), ("grado", "Grado académico"),
+                   ("dietas", "Dietas"), ("complemento", "Complemento salarial"),
+                   ("antiguedad", "Antigüedad")],
+          help="Ingresá la naturaleza real del concepto. No cambies la base IPS por la clasificación.")], True)
 SALARY_OVERTIME = group("Horas nocturnas, extras y feriados", [
     field("night_premium_hours", "Horas ordinarias nocturnas · adicional del 30 %", max="744", step="0.01",
           help="Es solo el adicional nocturno sobre la base diurna, no el pago total de la hora. No lo ingreses si el salario pactado ya corresponde a la escala nocturna."),
@@ -47,7 +62,15 @@ SALARY_OVERTIME_ADJUSTMENTS = group("Bases horarias y ajustes excepcionales", [
           min="0", step="0.0001",
           help="Por defecto se estima según la escala salarial nocturna. Revisá el valor para actividades o categorías especiales."),
     field("overtime", "Ajuste manual de horas extras · Gs.",
-          help="Compatibilidad con importes antiguos o excepción documentada. No se combina con horas ingresadas por tipo.")
+          help="Importe del recibo contable. Para exportar a REOP también se requieren tipo, cantidad real de horas y respaldo; no se combina con horas calculadas por tipo."),
+    field("overtime_manual_type", "Tipo del importe manual (para REOP)", "select", "",
+          options=[("", "Sin clasificar"), ("day", "Horas extras diurnas · 50 %"),
+                   ("night", "Horas extras nocturnas · 100 %")],
+          help="Clasificación del importe ya calculado; no agrega un segundo pago."),
+    field("overtime_manual_hours", "Cantidad efectiva de horas extras del importe manual", max="744", step="0.25",
+          help="Obligatoria para exportar el importe manual a REOP. No corresponde a horas ordinarias."),
+    field("overtime_manual_evidence", "Respaldo de horas extras manuales", "text", maxlength="300",
+          help="Identificá planilla de marcaciones, autorización o registro que respalda esas horas.")
 ], True)
 IPS = group("Aportes y descuentos", [
     field("apply_ips", "Aplicar aporte IPS", "checkbox", "on"),
@@ -93,6 +116,7 @@ GROUPS = {
                   help="Seleccioná la escala conforme a la actividad y jornada. Algunos sectores tienen mínimos específicos.")]),
         SALARY_OVERTIME,
         SALARY_EXTRAS,
+        REOP_INCOME_CLASSIFICATION,
         SALARY_OVERTIME_ADJUSTMENTS,
         group("Asignación familiar", [
             field("family_children", "Cantidad de hijos con derecho documentado", value="0", max="20",
