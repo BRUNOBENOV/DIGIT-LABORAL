@@ -137,13 +137,13 @@ def test_liquidation_history_hides_old_version_but_can_show_it_for_audit(web_cas
     soup = BeautifulSoup(response.text, "html.parser")
     trace = soup.select_one("#labor-history")
     assert trace
-    assert not trace.select_one(f'a[href="/app/liquidaciones/{original.id}"]')
-    assert trace.select_one(f'a[href="/app/liquidaciones/{new.id}"]')
+    assert not trace.select_one(f'a[href="/app/reports/liquidaciones-salarios/{original.id}"]')
+    assert trace.select_one(f'a[href="/app/reports/liquidaciones-salarios/{new.id}"]')
     assert "Ver versiones anteriores (1)" in trace.get_text(" ", strip=True)
 
     full = client.get(url + "&history_all=1")
     assert full.status_code == 200
     full_trace = BeautifulSoup(full.text, "html.parser").select_one("#labor-history")
-    assert full_trace.select_one(f'a[href="/app/liquidaciones/{original.id}"]')
+    assert full_trace.select_one(f'a[href="/app/reports/liquidaciones-salarios/{original.id}"]')
     assert "Sustituido" in full_trace.get_text(" ", strip=True)
     assert db.scalar(select(CalculationRecord).where(CalculationRecord.id == original.id))
