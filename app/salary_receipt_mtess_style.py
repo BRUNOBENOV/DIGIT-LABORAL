@@ -289,7 +289,7 @@ def build_mtess_style_salary_pdf(model: dict) -> bytes:
         story.append(p("Original: Empleador. Duplicado: Trabajador.", bold))
         return story
 
-    story = copy_page("ORIGINAL · EMPLEADOR") + [PageBreak()] + copy_page("DUPLICADO · TRABAJADOR")
+    story = copy_page("ORIGINAL") + [PageBreak()] + copy_page("DUPLICADO")
 
     doc.build(story)
     return stream.getvalue()
