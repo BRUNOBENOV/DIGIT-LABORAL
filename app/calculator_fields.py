@@ -161,7 +161,11 @@ GROUPS = {
             field("proportional_days", "Días proporcionales reconocidos", max="30", step="0.01",
                   help="Ingresá el derecho verificado según causa y período.")]), ANNUAL, IPS, RECEIPT_REVIEW, IDENTITY],
     "aguinaldo": [group("Período", [field("year", "Año liquidado", min="1900", max="2100", required=True)]), ANNUAL, IDENTITY],
-    "vacation": [group("Remuneración de vacaciones", [SALARY,
+    "vacation": [group("Remuneración de vacaciones", [
+        PAY_BASIS,
+        field("salary", "Sueldo mensual de referencia · Gs.", min="0",
+              help="Para mensualizados es obligatorio. Para jornaleros es opcional si cargás el jornal real."),
+        DAILY_RATE,
         field("legal_minimum", "Mínimo legal de la actividad y período · Gs.", min="1", required=True,
               help="Consultar la escala aplicable. No se presupone que todas las actividades tengan el mismo mínimo."),
         field("vacation_quantity", "Días hábiles reconocidos", max="365", step="0.01", required=True),
