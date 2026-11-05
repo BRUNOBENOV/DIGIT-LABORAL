@@ -36,6 +36,18 @@ def _company(db: Session, user, company_id: int) -> Company:
     return company
 
 
+def _cleanup_expired_reop_files() -> None:
+    """Borra vistas y copias XLSX caducadas, también si nadie reabre el enlace."""
+    cutoff = datetime.now(UTC).timestamp() - 4 * 3600
+    for pattern in ("reop_salary_*.xlsx", "reop_salary_*.json.gz"):
+        for path in core.IMPORT_DIR.glob(pattern):
+            try:
+                if path.stat().st_mtime < cutoff:
+                    path.unlink(missing_ok=True)
+            except OSError:
+                continue
+
+
 def _preview_path(token: str) -> Path:
     if not re.fullmatch(r"[a-f0-9]{32}", token or ""):
         raise HTTPException(422, "Token de vista previa inválido.")
@@ -182,6 +194,7 @@ async def reop_salary_import_preview(
         parsed = parse_reop_workbook(content, file.filename or "")
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
+    _cleanup_expired_reop_files()
     token = secrets.token_hex(16)
     payload = {
         **parsed, "company_id": company_id, "user_id": user.id,
