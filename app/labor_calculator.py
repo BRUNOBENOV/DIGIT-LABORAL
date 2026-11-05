@@ -367,7 +367,7 @@ def calculate(data, *, judicial_evidence_verified=False):
                     "No se suma otra vez al importe calculado por horas")
                 if not manual_type:
                     result["warnings"].append(
-                        "Importe manual de horas extras sin cantidad, tipo y respaldo documental. "
+                        "Se utilizó un importe manual de horas extras sin cantidad, tipo y respaldo documental. "
                         "Se puede revisar el recibo, pero la exportación REOP de este concepto quedará bloqueada."
                     )
             elif str(data.get("overtime_manual_type") or "").strip() or str(data.get("overtime_manual_hours") or "").strip():
