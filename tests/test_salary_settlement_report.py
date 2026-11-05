@@ -245,8 +245,8 @@ def test_salary_liquidation_detail_pdf_history_and_reprint_audit():
         assert "ORIGINAL" in first
         assert "DUPLICADO" in duplicate
         assert "MINISTERIO DE TRABAJO" not in first
-        assert len(receipt.pages[0].images) == 0
-        assert len(receipt.pages[1].images) == 0  # Sin QR.
+        assert len(receipt.pages[0].images) == 1  # Logo MTESS, no QR.
+        assert len(receipt.pages[1].images) == 1  # Logo MTESS, no QR.
 
         token = re.search(r'name="csrf_token" value="([^"]+)"', detail.text)
         assert token
