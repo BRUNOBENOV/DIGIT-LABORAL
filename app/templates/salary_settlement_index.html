@@ -41,6 +41,7 @@
 </section>
 <div class="salary-report-notice"><strong>Recibo de liquidación salarial con formato inspirado en MTESS.</strong> Se presentan los importes guardados por Cálculo sin volver a calcularlos. El PDF contiene Original y Duplicado con numeración DIGIT-LABORAL, sin QR. Es un documento interno, no un formulario oficial del MTESS ni constancia de pago.</div>
 <div style="display:flex;justify-content:flex-end;gap:10px;margin:9px 0 15px">
+  <a class="btn primary" href="/app/liquidaciones/salarios/importar-reop">Importar Excel REOP</a>
   <a class="btn ghost" href="/app/reports/liquidaciones-salarios{{ '?' ~ history_toggle_query if history_toggle_query else '' }}">{{ 'Ocultar versiones anteriores' if show_superseded else 'Ver versiones anteriores' }}</a>
 </div>
 <form method="get" action="/app/reports/liquidaciones-salarios" id="salaryReportFilters" data-paginated-filters class="salary-report-filters">
