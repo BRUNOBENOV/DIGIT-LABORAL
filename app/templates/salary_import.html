@@ -30,7 +30,11 @@
     <h1>Exportación de salarios REOP / REI</h1>
     <p>Exportá desde una nómina cerrada o desde los cálculos individuales aprobados. No se recalculan importes.</p>
   </header>
-  <div style="margin-bottom:15px"><a href="/app/compliance{% if selected_company %}?company_id={{ selected_company.id }}{% endif %}" class="btn ghost">← Volver a Cumplimiento</a></div>
+  <div style="margin-bottom:15px;display:flex;gap:9px;flex-wrap:wrap">
+    <a href="/app/compliance{% if selected_company %}?company_id={{ selected_company.id }}{% endif %}" class="btn ghost">← Volver a Cumplimiento</a>
+    <a href="/app/liquidaciones/conciliar-planilla" class="btn ghost">Conciliar planilla contable antes de exportar</a>
+  </div>
+  <p class="import-salary-info"><strong>Criterios de días:</strong> REOP mensualizados = días remunerados del mes (incluidos descansos legales pagados); REOP jornaleros = jornadas efectivamente trabajadas. REI utiliza los días remunerados guardados y su propia base imponible IPS. Las horas ordinarias REOP siempre deben corresponder a asistencia real, no a un divisor de salario.</p>
   <section class="import-salary-card">
     <h2>1. Seleccionar la empresa, el origen y el formato</h2>
     {% if selected_employee %}
@@ -182,12 +186,19 @@
         {% if calculation.warnings %}
         <p class="import-salary-info">{{ calculation.warnings|join(' · ') }}</p>
         {% endif %}
+        {% if calculation.supplement.days_paid is not none %}
+        <p class="import-salary-info"><strong>Días pagados:</strong> {{ calculation.supplement.days_paid }} ·
+          <strong>Días que se exportarán a {{ authority }}:</strong>
+          {{ calculation.supplement.days_reop if authority == 'REOP' else calculation.supplement.days_rei }} ·
+          <strong>Asistencia efectiva:</strong> {{ calculation.supplement.days_worked }}.
+          Los valores deben tener respaldo documental.</p>
+        {% endif %}
         <form method="post" action="/app/compliance/salary-import/details" class="import-salary-form" data-salary-import-details>
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <input type="hidden" name="calculation_id" value="{{ calculation.id }}">
           <input type="hidden" name="authority" value="{{ authority }}">
           {% if authority == 'REI' %}
-          <p class="import-salary-info">Para el archivo REI solamente se necesitan las jornadas trabajadas. No hace falta repetir horas ordinarias ni medio de pago.</p>
+          <p class="import-salary-info">REI usa los días remunerados documentados en el cálculo, que pueden diferir de las jornadas efectivas. Esta casilla registra asistencia para trazabilidad; no reemplaza los días pagados ni exige horas ordinarias para el TXT histórico.</p>
           {% endif %}
           <label class="import-salary-confirm"><input type="checkbox" name="override_existing" value="on" data-edit-attendance> Modificar datos registrados para esta exportación</label>
           <p class="import-salary-info">Los valores cargados provienen del cálculo o del anexo revisado. Completá los faltantes; activá Modificar para reemplazar un dato existente.</p>
