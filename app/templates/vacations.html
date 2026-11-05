@@ -271,6 +271,14 @@
         <strong data-vac-balance-preview>—</strong>
         <small data-vac-balance-note>Completá los días concedidos para ver el saldo.</small>
       </div>
+      <label>Remuneración vacacional abonada · Gs.
+        <input type="number" name="paid_amount" min="1" max="1000000000000" step="1" placeholder="Completar si ya se pagó">
+        <small>Importe total del recibo, sin duplicarlo en Salarios.</small>
+      </label>
+      <label>Fecha real del pago vacacional
+        <input type="date" name="payment_date">
+        <small>Obligatoria cuando registrás importe abonado.</small>
+      </label>
       <label class="span-2">Observaciones
         <textarea name="notes" rows="3" placeholder="Autorización, fraccionamiento o régimen especial"></textarea>
       </label>
