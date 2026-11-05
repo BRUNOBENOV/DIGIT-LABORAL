@@ -280,13 +280,13 @@ def test_cancelled_salary_download_is_clearly_archival_not_blocked():
         pdf = client.get(route + "/pdf")
         assert pdf.status_code == 200, pdf.text[:150] if not pdf.content.startswith(b"%PDF") else ""
         reader = PdfReader(io.BytesIO(pdf.content))
-        assert len(reader.pages) == 2
-        for page in reader.pages:
+        assert len(reader.pages) == 3  # Original, Duplicado y anexo de dos haberes.
+        for page_number, page in enumerate(reader.pages):
             extracted = page.extract_text()
             assert "ANULADO" in extracted
             assert "DIGIT-LABORAL" in extracted
             assert f"DL-LS-{record_id:06d}" in extracted
-            assert not page.images
+            assert len(page.images) == (1 if page_number < 2 else 0)  # Solo logotipo.
         token = re.search(r'name="csrf_token" value="([^"]+)"', response.text).group(1)
         assert client.post(route + "/reimprimir", data={"csrf_token": token}).status_code == 409
         assert client.post(route + "/datos-recibo", data={
