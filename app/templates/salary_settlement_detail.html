@@ -274,46 +274,33 @@
   <p class="salary-slip-alert">El cálculo está anulado: su PDF puede descargarse como copia histórica identificada. Para completar o corregir datos emití una nueva liquidación válida.</p>
   {% endif %}
   <p class="salary-slip-online-note" style="font-size:.78rem;color:#586d88;margin:12px 0">Vista previa del <strong>Original</strong>. Al imprimir o descargar el PDF se generan dos copias, <strong>Original (empleador)</strong> y <strong>Duplicado (trabajador)</strong>, con el mismo número {{ model.code }}. Sin código QR.</p>
-  {% for copy in ['ORIGINAL · EMPLEADOR', 'DUPLICADO · TRABAJADOR'] %}
-  <article class="salary-slip-paper salary-mtess-copy {{ 'salary-mtess-duplicate' if loop.index == 2 else '' }}" id="{{ 'salary-slip-document' if loop.first else 'salary-slip-document-duplicate' }}">
+  <section class="salary-slip-paper salary-mtess-copy" style="padding:12px!important;min-height:720px;max-width:850px" aria-label="Vista previa del recibo MTESS">
     {% if model.is_annulled %}<div class="salary-mtess-annulled" role="status">ANULADO · COPIA HISTÓRICA · NO UTILIZAR COMO RECIBO VIGENTE</div>{% endif %}
-    <header class="salary-mtess-header">
-      <div class="salary-mtess-identity">
-        <span class="salary-mtess-monogram" aria-hidden="true">DL</span>
-        <span><strong>DIGIT-LABORAL</strong><small>Sistema de gestión laboral<br>Liquidación de salarios · Paraguay</small></span>
-      </div>
-      <div class="salary-mtess-heading"><div><strong>LIQUIDACIÓN DE SALARIO</strong><span>N.º&nbsp; {{ model.code }}</span></div><b>{{ 'ORIGINAL' if loop.first else 'DUPLICADO' }}{{ ' · ANULADO' if model.is_annulled else '' }}</b></div>
-    </header>
-
-    <section class="salary-mtess-group" aria-label="DATOS DEL EMPLEADOR">
-      <table class="salary-mtess-table salary-mtess-ident"><thead><tr><th>EMPLEADOR</th><th>RUC N.º</th></tr></thead>
-      <tbody><tr><td>{{ model.employer_name }}</td><td>{{ model.employer_ruc }}</td></tr></tbody></table>
-    </section>
-    <section class="salary-mtess-group" aria-label="DATOS DEL FUNCIONARIO Y PERÍODO">
-      <table class="salary-mtess-table salary-mtess-ident"><thead><tr><th>NOMBRE Y APELLIDO DEL TRABAJADOR</th><th>C.I. N.º</th></tr></thead>
-      <tbody><tr><td>{{ model.employee_name }}</td><td>{{ model.employee_ci }}</td></tr></tbody></table>
-    </section>
-    <section class="salary-mtess-group" aria-label="Período y forma de pago">
-      <table class="salary-mtess-table salary-mtess-period"><tbody><tr><th rowspan="2">PERÍODO<br>DE PAGO</th><th>DESDE</th><th>HASTA</th><th>FECHA</th><th>FORMA DE PAGO</th></tr>
-      <tr><td>{{ model.period_from_mtess_display }}</td><td>{{ model.period_to_mtess_display }}</td><td>{{ model.payment_date_display }}</td><td>{{ model.payment_method }}</td></tr></tbody></table>
-    </section>
-    <section class="salary-mtess-group" aria-label="Jornadas y horas">
-      <table class="salary-mtess-table salary-mtess-metrics"><tbody><tr>
-        <th>HORAS<br>TRABAJADAS</th><td>{{ model.hours_worked_display }}</td>
-        <th>CANTIDAD DE DÍAS<br>TRABAJADOS</th><td>{{ model.days_worked_display }}</td>
-        <th>CANTIDAD DE<br>PIEZAS O TAREAS</th><td>{{ model.pieces_or_tasks_display }}</td>
-      </tr></tbody></table>
-    </section>
-    <section class="salary-mtess-group" aria-label="Ingresos y egresos del período">
-      <table class="salary-mtess-table salary-mtess-concepts">
-        <colgroup><col style="width:17%"><col style="width:48%"><col style="width:17.5%"><col style="width:17.5%"></colgroup>
-        <thead><tr><th colspan="2">CONCEPTO</th><th>MONTO EN GS.</th><th>MONTO EN GS.</th></tr></thead>
-        <tbody>
-          {% for concept in model.earnings if concept.amount %}
-          <tr><td>{{ 'INGRESOS' if loop.first else '' }}</td><td>{{ concept.label }}</td><td class="money">{{ concept.amount|gs }}</td><td></td></tr>
-          {% else %}
-          <tr><td>INGRESOS</td><td>Sin ingresos desglosados</td><td></td><td></td></tr>
-          {% endfor %}
+    <div id="salary-mtess-pdf-message" style="padding:14px 8px;color:#405776;font-size:.85rem">
+      Cargando el mismo PDF que se descarga e imprime…
+    </div>
+    <iframe id="salary-mtess-pdf" title="Recibo Liquidación de Salarios {{ model.code }} · Original y Duplicado" style="display:none;width:100%;min-height:1000px;border:1px solid #d4dfed;background:white" loading="eager"></iframe>
+    <noscript><a href="/app/reports/liquidaciones-salarios/{{ item.id }}/pdf">Abrir el recibo PDF</a></noscript>
+  </section>
+  <script>
+  (async function () {
+    const frame = document.getElementById('salary-mtess-pdf');
+    const message = document.getElementById('salary-mtess-pdf-message');
+    try {
+      const response = await fetch('/app/reports/liquidaciones-salarios/{{ item.id }}/pdf', {credentials:'same-origin', cache:'no-store'});
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      const data = await response.blob();
+      if (!data.type.includes('pdf') || data.size < 100) throw new Error('Respuesta no válida');
+      const localPdf = URL.createObjectURL(new Blob([data], {type:'application/pdf'}));
+      frame.src = localPdf + '#toolbar=0&navpanes=0';
+      frame.style.display = 'block';
+      message.style.display = 'none';
+      window.addEventListener('pagehide', () => URL.revokeObjectURL(localPdf), {once:true});
+    } catch (error) {
+      message.textContent = 'No se pudo cargar la vista previa. Utilizá el botón Descargar PDF para abrir el recibo.';
+    }
+  })();
+  </script>
           {% for concept in model.deductions if concept.amount %}
           <tr><td>{{ 'EGRESOS' if loop.first else '' }}</td><td>{{ concept.label }}</td><td></td><td class="money">{{ concept.amount|gs }}</td></tr>
           {% else %}
@@ -349,5 +336,5 @@
   <section class="salary-slip-audit"><details><summary>Historial de reimpresiones y auditoría ({{ audit_events|length }})</summary>{% if audit_events %}<ul>{% for event in audit_events %}<li>{{ event.created_at.strftime('%d/%m/%Y %H:%M') if event.created_at else 'Fecha no disponible' }} · <strong>{{ event.action }}</strong> · {{ event.user_email }} · {{ event.detail }}</li>{% endfor %}</ul>{% else %}<p>Aún no hay eventos de auditoría registrados para este documento.</p>{% endif %}</details></section>
   <p class="salary-slip-online-note" style="font-size:.72rem;color:#748198;margin-top:12px">Las reimpresiones realizadas desde este botón o mediante descarga PDF quedan registradas en Auditoría. Usá una nueva versión de cálculo para corregir importes; no se modifica la versión ya guardada.</p>
 </div>
-{% if auto_print %}<script>window.addEventListener("load",()=>window.print());</script>{% endif %}
+{% if auto_print %}<script>window.addEventListener("load",()=>{const el=document.getElementById('salary-mtess-pdf');if(el){el.scrollIntoView({behavior:'smooth'});}});</script>{% endif %}
 {% endblock %}
