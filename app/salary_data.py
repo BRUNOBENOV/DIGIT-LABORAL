@@ -12,7 +12,8 @@ from .models import CalculationRecord, IntegrationBatch, SalaryImportDetail
 SALARY_TYPES = ("salary", "suite_salary")
 APPROVED = {"Aprobado", "Validado"}
 PENDING = {"Borrador", "Revisar", "En Revisión"}
-ATTENDANCE_FIELDS = ("days_worked", "hours_worked", "payment_method", "period_start", "period_end")
+ATTENDANCE_FIELDS = ("days_worked", "hours_worked", "payment_method", "period_start", "period_end",
+                     "payment_date", "pieces_or_tasks")
 
 
 def object_json(raw):
