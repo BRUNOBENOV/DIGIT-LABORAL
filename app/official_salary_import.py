@@ -342,9 +342,24 @@ def build_reop_xlsx(rows: list[list]) -> bytes:
         val = _text(value)
         return f'<c r="{coord}" t="inlineStr"><is><t>{escape(val)}</t></is></c>'
     xmlrows = []
-    for row_index, values in enumerate([list(REOP_HEADERS), *rows], start=1):
-        if len(values) != len(REOP_HEADERS):
+    for row_index, original_values in enumerate([list(REOP_HEADERS), *rows], start=1):
+        if len(original_values) != len(REOP_HEADERS):
             raise SalaryImportError(["La estructura REOP requiere exactamente 32 columnas."])
+        values = list(original_values)
+        if row_index > 1:
+            # REOP interpreta incluso un 0 como monto consignado. Si el
+            # descuento opcional no existe, ambas celdas deben quedar VACÍAS;
+            # escribir 0 junto al concepto vacío provoca CONCEPTO_VACIO.
+            for amount_idx, concept_idx in ((26, 27), (28, 29), (30, 31)):
+                amount, concept = values[amount_idx], values[concept_idx]
+                if amount in (None, "", 0):
+                    values[amount_idx] = None
+                    values[concept_idx] = None
+                elif not _text(concept):
+                    raise SalaryImportError([
+                        f"Fila {row_index}: {REOP_HEADERS[amount_idx]} tiene importe "
+                        f"pero falta {REOP_HEADERS[concept_idx]}."
+                    ])
         xmlrows.append('<row r="%d">%s</row>' % (
             row_index, "".join(cell(v, i, row_index) for i, v in enumerate(values, 1))
         ))
