@@ -181,7 +181,10 @@ def build_mtess_style_salary_pdf(model: dict) -> bytes:
                            special=[("BACKGROUND", (0,0), (0,-1), NAVY),
                                     ("TOPPADDING", (0,2), (-1,2), 8),
                                     ("BOTTOMPADDING", (0,2), (-1,2), 8)]))
-        story.append(Spacer(1, 5*mm))
+        story.append(Spacer(1, 4*mm))
+        if model.get("notes"):
+            story.append(p("Observaciones del cálculo: " + str(model["notes"]), small))
+            story.append(Spacer(1, 2*mm))
 
         signature_boxes = Table([
             [p("", centered), p("", centered)],
@@ -200,6 +203,7 @@ def build_mtess_style_salary_pdf(model: dict) -> bytes:
         story.append(Spacer(1, 4*mm))
         story.append(p(
             f"Documento interno generado por DIGIT-LABORAL. Referencia {model['code']}. "
+            f"Fecha de emisión registrada: {model.get('issued_date') or 'No registrada'}. "
             "No es un recibo emitido por el MTESS, ni constituye una constancia de presentación "
             "o aceptación en REOP. Original: empleador. Duplicado: trabajador.",
             note,
