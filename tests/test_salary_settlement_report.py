@@ -174,6 +174,34 @@ def test_salary_liquidation_report_shows_saved_records_and_filters():
         assert "origen: módulo cálculo" in response.text.lower()
 
 
+def test_ver_from_salary_traceability_opens_own_liquidation_not_work_certificate():
+    with TestClient(app) as client:
+        _login(client)
+        record_id, company_id, employee_id, _ = _create_salary_record()
+        url = f"/app/reports/liquidaciones-salarios/{record_id}"
+        for origin in ("Centro laboral", "Importación Excel REOP"):
+            with SessionLocal() as db:
+                record = db.get(CalculationRecord, record_id)
+                record.source = origin
+                record.status = "Borrador" if origin == "Importación Excel REOP" else "Aprobado"
+                db.commit()
+            history = client.get("/app/liquidaciones", params={
+                "tipo": "salary", "company_id": company_id,
+                "employee_id": employee_id,
+            })
+            assert history.status_code == 200, history.text[:400]
+            assert f'href="{url}"' in history.text
+            assert f'href="/app/calculations/{record_id}/certificate"' not in history.text
+            old_ver = client.get(f"/app/calculations/{record_id}/certificate",
+                                 follow_redirects=False)
+            assert old_ver.status_code == 303
+            assert old_ver.headers["location"] == url
+            receipt = client.get(url)
+            assert receipt.status_code == 200
+            assert "Liquidación de Salarios" in receipt.text
+            assert 'id="salary-mtess-pdf"' in receipt.text
+
+
 def test_report_list_hides_approved_superseded_original_but_preserves_audit_link():
     original_id, company_id, employee_id, marker = _create_salary_record()
     with SessionLocal() as db:
