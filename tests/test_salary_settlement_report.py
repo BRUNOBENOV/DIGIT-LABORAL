@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import io
 import json
 import re
 import uuid
+
+from pypdf import PdfReader
 
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -189,6 +192,23 @@ def test_salary_liquidation_detail_pdf_history_and_reprint_audit():
         assert pdf.status_code == 200
         assert pdf.headers["content-type"].startswith("application/pdf")
         assert pdf.content.startswith(b"%PDF")
+        receipt = PdfReader(io.BytesIO(pdf.content))
+        assert len(receipt.pages) == 2
+        first, duplicate = (page.extract_text() for page in receipt.pages)
+        for text in (first, duplicate):
+            assert f"DL-LS-{record_id:06d}" in text
+            assert "DIGIT-LABORAL" in text
+            assert "LIQUIDACIÓN DE SALARIO" in text
+            assert "2.700.000" in text
+            assert "243.000" in text
+            assert "2.457.000" in text
+            assert "FIRMA DEL EMPLEADOR" in text
+            assert "No registrada" in text  # No inventar fecha real de pago.
+        assert "ORIGINAL" in first
+        assert "DUPLICADO" in duplicate
+        assert "MINISTERIO DE TRABAJO" not in first
+        assert len(receipt.pages[0].images) == 0
+        assert len(receipt.pages[1].images) == 0  # Sin QR.
 
         token = re.search(r'name="csrf_token" value="([^"]+)"', detail.text)
         assert token
@@ -207,6 +227,37 @@ def test_salary_liquidation_detail_pdf_history_and_reprint_audit():
                 AuditLog.action.in_(("reimpresion_pdf_liquidacion_salario", "reimpresion_liquidacion_salario")),
             )))
             assert len(events) >= 2
+
+
+def test_receipt_uses_real_attendance_and_payment_dates_without_modifying_snapshot():
+    from app.salary_report_service import build_salary_report_model, build_salary_report_pdf
+
+    record_id, company_id, employee_id, _ = _create_salary_record()
+    with SessionLocal() as db:
+        item = db.get(CalculationRecord, record_id)
+        inputs = json.loads(item.input_json)
+        inputs.update(days_paid="30", days_worked="21", hours_worked="168",
+                      period_start="2026-10-01", period_end="2026-10-31",
+                      payment_date="2026-11-04", pieces_or_tasks="0")
+        item.input_json = json.dumps(inputs)
+        db.commit()
+        original_input, original_result = item.input_json, item.result_json
+        company = db.get(Company, company_id)
+        employee = db.get(Employee, employee_id)
+        model = build_salary_report_model(db, item, company, employee)
+        assert model["period_from_display"] == "01/10/2026"
+        assert model["period_to_display"] == "31/10/2026"
+        assert model["days_worked_display"] == "21"
+        assert model["hours_worked_display"] == "168"
+        assert model["payment_date_display"] == "04/11/2026"
+        assert model["pieces_or_tasks_display"] == "0"
+        assert model["code"] == f"DL-LS-{record_id:06d}"
+        pdf = PdfReader(io.BytesIO(build_salary_report_pdf(model)))
+        extracted = pdf.pages[0].extract_text()
+        assert "21" in extracted and "168" in extracted
+        assert "04/11/2026" in extracted
+        db.refresh(item)
+        assert (item.input_json, item.result_json) == (original_input, original_result)
 
 
 def test_reop_salary_handoff_validation_submission_and_official_receipt_archive():
