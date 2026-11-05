@@ -57,7 +57,13 @@ def _append_concept_annex(result, model):
                  (25, 47, 570, 64), size=9, color=WHITE)
             _put(page, "Detalle asociado al Original y Duplicado. Importes del cálculo guardado.",
                  (25, 75, 570, 96), size=9)
-            y = 112
+            if model.get("is_annulled"):
+                page.draw_rect(fitz.Rect(20, 98, 575, 116), color=None, fill=RED)
+                _put(page, "ANULADO · COPIA HISTÓRICA · NO UTILIZAR COMO RECIBO VIGENTE",
+                     (24, 98, 571, 116), size=10, color=WHITE, center=True, bold=True)
+                y = 128
+            else:
+                y = 112
         page.draw_rect(fitz.Rect(20, y, 575, y + 25), color=BLACK, width=.55)
         page.draw_line(fitz.Point(95, y), fitz.Point(95, y + 25), color=BLACK, width=.55)
         page.draw_line(fitz.Point(450, y), fitz.Point(450, y + 25), color=BLACK, width=.55)
