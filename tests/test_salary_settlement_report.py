@@ -221,7 +221,7 @@ def test_salary_liquidation_detail_pdf_history_and_reprint_audit():
         for expected in (
             "DATOS DEL EMPLEADOR", "DATOS DEL FUNCIONARIO Y PERÍODO",
             "Salario base", "Horas extraordinarias", "Aporte IPS trabajador",
-            "NETO A COBRAR", "Firma del empleador", "Firma del funcionario",
+            "MONTO TOTAL A COBRAR", "Firma del empleador", "Firma del empleado",
             "No es un formulario oficial",
         ):
             assert expected.lower() in detail.text.lower(), expected
@@ -265,6 +265,90 @@ def test_salary_liquidation_detail_pdf_history_and_reprint_audit():
                 AuditLog.action.in_(("reimpresion_pdf_liquidacion_salario", "reimpresion_liquidacion_salario")),
             )))
             assert len(events) >= 2
+
+
+def test_cancelled_salary_download_is_clearly_archival_not_blocked():
+    with TestClient(app) as client:
+        _login(client)
+        record_id, _, _, _ = _create_salary_record()
+        with SessionLocal() as db:
+            record = db.get(CalculationRecord, record_id)
+            record.status = "Anulado"
+            db.commit()
+        route = f"/app/reports/liquidaciones-salarios/{record_id}"
+        response = client.get(route)
+        assert response.status_code == 200
+        assert "Descargar copia ANULADA" in response.text
+        assert "ANULADO · COPIA HISTÓRICA" in response.text
+        pdf = client.get(route + "/pdf")
+        assert pdf.status_code == 200, pdf.text[:150] if not pdf.content.startswith(b"%PDF") else ""
+        reader = PdfReader(io.BytesIO(pdf.content))
+        assert len(reader.pages) == 2
+        for page in reader.pages:
+            extracted = page.extract_text()
+            assert "ANULADO" in extracted
+            assert "DIGIT-LABORAL" in extracted
+            assert f"DL-LS-{record_id:06d}" in extracted
+            assert not page.images
+        token = re.search(r'name="csrf_token" value="([^"]+)"', response.text).group(1)
+        assert client.post(route + "/reimprimir", data={"csrf_token": token}).status_code == 409
+        assert client.post(route + "/datos-recibo", data={
+            "csrf_token": token,
+            "period_start": "2026-10-01", "period_end": "2026-10-31",
+            "days_worked": "21", "hours_worked": "168", "payment_method": "Efectivo",
+        }).status_code == 409
+
+
+def test_salary_receipt_supplement_is_audited_without_mutating_calculation():
+    from app.models import SalaryImportDetail
+    from app.salary_report_service import build_salary_report_model
+    from app.reop_salary_service import build_reop_salary_payload
+
+    with TestClient(app) as client:
+        _login(client)
+        record_id, company_id, employee_id, _ = _create_salary_record()
+        with SessionLocal() as db:
+            record = db.get(CalculationRecord, record_id)
+            original = (record.input_json, record.result_json, record.amount)
+        detail = client.get(f"/app/reports/liquidaciones-salarios/{record_id}")
+        csrf = re.search(r'name="csrf_token" value="([^"]+)"', detail.text).group(1)
+        response = client.post(
+            f"/app/reports/liquidaciones-salarios/{record_id}/datos-recibo",
+            data={
+                "csrf_token": csrf, "period_start": "2026-10-01",
+                "period_end": "2026-10-31", "days_worked": "21",
+                "hours_worked": "168", "payment_method": "Transferencia",
+                "payment_date": "2026-11-04", "pieces_or_tasks": "0",
+            }, follow_redirects=False,
+        )
+        assert response.status_code == 303, response.text[:250]
+        assert "datos_guardados=1" in response.headers["location"]
+        with SessionLocal() as db:
+            record = db.get(CalculationRecord, record_id)
+            assert (record.input_json, record.result_json, record.amount) == original
+            extra = db.scalar(select(SalaryImportDetail).where(
+                SalaryImportDetail.calculation_record_id == record_id
+            ))
+            assert extra is not None
+            assert extra.payment_date.isoformat() == "2026-11-04"
+            assert extra.pieces_or_tasks == 0
+            model = build_salary_report_model(
+                db, record, db.get(Company, company_id), db.get(Employee, employee_id)
+            )
+            assert model["days_worked_display"] == "21"
+            assert model["hours_worked_display"] == "168"
+            assert model["payment_date_display"] == "04/11/2026"
+            assert model["pieces_or_tasks_display"] == "0"
+            payload = build_reop_salary_payload(
+                db, record, db.get(Company, company_id), db.get(Employee, employee_id), model
+            )
+            assert payload["payment_date"] == "2026-11-04"
+            assert payload["pieces_or_tasks"] == "0"
+        pdf = client.get(f"/app/reports/liquidaciones-salarios/{record_id}/pdf")
+        assert pdf.status_code == 200
+        contents = PdfReader(io.BytesIO(pdf.content)).pages[0].extract_text()
+        assert "04/11/2026" in contents
+        assert "168" in contents
 
 
 def test_receipt_uses_real_attendance_and_payment_dates_without_modifying_snapshot():
