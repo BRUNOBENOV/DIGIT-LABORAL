@@ -8754,8 +8754,8 @@ def register_vacation_payment(
         raise HTTPException(404, "Vacaciones no encontradas.")
     if item.status in {"Anulada", "Rechazada", "Cancelada"}:
         raise HTTPException(409, "No se puede conciliar un movimiento de vacaciones anulado.")
-    if paid_amount < 0 or paid_amount > 1000000000000:
-        raise HTTPException(422, "Ingresá un importe vacacional válido.")
+    if paid_amount <= 0 or paid_amount > 1000000000000:
+        raise HTTPException(422, "Ingresá un importe vacacional positivo.")
     try:
         paid_date = date.fromisoformat(payment_date) if payment_date else None
     except ValueError:
@@ -8839,6 +8839,8 @@ def create_vacation(
     end_date: Annotated[date | None, Form()] = None,
     status_value: Annotated[str, Form(alias="status")] = "Pendiente",
     notes: Annotated[str, Form()] = "",
+    paid_amount: Annotated[str, Form()] = "",
+    payment_date: Annotated[str, Form()] = "",
     user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
     db: Session = Depends(get_db),
 ):
@@ -8855,7 +8857,16 @@ def create_vacation(
         raise HTTPException(422, "Estado de vacaciones no válido.")
     if len(notes) > 4000:
         raise HTTPException(422, "Las observaciones superan el límite permitido.")
-    item = Vacation(employee_id=employee_id, period_year=period_year, entitled_days=entitled_days, used_days=used_days, start_date=start_date, end_date=end_date, status=status_value, notes=notes.strip())
+    if paid_amount.strip() and (not paid_amount.strip().isdigit() or not 0 < int(paid_amount.strip()) <= 1000000000000):
+        raise HTTPException(422, "La remuneración vacacional debe ser un importe entero positivo.")
+    try:
+        paid_on = date.fromisoformat(payment_date) if payment_date.strip() else None
+    except ValueError:
+        raise HTTPException(422, "La fecha de pago vacacional es inválida.") from None
+    if paid_amount.strip() and paid_on is None:
+        raise HTTPException(422, "Registrá la fecha real del pago vacacional.")
+    item = Vacation(employee_id=employee_id, period_year=period_year, entitled_days=entitled_days, used_days=used_days, start_date=start_date, end_date=end_date, status=status_value, notes=notes.strip(),
+                    paid_amount=int(paid_amount.strip()) if paid_amount.strip() else None, payment_date=paid_on)
     db.add(item)
     db.flush()
     if item.start_date:
@@ -11187,8 +11198,15 @@ async def api_create_vacation(
     notes = str(payload.get("notes") or "").strip()
     if len(notes) > 3000:
         raise HTTPException(422, "Las observaciones superan el máximo de 3.000 caracteres.")
+    payment_amount = None
+    payment_on = _api_date(payload.get("payment_date"), "payment_date")
+    if payload.get("paid_amount") not in (None, ""):
+        payment_amount = _api_int(payload["paid_amount"], "paid_amount", minimum=1, maximum=1000000000000)
+        if payment_on is None:
+            raise HTTPException(422, "La fecha real del pago vacacional es obligatoria.")
     item = Vacation(employee_id=employee.id, period_year=year, entitled_days=entitled, used_days=used,
-                    start_date=start, end_date=end, status=status_value, notes=notes)
+                    start_date=start, end_date=end, status=status_value, notes=notes,
+                    paid_amount=payment_amount, payment_date=payment_on)
     db.add(item)
     db.flush()
     if start:
