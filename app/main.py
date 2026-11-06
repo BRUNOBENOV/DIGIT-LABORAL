@@ -9063,7 +9063,7 @@ def aguinaldo_page(
                   suggested_total=suggested_total, suggested_amount=suggested_amount,
                   salary_reference=salary_reference, period_from=period_from,
                   period_until=period_until, reference_days=reference_days, coverage=coverage,
-                  suggested_year=suggested_year, suggestion_note=suggestion_note)
+                  suggested_year=suggested_year, today_year=today.year, suggestion_note=suggestion_note)
 
 
 @app.post("/app/aguinaldo")
