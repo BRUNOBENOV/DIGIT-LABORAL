@@ -5475,7 +5475,7 @@ def _employee_annual_coverage(db: Session, company: Company, employee: Employee,
         select(CalculationRecord.reference_period).where(
             CalculationRecord.company_id == company.id,
             CalculationRecord.employee_id == employee.id,
-            CalculationRecord.calculation_type == "salary",
+            CalculationRecord.calculation_type.in_(("salary", "suite_salary")),
             CalculationRecord.reference_period.like(f"{year:04d}-%"),
             CalculationRecord.status != "Anulado",
         )
@@ -9010,6 +9010,7 @@ def aguinaldo_page(
     request: Request,
     company_id: OptionalQueryId = None,
     employee_id: OptionalQueryId = None,
+    year: OptionalQueryId = None,
     user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ):
@@ -9028,24 +9029,40 @@ def aguinaldo_page(
     items = list(db.scalars(aguinaldo_query.order_by(Aguinaldo.year.desc(), Aguinaldo.created_at.desc())))
     suggested_total = None
     suggestion_note = ""
-    suggested_year = current_paraguay_date().year
+    today = current_paraguay_date()
+    suggested_year = year if year is not None and 1900 <= year <= 2100 else today.year
     selected_employee = db.get(Employee, selected_employee_id) if selected_employee_id else None
+    coverage = None
+    salary_reference = None
+    period_from = date(suggested_year, 1, 1)
+    period_until = date(suggested_year, 12, 31)
+    reference_days = 0
+    suggested_amount = None
     if selected_employee and selected_company_id and selected_employee.company_id == selected_company_id:
+        period_from = max(period_from, selected_employee.admission_date)
+        if selected_employee.termination_date:
+            period_until = min(period_until, selected_employee.termination_date)
+        reference_days = max(0, (period_until - period_from).days + 1)
+        salary_reference = selected_employee.base_salary if selected_employee.base_salary > 0 else None
         coverage = _employee_annual_coverage(
-            db, db.get(Company, selected_company_id), selected_employee, suggested_year, current_paraguay_date()
+            db, db.get(Company, selected_company_id), selected_employee, suggested_year, today
         )
         suggested_total = coverage["suggested_total"] if coverage["closed_count"] else None
+        suggested_amount = round_gs(Decimal(suggested_total) / Decimal(12)) if suggested_total is not None else None
         suggestion_note = (
-            f"Propuesta automática para el ejercicio {suggested_year}: Gs. {format_gs(coverage['suggested_total'])} "
-            f"de nóminas cerradas y consistentes; {coverage['closed_count']} de {coverage['expected_count']} "
-            "periodos esperados cubiertos. Si no hay nóminas cerradas, el importe queda vacío. "
-            "Verificá conceptos computables, ajustes y anticipos antes de aprobar."
+            f"Subtotal registrado del ejercicio {suggested_year}: Gs. {format_gs(coverage['suggested_total'])} "
+            f"en {coverage['closed_count']} de {coverage['expected_count']} períodos esperados. "
+            "Solo incluye nóminas cerradas y consistentes; los cálculos aislados (incluido REOP) "
+            "requieren revisión de sus conceptos. No se extrapolan salarios ni se completan meses faltantes."
         )
     companies = seed_choices(db, select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name), Company, request=request) if company_ids else []
     filter_employees = seed_choices(db, select(Employee).where(Employee.company_id.in_(company_ids)).order_by(Employee.full_name), Employee, request=request) if company_ids else []
     return render(request, "aguinaldo.html", db, user, employees=employees, filter_employees=filter_employees,
                   companies=companies, items=items, selected_company_id=selected_company_id,
-                  selected_employee_id=selected_employee_id, suggested_total=suggested_total,
+                  selected_employee_id=selected_employee_id, selected_employee=selected_employee,
+                  suggested_total=suggested_total, suggested_amount=suggested_amount,
+                  salary_reference=salary_reference, period_from=period_from,
+                  period_until=period_until, reference_days=reference_days, coverage=coverage,
                   suggested_year=suggested_year, suggestion_note=suggestion_note)
 
 
@@ -9066,7 +9083,7 @@ def create_aguinaldo(
         raise HTTPException(400, "El año del aguinaldo debe estar entre 1900 y 2100.")
     if not 0 <= total_remunerations <= 2147483647:
         raise HTTPException(400, "Las remuneraciones computables deben estar entre 0 y 2.147.483.647 Gs.")
-    amount = round_gs(total_remunerations / 12)
+    amount = round_gs(Decimal(total_remunerations) / Decimal(12))
     item = Aguinaldo(employee_id=employee_id, year=year, total_remunerations=total_remunerations, calculated_amount=amount, notes=notes.strip())
     db.add(item)
     try:
