@@ -48,12 +48,15 @@ def _record_link(table_name, row, employee):
         kind = row.get("calculation_type")
         if kind in {"salary", "suite_salary"}:
             return f"/app/reports/liquidaciones-salarios/{record_id}"
+        if kind in {"aguinaldo", "suite_aguinaldo"}:
+            return f"/app/reports/liquidaciones-aguinaldo/calculo/{record_id}"
         if kind:
             return "/app/calculations?" + urlencode({
                 "tipo": kind, "saved": record_id, "company_id": employee.company_id, "employee_id": employee.id,
             })
     direct = {
         "generated_certificates": f"/app/certificates/{record_id}/print",
+        "aguinaldos": f"/app/reports/liquidaciones-aguinaldo/registro/{record_id}",
         "documents": f"/app/documents/{record_id}/download",
         "payroll_lines": f"/app/payrolls/{row['payroll_id']}" if row.get("payroll_id") else None,
         "vacations": f"/app/vacations/{record_id}",
