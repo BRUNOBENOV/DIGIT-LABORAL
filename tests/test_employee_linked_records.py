@@ -4,7 +4,7 @@ from sqlalchemy import func, select
 
 from app.models import AIInteraction, CalculationRecord, Employee, GeneratedCertificate
 from tests.test_employee_deletion import deletion_case
-from tests.test_labor_suite import token
+from tests.test_labor_suite import token, web_case
 
 
 def add_references(db, company, employee):
