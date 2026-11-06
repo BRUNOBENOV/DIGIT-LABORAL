@@ -33,7 +33,7 @@
     <ul>{% for item in deletion.blockers %}<li>{{ item.label }}: <strong>{{ item.count }}</strong><a class="linked-count" href="/app/employees/{{ employee.id }}/linked-records?category={{ item.key }}">Ver registros</a></li>{% endfor %}</ul>
     <div class="delete-actions"><a class="btn primary" href="/app/employees/{{ employee.id }}/linked-records">Ver registros vinculados</a><a class="btn ghost" href="/app/employees/{{ employee.id }}">Revisar expediente</a><a class="btn ghost" href="{{ return_to }}">Volver</a></div>
     {% endif %}
-    {% if user.role == 'administrador' %}
+    {% if user.role in ['administrador','contador'] %}
     <div class="archive-choice" style="border-left:4px solid #d6a455">
       <h3>Registros de prueba · depuración controlada</h3>
       <p>Solo para funcionarios ficticios. Incluye revisión de todas sus dependencias, respaldo descargable y bloqueo de antecedentes oficiales o pagados.</p>
