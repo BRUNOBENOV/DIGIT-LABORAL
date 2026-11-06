@@ -5471,22 +5471,39 @@ def _employee_annual_coverage(db: Session, company: Company, employee: Employee,
             "base_salary": line.base_salary,
             "amounts_consistent": amounts_consistent,
         }
-    calc_periods = db.scalars(
-        select(CalculationRecord.reference_period).where(
+    # Informes → Liquidación de Salarios persiste en CalculationRecord, no
+    # necesariamente en Payroll/PayrollLine. Consolidar una sola versión por
+    # trabajador/mes, priorizando aprobados sobre borradores y sin sumar
+    # rectificaciones u otros recibos duplicados.
+    from .aguinaldo_salary_evidence import salary_calculation_evidence
+    from .salary_data import APPROVED
+
+    saved_records = list(db.scalars(
+        select(CalculationRecord).where(
             CalculationRecord.company_id == company.id,
             CalculationRecord.employee_id == employee.id,
             CalculationRecord.calculation_type.in_(("salary", "suite_salary")),
             CalculationRecord.reference_period.like(f"{year:04d}-%"),
             CalculationRecord.status != "Anulado",
-        )
-    )
-    saved_salary_periods = {str(period) for period in calc_periods if period}
+        ).order_by(CalculationRecord.created_at.desc(), CalculationRecord.id.desc())
+    ))
+    saved_salary_periods = {str(item.reference_period) for item in saved_records if item.reference_period}
+    salary_calculations_by_period = {}
+    for saved_record in saved_records:
+        period = str(saved_record.reference_period or "")
+        if not period:
+            continue
+        candidate = salary_calculation_evidence(saved_record)
+        current = salary_calculations_by_period.get(period)
+        if current is None or (candidate["status"] in APPROVED and current["status"] not in APPROVED):
+            salary_calculations_by_period[period] = candidate
     return build_annual_coverage(
         year=year,
         admission_date=employee.admission_date,
         termination_date=employee.termination_date,
         payroll_by_period=payroll_by_period,
         saved_salary_periods=saved_salary_periods,
+        salary_calculations_by_period=salary_calculations_by_period,
         today=today,
     )
 
@@ -9047,13 +9064,18 @@ def aguinaldo_page(
         coverage = _employee_annual_coverage(
             db, db.get(Company, selected_company_id), selected_employee, suggested_year, today
         )
-        suggested_total = coverage["suggested_total"] if coverage["closed_count"] else None
+        accepted_count = coverage["closed_count"] + coverage["receipt_approved_count"]
+        suggested_total = coverage["suggested_total"] if accepted_count else None
         suggested_amount = round_gs(Decimal(suggested_total) / Decimal(12)) if suggested_total is not None else None
         suggestion_note = (
-            f"Subtotal registrado del ejercicio {suggested_year}: Gs. {format_gs(coverage['suggested_total'])} "
-            f"en {coverage['closed_count']} de {coverage['expected_count']} períodos esperados. "
-            "Solo incluye nóminas cerradas y consistentes; los cálculos aislados (incluido REOP) "
-            "requieren revisión de sus conceptos. No se extrapolan salarios ni se completan meses faltantes."
+            f"Registros salariales encontrados en {coverage['documented_period_count']} "
+            f"de {coverage['expected_count']} períodos del ejercicio {suggested_year}; "
+            f"{coverage['closed_count']} nóminas cerradas y {coverage['receipt_count']} "
+            "liquidaciones individuales registradas (una fuente por mes en el subtotal). "
+            f"Bruto documentado: Gs. {format_gs(coverage['documented_gross'])}. "
+            "Solo se propone incluir nóminas cerradas y recibos aprobados con conceptos coherentes. "
+            "Los borradores se muestran pero no se agregan al aguinaldo orientativo. "
+            "No se extrapolan salarios ni se completan meses faltantes."
         )
     companies = seed_choices(db, select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name), Company, request=request) if company_ids else []
     filter_employees = seed_choices(db, select(Employee).where(Employee.company_id.in_(company_ids)).order_by(Employee.full_name), Employee, request=request) if company_ids else []
