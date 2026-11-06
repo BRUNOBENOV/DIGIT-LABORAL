@@ -149,6 +149,11 @@ def purge_preview(db, employee):
         if len(rows) > MAX_ROWS:
             problems.append(f"{name}: supera el máximo de {MAX_ROWS} registros para revisión individual.")
             continue
+        for row in rows:
+            if row.get("company_id") is not None and row["company_id"] != employee.company_id:
+                problems.append(f"{name} #{row['id']}: relación con otra empresa; requiere revisión de integridad.")
+            if name == "ai_interactions" and row.get("studio_id") is not None and row["studio_id"] != employee.company.studio_id:
+                problems.append(f"{name} #{row['id']}: consulta asociada a otro estudio.")
         if name in PROFILE_TABLES:
             continue
         if name in ALWAYS_PROTECTED or name not in ALLOWED:
