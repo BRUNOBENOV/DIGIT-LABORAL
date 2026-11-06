@@ -85,7 +85,7 @@ def aguinaldo_report_detail(
 def aguinaldo_report_payment(
     source_kind: str, record_id: int,
     payment_method: Annotated[str, Form()] = "",
-    payment_date: Annotated[date | None, Form()] = None,
+    payment_date: Annotated[str, Form()] = "",
     user: User = Depends(core.require_roles("administrador", "contador")),
     db: Session = Depends(core.get_db),
 ):
@@ -94,6 +94,11 @@ def aguinaldo_report_payment(
         raise HTTPException(409, "El registro está anulado; no admite modificaciones.")
     if payment_method not in PAYMENT_METHODS:
         raise HTTPException(422, "La forma de pago seleccionada no es válida.")
+    try:
+        parsed_payment_date = date.fromisoformat(payment_date) if payment_date else None
+    except (ValueError, TypeError):
+        raise HTTPException(422, "La fecha de pago debe tener formato AAAA-MM-DD.") from None
+    payment_date = parsed_payment_date
     if bool(payment_method) != bool(payment_date):
         raise HTTPException(422, "Para registrar un pago indicá tanto la forma como la fecha real; dejá ambos campos vacíos si no fue pagado.")
     if payment_date and payment_date > core.current_paraguay_date():
