@@ -40,7 +40,7 @@
     <a class="back-link" href="/app/employees/{{ employee.id }}/linked-records">← Ver todas las categorías</a>
     <section class="panel">
       <div class="linked-group-header"><h2>{{ selected.label }}</h2><span>{{ selected.total }} registro(s)</span></div>
-      {% for item in selected.items %}
+      {% for item in selected['items'] %}
       <div class="linked-row"><div><b>#{{ item.id }} · {{ item.title }}</b><small>{{ item.subtitle or 'Registro asociado a este legajo' }}</small></div>
         {% if item.url %}<a href="{{ item.url }}">Abrir registro</a>{% endif %}</div>
       {% else %}<p>No hay registros en esta categoría.</p>{% endfor %}
@@ -56,7 +56,7 @@
     {% for group in groups %}
     <section class="panel">
       <div class="linked-group-header"><h2>{{ group.label }}</h2><a class="btn outline" href="?category={{ group.key }}">Ver los {{ group.total }} registros</a></div>
-      {% for item in group.items %}
+      {% for item in group['items'] %}
       <div class="linked-row"><div><b>#{{ item.id }} · {{ item.title }}</b><small>{{ item.subtitle or 'Registro asociado a este legajo' }}</small></div>
         {% if item.url %}<a href="{{ item.url }}">Abrir registro</a>{% endif %}</div>
       {% endfor %}
