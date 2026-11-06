@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}{{ model.code }} | Liquidación de Aguinaldo | DIGIT-LABORAL{% endblock %}
+{% block page_name %}Informes{% endblock %}
+{% block content %}
+<style>
+.agu-detail{max-width:1150px;margin:auto;color:#233b56}.agu-detail *{box-sizing:border-box}
+.agu-detail-hero{background:linear-gradient(120deg,#0a2450,#20558e);color:white;padding:22px 25px;border-radius:16px;display:flex;justify-content:space-between;align-items:flex-start;gap:18px}
+.agu-detail-hero h1{color:#fff;margin:6px 0;font-size:1.65rem}.agu-detail-hero p{color:#d6e7fa;margin:0;font-size:.85rem}
+.agu-detail-actions{display:flex;flex-wrap:wrap;gap:8px;margin:13px 0}
+.agu-detail .panel{background:#fff;border:1px solid #dbe4ef;border-radius:13px;padding:20px;margin:12px 0}
+.agu-detail .panel h2{font-size:1.06rem;margin:0 0 12px;color:#173a62}
+.agu-detail-info{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.agu-detail-info div{background:#f7faff;border:1px solid #e1eaf6;border-radius:8px;padding:10px}
+.agu-detail-info small{font-size:.72rem;color:#6b7c92;display:block;margin-bottom:5px}
+.agu-detail-info strong{font-size:.95rem;overflow-wrap:anywhere}
+.agu-detail .agu-note{background:#fff8e9;border-left:4px solid #bb8c39;border-radius:8px;padding:13px 15px;color:#75592c;font-size:.81rem;line-height:1.55;margin:12px 0}
+.agu-detail-form{display:grid;grid-template-columns:1fr 1fr auto;gap:13px;align-items:end}
+.agu-detail-form label{display:grid;gap:7px;font-size:.8rem;color:#435c7a;font-weight:800}
+.agu-detail-form input,.agu-detail-form select{border:1px solid #c7d6e6;border-radius:8px;padding:10px;width:100%;font:inherit}
+.agu-detail .agu-preview-frame{display:block;width:100%;height:min(1120px,92vh);min-height:650px;border:1px solid #cbd6e5;border-radius:8px;background:white}
+.agu-detail .agu-muted{color:#677b91;font-size:.75rem;line-height:1.5}
+.agu-detail .agu-stat{display:inline-flex;padding:5px 10px;background:#e3eefa;color:#1f4777;border-radius:8px;font-weight:850}
+@media(max-width:700px){.agu-detail-hero{flex-direction:column}.agu-detail-info{grid-template-columns:1fr 1fr}.agu-detail-form{grid-template-columns:1fr}.agu-detail .panel{padding:14px}}
+@media(max-width:420px){.agu-detail-info{grid-template-columns:1fr}}
+@media print{.agu-detail .agu-preview-frame{height:1100px}.agu-detail-actions,.agu-detail-form,.modern-topbar,.workspace-sidebar{display:none!important}}
+</style>
+<div class="agu-detail">
+<header class="agu-detail-hero"><div><span class="eyebrow">INFORMES · RECIBO INTERNO</span>
+<h1>Liquidación de Aguinaldo</h1><p>{{ model.code }} · {{ model.source_label }} · Ejercicio {{ model.exercise or 'No registrado' }}</p></div>
+<span class="agu-stat">{{ model.status }}</span></header>
+<div class="agu-detail-actions">
+  <a class="btn ghost" href="/app/reports/liquidaciones-aguinaldo">← Historial de aguinaldos</a>
+  <a class="btn ghost" href="/app/reports/liquidaciones-aguinaldo/{{ model.source_kind }}/{{ model.id }}/pdf?vista=1" target="_blank" rel="noopener noreferrer">Abrir PDF para imprimir</a>
+  <button class="btn primary" type="button" id="aguPrintPdf">Imprimir</button>
+  <a class="btn primary" href="/app/reports/liquidaciones-aguinaldo/{{ model.source_kind }}/{{ model.id }}/pdf">Descargar PDF · Original y Copia</a>
+</div>
+{% if request.query_params.get('datos_guardados') %}<p class="agu-note" role="status">Datos de pago guardados en el recibo sin modificar el cálculo de aguinaldo.</p>{% endif %}
+{% if model.annulled %}<p class="agu-note"><strong>ANULADO:</strong> el PDF se conserva solamente como antecedente histórico, identificado como anulado.</p>{% endif %}
+{% if not model.has_payment_data %}<p class="agu-note"><strong>Pago no documentado:</strong> la liquidación está guardada, pero no hay fecha y forma de pago registradas. El recibo mostrará «No registrada» en esos campos. La aprobación de un cálculo no equivale a acreditar el pago.</p>{% else %}
+<p class="agu-note">La fecha y el medio de pago se consignaron en DIGIT-LABORAL por el usuario autorizado. Confirmá su coincidencia con el comprobante externo antes de firmar.</p>{% endif %}
+<section class="panel"><h2>Datos del recibo</h2><div class="agu-detail-info">
+<div><small>Empresa / RUC</small><strong>{{ model.employer_name }}</strong><small>{{ model.employer_ruc }}</small></div>
+<div><small>Trabajador / C.I.</small><strong>{{ model.employee_name }}</strong><small>{{ model.employee_ci }}</small></div>
+<div><small>Importe guardado</small><strong>Gs. {{ model.amount|gs }}</strong><small>{{ model.source_description }}</small></div>
+<div><small>Remuneraciones registradas</small><strong>{{ 'Gs. ' ~ (model.remunerations|gs) if model.remunerations is not none else 'No informadas' }}</strong></div>
+<div><small>Forma de pago</small><strong>{{ model.payment_method or 'No registrada' }}</strong></div>
+<div><small>Fecha real de pago</small><strong>{{ model.payment_date|fecha if model.payment_date else 'No registrada' }}</strong></div>
+</div></section>
+{% if user.role in ['administrador','contador'] and not model.annulled %}
+<section class="panel"><h2>Registrar datos reales de pago</h2>
+<p class="agu-muted">Completar estos campos solo cuando se haya efectuado el pago. Ambos son obligatorios en conjunto; no se rellenan automáticamente por el estado del cálculo.</p>
+<form method="post" action="/app/reports/liquidaciones-aguinaldo/{{ model.source_kind }}/{{ model.id }}/payment" class="agu-detail-form">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+<label>Forma de pago<select name="payment_method">{% for value in payment_methods %}<option value="{{ value }}" {{ 'selected' if model.payment_method == value }}>{{ value or 'No registrada / Sin pago confirmado' }}</option>{% endfor %}</select></label>
+<label>Fecha real de pago<input type="date" name="payment_date" value="{{ model.payment_date.isoformat() if model.payment_date else '' }}"></label>
+<button class="btn primary" type="submit">Guardar datos</button>
+</form></section>
+{% endif %}
+<section class="panel">
+<h2>Vista previa del documento listo para imprimir</h2>
+<p class="agu-muted">Es el mismo PDF que se descarga, en formato A4 con <strong>Original para empleador</strong> y <strong>Copia para trabajador</strong>. Se reproduce la organización visual del modelo aportado sin utilizar identificadores gubernamentales.</p>
+<iframe class="agu-preview-frame" id="aguinaldoReceiptPdf" title="Liquidación de Aguinaldo {{ model.code }} · Original y Copia" src="/app/reports/liquidaciones-aguinaldo/{{ model.source_kind }}/{{ model.id }}/pdf?vista=1#toolbar=0&navpanes=0" loading="eager"></iframe>
+<p class="agu-muted">Si el navegador no admite impresión del visor incorporado, utilizá «Abrir PDF para imprimir» y elegí Imprimir desde el visor.</p>
+</section>
+</div>
+<script>
+(function(){
+  const printButton = document.getElementById('aguPrintPdf');
+  if(!printButton) return;
+  printButton.addEventListener('click', function(){
+    const frame = document.getElementById('aguinaldoReceiptPdf');
+    try {
+      if(!frame || !frame.contentWindow) throw new Error('Visor no disponible');
+      frame.contentWindow.focus();
+      frame.contentWindow.print();
+    } catch (_) {
+      window.open('/app/reports/liquidaciones-aguinaldo/{{ model.source_kind }}/{{ model.id }}/pdf?vista=1', '_blank', 'noopener');
+    }
+  });
+})();
+</script>
+{% endblock %}

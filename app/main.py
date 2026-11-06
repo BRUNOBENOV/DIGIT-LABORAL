@@ -7959,6 +7959,11 @@ def salary_settlement_report_pdf(
 
 
 
+# Dedicated aguinaldo receipt routes MUST precede the report-key catch-all.
+from .aguinaldo_report_routes import router as aguinaldo_report_router
+app.include_router(aguinaldo_report_router)
+
+
 @app.get("/app/reports/{report_key}", response_class=HTMLResponse)
 def report_detail_page(
     request: Request,
@@ -7977,6 +7982,12 @@ def report_detail_page(
 ):
     if report_key == "liquidacion-salario":
         target = "/app/reports/liquidaciones-salarios"
+        if request.url.query:
+            target += f"?{request.url.query}"
+        return RedirectResponse(target, status_code=303)
+
+    if report_key == "liquidacion-aguinaldo":
+        target = "/app/reports/liquidaciones-aguinaldo"
         if request.url.query:
             target += f"?{request.url.query}"
         return RedirectResponse(target, status_code=303)

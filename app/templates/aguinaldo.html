@@ -150,7 +150,7 @@
     <h2 id="agu-records-title">Historial de aguinaldos guardados</h2>
     <div class="agu-table-wrap">
       <table>
-        <thead><tr><th>Funcionario</th><th>Empresa</th><th>Ejercicio</th><th>Remuneraciones informadas</th><th>Aguinaldo calculado</th><th>Estado</th><th>Observaciones</th></tr></thead>
+        <thead><tr><th>Funcionario</th><th>Empresa</th><th>Ejercicio</th><th>Remuneraciones informadas</th><th>Aguinaldo calculado</th><th>Estado</th><th>Observaciones</th><th>Recibo</th></tr></thead>
         <tbody>
           {% for item in items %}
           <tr>
@@ -161,8 +161,9 @@
             <td class="num"><strong>Gs. {{ item.calculated_amount|gs }}</strong></td>
             <td><span class="status-pill {{ item.status|lower }}">{{ item.status }}</span></td>
             <td>{{ item.notes or '—' }}</td>
+            <td><a class="agu-help-link" href="/app/reports/liquidaciones-aguinaldo/registro/{{ item.id }}">Ver recibo · PDF / Imprimir</a></td>
           </tr>
-          {% else %}<tr><td colspan="7">Aún no hay cálculos registrados para estos filtros.</td></tr>{% endfor %}
+          {% else %}<tr><td colspan="8">Aún no hay cálculos registrados para estos filtros.</td></tr>{% endfor %}
         </tbody>
       </table>
     </div>

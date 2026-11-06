@@ -86,7 +86,7 @@ _REPORT_LIST = [
     ("informes-salario", "Informes Salario", "Liquidaciones y remuneraciones", "Historial de resultados de cálculos de salario.", "calculation", "salary", ""),
     ("seguro-social", "Seguro Social", "IPS y cumplimiento", "Nóminas y datos de aportes al seguro social registrados.", "payroll_line", "ips", "Los valores son los registrados en DIGIT-LABORAL; confirmar con los documentos oficiales de IPS."),
     ("planilla-de-pago", "Planilla de Pago", "Liquidaciones y remuneraciones", "Detalle de conceptos, descuentos y neto de nómina.", "payroll_line", "", ""),
-    ("liquidacion-aguinaldo", "Liquidación Aguinaldo", "Vacaciones y aguinaldo", "Cálculos de aguinaldo guardados para revisión.", "calculation", "aguinaldo", "No reemplaza la validación de remuneraciones computables del periodo."),
+    ("liquidacion-aguinaldo", "Liquidación Aguinaldo", "Vacaciones y aguinaldo", "Recibos de aguinaldo guardados, con vista previa, original y copia, impresión y PDF.", "calculation", "aguinaldo", "No reemplaza la validación de remuneraciones computables del periodo."),
     ("planilla-de-horas", "Planilla de Horas", "Liquidaciones y remuneraciones", "Horas trabajadas y conceptos horarios asociados a nóminas registradas.", "payroll_line", "hours", ""),
     ("listado-vacacion", "Listado Vacación", "Vacaciones y aguinaldo", "Saldos y periodos de vacaciones registrados.", "vacation", "", "El saldo mostrado se obtiene de los días registrados; debe revisarse antes de liquidar."),
     ("listado-empresa", "Listado Empresa", "Legajos y empresas", "Directorio patronal del estudio.", "company", "", ""),

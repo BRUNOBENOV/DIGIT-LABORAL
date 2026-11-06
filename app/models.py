@@ -338,6 +338,26 @@ class Aguinaldo(Base):
     employee: Mapped[Employee] = relationship()
 
 
+
+class AguinaldoReceiptDetail(Base):
+    """Receipt-only payment fields; never modifies the saved aguinaldo calculation."""
+
+    __tablename__ = "aguinaldo_receipt_details"
+    __table_args__ = (
+        UniqueConstraint("source_kind", "source_id", name="uq_aguinaldo_receipt_source"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), index=True)
+    source_kind: Mapped[str] = mapped_column(String(20))
+    source_id: Mapped[int] = mapped_column(Integer)
+    payment_method: Mapped[str] = mapped_column(String(80), default="")
+    payment_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    updated_by: Mapped[str] = mapped_column(String(180), default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+
+
 class Document(Base):
     __tablename__ = "documents"
 
