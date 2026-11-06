@@ -16,7 +16,7 @@ from datetime import datetime
 from typing import Any
 
 from itsdangerous import BadData, URLSafeTimedSerializer
-from sqlalchemy import LargeBinary, Text, delete, func, or_, select
+from sqlalchemy import LargeBinary, delete, inspect, or_, select
 
 from .config import settings
 from .database import Base
@@ -182,6 +182,16 @@ def purge_preview(db, employee):
             if extra:
                 problems.append(f"{child.name}: contiene {len(extra)} relación(es) externas que deben conservarse "
                                 f"(dependencia en {parent}).")
+    # Detect physical FK relationships unknown to the ORM. Never trust that
+    # Base.metadata enumerates every table created by external integrations.
+    inspector = inspect(db.get_bind())
+    extra_tables = set(inspector.get_table_names()) - set(Base.metadata.tables) - {"alembic_version"}
+    for name in sorted(extra_tables):
+        for fk in inspector.get_foreign_keys(name):
+            if fk.get("referred_table") in removed:
+                problems.append(f"Tabla externa {name}: relación física no reconocida. "
+                                "Revisar la base antes de depurar.")
+                break
     # Digest includes all safe rows and employee fields, not just counts.
     employee_data = {col.name: getattr(employee, col.name) for col in employee.__table__.columns}
     backup = {"format": "digit-laboral-test-dossier-v1",
