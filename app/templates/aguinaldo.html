@@ -102,18 +102,18 @@
     <section class="agu-panel" aria-labelledby="agu-summary">
       <h2 id="agu-summary">Resumen del ejercicio {{ suggested_year }}</h2>
       <div class="agu-metrics">
-        <div class="agu-metric"><small>Remuneraciones brutas registradas en nóminas cerradas</small><strong>{{ ('Gs. ' ~ (suggested_total|gs)) if suggested_total is not none else 'Sin base suficiente' }}</strong></div>
-        <div class="agu-metric"><small>Nóminas cerradas / períodos esperados</small><strong>{{ coverage.closed_count }} / {{ coverage.expected_count }}</strong></div>
-        <div class="agu-metric"><small>Días calendario del período de referencia</small><strong>{{ reference_days }}</strong></div>
-        <div class="agu-metric accent"><small>Aguinaldo orientativo sobre el subtotal documentado</small><strong>{{ ('Gs. ' ~ (suggested_amount|gs)) if suggested_amount is not none else 'Pendiente' }}</strong></div>
+        <div class="agu-metric"><small>Remuneraciones brutas documentadas (nóminas y recibos individuales)</small><strong>Gs. {{ coverage.documented_gross|gs }}</strong></div>
+        <div class="agu-metric"><small>Meses con remuneración registrada / períodos esperados</small><strong>{{ coverage.documented_period_count }} / {{ coverage.expected_count }}</strong></div>
+        <div class="agu-metric"><small>Días calendario del ejercicio (referencia)</small><strong>{{ reference_days }}</strong></div>
+        <div class="agu-metric accent"><small>Aguinaldo orientativo sobre la base preliminar revisada</small><strong>{{ ('Gs. ' ~ (suggested_amount|gs)) if suggested_amount is not none else 'Pendiente' }}</strong></div>
       </div>
-      <p class="agu-caption"><strong>Fórmula:</strong> remuneraciones computables ÷ 12. Los días calendario no son un divisor legal para este cálculo. El sueldo actual es solo una referencia, no una sustitución de los salarios devengados.</p>
+      <p class="agu-caption"><strong>Origen de los registros:</strong> {{ coverage.closed_count }} nómina(s) cerrada(s) y {{ coverage.receipt_count }} recibo(s) individual(es) de salario; {{ coverage.receipt_approved_count }} recibo(s) incorporable(s) al subtotal preliminar. <strong>Fórmula:</strong> remuneraciones computables ÷ 12. Los días calendario no son un divisor legal; el sueldo actual no reemplaza los salarios devengados.</p>
     </section>
   </div>
   {% if coverage %}
   <section class="agu-panel" aria-labelledby="agu-coverage-title">
     <h2 id="agu-coverage-title">Detalle mensual y trazabilidad salarial</h2>
-    <p class="agu-caption">{{ coverage.coverage_note }} Los registros importados o los cálculos aislados no sustituyen automáticamente una nómina cerrada.</p>
+    <p class="agu-caption">{{ coverage.coverage_note }} Se muestran también los recibos de Informes → Liquidación de Salarios. Se utiliza un único respaldo por trabajador y mes, sin sumar dos veces nómina y recibo. Un recibo generado no acredita por sí solo que el salario esté pagado.</p>
     <div class="agu-table-wrap">
       <table>
         <thead><tr><th>Mes</th><th>Situación documental</th><th>Bruto registrado</th><th>Incluido en subtotal</th><th>Observación</th></tr></thead>
@@ -124,7 +124,12 @@
             <td><span class="agu-tag {{ month.status_key }}">{{ month.status }}</span></td>
             <td class="num">{{ ('Gs. ' ~ (month.gross|gs)) if month.gross is not none else '—' }}</td>
             <td>{{ 'Sí' if month.included_in_suggestion else 'No' }}</td>
-            <td>{{ month.note }}{% if month.has_saved_calculation %} Existe un cálculo salarial registrado.{% endif %}</td>
+            <td>{{ month.note }}
+              {% if month.salary_record_id %}
+              <a class="agu-help-link" href="/app/reports/liquidaciones-salarios/{{ month.salary_record_id }}">Ver liquidación salarial #{{ month.salary_record_id }}</a>
+              {% if month.salary_record_status %}<span class="agu-tag">{{ month.salary_record_status }}</span>{% endif %}
+              {% elif month.has_saved_calculation %}Existe un cálculo salarial guardado.{% endif %}
+            </td>
           </tr>
           {% else %}<tr><td colspan="5">No hay meses esperados para este ejercicio según las fechas del legajo.</td></tr>{% endfor %}
         </tbody>
@@ -135,7 +140,7 @@
     {% else %}
     <p class="agu-alert"><strong>Revisión necesaria:</strong> {{ suggestion_note }} La suma sugerida no equivale todavía a un aguinaldo aprobado ni acredita pagos.</p>
     {% endif %}
-    <p class="agu-caption">No se incluyen automáticamente bonificación familiar, viáticos, subsidios ni reposos médicos. Los ingresos salariales computables, como horas extraordinarias y comisiones, deben verificarse en los recibos y registros del año.</p>
+    <p class="agu-caption">La columna «Bruto registrado» muestra evidencia existente aunque esté pendiente de aprobación. La columna «Incluido en subtotal» indica lo que integra la propuesta de aguinaldo. Bonificación familiar, viáticos, subsidios y conceptos no remunerativos requieren revisión y no deben computarse automáticamente. Horas extraordinarias y comisiones se verifican con sus respaldos.</p>
   </section>
   {% endif %}
   {% else %}
