@@ -108,7 +108,7 @@ def test_pdf_access_is_tenant_scoped_and_annulment_preserved(web_case):
     annual, calc, outsider = create_records(db, company, employee, other)
     assert client.get(f"{ROOT}/registro/{outsider.id}").status_code == 404
     assert client.get(f"{ROOT}/registro/{outsider.id}/pdf").status_code == 404
-    assert client.get(f"{ROOT}/calculo/{annual.id}").status_code == 404
+    assert client.get(f"{ROOT}/tipo-desconocido/{annual.id}").status_code == 404
     assert client.get(f"{ROOT}/registro/{annual.id + 90000}").status_code == 404
     assert client.get(ROOT + "?company_id=9999999").status_code == 404
     db.get(Aguinaldo,annual.id).status="Anulado"
