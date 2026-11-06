@@ -106,6 +106,7 @@ def build_annual_coverage(
             "note": "",
         }
         if record:
+            documented_period_count += 1
             row["payroll_status"] = str(record.get("status") or "Borrador")
             row["base_salary"] = int(record.get("base_salary") or 0)
             if row["base_salary"] > 0:
@@ -127,7 +128,6 @@ def build_annual_coverage(
                 )
                 suggested_total += row["gross"]
                 closed_count += 1
-                documented_period_count += 1
             else:
                 row.update(
                     status="Nómina abierta",
@@ -168,7 +168,7 @@ def build_annual_coverage(
             missing_count += 1
         if receipt and record:
             row["note"] += " También existe una liquidación salarial individual; no se suman ambas fuentes."
-        if row["gross"] is not None and row["status_key"] not in {"inconsistent", "open"}:
+        if row["gross"] is not None and row["status_key"] != "inconsistent":
             documented_gross += row["gross"]
         rows.append(row)
 
