@@ -57,9 +57,11 @@ def test_receipt_a4_two_copies_with_ministry_logo_but_no_qr():
             "DL-LS-000021", "MINISTERIO DE TRABAJO",
             "LIQUIDACIÓN DE SALARIO", "FIRMA DEL EMPLEADOR",
             "FIRMA DEL EMPLEADO", "3.144.000", "273.960",
-            "2.870.040", "DOCUMENTO INTERNO NO OFICIAL", "REOP",
+            "2.870.040", "REOP",
         ]:
             assert fragment in text
+        assert "MODELO MTESS · DOCUMENTO INTERNO NO OFICIAL" not in text
+        assert "No es comprobante emitido por el MTESS" in text
         assert "ORIGINAL" in text if idx == 0 else "DUPLICADO" in text
         # The only embedded image is the letterhead's MTESS logo, not a QR.
         assert len(page.images) == 1

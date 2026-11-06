@@ -95,8 +95,6 @@ def build_mtess_style_salary_pdf(model: dict[str, Any]) -> bytes:
             # The source already excludes the QR. Remove any residual third-box border.
             page.add_redact_annot(fitz.Rect(447, 456, 579, 572), fill=WHITE)
             page.apply_redactions(images=0, graphics=0, text=0)
-            _put(page, "MODELO MTESS · DOCUMENTO INTERNO NO OFICIAL",
-                 (22, 87, 384, 101), size=7.7, color=RED, bold=True)
             _put(page, str(model.get("code") or ""), (430, 54.5, 570, 75), size=10, color=WHITE)
             _put(page, model.get("employer_name"), (20, 122.5, 438, 143), size=10)
             _put(page, model.get("employer_ruc"), (439, 122.5, 571, 143), size=10)
