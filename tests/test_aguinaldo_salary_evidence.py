@@ -106,6 +106,7 @@ def test_historical_periods_without_saved_receipts_still_behave_as_before():
         payroll_by_period={},
         saved_salary_periods={"2026-02"},
     )
-    assert report["documented_period_count"] == 1
+    assert report["documented_period_count"] == 0
+    assert report["missing_count"] == 3
     assert report["receipt_count"] == 0
     assert report["periods"][1]["status"] == "Solo cálculo guardado"
