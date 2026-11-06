@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}Depurar legajo de prueba | DIGIT-LABORAL{% endblock %}
+{% block page_name %}Mantenimientos{% endblock %}
+{% block content %}
+<style>
+.cleanup-page{max-width:940px;margin:0 auto;padding-bottom:30px;color:#233955}
+.cleanup-hero{padding:24px 26px;background:linear-gradient(120deg,#0c2958,#174c8b);border-radius:15px;color:#fff}
+.cleanup-hero .eyebrow{font-size:.68rem;letter-spacing:.12em;color:#d0e3fc;font-weight:800}
+.cleanup-hero h1{color:white;font-size:1.7rem;margin:5px 0}
+.cleanup-hero p{color:#deebff;margin:6px 0;font-size:.86rem;line-height:1.55}
+.cleanup-page .cleanup-card{background:#fff;border:1px solid #d8e3f0;border-radius:12px;padding:20px;margin:15px 0}
+.cleanup-page h2{font-size:1.08rem;color:#123863;margin:0 0 12px}
+.cleanup-page p{line-height:1.55}
+.cleanup-page .cleanup-alert{border:1px solid #e6c6c0;background:#fff5f2;color:#813d32;padding:14px;border-radius:10px;margin:15px 0;font-size:.83rem;line-height:1.55}
+.cleanup-page .cleanup-neutral{background:#f4f8ff;border:1px solid #cfdeef;color:#365778;padding:12px 14px;border-radius:10px;font-size:.84rem}
+.cleanup-page .cleanup-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.cleanup-page .cleanup-grid>div{background:#f7faff;padding:12px;border:1px solid #dfebf7;border-radius:10px}
+.cleanup-page .cleanup-grid span{font-size:.7rem;color:#69809b;display:block}.cleanup-page .cleanup-grid b{display:block;margin-top:6px;overflow-wrap:anywhere;font-size:.91rem}
+.cleanup-page .cleanup-counts{border-collapse:collapse;width:100%;font-size:.84rem}
+.cleanup-page .cleanup-counts td,.cleanup-page .cleanup-counts th{padding:11px 8px;text-align:left;border-bottom:1px solid #e1e9f2}
+.cleanup-page .cleanup-counts th{color:#476482;font-size:.73rem}
+.cleanup-page .cleanup-counts td:last-child,.cleanup-page .cleanup-counts th:last-child{text-align:right;font-variant-numeric:tabular-nums}
+.cleanup-page .cleanup-form label{display:block;margin:14px 0;font-size:.83rem;font-weight:750}
+.cleanup-page .cleanup-form :is(input[type=text],textarea){display:block;width:100%;box-sizing:border-box;border:1px solid #c9d7e7;border-radius:9px;padding:11px;margin-top:7px;font:inherit}
+.cleanup-page .cleanup-form label.cleanup-check{display:flex;align-items:flex-start;gap:9px;font-size:.82rem;font-weight:500;line-height:1.5}
+.cleanup-page .cleanup-form label.cleanup-check input{margin-top:4px;flex:0 0 auto}
+.cleanup-page .cleanup-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.cleanup-page .cleanup-help{font-size:.74rem;color:#60768d}
+@media(max-width:680px){.cleanup-page .cleanup-grid{grid-template-columns:1fr}.cleanup-hero{padding:20px}.cleanup-page .cleanup-card{padding:15px}}
+</style>
+<div class="cleanup-page">
+  <a class="back-link" href="/app/employees/{{ employee.id }}/linked-records">← Registros vinculados</a>
+  <header class="cleanup-hero"><span class="eyebrow">MANTENIMIENTOS · HERRAMIENTA ADMINISTRATIVA</span>
+    <h1>Depurar legajo de prueba</h1>
+    <p>Una única operación controlada para retirar un expediente sintético y sus antecedentes no presentados ni pagados. Para trabajadores reales, utilizá rectificación o archivado.</p>
+  </header>
+  {% if error %}<div class="cleanup-alert" role="alert">{{ error }}</div>{% endif %}
+  <section class="cleanup-card">
+    <h2>Identificación del expediente</h2>
+    <div class="cleanup-grid">
+      <div><span>Funcionario</span><b>{{ employee.full_name }}</b></div>
+      <div><span>Legajo</span><b>{{ employee.employee_code if employee.employee_code is not none else 'ID-' ~ employee.id }}</b></div>
+      <div><span>Empresa / estado</span><b>{{ employee.company.legal_name }} · {{ employee.status }}</b></div>
+    </div>
+    <p class="cleanup-help">El nombre del trabajador debe identificar expresamente datos sintéticos. Una empresa de prueba con trabajadores reales no habilita esta acción.</p>
+  </section>
+  <section class="cleanup-card">
+    <h2>Vista previa de dependencias</h2>
+    <p>Se encontraron <strong>{{ review.total }}</strong> registros directos asociados. Se revisan también las referencias secundarias y cualquier vínculo desconocido antes de autorizar la operación.</p>
+    <table class="cleanup-counts"><thead><tr><th>Tipo de registro</th><th>Cantidad</th></tr></thead><tbody>
+      {% for group in review.groups %}<tr><td>{{ group.label }}</td><td><strong>{{ group.count }}</strong></td></tr>
+      {% else %}<tr><td>No hay registros vinculados</td><td>0</td></tr>{% endfor %}
+    </tbody></table>
+    <p class="cleanup-help">También se eliminarán los datos de la ficha. Los eventos de auditoría permanecerán registrados.</p>
+  </section>
+  {% if review.problems %}
+  <section class="cleanup-card"><h2>Depuración bloqueada</h2>
+    <div class="cleanup-alert"><strong>Estos antecedentes requieren conservación o revisión:</strong>
+      <ul>{% for problem in review.problems %}<li>{{ problem }}</li>{% endfor %}</ul>
+    </div>
+    <p>Los registros aprobados, las presentaciones oficiales, documentos adjuntos, pagos, nóminas, certificados oficiales y categorías desconocidas no pueden suprimirse con este asistente.</p>
+    <div class="cleanup-actions"><a class="btn primary" href="/app/employees/{{ employee.id }}/linked-records">Examinar registros vinculados</a><a class="btn ghost" href="/app/employees/{{ employee.id }}/permanent-delete">Otras opciones</a></div>
+  </section>
+  {% else %}
+  <section class="cleanup-card"><h2>Respaldo obligatorio</h2>
+    <p class="cleanup-neutral">La depuración es irreversible desde la interfaz. Descargá y conservá una copia JSON de los datos originales. Incluye los valores de los registros sintéticos y sus identificadores; manejala como información confidencial.</p>
+    <div class="cleanup-actions" style="margin-top:14px">
+      <a class="btn primary" href="/app/employees/{{ employee.id }}/test-cleanup/backup.json">Descargar respaldo JSON</a>
+    </div>
+  </section>
+  <section class="cleanup-card">
+    <h2>Confirmación del administrador</h2>
+    <p class="cleanup-alert">Esta acción eliminará también el legajo del funcionario, no solo los registros vinculados. No altera otros empleados ni empresas. Si existen datos reales, pagos o comunicaciones externas, no continúes.</p>
+    <form class="cleanup-form" method="post" action="/app/employees/{{ employee.id }}/test-cleanup">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="token" value="{{ review_token }}">
+      <label>Motivo documentado de la depuración
+        <textarea name="reason" maxlength="600" rows="3" minlength="12" required placeholder="Ej.: Datos creados para pruebas funcionales, sin uso laboral ni presentación oficial."></textarea>
+      </label>
+      <label class="cleanup-check"><input type="checkbox" name="declare_synthetic" value="on" required>Certifico que este funcionario y sus antecedentes son exclusivamente datos ficticios de prueba.</label>
+      <label class="cleanup-check"><input type="checkbox" name="declare_no_external_use" value="on" required>Confirmo que no se entregaron documentos con efectos jurídicos, no se pagaron importes ni se realizaron presentaciones ante IPS, MTESS, REOP o REI.</label>
+      <label class="cleanup-check"><input type="checkbox" name="backup_saved" value="on" required>Descargué y conservé el respaldo JSON actualizado.</label>
+      <label>Escribí exactamente: <strong>{{ review.confirmation }}</strong>
+        <input type="text" name="confirmation" autocomplete="off" spellcheck="false" placeholder="{{ review.confirmation }}" required>
+      </label>
+      <p class="cleanup-help">La aprobación firmada vence en 10 minutos. Si cambian los datos, será obligatoria una nueva revisión y descarga.</p>
+      <div class="cleanup-actions"><button class="btn danger" type="submit">Depurar registros y eliminar legajo de prueba</button><a class="btn ghost" href="/app/employees/{{ employee.id }}/linked-records">Cancelar</a></div>
+    </form>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}
