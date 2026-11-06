@@ -35,6 +35,7 @@
   <div class="agu-r-actions"><a class="btn ghost" href="/app/reports">← Informes</a><a class="btn primary" href="/app/aguinaldo">Ir a Cálculo → Aguinaldo</a></div>
   <p class="agu-r-hint"><strong>Presentación interna basada en el modelo adjunto.</strong> No utiliza numeración, sello ni QR emitidos por REOP. Un cálculo aprobado no acredita por sí solo el pago al trabajador; la fecha y la forma de pago se registran por separado.</p>
   <form method="get" id="aguReportFilters" action="/app/reports/liquidaciones-aguinaldo" class="agu-r-filters" data-paginated-filters>
+    {% if filters.employee_id %}<input type="hidden" name="employee_id" value="{{ filters.employee_id }}">{% endif %}
     <label>Buscar por nombre, CI, RUC o empresa<input type="search" name="q" value="{{ filters.q }}" placeholder="Buscar funcionario o empresa…"></label>
     <label>Empresa<select name="company_id" data-searchable-entity="company" data-entity-scope="all"><option value="">Todas</option>{% for company in companies|entity_choices %}<option value="{{ company.id }}" {{ 'selected' if filters.company_id == company.id }}>{{ company.legal_name }}</option>{% endfor %}</select></label>
     <label>Ejercicio<input type="number" name="year" min="1900" max="2100" value="{{ filters.year or '' }}" placeholder="Ej.: 2026"></label>
@@ -44,7 +45,7 @@
   </form>
   <p class="agu-r-summary">{{ records.total }} registros encontrados · página {{ records.page }} de {{ records.pages }}</p>
   <section class="agu-r-table"><table id="aguinaldoReportsTable" data-server-paginated><thead><tr><th>Número interno</th><th>Empresa</th><th>Funcionario</th><th>Ejercicio</th><th>Estado</th><th>Aguinaldo</th><th>Acciones</th></tr></thead><tbody>
-  {% for item in records.items %}
+  {% for item in records['items'] %}
   <tr>
     <td><a href="/app/reports/liquidaciones-aguinaldo/{{ item.source_kind }}/{{ item.id }}">DL-AG-{{ 'A' if item.source_kind == 'registro' else 'C' }}{{ '%06d'|format(item.id) }}</a><small>{{ 'Registro anual' if item.source_kind == 'registro' else 'Calculadora' }}</small></td>
     <td>{{ item.company_name }}<small>RUC {{ item.company_ruc or 'No registrado' }}</small></td>
