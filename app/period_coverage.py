@@ -60,6 +60,7 @@ def build_annual_coverage(
     termination_date: date | None,
     payroll_by_period: Mapping[str, Mapping[str, Any]],
     saved_salary_periods: set[str] | None = None,
+    salary_calculations_by_period: Mapping[str, Mapping[str, Any]] | None = None,
     today: date | None = None,
 ) -> dict[str, Any]:
     """Describe evidence for each expected month and a conservative gross sum.
@@ -69,6 +70,7 @@ def build_annual_coverage(
     payrolls; the caller must not label it as a legally validated aguinaldo base.
     """
     saved_salary_periods = saved_salary_periods or set()
+    salary_calculations_by_period = salary_calculations_by_period or {}
     periods = expected_months(year, admission_date, termination_date, today=today)
     rows: list[dict[str, Any]] = []
     suggested_total = 0
@@ -76,11 +78,18 @@ def build_annual_coverage(
     open_count = 0
     missing_count = 0
     inconsistent_count = 0
+    receipt_count = 0
+    receipt_approved_count = 0
+    documented_period_count = 0
+    documented_gross = 0
     salary_history: list[dict[str, Any]] = []
 
     for period in periods:
         month = int(period[-2:])
         record = payroll_by_period.get(period)
+        receipt = salary_calculations_by_period.get(period)
+        if receipt:
+            receipt_count += 1
         row: dict[str, Any] = {
             "period": period,
             "month_label": MONTHS_ES[month - 1].capitalize(),
@@ -89,7 +98,10 @@ def build_annual_coverage(
             "gross": None,
             "base_salary": None,
             "payroll_status": "",
-            "has_saved_calculation": period in saved_salary_periods,
+            "has_saved_calculation": period in saved_salary_periods or bool(receipt),
+            "salary_record_id": receipt.get("record_id") if receipt else None,
+            "salary_record_status": receipt.get("status") if receipt else "",
+            "source_label": "Nómina" if record else ("Liquidación individual" if receipt else ""),
             "included_in_suggestion": False,
             "note": "",
         }
@@ -115,6 +127,7 @@ def build_annual_coverage(
                 )
                 suggested_total += row["gross"]
                 closed_count += 1
+                documented_period_count += 1
             else:
                 row.update(
                     status="Nómina abierta",
@@ -123,13 +136,29 @@ def build_annual_coverage(
                     note="Existe una nómina no cerrada; requiere revisión y no se incluye en la suma sugerida.",
                 )
                 open_count += 1
+        elif receipt:
+            receipt_gross = receipt.get("gross")
+            valid_gross = isinstance(receipt_gross, int) and not isinstance(receipt_gross, bool) and receipt_gross >= 0
+            accepted = bool(receipt.get("included_by_default")) and valid_gross
+            approved_status = str(receipt.get("status") or "") in {"Aprobado", "Validado"}
+            row.update(
+                status=("Recibo aprobado" if approved_status else "Recibo pendiente de revisión"),
+                status_key="closed" if accepted else "calculation",
+                gross=receipt_gross if valid_gross else None,
+                included_in_suggestion=accepted,
+                note=str(receipt.get("note") or "Liquidación salarial guardada para revisión."),
+            )
+            documented_period_count += 1
+            if accepted:
+                receipt_approved_count += 1
+                suggested_total += receipt_gross
         elif period in saved_salary_periods:
             row.update(
                 status="Solo cálculo guardado",
                 status_key="calculation",
                 note="Existe un cálculo de salario, pero no sustituye una nómina mensual.",
             )
-            missing_count += 1
+            documented_period_count += 1
         else:
             row.update(
                 status="Sin registro",
@@ -137,11 +166,15 @@ def build_annual_coverage(
                 note="No se encontró una nómina mensual ni un cálculo salarial guardado para este período.",
             )
             missing_count += 1
+        if receipt and record:
+            row["note"] += " También existe una liquidación salarial individual; no se suman ambas fuentes."
+        if row["gross"] is not None and row["status_key"] not in {"inconsistent", "open"}:
+            documented_gross += row["gross"]
         rows.append(row)
 
     distinct_salaries = sorted({item["base_salary"] for item in salary_history})
     changes = len(distinct_salaries) > 1
-    all_closed = bool(rows) and closed_count == len(rows)
+    all_closed = bool(rows) and closed_count + receipt_approved_count == len(rows)
     if not rows:
         coverage_note = (
             f"No hay períodos esperados para el ejercicio {year} según las fechas de ingreso y egreso registradas."
@@ -150,7 +183,7 @@ def build_annual_coverage(
         cutoff = MONTHS_ES[today.month - 1]
         if all_closed:
             coverage_note = (
-                f"Los meses transcurridos hasta {cutoff} tienen nómina cerrada y consistente. "
+                f"Los meses transcurridos hasta {cutoff} tienen evidencia salarial revisada. "
                 "Este resultado no representa el cierre anual; los meses futuros se incorporarán cuando corresponda."
             )
         else:
@@ -159,7 +192,7 @@ def build_annual_coverage(
                 "Los meses futuros no se consideran faltantes todavía."
             )
     elif all_closed:
-        coverage_note = "Cobertura documental anual completa: todos los meses esperados tienen nómina cerrada y consistente."
+        coverage_note = "Cobertura documental anual completa: los meses esperados tienen nómina cerrada o recibo individual aprobado y consistente."
     else:
         coverage_note = "El ejercicio cerrado tiene períodos faltantes o pendientes de revisión."
     return {
@@ -167,6 +200,10 @@ def build_annual_coverage(
         "periods": rows,
         "expected_count": len(rows),
         "closed_count": closed_count,
+        "receipt_count": receipt_count,
+        "receipt_approved_count": receipt_approved_count,
+        "documented_period_count": documented_period_count,
+        "documented_gross": documented_gross,
         "open_count": open_count,
         "missing_count": missing_count,
         "inconsistent_count": inconsistent_count,
@@ -177,7 +214,8 @@ def build_annual_coverage(
         "salary_values": distinct_salaries,
         "coverage_note": coverage_note,
         "legal_note": (
-            "La suma propuesta es el bruto registrado en nóminas cerradas. No constituye automáticamente la base legal "
+            "La suma propuesta toma un único respaldo por mes: nómina cerrada o recibo individual "
+            "aprobado, consistente y sin conceptos claramente excluidos. No constituye automáticamente la base legal "
             "del aguinaldo: revisá conceptos computables, ajustes, anticipos y reglas aplicables antes de aprobar."
         ),
     }
