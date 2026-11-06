@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Registros vinculados | Digit Laboral{% endblock %}
+{% block content %}
+<style>
+.employee-links{max-width:1000px;margin:0 auto;padding-bottom:30px}
+.employee-links .panel{padding:22px;margin:15px 0}
+.employee-links .linked-lead{color:#526580;margin:5px 0 0;line-height:1.55}
+.employee-links .linked-summary{display:flex;gap:10px;flex-wrap:wrap;margin:16px 0}
+.employee-links .linked-summary a{display:inline-flex;align-items:center;gap:8px;border:1px solid #d3ddeb;border-radius:10px;padding:10px 13px;color:#143b78;background:#f6f9ff;text-decoration:none;font-weight:700}
+.employee-links .linked-summary a:hover{border-color:#86a8de;background:#eaf2ff}
+.employee-links .linked-summary span{border-radius:20px;background:#e0ebfb;padding:2px 8px}
+.employee-links .linked-group-header{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px}
+.employee-links .linked-group-header h2{font-size:1.1rem;margin:0}
+.employee-links .linked-row{border-top:1px solid #e2e8f0;padding:13px 0;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px}
+.employee-links .linked-row b{display:block;font-size:.92rem;overflow-wrap:anywhere}
+.employee-links .linked-row small{display:block;margin-top:4px;color:#586b85;overflow-wrap:anywhere}
+.employee-links .linked-row a{color:#174dac;font-weight:700;font-size:.87rem;white-space:nowrap}
+.employee-links .linked-pager{display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:wrap;margin:15px 0}
+.employee-links .linked-pager a{padding:8px 12px;border:1px solid #cad5e5;border-radius:9px;text-decoration:none}
+.employee-links .linked-help{font-size:.85rem;color:#586b85;line-height:1.5}
+@media(max-width:620px){.employee-links .panel{padding:15px}.employee-links .linked-row{align-items:flex-start}}
+</style>
+<div class="employee-links">
+  <a class="back-link" href="/app/employees/{{ employee.id }}/permanent-delete">← Volver a opciones del legajo</a>
+  <div class="page-header"><div><span class="eyebrow">MANTENIMIENTOS · CONTROL DE INTEGRIDAD</span>
+    <h1>Registros vinculados</h1>
+    <p class="linked-lead"><b>{{ employee.full_name }}</b> · Legajo {{ employee.employee_code if employee.employee_code is not none else employee.id }} · {{ employee.company.legal_name }}.
+      Estos antecedentes impiden la eliminación definitiva y se conservan sin modificaciones.</p>
+  </div></div>
+  <nav class="linked-summary" aria-label="Categorías vinculadas">
+    {% for item in categories %}
+      <a href="/app/employees/{{ employee.id }}/linked-records?category={{ item.key }}" {{ 'aria-current=page' if selected and selected.key == item.key }}>
+        {{ item.label }} <span>{{ item.count }}</span>
+      </a>
+    {% else %}
+      <p>No hay registros bloqueantes. Los datos propios de la ficha pueden consultarse en la revisión de eliminación.</p>
+    {% endfor %}
+  </nav>
+  {% if selected %}
+    <a class="back-link" href="/app/employees/{{ employee.id }}/linked-records">← Ver todas las categorías</a>
+    <section class="panel">
+      <div class="linked-group-header"><h2>{{ selected.label }}</h2><span>{{ selected.total }} registro(s)</span></div>
+      {% for item in selected['items'] %}
+      <div class="linked-row"><div><b>#{{ item.id }} · {{ item.title }}</b><small>{{ item.subtitle or 'Registro asociado a este legajo' }}</small></div>
+        {% if item.url %}<a href="{{ item.url }}">Abrir registro</a>{% endif %}</div>
+      {% else %}<p>No hay registros en esta categoría.</p>{% endfor %}
+      {% if selected.pages > 1 %}
+      <nav class="linked-pager" aria-label="Páginas de registros">
+        {% if selected.page > 1 %}<a href="?category={{ selected.key }}&page={{ selected.page - 1 }}">Anterior</a>{% endif %}
+        <span>Página {{ selected.page }} de {{ selected.pages }}</span>
+        {% if selected.page < selected.pages %}<a href="?category={{ selected.key }}&page={{ selected.page + 1 }}">Siguiente</a>{% endif %}
+      </nav>
+      {% endif %}
+    </section>
+  {% else %}
+    {% for group in groups %}
+    <section class="panel">
+      <div class="linked-group-header"><h2>{{ group.label }}</h2><a class="btn outline" href="?category={{ group.key }}">Ver los {{ group.total }} registros</a></div>
+      {% for item in group['items'] %}
+      <div class="linked-row"><div><b>#{{ item.id }} · {{ item.title }}</b><small>{{ item.subtitle or 'Registro asociado a este legajo' }}</small></div>
+        {% if item.url %}<a href="{{ item.url }}">Abrir registro</a>{% endif %}</div>
+      {% endfor %}
+    </section>
+    {% endfor %}
+  {% endif %}
+  <p class="linked-help">Esta pantalla es de solo lectura. Los registros sin enlace individual se identifican por tipo, fecha y número; su conservación no se modifica desde aquí.</p>
+  <a class="btn ghost" href="/app/employees/{{ employee.id }}">Revisar expediente</a>
+</div>
+{% endblock %}

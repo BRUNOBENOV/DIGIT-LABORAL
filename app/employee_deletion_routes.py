@@ -7,6 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from . import main as core
 from .employee_deletion import DeletionConflict, REASONS, confirmation_token, deletion_preview, remove_dossier, return_url, verify_confirmation
+from .employee_linked_records import linked_record_page
 from .models import Employee, User
 
 router = APIRouter()
@@ -28,6 +29,24 @@ def preview_page(request, db, user, employee, back, *, error="", status=200):
         deletion=preview, deletion_token=confirmation_token(user, employee, preview) if preview["can_delete"] else "",
         deletion_reasons=REASONS, return_to=return_url(back, employee.company_id), deletion_error=error)
     response.status_code = status
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+@router.get("/app/employees/{employee_id}/linked-records")
+def employee_linked_records(employee_id: int, request: Request, category: str = "", page: int = 1,
+    user: User = Depends(core.require_roles("administrador", "contador")), db: Session = Depends(core.get_db)):
+    employee = allowed_employee(db, user, employee_id)
+    preview = deletion_preview(db, employee)
+    categories = preview["blockers"]
+    if category and category not in {item["key"] for item in categories}:
+        raise HTTPException(404, "No existen registros vinculados de esa categoría para este funcionario.")
+    selected = linked_record_page(db, employee, category, page=page) if category else None
+    groups = [] if selected else [
+        linked_record_page(db, employee, item["key"], page_size=5) for item in categories
+    ]
+    response = core.render(request, "employee_linked_records.html", db, user,
+        employee=employee, categories=categories, groups=groups, selected=selected)
     response.headers["Cache-Control"] = "no-store"
     return response
 
