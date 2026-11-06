@@ -156,9 +156,9 @@ def build_annual_coverage(
             row.update(
                 status="Solo cálculo guardado",
                 status_key="calculation",
-                note="Existe un cálculo de salario, pero no sustituye una nómina mensual.",
+                note="Existe una referencia salarial sin desglose verificable; no se reconoce todavía como remuneración documentada.",
             )
-            documented_period_count += 1
+            missing_count += 1
         else:
             row.update(
                 status="Sin registro",
