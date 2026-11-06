@@ -113,7 +113,8 @@ def _copy(c, model, top, label):
     _band(c, x + w * .70, top - 219, w * .30, 16, "MONTO EN GS.")
     exercise = model["exercise"] if model["exercise"] is not None else "NO INFORMADO"
     concept = f"Aguinaldo correspondiente al ejercicio {exercise}"
-    _box(c, x, top - 244, w * .70, 25, concept)
+    _band(c, x, top - 244, 86, 25, "INGRESOS")
+    _box(c, x + 86, top - 244, w * .70 - 86, 25, concept)
     _box(c, x + w * .70, top - 244, w * .30, 25, _money(model["amount"]), bold=True)
 
     _band(c, x, top - 266, w * .70, 21, "MONTO TOTAL DE INGRESOS")
