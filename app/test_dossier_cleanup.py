@@ -61,8 +61,8 @@ def synthetic_identity(employee) -> bool:
     name = _normalize(employee.full_name)
     return any(re.search(pattern, name) for pattern in (
         r"\bpersona de ejemplo\b", r"\b(?:empleado|funcionario|trabajador|persona) (?:de )?prueba\b",
-        r"\b(?:persona|empleado|funcionario|trabajador) sintetico\b",
-        r"\b(?:persona|empleado|funcionario|trabajador) ficticio\b",
+        r"\b(?:persona|empleado|funcionario|trabajador) sintetic[oa]\b",
+        r"\b(?:persona|empleado|funcionario|trabajador) fictici[oa]\b",
         r"\b(?:empleado|funcionario|trabajador|persona) demo\b",
         r"^(?:test|demo)[\s\-_#0-9]",
         r"\b(?:synthetic|syntetico|sintetica) test\b",
