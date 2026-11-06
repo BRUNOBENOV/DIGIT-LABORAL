@@ -59,6 +59,10 @@ def aguinaldo_report_index(
         records=records, companies=companies,
         filters={"company_id": company_id, "employee_id": employee_id,
                  "q": q, "status": status, "year": year},
+        pager=core.Pagination(BASE, records["total"], records["page"], records["page_size"], {
+            "company_id": company_id, "employee_id": employee_id,
+            "q": q, "status": status, "year": year,
+        }),
     )
     response.headers["Cache-Control"] = "private, no-store"
     return response
