@@ -73,8 +73,8 @@ def test_aguinaldo_screen_shows_employment_fields_and_no_fictitious_months():
         for label in (
             "Código de trabajador", "Código empresa", "Fecha de ingreso",
             "Cálculo desde", "Cálculo hasta", "Salario actual registrado",
-            "Remuneraciones brutas registradas en nóminas cerradas",
-            "Días calendario del período de referencia",
+            "Remuneraciones brutas documentadas (nóminas y recibos individuales)",
+            "Días calendario del ejercicio (referencia)",
             "Detalle mensual y trazabilidad salarial",
             "No se extrapolan salarios ni se completan meses faltantes",
         ):
@@ -86,8 +86,69 @@ def test_aguinaldo_ui_keeps_amount_separate_from_days_and_remuneration_reference
     content = path.read_text(encoding="utf-8")
     assert "annual.value" in content
     assert "Math.round(amount / 12)" in content
-    assert "Días calendario del período de referencia" in content
+    assert "Días calendario del ejercicio (referencia)" in content
     assert "Los días calendario no son un divisor legal" in content
     assert "Sin aporte IPS" in content
     assert "data-suggested-employee" in content
     assert "data-suggested-year" in content
+
+
+def test_aguinaldo_page_links_an_individual_salary_receipt_without_closed_payroll():
+    """Integración: un recibo en Informes debe constar en Aguinaldo aunque no exista nómina cerrada."""
+    import json
+    import uuid
+    from datetime import date
+    from app.models import Company, CalculationRecord
+
+    suffix = uuid.uuid4().hex[:10]
+    with TestClient(app) as client:
+        _login(client)
+        with SessionLocal() as db:
+            user = db.scalar(select(User).where(User.email == "admin@digitlaboral.com.py"))
+            assert user and user.studio_id
+            company = Company(studio_id=user.studio_id,
+                              legal_name="Prueba aguinaldo recibo " + suffix,
+                              ruc="99990000-0")
+            db.add(company)
+            db.flush()
+            worker = Employee(company_id=company.id, employee_code=int(suffix[:6], 16) % 9_000_000 + 1,
+                              full_name="Funcionario prueba aguinaldo " + suffix,
+                              document_number=str(int(suffix, 16) % 9_000_000 + 1),
+                              admission_date=date(2023, 1, 13), base_salary=3_044_000)
+            db.add(worker)
+            db.flush()
+            calc = CalculationRecord(
+                company_id=company.id, employee_id=worker.id,
+                calculation_type="suite_salary", reference_period="2026-10",
+                input_json=json.dumps({"kind": "salary", "month": "2026-10"}),
+                result_json=json.dumps({
+                    "kind": "salary", "period": "2026-10",
+                    "earnings": [{"label": "Salario del periodo", "amount": 3_044_000}],
+                    "deductions": [], "gross": 3_044_000,
+                    "discounts": 0, "net": 3_044_000,
+                }),
+                amount=3_044_000, source="Centro laboral", status="Borrador",
+            )
+            db.add(calc)
+            db.commit()
+            company_id, employee_id, calc_id = company.id, worker.id, calc.id
+        detail = client.get("/app/aguinaldo", params={
+            "company_id": company_id, "employee_id": employee_id, "year": 2026,
+        })
+        assert detail.status_code == 200, detail.text[:600]
+        assert "1 / 11" in detail.text
+        assert "3.044.000" in detail.text
+        assert "Recibo pendiente de revisión" in detail.text
+        assert f"/app/reports/liquidaciones-salarios/{calc_id}" in detail.text
+        assert "No se extrapolan salarios ni se completan meses faltantes" in detail.text
+        # Cambiar solo estado, sin recalcular importes; ya puede entrar en base preliminar.
+        with SessionLocal() as db:
+            item = db.get(CalculationRecord, calc_id)
+            item.status = "Aprobado"
+            db.commit()
+        approved = client.get("/app/aguinaldo", params={
+            "company_id": company_id, "employee_id": employee_id, "year": 2026,
+        })
+        assert approved.status_code == 200
+        assert "Recibo aprobado" in approved.text
+        assert "253.667" in approved.text
