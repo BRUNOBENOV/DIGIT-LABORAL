@@ -130,7 +130,7 @@
         </tbody>
       </table>
     </div>
-    {% if coverage.is_complete and suggested_year < (request.query_params.get('today_year', suggested_year)|int) %}
+    {% if coverage.is_complete and suggested_year < today_year %}
     <p class="agu-good">La cobertura documental está completa. Verificá los conceptos legalmente computables antes de aprobar.</p>
     {% else %}
     <p class="agu-alert"><strong>Revisión necesaria:</strong> {{ suggestion_note }} La suma sugerida no equivale todavía a un aguinaldo aprobado ni acredita pagos.</p>
