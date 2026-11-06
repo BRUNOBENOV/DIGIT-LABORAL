@@ -87,14 +87,17 @@ def test_synthetic_bundle_with_exit_certificate_and_unsubmitted_reop_is_atomic(w
     assert backup["employee"]["id"] == employee.id
     assert len(backup["records"]["compliance_events"]) == 2
     assert backup["fingerprint_sha256"]
-    response = client.post(BASE.format(id=employee.id), data=data, follow_redirects=False)
+    target_employee_id = employee.id
+    target_calc_id, target_cert_id = calc.id, cert.id
+    target_exit_id, target_final_id = exit_record.id, final.id
+    response = client.post(BASE.format(id=target_employee_id), data=data, follow_redirects=False)
     assert response.status_code == 303, response.text
     db.expire_all()
-    for model, entity_id in ((Employee, employee.id), (CalculationRecord,calc.id),
-                             (GeneratedCertificate,cert.id), (EmployeeExit,exit_record.id),
-                             (FinalSettlement,final.id)):
+    for model, entity_id in ((Employee, target_employee_id), (CalculationRecord, target_calc_id),
+                             (GeneratedCertificate, target_cert_id), (EmployeeExit, target_exit_id),
+                             (FinalSettlement, target_final_id)):
         assert db.get(model, entity_id) is None
-    assert db.scalar(select(func.count(ComplianceEvent.id)).where(ComplianceEvent.employee_id == employee.id)) == 0
+    assert db.scalar(select(func.count(ComplianceEvent.id)).where(ComplianceEvent.employee_id == target_employee_id)) == 0
     assert db.get(Employee, other.id) is not None
     audit = db.scalar(select(AuditLog).where(AuditLog.action == "depurar_legajo_sintetico"))
     assert audit is not None
