@@ -37,7 +37,7 @@ def _page(request, db, user, employee, preview, *, error="", status=200):
 @router.get(BASE)
 def test_cleanup_preview(
     employee_id: int, request: Request,
-    user: User = Depends(core.require_roles("administrador")),
+    user: User = Depends(core.require_roles("administrador", "contador")),
     db: Session = Depends(core.get_db),
 ):
     employee = allowed_employee(db, user, employee_id)
@@ -48,7 +48,7 @@ def test_cleanup_preview(
 @router.get(BASE + "/backup.json")
 def test_cleanup_backup(
     employee_id: int,
-    user: User = Depends(core.require_roles("administrador")),
+    user: User = Depends(core.require_roles("administrador", "contador")),
     db: Session = Depends(core.get_db),
 ):
     employee = allowed_employee(db, user, employee_id)
@@ -84,7 +84,7 @@ def test_cleanup_confirm(
     declare_synthetic: Annotated[str, Form()] = "",
     declare_no_external_use: Annotated[str, Form()] = "",
     backup_saved: Annotated[str, Form()] = "",
-    user: User = Depends(core.require_roles("administrador")),
+    user: User = Depends(core.require_roles("administrador", "contador")),
     db: Session = Depends(core.get_db),
 ):
     employee = allowed_employee(db, user, employee_id, lock=True)

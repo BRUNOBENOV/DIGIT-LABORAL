@@ -178,10 +178,46 @@ def test_security_csrf_tampering_and_snapshot_change(web_case):
     db.commit()
     assert client.post(BASE.format(id=employee.id),data=data).status_code == 409
     assert db.get(Employee,employee.id) is not None
-    box["user"].role="contador"
+    box["user"].role="auxiliar"
     db.commit()
     assert client.get(BASE.format(id=employee.id)).status_code == 403
     assert client.post(BASE.format(id=employee.id),data=data).status_code == 403
+
+
+
+
+def test_contador_can_purge_synthetic_dossier_with_all_safeguards(web_case):
+    client, db, box, company, employee, other = setup_case(web_case)
+    box["user"].role = "contador"
+    db.commit()
+    calc, cert, exit_record, final, events = dossier(db, company, employee)
+    employee_id, other_id = employee.id, other.id
+    calc_id, cert_id = calc.id, cert.id
+    url = BASE.format(id=employee_id)
+
+    # Same-company, study-scoped access; users cannot inspect other studies.
+    assert client.get(BASE.format(id=other_id)).status_code == 404
+    linked = client.get(f"/app/employees/{employee_id}/linked-records")
+    assert linked.status_code == 200
+    assert f'href="{url}"' in linked.text
+    blocked_delete = client.get(f"/app/employees/{employee_id}/permanent-delete")
+    assert blocked_delete.status_code == 200
+    assert f'href="{url}"' in blocked_delete.text
+
+    data = form_data(client, employee)
+    assert client.post(url, data=data, follow_redirects=False).status_code == 409
+    download = client.get(url + "/backup.json")
+    assert download.status_code == 200
+    assert download.json()["employee"]["id"] == employee_id
+    response = client.post(url, data=data, follow_redirects=False)
+    assert response.status_code == 303, response.text
+    db.expire_all()
+    assert db.get(Employee, employee_id) is None
+    assert db.get(CalculationRecord, calc_id) is None
+    assert db.get(GeneratedCertificate, cert_id) is None
+    assert db.get(Employee, other_id) is not None
+    audit = db.scalar(select(AuditLog).where(AuditLog.action == "depurar_legajo_sintetico"))
+    assert audit is not None and audit.user_email == box["user"].email
 
 
 def test_unknown_physical_dependency_prevents_purge(web_case):

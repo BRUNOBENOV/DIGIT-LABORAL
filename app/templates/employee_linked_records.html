@@ -63,7 +63,7 @@
     </section>
     {% endfor %}
   {% endif %}
-  {% if user.role == 'administrador' %}
+  {% if user.role in ['administrador','contador'] %}
   <section class="panel" style="border-left:4px solid #d6a455">
     <h2 style="font-size:1rem;color:#173b62">Herramienta de mantenimiento · datos de prueba</h2>
     <p style="font-size:.83rem;color:#526580;line-height:1.55">Si este expediente fue creado exclusivamente para pruebas y no tiene pagos, declaraciones oficiales ni documentos reales, podés revisar una depuración controlada. La herramienta bloqueará los antecedentes protegidos.</p>
