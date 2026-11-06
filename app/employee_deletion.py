@@ -19,6 +19,7 @@ LABELS = {
     "aguinaldos": "Aguinaldos registrados", "company_requests": "Solicitudes vinculadas",
     "compliance_events": "Registros de cumplimiento", "labor_operations": "Operaciones laborales",
     "labor_deadlines": "Vencimientos vinculados", "ai_interactions": "Consultas del asistente vinculadas",
+    "aguinaldo_receipt_details": "Datos de pago de recibos de aguinaldo",
 }
 REASONS = ("Carga errónea", "Registro duplicado", "Registro de prueba", "Depuración de legajo histórico", "Otro motivo")
 RETURN_KEYS = {"q", "company_id", "section_id", "status_filter", "show_archived", "page", "page_size", "employee_quick", "employee_sort", "direction"}
