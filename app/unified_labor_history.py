@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from .legacy_notice_import import EVENT_TYPE as NOTICE_EVENT_TYPE, legacy_notice_data
 from .legacy_vacation_import import EVENT_TYPE as VACATION_EVENT_TYPE, event_legacy_data
+from .legacy_salary_mov_import import EVENT_TYPE as MOV_EVENT_TYPE, event_data as mov_event_data
 from .models import CalculationRecord, Employee, EmployeeEvent, Vacation
 
 DEFAULT_PAGE_SIZE = 40
@@ -72,8 +73,12 @@ def _unified_page(
                         if live_model is CalculationRecord else _live_vacation(live[record_id]))
         elif kind == archived_kind and record_id in archive:
             record = archive[record_id]
-            rows.append(_legacy_vacation(record) if archived_kind == "vacation"
-                        or record.event_type == VACATION_EVENT_TYPE else _legacy_notice(record))
+            if archived_kind == "vacation" or record.event_type == VACATION_EVENT_TYPE:
+                rows.append(_legacy_vacation(record))
+            elif record.event_type == MOV_EVENT_TYPE:
+                rows.append(_legacy_salary(record))
+            else:
+                rows.append(_legacy_notice(record))
     return {
         "rows": rows, "total": total, "page": page, "pages": pages,
         "first": (page - 1) * page_size + 1 if total else 0,
@@ -111,6 +116,24 @@ def _legacy_notice(event: EmployeeEvent) -> dict:
                f"FECSAL: {info.get('departure_date_source') or '—'}",
         source=info, days=days, used_days=None, balance=None,
         url=f"/app/legacy-notices/{event.id}",
+        record=event, can_use_document=False,
+    )
+
+
+def _legacy_salary(event: EmployeeEvent) -> dict:
+    source = mov_event_data(event.detail) or {}
+    values = source.get("values") or {}
+    amount = values.get("SALARI") or None
+    return dict(
+        origin="imported", id=event.id, date=event.effective_date,
+        employee=event.employee, company=event.employee.company,
+        label="Salario · MOV", period=source.get("period") or event.effective_date.strftime("%Y-%m"),
+        amount=amount, status="Sin conciliar",
+        detail="Movimiento del sistema anterior; importe de origen sin aprobación ni recibo en DIGIT LABORAL.",
+        source=source, days=values.get("DIATRA"), used_days=None, balance=None,
+        url=("/app/reports/liquidaciones-salarios?employee_id=" + str(event.employee_id)
+             + "&period=" + (source.get("period") or event.effective_date.strftime("%Y-%m"))
+             + "&source=historical"),
         record=event, can_use_document=False,
     )
 
@@ -215,6 +238,7 @@ def calculation_history_page(
     page: int = 1, page_size: int = DEFAULT_PAGE_SIZE,
     include_center_calculations: bool = False,
     include_superseded_salary: bool = False,
+    include_mov_salary: bool = False,
 ) -> dict[str, Any]:
     ids = tuple(company_ids)
     superseded = (
@@ -241,16 +265,19 @@ def calculation_history_page(
         _normalized_date(CalculationRecord.created_at).label("record_date"),
     ).order_by(None)
 
+    event_types = (
+        ([NOTICE_EVENT_TYPE, VACATION_EVENT_TYPE, MOV_EVENT_TYPE]
+         if include_mov_salary else [NOTICE_EVENT_TYPE, VACATION_EVENT_TYPE])
+        if tipo is None else
+        [NOTICE_EVENT_TYPE] if tipo == "notice" else
+        [VACATION_EVENT_TYPE] if tipo == "vacation" else
+        [MOV_EVENT_TYPE] if tipo in {"salary", "suite_salary"} else []
+    )
     events = select(EmployeeEvent).join(
         Employee, EmployeeEvent.employee_id == Employee.id
     ).where(
         Employee.company_id.in_(ids),
-        EmployeeEvent.event_type.in_(
-            [NOTICE_EVENT_TYPE, VACATION_EVENT_TYPE]
-            if tipo is None else
-            [NOTICE_EVENT_TYPE] if tipo == "notice" else
-            [VACATION_EVENT_TYPE] if tipo == "vacation" else []
-        ),
+        EmployeeEvent.event_type.in_(event_types),
     ) if ids else select(EmployeeEvent).where(False)
     if company_id is not None:
         events = events.where(Employee.company_id == company_id)
