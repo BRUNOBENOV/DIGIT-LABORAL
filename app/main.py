@@ -164,6 +164,7 @@ from .historical_notice_context import (
 )
 from .unified_labor_history import calculation_history_page, vacation_history_page
 from .legacy_salary_mov_import import EVENT_TYPE as LEGACY_MOV_EVENT_TYPE, historical_mov_detail
+from .legacy_liq_import import EVENT_TYPE as LEGACY_LIQ_EVENT_TYPE, historical_liq_detail
 from .legacy_notice_exceptions import list_notice_exceptions
 from .legacy_vacation_import import (
     EVENT_TYPE as LEGACY_VACATION_EVENT_TYPE, MAX_BYTES as LEGACY_VACATION_MAX_BYTES,
@@ -3840,10 +3841,11 @@ def employee_detail_page(
         event.id: (
             historical_vacation_detail(event) if event.event_type == LEGACY_VACATION_EVENT_TYPE
             else historical_mov_detail(event) if event.event_type == LEGACY_MOV_EVENT_TYPE
+            else historical_liq_detail(event) if event.event_type == LEGACY_LIQ_EVENT_TYPE
             else notice_history_detail(event)
         )
         for event in events
-        if event.event_type in {LEGACY_VACATION_EVENT_TYPE, LEGACY_NOTICE_EVENT_TYPE, LEGACY_MOV_EVENT_TYPE}
+        if event.event_type in {LEGACY_VACATION_EVENT_TYPE, LEGACY_NOTICE_EVENT_TYPE, LEGACY_MOV_EVENT_TYPE, LEGACY_LIQ_EVENT_TYPE}
     }
     return render(
         request, "employee_detail.html", db, user, employee=employee, events=events, salaries=salaries,
@@ -9528,12 +9530,12 @@ def employee_history_page(
         history = {
             "events": list(db.scalars(select(EmployeeEvent).where(
                 EmployeeEvent.employee_id == selected.id,
-                EmployeeEvent.event_type.notin_([LEGACY_NOTICE_EVENT_TYPE, LEGACY_VACATION_EVENT_TYPE, LEGACY_MOV_EVENT_TYPE]),
+                EmployeeEvent.event_type.notin_([LEGACY_NOTICE_EVENT_TYPE, LEGACY_VACATION_EVENT_TYPE, LEGACY_MOV_EVENT_TYPE, LEGACY_LIQ_EVENT_TYPE]),
             ).order_by(EmployeeEvent.effective_date.desc(), EmployeeEvent.created_at.desc()).limit(100))),
             "salary_history": list(db.scalars(select(SalaryHistory).where(SalaryHistory.employee_id == selected.id).order_by(SalaryHistory.effective_from.desc()).limit(100))),
             "calculation_feed": calculation_history_page(
                 db, company_ids, employee_id=selected.id, page=1, page_size=40,
-                include_center_calculations=True, include_mov_salary=True,
+                include_center_calculations=True, include_mov_salary=True, include_liq_settlement=True,
             ),
             "operations": list(db.scalars(select(LaborOperation).where(LaborOperation.employee_id == selected.id).order_by(LaborOperation.effective_date.desc()).limit(100))),
             "vacation_feed": vacation_history_page(
@@ -11595,4 +11597,12 @@ register_mov_routes(
     app, import_dir=IMPORT_DIR, render=render, get_db=get_db,
     require_user=require_user, require_roles=require_roles,
     company_ids_for_user=company_ids_for_user, write_audit=write_audit,
+)
+
+# Importación LSLIQ dentro de Liquidación final; mantiene el mismo historial y legajo.
+from .legacy_liq_routes import register_liq_routes
+register_liq_routes(
+    app, import_dir=IMPORT_DIR, render=render, get_db=get_db,
+    require_roles=require_roles, company_ids_for_user=company_ids_for_user,
+    write_audit=write_audit,
 )
