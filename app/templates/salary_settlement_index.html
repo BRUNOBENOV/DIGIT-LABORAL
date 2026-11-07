@@ -39,6 +39,7 @@
   <div><span class="eyebrow">INFORMES · REMUNERACIONES</span><h1>Liquidación de Salarios</h1><p>Consultá en una misma lista las liquidaciones guardadas en DIGIT LABORAL y los movimientos históricos vinculados desde el sistema anterior. Los recibos y PDF solo corresponden a liquidaciones emitidas en DIGIT LABORAL.</p></div>
   <div class="salary-reports-count"><b>{{ total }}</b><span>registros encontrados</span></div>
 </section>
+{% if request.query_params.get('imported') is not none %}<div class="salary-report-notice" role="status"><strong>Movimientos históricos incorporados:</strong> {{ request.query_params.get('imported') }}. Omitidos por existir: {{ request.query_params.get('existing', '0') }}. Sin vínculo: {{ request.query_params.get('rejected', '0') }}. Conflictos: {{ request.query_params.get('conflicts', '0') }}. Los antecedentes están disponibles en esta misma lista.</div>{% endif %}
 <div class="salary-report-notice"><strong>Recibo de liquidación salarial con formato inspirado en MTESS.</strong> Se presentan los importes guardados por Cálculo sin volver a calcularlos. El PDF contiene Original y Duplicado con numeración DIGIT-LABORAL, sin QR. Es un documento interno, no un formulario oficial del MTESS ni constancia de pago.</div>
 <div style="display:flex;justify-content:flex-end;gap:10px;margin:9px 0 15px">
   <a class="btn primary" href="/app/liquidaciones/salarios/importar-reop">Importar Excel REOP</a>
