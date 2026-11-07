@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session, selectinload
 from .legacy_notice_import import EVENT_TYPE as NOTICE_EVENT_TYPE, legacy_notice_data
 from .legacy_vacation_import import EVENT_TYPE as VACATION_EVENT_TYPE, event_legacy_data
 from .legacy_salary_mov_import import EVENT_TYPE as MOV_EVENT_TYPE, event_data as mov_event_data
+from .legacy_liq_import import EVENT_TYPE as LIQ_EVENT_TYPE, liq_event_data
 from .models import CalculationRecord, Employee, EmployeeEvent, Vacation
 
 DEFAULT_PAGE_SIZE = 40
@@ -77,6 +78,8 @@ def _unified_page(
                 rows.append(_legacy_vacation(record))
             elif record.event_type == MOV_EVENT_TYPE:
                 rows.append(_legacy_salary(record))
+            elif record.event_type == LIQ_EVENT_TYPE:
+                rows.append(_legacy_settlement(record))
             else:
                 rows.append(_legacy_notice(record))
     return {
@@ -134,6 +137,31 @@ def _legacy_salary(event: EmployeeEvent) -> dict:
         url=("/app/reports/liquidaciones-salarios?employee_id=" + str(event.employee_id)
              + "&period=" + (source.get("period") or event.effective_date.strftime("%Y-%m"))
              + "&source=historical"),
+        record=event, can_use_document=False,
+    )
+
+
+def _legacy_settlement(event: EmployeeEvent) -> dict:
+    source = liq_event_data(event) or {}
+    values = source.get("values") or {}
+    pieces = []
+    for key, label in (("AGUINA", "Aguinaldo"), ("CAUSAD", "Vac. causadas"),
+                       ("PROPOR", "Vac. proporcionales"), ("PREAVI", "Preaviso"),
+                       ("INDEMN", "Indemnización")):
+        value = values.get(key)
+        if value not in (None, ""):
+            pieces.append(f"{label}: {value} Gs.")
+    return dict(
+        origin="imported", id=event.id, date=event.effective_date,
+        employee=event.employee, company=event.employee.company,
+        label="Liquidación final · LIQ",
+        period=source.get("departure") or event.effective_date.isoformat(),
+        amount=None, status="Sin conciliar",
+        detail="; ".join(pieces) + ". Motivo de origen: " +
+               str(values.get("MOTSAL") or "no informado") +
+               ". Antecedente sin constancia de pago ni aprobación en DIGIT LABORAL.",
+        source=source, days=None, used_days=None, balance=None,
+        url=f"/app/employees/{event.employee_id}#timeline",
         record=event, can_use_document=False,
     )
 
@@ -239,6 +267,7 @@ def calculation_history_page(
     include_center_calculations: bool = False,
     include_superseded_salary: bool = False,
     include_mov_salary: bool = False,
+    include_liq_settlement: bool = False,
 ) -> dict[str, Any]:
     ids = tuple(company_ids)
     superseded = (
@@ -266,12 +295,14 @@ def calculation_history_page(
     ).order_by(None)
 
     event_types = (
-        ([NOTICE_EVENT_TYPE, VACATION_EVENT_TYPE, MOV_EVENT_TYPE]
-         if include_mov_salary else [NOTICE_EVENT_TYPE, VACATION_EVENT_TYPE])
+        ([NOTICE_EVENT_TYPE, VACATION_EVENT_TYPE]
+         + ([MOV_EVENT_TYPE] if include_mov_salary else [])
+         + ([LIQ_EVENT_TYPE] if include_liq_settlement else []))
         if tipo is None else
         [NOTICE_EVENT_TYPE] if tipo == "notice" else
         [VACATION_EVENT_TYPE] if tipo == "vacation" else
-        [MOV_EVENT_TYPE] if tipo in {"salary", "suite_salary"} else []
+        [MOV_EVENT_TYPE] if tipo in {"salary", "suite_salary"} else
+        [LIQ_EVENT_TYPE] if tipo in {"settlement", "suite_settlement"} else []
     )
     events = select(EmployeeEvent).join(
         Employee, EmployeeEvent.employee_id == Employee.id
