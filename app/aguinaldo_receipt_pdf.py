@@ -1,9 +1,9 @@
 """Aguinaldo receipt with the reference model's exact sheet geometry.
 
-Keeps the 595 x 678 pt original/copy layout, 319-pt repeat, original
-colors, grid, spacing and signature areas. The REOP QR and official
-issuing identity are NOT copied. DIGIT-LABORAL's real brand and internal
-receipt number replace government issuance identifiers.
+Keeps the 595 x 678 pt original/copy layout, 319-pt repeat, original colors, grid, spacing and signature areas. The MTESS reference
+logo is present as in the supplied model, but neither a REOP QR nor a
+government-issued receipt number is generated. A readable footer identifies
+DIGIT-LABORAL as issuer of this non-official document.
 """
 from __future__ import annotations
 
