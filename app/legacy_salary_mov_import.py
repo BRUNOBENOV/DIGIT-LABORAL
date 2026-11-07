@@ -58,6 +58,7 @@ def _digest(value: object) -> str:
 
 
 def _period(value: str) -> str:
+    value = _code(value)
     if not re.fullmatch(r"(19|20)\d{4}", value):
         return ""
     year, month = int(value[:4]), int(value[4:6])
