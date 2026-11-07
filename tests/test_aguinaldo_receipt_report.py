@@ -67,8 +67,9 @@ def test_aguinaldo_pdf_preview_download_are_same_one_page_two_copies(web_case):
         assert float(pdf.pages[0].mediabox.height) == 678
         internal_code = f"DL-AG-{'A' if kind == 'registro' else 'C'}{record.id:06d}"
         assert text.count(internal_code) == 2
-        assert text.count("FIRMA DEL EMPLEADOR") == 2
-        assert text.count("FIRMA DEL EMPLEADO") == 2
+        lines = [line.strip() for line in text.splitlines()]
+        assert lines.count("FIRMA DEL EMPLEADOR") == 2
+        assert lines.count("FIRMA DEL EMPLEADO") == 2
         assert text.count("MONTO TOTAL DE INGRESO") == 2
         assert "QR" not in text
         assert "2.848.679" not in text  # no amounts copied from the user-supplied example
