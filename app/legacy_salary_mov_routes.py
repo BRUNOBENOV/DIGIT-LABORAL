@@ -165,7 +165,8 @@ def register_routes(
         db.commit()
         preview_path(token).unlink(missing_ok=True)
         return RedirectResponse(
-            "/app/legacy-movements?" + urlencode({
+            "/app/reports/liquidaciones-salarios?" + urlencode({
+                "source": "historical",
                 "imported": count,
                 "existing": summary["already_imported"],
                 "rejected": summary["rejected"],
@@ -173,74 +174,16 @@ def register_routes(
             }), status_code=303,
         )
 
-    @app.get("/app/legacy-movements", response_class=HTMLResponse)
-    def mov_history(
+    # Compatibility only: the MOV source has no independent module or listing.
+    @app.get("/app/legacy-movements")
+    def redirect_old_mov_history(
         request: Request,
-        page: int = 1,
-        month: str = "",
-        code_company: str = "",
-        code_employee: str = "",
-        company_id: int | None = None,
-        employee_id: int | None = None,
         user: User = Depends(require_user),
-        db: Session = Depends(get_db),
     ):
-        allowed = set(company_ids_for_user(db, user))
-        if company_id is not None and company_id not in allowed:
-            raise HTTPException(404, "Empresa no autorizada.")
-        if employee_id is not None:
-            employee = db.get(Employee, employee_id)
-            if not employee or employee.company_id not in allowed or (
-                company_id is not None and employee.company_id != company_id
-            ):
-                raise HTTPException(404, "Funcionario no autorizado.")
-        conditions = [
-            Employee.company_id.in_(allowed) if allowed else Employee.company_id == -1,
-            EmployeeEvent.event_type == EVENT_TYPE,
-        ]
-        if company_id is not None:
-            conditions.append(Employee.company_id == company_id)
-        code_company = code_company.strip()
-        code_employee = code_employee.strip()
-        for code in (code_company, code_employee):
-            if code and not re.fullmatch(r"[0-9]+(?:-[0-9]+)?", code):
-                raise HTTPException(422, "El código histórico debe contener solo cifras y, si corresponde, un guion.")
-        if code_company:
-            conditions.append(EmployeeEvent.detail.like('%"company_code":"' + code_company + '"%'))
-        if code_employee:
-            conditions.append(EmployeeEvent.detail.like('%"employee_code":"' + code_employee + '"%'))
-        if employee_id is not None:
-            conditions.append(EmployeeEvent.employee_id == employee_id)
-        month = month.strip()
-        if month:
-            if not re.fullmatch(r"(19|20)\d{2}-(0[1-9]|1[0-2])", month):
-                raise HTTPException(422, "Mes inválido. Usá AAAA-MM.")
-            from datetime import date
-            conditions.append(EmployeeEvent.effective_date == date.fromisoformat(month + "-01"))
-        query = select(EmployeeEvent).join(Employee).where(*conditions)
-        total = int(db.scalar(select(func.count(EmployeeEvent.id)).join(Employee).where(*conditions)) or 0)
-        pages = max(1, (total + 49) // 50)
-        page = min(max(1, page), pages)
-        items = list(db.scalars(query.order_by(
-            EmployeeEvent.effective_date.desc(), EmployeeEvent.id.desc()
-        ).limit(50).offset((page - 1) * 50)))
-        rows = [{"event": event, "data": event_data(event.detail)} for event in items]
-        filters = {}
-        if company_id is not None:
-            filters["company_id"] = company_id
-        if employee_id is not None:
-            filters["employee_id"] = employee_id
-        if month:
-            filters["month"] = month
-        if code_company:
-            filters["code_company"] = code_company
-        if code_employee:
-            filters["code_employee"] = code_employee
-        return render(
-            request, "legacy_mov_history.html", db, user,
-            rows=rows, total=total, page=page, pages=pages,
-            month=month, code_company=code_company, code_employee=code_employee,
-            company_id=company_id, employee_id=employee_id,
-            previous_query=urlencode({**filters, "page": page - 1}),
-            next_query=urlencode({**filters, "page": page + 1}),
-        )
+        params = {"source": "historical"}
+        for old, new in (("company_id", "company_id"), ("employee_id", "employee_id"),
+                         ("month", "period")):
+            value = request.query_params.get(old)
+            if value:
+                params[new] = value
+        return RedirectResponse("/app/reports/liquidaciones-salarios?" + urlencode(params), status_code=303)
