@@ -89,23 +89,33 @@
     }
   }
 
-  document.querySelectorAll('[data-legal-auto-submit]').forEach(select => {
-    select.addEventListener('change', () => document.getElementById('legalFilters')?.submit());
+  const legalFilters = document.getElementById('legalFilters');
+  if (!legalFilters) return;
+
+  if (window.matchMedia('(max-width: 960px)').matches) {
+    document.querySelector('.legal-outline')?.removeAttribute('open');
+  }
+
+  legalFilters.querySelectorAll('[data-legal-auto-submit]').forEach(select => {
+    select.addEventListener('change', () => {
+      if (select.name === 'book') legalFilters.elements.title.value = '';
+      if (select.name === 'book' || select.name === 'title') legalFilters.elements.chapter.value = '';
+      legalFilters.requestSubmit();
+    });
   });
 
   document.addEventListener('click', async event => {
     const button = event.target.closest('[data-copy-article]');
-    if (!button) return;
-    const anchor = button.dataset.copyArticle;
-    const url = `${location.origin}${location.pathname}${location.search}#${anchor}`;
+    if (!button || button.classList.contains('copied')) return;
+    const url = new URL(button.dataset.copyArticle, location.href);
     try {
-      await navigator.clipboard.writeText(url);
+      await navigator.clipboard.writeText(url.href);
       const original = button.textContent;
       button.textContent = 'Enlace copiado';
       button.classList.add('copied');
       setTimeout(() => { button.textContent = original; button.classList.remove('copied'); }, 1600);
     } catch (_) {
-      location.hash = anchor;
+      window.prompt('Copiá el enlace al artículo', url.href);
     }
   });
 })();

@@ -1,155 +1,201 @@
 {% extends "base.html" %}
-{% block title %}Código Laboral estructurado | Digit Laboral{% endblock %}
+{% block title %}Código del Trabajo | Digit Laboral{% endblock %}
 {% block page_name %}Código Laboral{% endblock %}
+{% macro outline_url(book, title='', chapter='') -%}
+  ?{{ {'book': book, 'title': title, 'chapter': chapter}|urlencode }}#resultados
+{%- endmacro %}
+{% macro page_url(number) -%}
+  ?{{ {'q': q, 'article': article_query, 'book': selected_book, 'title': selected_title, 'chapter': selected_chapter, 'status_filter': status_filter, 'page': number}|urlencode }}#resultados
+{%- endmacro %}
 {% block content %}
-<section class="legal-v17-hero">
-  <div>
-    <span class="eyebrow">BIBLIOTECA JURÍDICA ESTRUCTURADA</span>
-    <h1>Código del Trabajo</h1>
-    <p>Ley N.º 213/1993 organizada por libros, títulos, capítulos y artículos, con marcas de modificaciones y derogaciones.</p>
-  </div>
-  <div class="legal-v17-hero-actions">
-    <span class="version-chip">{{ version }}</span>
-    {% if user.role in ['administrador','contador','superadmin'] %}
-    <form method="post" action="/app/labor-code/sync" onsubmit="return confirm('¿Actualizar la biblioteca desde las fuentes jurídicas configuradas?');"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <input type="hidden" name="confirm" value="sync">
-      <button class="btn light-button" type="submit">↻ Actualizar fuentes</button>
-    </form>
-    {% endif %}
-  </div>
-</section>
-
-{% if synced %}<div class="alert success">La biblioteca jurídica fue actualizada correctamente.</div>{% endif %}
-{% if sync_error %}<div class="legal-sync-error"><b>No se pudo completar la sincronización automática.</b><span>{{ sync_error }}</span><small>Se muestran los artículos que ya estaban guardados. No se eliminó información previa.</small></div>{% endif %}
-
-<section class="legal-v17-stats">
-  <article><span>Artículos cargados</span><b>{{ stats.total }}</b><small>Incluye numeración Bis cuando corresponda</small></article>
-  <article><span>Con modificación</span><b>{{ stats.modified }}</b><small>Marcados con su ley modificatoria</small></article>
-  <article><span>Derogados</span><b>{{ stats.repealed }}</b><small>Se conserva el texto histórico con advertencia</small></article>
-  <article><span>Libros</span><b>{{ stats.books }}</b><small>{% if stats.reviewed_at %}Revisión: {{ stats.reviewed_at|fecha }}{% else %}Pendiente de sincronización{% endif %}</small></article>
-</section>
-
-<div class="legal-v17-warning">
-  <b>Control jurídico:</b>
-  <span>La plataforma ordena y facilita la consulta, pero no sustituye la verificación del texto oficial consolidado ni el análisis profesional del caso concreto.</span>
-</div>
-
-<section class="legal-reference-sheet">
-  <a class="legal-reference-link" href="{{ source_registry[0].url }}" target="_blank" rel="noopener noreferrer">Ver Ley 213/93 del Código del Trabajo ↗</a>
-  <header class="legal-sheet-head">
-    <h2>LEY N° 213/93</h2>
-    <h3>QUE ESTABLECE EL CÓDIGO DEL TRABAJO</h3>
-    <p>EL CONGRESO DE LA NACIÓN PARAGUAYA SANCIONA CON FUERZA DE</p>
-    <p><b>LEY:</b></p>
-  </header>
-  <div class="legal-sheet-outline">
-    {% for book in outline %}
-    <article class="legal-sheet-book">
-      <h4>{{ book.code }} - {{ book.name }}</h4>
-      {% for title_item in book.titles %}
-      <div class="legal-sheet-title">
-        <h5>{{ title_item.code }} - {{ title_item.name }} <small>(desde Art. {{ title_item.start_number }} al {{ title_item.end_number }})</small></h5>
-        <ul>
-          {% for chapter_item in title_item.chapters %}
-          <li><a href="/app/labor-code?book={{ book.code }}&title={{ title_item.code }}&chapter={{ chapter_item.code }}">{{ chapter_item.code }} - {{ chapter_item.name }}</a></li>
-          {% endfor %}
-        </ul>
+<div class="legal-code">
+  <header class="legal-v17-hero">
+    <div class="legal-hero-intro">
+      <span class="legal-book-icon" aria-hidden="true">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6c-2-2-5-2.5-9-2v14c4-.5 7 0 9 2 2-2 5-2.5 9-2V4c-4-.5-7 0-9 2zm0 0v14M6 8h2m-2 4h2m8-4h2m-2 4h2"/></svg>
+      </span>
+      <div>
+        <p class="legal-hero-kicker">Ley N.º 213/1993 · Paraguay</p>
+        <h1>Código del Trabajo</h1>
+        <p class="legal-hero-description">Consultá la ley por tema, número de artículo o desde el índice.</p>
       </div>
-      {% endfor %}
-    </article>
-    {% endfor %}
-  </div>
-</section>
+    </div>
+    <div class="legal-hero-actions">
+      <a class="legal-official-link" href="{{ source_registry[0].url }}" target="_blank" rel="noopener noreferrer">Texto oficial <span aria-hidden="true">↗</span></a>
+      <a class="legal-sources-link" href="#fuentes-juridicas">Fuentes y revisión <span aria-hidden="true">↓</span></a>
+    </div>
+  </header>
 
-<form method="get" class="legal-v17-filters" id="legalFilters">
-  <label class="legal-search-main"><span>Buscar en todo el Código</span><input name="q" value="{{ q }}" placeholder="Ej.: vacaciones, preaviso, sindicato, Art. 89"></label>
-  <label><span>Ir al artículo</span><input name="article" value="{{ article_query }}" placeholder="Ej.: 62 o 412 Bis"></label>
-  <label><span>Libro</span><select name="book" data-legal-auto-submit><option value="">Todos</option>{% for code, name in books %}<option value="{{ code }}" {{ 'selected' if selected_book == code }}>{{ code }} · {{ name }}</option>{% endfor %}</select></label>
-  <label><span>Título</span><select name="title" data-legal-auto-submit><option value="">Todos</option>{% for code, name in titles %}<option value="{{ code }}" {{ 'selected' if selected_title == code }}>{{ code }} · {{ name }}</option>{% endfor %}</select></label>
-  <label><span>Capítulo</span><select name="chapter" data-legal-auto-submit><option value="">Todos</option>{% for code, name in chapters %}<option value="{{ code }}" {{ 'selected' if selected_chapter == code }}>{{ code }} · {{ name }}</option>{% endfor %}</select></label>
-  <label><span>Estado</span><select name="status_filter" data-legal-auto-submit><option value="">Todos</option><option value="vigente" {{ 'selected' if status_filter == 'vigente' }}>Vigentes</option><option value="modificado" {{ 'selected' if status_filter == 'modificado' }}>Modificados</option><option value="derogado" {{ 'selected' if status_filter == 'derogado' }}>Derogados</option></select></label>
-  <div class="legal-filter-actions"><button class="btn primary" type="submit">Buscar</button><a class="btn ghost" href="/app/labor-code">Limpiar</a></div>
-</form>
+  {% if synced %}<div class="alert success" role="status">La biblioteca jurídica fue actualizada correctamente.</div>{% endif %}
+  {% if sync_error %}<div class="alert danger" role="alert">{{ sync_error }}</div>{% endif %}
 
-<div class="legal-v17-layout">
-  <aside class="legal-outline">
-    <div class="legal-outline-head"><span>ÍNDICE GENERAL</span><b>{{ stats.total }} artículos</b></div>
-    {% for book in outline %}
-    <details class="legal-outline-book" {% if selected_book == book.code or not selected_book %}open{% endif %}>
-      <summary><span><b>{{ book.code }}</b><small>{{ book.name }}</small></span><em>{{ book.start_number }}–{{ book.end_number }}</em></summary>
-      <div class="legal-outline-titles">
-        {% for title_item in book.titles %}
-        <details {% if selected_title == title_item.code %}open{% endif %}>
-          <summary><span><b>{{ title_item.code }}</b><small>{{ title_item.name }}</small></span><em>{{ title_item.start_number }}–{{ title_item.end_number }}</em></summary>
-          <div>
-            {% for chapter_item in title_item.chapters %}
-            <a href="/app/labor-code?book={{ book.code }}&title={{ title_item.code }}&chapter={{ chapter_item.code }}"><span>{{ chapter_item.code }}</span><small>{{ chapter_item.name }}</small><em>{{ chapter_item.start_number }}–{{ chapter_item.end_number }}</em></a>
-            {% endfor %}
-          </div>
-        </details>
-        {% endfor %}
+  <form method="get" action="/app/labor-code" class="legal-code-search" id="legalFilters" role="search" aria-label="Buscar en el Código del Trabajo">
+    <div class="legal-search-fields">
+      <label><span>Buscar por tema</span><input name="q" value="{{ q }}" placeholder="Ej. vacaciones, preaviso, salario"></label>
+      <label><span>Número de artículo</span><input name="article" value="{{ article_query }}" placeholder="Ej. 89 o 412 Bis"></label>
+      <div class="legal-filter-actions">
+        <button class="btn primary" type="submit">Buscar</button>
+        <a class="btn ghost" href="/app/labor-code">Limpiar</a>
+      </div>
+    </div>
+    <details class="legal-filter-options" {% if selected_book or selected_title or selected_chapter or status_filter %}open{% endif %}>
+      <summary><b>Filtros</b><span>Libro, título, capítulo y estado</span></summary>
+      <div class="legal-filter-fields">
+        <label><span>Libro</span>
+          <select name="book" data-legal-auto-submit>
+            <option value="">Todos</option>
+            {% for code, name in books %}<option value="{{ code }}" {% if selected_book == code %}selected{% endif %}>{{ code }} · {{ name }}</option>{% endfor %}
+          </select>
+        </label>
+        <label><span>Título</span>
+          <select name="title" data-legal-auto-submit>
+            <option value="">Todos</option>
+            {% for code, name in titles %}<option value="{{ code }}" {% if selected_title == code %}selected{% endif %}>{{ code }} · {{ name }}</option>{% endfor %}
+          </select>
+        </label>
+        <label><span>Capítulo</span>
+          <select name="chapter" data-legal-auto-submit>
+            <option value="">Todos</option>
+            {% for code, name in chapters %}<option value="{{ code }}" {% if selected_chapter == code %}selected{% endif %}>{{ code }} · {{ name }}</option>{% endfor %}
+          </select>
+        </label>
+        <label><span>Estado</span>
+          <select name="status_filter" data-legal-auto-submit>
+            <option value="">Todos</option>
+            <option value="vigente" {% if status_filter == 'vigente' %}selected{% endif %}>Vigentes</option>
+            <option value="modificado" {% if status_filter == 'modificado' %}selected{% endif %}>Modificados</option>
+            <option value="derogado" {% if status_filter == 'derogado' %}selected{% endif %}>Derogados</option>
+          </select>
+        </label>
       </div>
     </details>
-    {% else %}
-    <p class="empty-state">El índice se generará al sincronizar la biblioteca.</p>
-    {% endfor %}
-  </aside>
+  </form>
 
-  <main class="legal-articles-panel">
-    {% if current_context %}
-    <section class="legal-reading-head">
-      <h2>LEY N° 213/93</h2>
-      <h3>QUE ESTABLECE EL CÓDIGO DEL TRABAJO</h3>
-      {% if current_context.book_code %}<p class="legal-reading-level">{{ current_context.book_code|upper }}</p>{% endif %}
-      {% if current_context.book_name %}<p class="legal-reading-name">{{ current_context.book_name|upper }}</p>{% endif %}
-      {% if current_context.title_code %}<p class="legal-reading-level">{{ current_context.title_code|upper }}</p>{% endif %}
-      {% if current_context.title_name %}<p class="legal-reading-name">{{ current_context.title_name|upper }}</p>{% endif %}
-      {% if current_context.chapter_code %}<p class="legal-reading-level">{{ current_context.chapter_code|upper }}</p>{% endif %}
-      {% if current_context.chapter_name %}<p class="legal-reading-name">{{ current_context.chapter_name|upper }}</p>{% endif %}
-      <small>Artículos visibles: {{ current_context.start_number }} al {{ current_context.end_number }}</small>
-    </section>
-    {% endif %}
+  <div class="legal-v17-layout">
+    <aside class="legal-outline-wrap">
+      <details class="legal-outline" open>
+        <summary class="legal-outline-head" id="legal-index-title"><b>Índice general</b><span>{{ stats.books }} {{ 'libro' if stats.books == 1 else 'libros' }}</span></summary>
+        <nav aria-labelledby="legal-index-title" class="legal-outline-nav">
+          {% for book in outline %}
+          <details class="legal-outline-book" {% if selected_book and selected_book == book.code %}open{% endif %}>
+            <summary>
+              <span><b>{{ book.code|default('Sin libro', true) }}</b><small>{{ book.name }}</small></span>
+              <span class="legal-range">{{ book.start_number }}–{{ book.end_number }}</span>
+            </summary>
+            <div class="legal-outline-titles">
+              {% if book.code %}<a href="{{ outline_url(book.code) }}" {% if selected_book == book.code and not selected_title and not selected_chapter %}aria-current="location"{% endif %}>Ver libro completo</a>{% endif %}
+              {% for title_item in book.titles %}
+              <details {% if selected_book == book.code and selected_title == title_item.code %}open{% endif %}>
+                <summary>
+                  <span><b>{{ title_item.code|default('Sin título', true) }}</b>{% if title_item.code %}<small>{{ title_item.name }}</small>{% endif %}</span>
+                  <span class="legal-range">{{ title_item.start_number }}–{{ title_item.end_number }}</span>
+                </summary>
+                <div class="legal-outline-chapters">
+                  {% if title_item.code %}<a href="{{ outline_url(book.code, title_item.code) }}" {% if selected_book == book.code and selected_title == title_item.code and not selected_chapter %}aria-current="location"{% endif %}>Ver título completo</a>{% endif %}
+                  {% for chapter_item in title_item.chapters if chapter_item.code %}
+                  <a href="{{ outline_url(book.code, title_item.code, chapter_item.code) }}" {% if selected_book == book.code and selected_title == title_item.code and selected_chapter == chapter_item.code %}aria-current="location"{% endif %}>
+                    <span>{{ chapter_item.name }}</span><span class="legal-range">{{ chapter_item.start_number }}–{{ chapter_item.end_number }}</span>
+                  </a>
+                  {% endfor %}
+                </div>
+              </details>
+              {% endfor %}
+            </div>
+          </details>
+          {% else %}
+          <p class="legal-outline-empty">El índice se generará al sincronizar la biblioteca.</p>
+          {% endfor %}
+        </nav>
+      </details>
+    </aside>
 
-    <div class="legal-results-head"><div><span>RESULTADOS</span><h2>{{ total }} artículo{{ '' if total == 1 else 's' }}</h2></div><small>Página {{ page }} de {{ pages }}</small></div>
-    <section class="legal-v17-articles">
-      {% for item in articles %}
-      <article id="articulo-{{ item.number|replace(' ', '-') }}" class="legal-v17-article legal-article-sheet {{ 'is-repealed' if item.is_repealed else '' }}">
-        <header>
-          <div class="legal-article-number"><span>ARTÍCULO</span><b>{{ item.number }}</b></div>
-          <div class="legal-article-heading">
-            <div class="legal-breadcrumb"><span>{{ item.book_code }}</span><span>{{ item.title_code }}</span><span>{{ item.chapter_code }}</span></div>
-            <h3>{{ item.heading or 'Disposición legal' }}</h3>
-            <p>{{ item.chapter_name or item.title_name or item.book_name }}</p>
-          </div>
-          <div class="legal-status-stack">
-            <span class="legal-status {{ 'repealed' if item.is_repealed else ('modified' if item.is_modified else 'current') }}">{{ item.content_status }}</span>
-            <button type="button" class="legal-copy-link" data-copy-article="articulo-{{ item.number|replace(' ', '-') }}">Copiar enlace</button>
-          </div>
+    <section class="legal-articles-panel" id="resultados" aria-labelledby="legal-results-title">
+      <header class="legal-results-head">
+        <div>
+          <h2 id="legal-results-title">Artículos</h2>
+          {% if articles %}<p>Mostrando {{ result_start }}–{{ result_end }} de {{ total }}</p>{% endif %}
+        </div>
+        {% if pages > 1 %}<span class="legal-page-count">Página {{ page }} de {{ pages }}</span>{% endif %}
+      </header>
+      <div class="legal-v17-articles">
+        {% for item in articles %}
+        {% if loop.changed(item.book_code, item.title_code, item.chapter_code, item.heading) %}
+        <header class="legal-chapter-head">
+          {% if item.book_code or item.title_code or item.chapter_code %}
+          <p class="legal-breadcrumb">{{ (item.book_code, item.title_code, item.chapter_code)|select|join(' / ') }}</p>
+          {% endif %}
+          <h3>{{ item.heading or 'Disposiciones' }}</h3>
         </header>
-        {% if item.is_repealed %}<div class="legal-repealed-banner"><b>Artículo derogado.</b> El texto se conserva únicamente como referencia histórica.</div>{% endif %}
-        <div class="legal-article-body"><span class="legal-body-label">Artículo {{ item.number }}:</span> {{ item.body }}</div>
-        {% if item.amendment_note %}<div class="legal-amendment-note"><b>Vigencia y modificaciones</b><span>{{ item.amendment_note }}</span></div>{% endif %}
-        <footer><span>{{ item.law_number }}</span>{% if item.reviewed_at %}<span>Revisado {{ item.reviewed_at|fecha }}</span>{% endif %}<a href="{{ item.source_url }}" target="_blank" rel="noopener noreferrer">Fuente jurídica ↗</a></footer>
-      </article>
-      {% else %}
-      <div class="legal-empty"><span>⌕</span><h3>No se encontraron artículos</h3><p>Revisá el número, eliminá algún filtro o utilizá otra palabra.</p><a class="btn ghost" href="/app/labor-code">Ver todo el Código</a></div>
-      {% endfor %}
+        {% endif %}
+        {% set anchor = 'articulo-' ~ (item.number|replace(' ', '-')) %}
+        <article id="{{ anchor }}" class="legal-v17-article {{ 'is-repealed' if item.is_repealed else '' }}">
+          <header>
+            <h4 class="legal-article-number">Artículo {{ item.number }}</h4>
+            <div class="legal-article-actions">
+              <span class="legal-status {{ 'repealed' if item.is_repealed else ('modified' if item.is_modified else 'current') }}">{{ item.content_status }}</span>
+              <button type="button" class="legal-copy-link" data-copy-article="?article={{ item.number|urlencode }}#{{ anchor }}" title="Copiar enlace al artículo {{ item.number }}">Copiar enlace</button>
+            </div>
+          </header>
+          {% if item.is_repealed %}<div class="legal-repealed-banner"><b>Artículo derogado.</b> Texto disponible como referencia histórica.</div>{% endif %}
+          <div class="legal-article-body">{{ item.body }}</div>
+          {% if item.amendment_note %}<div class="legal-amendment-note"><b>Vigencia y modificaciones</b><span>{{ item.amendment_note }}</span></div>{% endif %}
+          <footer>
+            {% if item.law_number and item.law_number != source_registry[0].law %}<span>{{ item.law_number }}</span>{% endif %}
+            {% if item.reviewed_at %}<span>Revisado el {{ item.reviewed_at|fecha }}</span>{% endif %}
+            <a href="{{ item.source_url }}" target="_blank" rel="noopener noreferrer">Fuente jurídica <span aria-hidden="true">↗</span></a>
+          </footer>
+        </article>
+        {% else %}
+        <div class="legal-empty">
+          <h3>No se encontraron artículos</h3>
+          <p>Probá con otro número o tema, o ajustá los filtros.</p>
+          <a class="btn ghost" href="/app/labor-code">Ver todos los artículos</a>
+        </div>
+        {% endfor %}
+      </div>
+
+      {% if pages > 1 %}
+      <nav class="legal-pagination" aria-label="Paginación de artículos">
+        {% if page > 1 %}<a href="{{ page_url(page - 1) }}" rel="prev">← Anterior</a>{% else %}<span></span>{% endif %}
+        <div>
+          {% for number in range(1, pages + 1) %}
+            {% if number == page %}<b aria-current="page">{{ number }}</b>
+            {% elif number == 1 or number == pages or (number >= page - 2 and number <= page + 2) %}<a href="{{ page_url(number) }}" aria-label="Página {{ number }}">{{ number }}</a>
+            {% elif number == page - 3 or number == page + 3 %}<span aria-hidden="true">…</span>
+            {% endif %}
+          {% endfor %}
+        </div>
+        {% if page < pages %}<a href="{{ page_url(page + 1) }}" rel="next">Siguiente →</a>{% else %}<span></span>{% endif %}
+      </nav>
+      {% endif %}
     </section>
-
-    {% if pages > 1 %}
-    <nav class="legal-pagination" aria-label="Paginación">
-      {% if page > 1 %}<a href="?q={{ q }}&article={{ article_query }}&book={{ selected_book }}&title={{ selected_title }}&chapter={{ selected_chapter }}&status_filter={{ status_filter }}&page={{ page - 1 }}">← Anterior</a>{% else %}<span></span>{% endif %}
-      <div>{% for number in range(1, pages + 1) %}{% if number == page %}<b>{{ number }}</b>{% elif number == 1 or number == pages or (number >= page - 2 and number <= page + 2) %}<a href="?q={{ q }}&article={{ article_query }}&book={{ selected_book }}&title={{ selected_title }}&chapter={{ selected_chapter }}&status_filter={{ status_filter }}&page={{ number }}">{{ number }}</a>{% elif number == page - 3 or number == page + 3 %}<span>…</span>{% endif %}{% endfor %}</div>
-      {% if page < pages %}<a href="?q={{ q }}&article={{ article_query }}&book={{ selected_book }}&title={{ selected_title }}&chapter={{ selected_chapter }}&status_filter={{ status_filter }}&page={{ page + 1 }}">Siguiente →</a>{% else %}<span></span>{% endif %}
-    </nav>
-    {% endif %}
-  </main>
-</div>
-
-<section class="legal-sources-panel">
-  <div class="panel-head"><div><span>TRAZABILIDAD</span><h2>Fuentes y leyes modificatorias</h2></div></div>
-  <div class="legal-source-grid">
-    {% for source in source_registry %}<a href="{{ source.url }}" target="_blank" rel="noopener noreferrer"><b>{{ source.law }}</b><span>{{ source.label }}</span><em>Consultar ↗</em></a>{% endfor %}
   </div>
-</section>
+
+  <section class="legal-sources-panel" id="fuentes-juridicas" aria-labelledby="legal-sources-title">
+    <header class="legal-sources-head">
+      <div>
+        <h2 id="legal-sources-title">Fuentes y leyes modificatorias</h2>
+        {% if stats.reviewed_at %}<p>Última revisión registrada el {{ stats.reviewed_at|fecha }}</p>{% endif %}
+      </div>
+      {% if user.role in ['administrador','contador','superadmin'] %}
+      <form method="post" action="/app/labor-code/sync" onsubmit="return confirm('¿Actualizar la biblioteca desde las fuentes jurídicas configuradas?');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="confirm" value="sync">
+        <button class="btn ghost" type="submit">Actualizar fuentes</button>
+      </form>
+      {% endif %}
+    </header>
+    <ul class="legal-source-stats">
+      <li><b>{{ stats.total }}</b> artículos cargados</li>
+      <li><b>{{ stats.modified }}</b> con modificación</li>
+      <li><b>{{ stats.repealed }}</b> derogados</li>
+    </ul>
+    <p class="legal-v17-warning"><b>Control jurídico.</b> Verificá el texto oficial consolidado y su vigencia antes de aplicar una disposición a un caso concreto.</p>
+    <div class="legal-source-grid">
+      {% for source in source_registry[1:] %}
+      <a href="{{ source.url }}" target="_blank" rel="noopener noreferrer"><b>{{ source.law }} <span aria-hidden="true">↗</span></b><span>{{ source.label }}</span></a>
+      {% endfor %}
+    </div>
+  </section>
+</div>
 {% endblock %}

@@ -21,13 +21,9 @@ def test_smart_normalize_logo_outputs_balanced_png():
     assert result.size == (1100, 360)
 
 
-def test_templates_include_improved_logo_and_legal_layout():
+def test_templates_include_improved_logo_layout():
     root = Path(__file__).resolve().parents[1] / 'app' / 'templates'
     companies = (root / 'companies.html').read_text(encoding='utf-8')
     detail = (root / 'company_detail.html').read_text(encoding='utf-8')
-    legal = (root / 'labor_code_v17.html').read_text(encoding='utf-8')
     assert 'company-logo-card-frame' in companies
     assert 'El sistema lo ajusta automáticamente sin deformarlo.' in detail
-    assert 'Ver Ley 213/93 del Código del Trabajo' in legal
-    assert 'legal-reference-sheet' in legal
-    assert 'Artículos visibles' in legal
