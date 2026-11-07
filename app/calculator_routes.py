@@ -201,6 +201,7 @@ def page(request, kind, data=None, result=None, error=None, db=None, user=None, 
             page=requested_page, page_size=30,
             include_center_calculations=True,
             include_superseded_salary=show_superseded_salary,
+            include_mov_salary=(kind == "salary"),
         )
         filters = {
             key: val for key, val in {
