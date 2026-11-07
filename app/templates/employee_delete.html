@@ -35,9 +35,9 @@
     {% endif %}
     {% if user.role in ['administrador','contador'] %}
     <div class="archive-choice" style="border-left:4px solid #d6a455">
-      <h3>Registros de prueba · depuración controlada</h3>
-      <p>Solo para funcionarios ficticios. Incluye revisión de todas sus dependencias, respaldo descargable y bloqueo de antecedentes oficiales o pagados.</p>
-      <a class="btn outline" href="/app/employees/{{ employee.id }}/test-cleanup">Evaluar depuración de prueba</a>
+      <h3>Depuración controlada del expediente</h3>
+      <p>Para corregir cargas erróneas o duplicaciones. Incluye revisión de dependencias, respaldo obligatorio y bloqueo de antecedentes oficiales, pagados o sujetos a conservación.</p>
+      <a class="btn outline" href="/app/employees/{{ employee.id }}/cleanup">Evaluar depuración</a>
     </div>
     {% endif %}
     <div class="archive-choice">

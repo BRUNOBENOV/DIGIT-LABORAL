@@ -1,4 +1,4 @@
-"""Safe test dossier cleanup: tenant isolation, signed preflight and all-or-none removal."""
+"""Controlled dossier cleanup: signed preflight, protected evidence and atomic removal."""
 import json
 from datetime import date
 
@@ -13,7 +13,7 @@ from app.models import (
 )
 from tests.test_labor_suite import token, web_case
 
-BASE = "/app/employees/{id}/test-cleanup"
+BASE = "/app/employees/{id}/cleanup"
 
 
 def setup_case(web_case):
@@ -61,8 +61,9 @@ def form_data(client, employee):
     values = {x["name"]: x.get("value","") for x in form.select('input[type="hidden"]')}
     values.update({
         "csrf_token": token(client),
-        "reason": "Registros ficticios utilizados únicamente en pruebas automatizadas.",
-        "declare_synthetic": "on",
+        "reason": "Corrección documentada de una carga duplicada sin declaraciones ni pagos.",
+        "reason_type": "Registro duplicado",
+        "declare_eligible": "on",
         "declare_no_external_use": "on",
         "backup_saved": "on",
         "confirmation": "DEPURAR 71",
@@ -99,25 +100,51 @@ def test_synthetic_bundle_with_exit_certificate_and_unsubmitted_reop_is_atomic(w
         assert db.get(model, entity_id) is None
     assert db.scalar(select(func.count(ComplianceEvent.id)).where(ComplianceEvent.employee_id == target_employee_id)) == 0
     assert db.get(Employee, other.id) is not None
-    audit = db.scalar(select(AuditLog).where(AuditLog.action == "depurar_legajo_sintetico"))
+    audit = db.scalar(select(AuditLog).where(AuditLog.action == "depurar_legajo_controlado"))
     assert audit is not None
     log = json.loads(audit.detail)
     assert log["deleted_counts"]["compliance_events"] == 2
     assert log["snapshot_sha256"] == backup["fingerprint_sha256"]
 
 
-def test_real_name_or_synthetic_company_does_not_allow_purge(web_case):
+def test_real_named_duplicate_can_be_removed_only_after_review_and_backup(web_case):
     client, db, box, company, employee, other = setup_case(web_case)
     employee.full_name = "Trabajador real"
-    company.legal_name = "Prueba personal de laboratorio"
+    company.legal_name = "Empresa operativa"
     db.commit()
-    response = client.get(BASE.format(id=employee.id))
-    assert response.status_code == 200
-    assert "Depuración bloqueada" in response.text
-    assert 'name="confirmation"' not in response.text
-    assert client.get(BASE.format(id=employee.id) + "/backup.json").status_code == 409
-    assert client.post(BASE.format(id=employee.id), data={"csrf_token": token(client)}).status_code == 409
-    assert db.get(Employee, employee.id) is not None
+    employee_id, other_id = employee.id, other.id
+    url = BASE.format(id=employee_id)
+    page = client.get(url)
+    assert page.status_code == 200
+    assert "Depuración controlada del expediente" in page.text
+    assert 'name="confirmation"' in page.text
+    assert "datos sintéticos" not in page.text.lower()
+    data = form_data(client, employee)
+    assert client.post(url, data=data, follow_redirects=False).status_code == 409
+    download = client.get(url + "/backup.json")
+    assert download.status_code == 200
+    assert download.json()["employee"]["full_name"] == "Trabajador real"
+    outcome = client.post(url, data=data, follow_redirects=False)
+    assert outcome.status_code == 303, outcome.text
+    db.expire_all()
+    assert db.get(Employee, employee_id) is None
+    assert db.get(Employee, other_id) is not None
+    audit = db.scalar(select(AuditLog).where(AuditLog.action == "depurar_legajo_controlado"))
+    evidence = json.loads(audit.detail)
+    assert evidence["reason_type"] == "Registro duplicado"
+    assert "documented_correction_no_retention" in evidence["declarations"]
+
+
+def test_previous_cleanup_url_redirects_without_bypassing_access(web_case):
+    client, db, box, company, employee, other = setup_case(web_case)
+    path = f"/app/employees/{employee.id}/test-cleanup"
+    response = client.get(path, follow_redirects=False)
+    assert response.status_code == 303
+    assert response.headers["location"] == BASE.format(id=employee.id)
+    assert client.get(path + "/backup.json", follow_redirects=False).status_code == 303
+    box["user"].role = "auxiliar"
+    db.commit()
+    assert client.get(path).status_code == 403
 
 
 @pytest.mark.parametrize("kind", [
@@ -127,6 +154,8 @@ def test_real_name_or_synthetic_company_does_not_allow_purge(web_case):
 def test_protected_evidence_blocks_everything(web_case, kind):
     client, db, box, company, employee, other = setup_case(web_case)
     calc, cert, exit_record, final, events = dossier(db, company, employee)
+    # Never infer safety from the employee's name: protected real records stay blocked.
+    employee.full_name = "Trabajador con antecedentes"
     if kind == "submitted":
         events[0].status="Enviado"
         events[0].submitted_at=core_time()
@@ -174,6 +203,10 @@ def test_security_csrf_tampering_and_snapshot_change(web_case):
     assert client.post(BASE.format(id=employee.id),data=forged).status_code == 422
     no_attestation = dict(data,declare_no_external_use="")
     assert client.post(BASE.format(id=employee.id),data=no_attestation).status_code == 422
+    no_reason = dict(data,reason_type="")
+    assert client.post(BASE.format(id=employee.id),data=no_reason).status_code == 422
+    invalid_reason = dict(data,reason_type="Excluir sin motivo")
+    assert client.post(BASE.format(id=employee.id),data=invalid_reason).status_code == 422
     calc.notes = "Se cambió el cálculo"
     db.commit()
     assert client.post(BASE.format(id=employee.id),data=data).status_code == 409
@@ -216,7 +249,7 @@ def test_contador_can_purge_synthetic_dossier_with_all_safeguards(web_case):
     assert db.get(CalculationRecord, calc_id) is None
     assert db.get(GeneratedCertificate, cert_id) is None
     assert db.get(Employee, other_id) is not None
-    audit = db.scalar(select(AuditLog).where(AuditLog.action == "depurar_legajo_sintetico"))
+    audit = db.scalar(select(AuditLog).where(AuditLog.action == "depurar_legajo_controlado"))
     assert audit is not None and audit.user_email == box["user"].email
 
 

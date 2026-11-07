@@ -1,18 +1,14 @@
-"""Transactional purge of explicitly synthetic employee dossiers.
+"""Guarded cleanup of a complete employee dossier with auditable preflight.
 
-This is *not* a generic delete/cascade API.  It removes an entire test dossier
-only when every relationship is understood and no official, signed, paid,
-exported, or otherwise protected record is present. Unknown relations fail
-closed. Real employment records must use rectification or archiving.
+Eligibility is determined by actual document and workflow dependencies, not by
+the spelling of the worker's name or by whether the company is a test tenant.
+Unknown relationships, official filings and payment evidence fail closed.
 """
 from __future__ import annotations
 
 import hashlib
 import json
-import re
 import unicodedata
-from dataclasses import dataclass
-from datetime import datetime
 from typing import Any
 
 from itsdangerous import BadData, URLSafeTimedSerializer
@@ -38,6 +34,7 @@ SAFE_CALC_STATUS = {"borrador", "revisar", "anulado"}
 SAFE_EVENT_STATUS = {"borrador"}
 SAFE_BONUS_STATUS = {"borrador", "revisar", "anulado"}
 SAFE_SETTLEMENT_STATUS = {"pendiente de calculo", "en revision"}
+# Internal 'Emitido' documents require explicit declaration of non-delivery.
 SAFE_CERT_STATUS = {"borrador", "emitido", "anulado"}
 SAFE_DEADLINE_STATUS = {"pendiente", "borrador", "anulado"}
 SAFE_VACATION_STATUS = {"pendiente", "borrador", "anulado"}
@@ -52,22 +49,6 @@ def _normalize(value: Any) -> str:
     return "".join(ch for ch in norm if not unicodedata.combining(ch)).lower().strip()
 
 
-def synthetic_identity(employee) -> bool:
-    """Require a visibly synthetic *employee* name; a test company is not enough.
-
-    A real worker imported under a test-company name is NEVER automatically
-    eligible just because their employer has 'Prueba' in its name.
-    """
-    name = _normalize(employee.full_name)
-    return any(re.search(pattern, name) for pattern in (
-        r"\bpersona de ejemplo\b", r"\b(?:empleado|funcionario|trabajador|persona) (?:de )?prueba\b",
-        r"\b(?:persona|empleado|funcionario|trabajador) sintetic[oa]\b",
-        r"\b(?:persona|empleado|funcionario|trabajador) fictici[oa]\b",
-        r"\b(?:empleado|funcionario|trabajador|persona) demo\b",
-        r"^(?:test|demo)[\s\-_#0-9]",
-        r"\b(?:synthetic|syntetico|sintetica) test\b",
-    ))
-
 
 def _state(row) -> str:
     return _normalize(row.get("status"))
@@ -78,7 +59,7 @@ def _present(row: dict, *fields) -> bool:
 
 
 def _unprotected(table: str, row: dict) -> str:
-    """Empty reason means one row is eligible for test cleanup."""
+    """Empty reason means no blocking evidence was found in this record."""
     state = _state(row)
     if table == "calculation_records":
         return "" if state in SAFE_CALC_STATUS else "El cálculo está aprobado o tiene un estado no depurable."
@@ -130,14 +111,11 @@ def _canonical(value):
 
 
 def purge_preview(db, employee):
-    """Recompute under lock before deletion; generated preview is never authoritative."""
+    """Review the entire dossier; no deletion happens here."""
     by_table: dict[str, list[dict]] = {}
     problems = []
     groups = []
-    permitted = synthetic_identity(employee)
-    if not permitted:
-        problems.append("El nombre del funcionario no lo identifica claramente como dato sintético. "
-                        "Los legajos de trabajadores reales se conservan y se rectifican; no se depuran.")
+    # Names and employer labels are never used as permission shortcuts.
     for table, columns in employee_references():
         rows = _row_dicts(db, table, columns, employee.id)
         if not rows:
@@ -199,7 +177,7 @@ def purge_preview(db, employee):
                 break
     # Digest includes all safe rows and employee fields, not just counts.
     employee_data = {col.name: getattr(employee, col.name) for col in employee.__table__.columns}
-    backup = {"format": "digit-laboral-test-dossier-v1",
+    backup = {"format": "digit-laboral-controlled-dossier-v2",
               "employee": employee_data, "records": by_table}
     data = _canonical(backup)
     if len(data.encode("utf-8")) > MAX_BACKUP_BYTES:
@@ -209,7 +187,7 @@ def purge_preview(db, employee):
     code = employee.employee_code if employee.employee_code is not None else f"ID-{employee.id}"
     return {
         "groups": groups, "total": sum(len(r) for r in by_table.values()),
-        "problems": unique_problems, "can_purge": bool(permitted and not unique_problems),
+        "problems": unique_problems, "can_purge": not unique_problems,
         "confirmation": f"DEPURAR {code}", "fingerprint": fingerprint,
         "backup": backup, "by_table": by_table,
     }
@@ -218,12 +196,12 @@ def purge_preview(db, employee):
 def signed_preview(user, employee, preview):
     values = {"user_id": user.id, "company_id": employee.company_id,
               "employee_id": employee.id, "fingerprint": preview["fingerprint"]}
-    return URLSafeTimedSerializer(settings.secret_key, salt="synthetic-dossier-purge-v1").dumps(values)
+    return URLSafeTimedSerializer(settings.secret_key, salt="controlled-dossier-purge-v2").dumps(values)
 
 
 def verify_preview(token, user, employee, preview):
     try:
-        claim = URLSafeTimedSerializer(settings.secret_key, salt="synthetic-dossier-purge-v1").loads(token, max_age=600)
+        claim = URLSafeTimedSerializer(settings.secret_key, salt="controlled-dossier-purge-v2").loads(token, max_age=600)
     except (BadData, ValueError, TypeError):
         return False
     return claim == {"user_id": user.id, "company_id": employee.company_id,
@@ -247,4 +225,4 @@ def remove_test_dossier(db, employee, preview):
     from .models import Employee
     result = db.execute(delete(Employee.__table__).where(Employee.id == employee.id))
     if result.rowcount != 1:
-        raise PurgeConflict("No se pudo eliminar el legajo de prueba.")
+        raise PurgeConflict("No se pudo eliminar el legajo.")
