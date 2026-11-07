@@ -84,7 +84,7 @@ def _logo(pdf, offset):
             image.thumbnail((500, 200), Image.Resampling.LANCZOS)
             buf = BytesIO()
             image.save(buf, format="PNG")
-        pdf.drawImage(ImageReader(buf.getvalue()), 40, HEIGHT - offset - 88,
+        pdf.drawImage(ImageReader(BytesIO(buf.getvalue())), 40, HEIGHT - offset - 88,
                       width=129, height=51, preserveAspectRatio=True, anchor="c")
     except (OSError, ValueError):
         _text(pdf, "Digit Laboral", 40, offset + 55, 130,
