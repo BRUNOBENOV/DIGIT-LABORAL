@@ -1,3 +1,14 @@
+# Digit Laboral 2.7.5
+
+## Base histórica LIQ integrada a Liquidación final
+
+- Se incorpora la planilla DOS/LSLIQ de 34 columnas desde **Cálculo → Liquidación final**, con conciliación previa por CODEMP/CODTRA y sin una sección nueva en el menú.
+- Los movimientos elegibles se conservan como antecedentes asociados al mismo legajo, visibles en la trazabilidad de Cálculo → Liquidación final, Histórico del funcionario y línea de tiempo de su expediente.
+- Conserva sin recalcular fechas de ingreso y egreso, antigüedad, salario, promedio, aguinaldo, vacaciones causadas/proporcionales, preaviso, indemnización y motivo de egreso, además de los campos originales completos y el SHA-256 de origen.
+- Detecta archivos repetidos, versiones en conflicto, legajos ambiguos, fechas fuera de rango, motivos de salida en blanco e importes negativos. Las advertencias no modifican el original.
+- Importar un antecedente no crea empleado, procedimiento de egreso, FinalSettlement, CalculationRecord, recibo, pago ni comunicación oficial; no valida jurídicamente el cálculo del sistema antiguo.
+- El archivo de datos históricos no se incorpora al repositorio; la carga a producción exige la conciliación y confirmación autenticada en el sistema.
+
 # Digit Laboral 2.7.4
 
 ## Unificación de remuneraciones históricas con el sistema actual
