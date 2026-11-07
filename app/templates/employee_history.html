@@ -9,7 +9,7 @@
 <section class="panel"><div class="panel-head"><div><span class="eyebrow-label">TRAZABILIDAD DE REMUNERACIÓN</span><h2>Cambios salariales</h2></div></div>{% if history.salary_history %}<div class="table-wrap"><table><thead><tr><th>Vigencia</th><th>Anterior</th><th>Nuevo</th><th>Motivo</th></tr></thead><tbody>{% for item in history.salary_history %}<tr><td>{{ item.effective_from|fecha }}</td><td>Gs. {{ item.previous_salary|gs }}</td><td><b>Gs. {{ item.new_salary|gs }}</b></td><td>{{ item.reason }}</td></tr>{% endfor %}</tbody></table></div>{% else %}<p class="empty-state">Sin cambios salariales registrados.</p>{% endif %}</section>
 <section class="panel">
 <div class="panel-head"><div><span class="eyebrow-label">CÁLCULOS</span><h2>Histórico de cálculos</h2></div>
-<a href="/app/calculations?tipo=notice&amp;company_id={{ selected.company_id }}&amp;employee_id={{ selected.id }}#calculation-history">Ver preavisos</a></div>
+<div style="display:flex;gap:12px;flex-wrap:wrap"><a href="/app/reports/liquidaciones-salarios?company_id={{ selected.company_id }}&amp;employee_id={{ selected.id }}">Ver todos los salarios y antecedentes</a><a href="/app/calculations?tipo=notice&amp;company_id={{ selected.company_id }}&amp;employee_id={{ selected.id }}#calculation-history">Ver preavisos</a></div></div>
 {% if history.calculation_feed.rows %}
 <div class="table-wrap"><table>
 <thead><tr><th>Fecha</th><th>Tipo / período</th><th>Importe</th><th>Estado / acción</th></tr></thead>
