@@ -24,6 +24,7 @@
 </style>
 <div class="final-workflow">
   <a class="back-link dark" href="/app/employees/{{ employee.id }}">← Volver al expediente de {{ employee.full_name }}</a>
+  <div><a class="btn outline" href="/app/liquidaciones?tipo=settlement&amp;company_id={{ employee.company_id }}&amp;employee_id={{ employee.id }}#labor-history">Consultar antecedentes de liquidación del funcionario</a></div>
   <header class="wf-head">
     <div><span class="eyebrow">GESTIÓN LABORAL · CONTROL FINANCIERO</span><h1>Liquidación final #{{ settlement.id }}</h1><p class="wf-intro">El egreso laboral y el pago de la liquidación son estados independientes. Aprobar el cálculo no significa que se haya pagado.</p></div>
     <span class="status-pill">{{ settlement.status }}</span>
