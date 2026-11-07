@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
+
+from bs4 import BeautifulSoup
+from jinja2 import ChoiceLoader, DictLoader, Environment, FileSystemLoader
 
 from app.labor_code_sync import article_sort_key, parse_code_articles
 
@@ -14,13 +18,36 @@ def test_branding_modal_is_inside_content_block():
 
 
 def test_labor_code_template_has_structure_and_sources():
-    root = Path(__file__).resolve().parents[1]
-    template = (root / "app" / "templates" / "labor_code_v17.html").read_text(encoding="utf-8")
-    base = (root / "app" / "templates" / "base.html").read_text(encoding="utf-8")
-    assert "ÍNDICE GENERAL" in template
-    assert "Libro" in template and "Título" in template and "Capítulo" in template
-    assert "Fuente jurídica" in template
-    assert "v17.css" in base and "v17.js" in base
+    templates = Path(__file__).resolve().parents[1] / "app" / "templates"
+    env = Environment(autoescape=True, loader=ChoiceLoader([
+        DictLoader({"base.html": "{% block content %}{% endblock %}"}),
+        FileSystemLoader(templates),
+    ]))
+    env.filters["fecha"] = str
+    articles = [
+        {"number": number, "book_code": "LIBRO PRIMERO", "title_code": "TITULO PRIMERO",
+         "chapter_code": code, "heading": name, "body": "Texto del artículo", "source_url": "https://example.org/ley"}
+        for number, code, name in [("1", "CAPITULO I", "Objeto"), ("2", "CAPITULO I", "Objeto"),
+                                   ("3 Bis", "CAPITULO II", "Garantías")]
+    ]
+    html = env.get_template("labor_code_v17.html").render(
+        user={"role": "contador"}, csrf_token="test", q="jornada & descanso",
+        articles=articles, page=1, pages=2, result_start=1, result_end=3, total=4,
+        article_query="", selected_book="", selected_title="", selected_chapter="", status_filter="modificado",
+        stats={"books": 1, "total": 4, "modified": 4, "repealed": 0},
+        source_registry=[{"law": "Ley N.º 213/1993", "url": "https://example.org/ley"}],
+    )
+    soup = BeautifulSoup(html, "html.parser")
+    assert [heading.get_text(strip=True) for heading in soup.select("h1")] == ["Código del Trabajo"]
+    assert len(soup.select(".legal-outline")) == 1
+    assert [heading.get_text(strip=True) for heading in soup.select(".legal-chapter-head h3")] == ["Objeto", "Garantías"]
+    assert soup.select_one("#articulo-3-Bis h4").get_text(strip=True) == "Artículo 3 Bis"
+    assert soup.select_one(".legal-official-link")["href"] == "https://example.org/ley"
+    assert soup.select_one("#articulo-1 footer a").get_text(strip=True).startswith("Fuente jurídica")
+    assert soup.select_one('form[action="/app/labor-code/sync"] input[name="csrf_token"]')["value"] == "test"
+    next_page = urlsplit(soup.select_one('a[rel="next"]')["href"])
+    assert next_page.fragment == "resultados"
+    assert parse_qs(next_page.query) == {"q": ["jornada & descanso"], "status_filter": ["modificado"], "page": ["2"]}
 
 
 def test_parser_orders_complete_synthetic_code():

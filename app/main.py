@@ -10862,7 +10862,9 @@ def labor_code_page(
     status_filter: str = "", article: str = "", page: int = 1,
     user: User = Depends(require_user), db: Session = Depends(get_db),
 ):
-    sync_error = request.query_params.get("sync_error", "")
+    sync_error = ""
+    if request.query_params.get("sync_error") == "1":
+        sync_error = "No se pudo completar la actualización. Se conservó la biblioteca anterior."
     count = db.scalar(select(func.count(LaborArticle.id))) or 0
     if count < 400:
         try:
@@ -10896,27 +10898,21 @@ def labor_code_page(
     total = len(filtered)
     pages = max(1, math.ceil(total / per_page))
     page = min(max(1, page), pages)
-    visible = filtered[(page-1)*per_page:page*per_page]
+    offset = (page - 1) * per_page
+    visible = filtered[offset:offset + per_page]
     stats = {
         "total": len(all_items), "modified": sum(item["is_modified"] for item in all_items),
         "repealed": sum(item["is_repealed"] for item in all_items), "books": len(outline),
         "reviewed_at": max((item["reviewed_at"] for item in all_items if item["reviewed_at"]), default=None),
     }
-    current_scope = (visible or filtered or all_items)
-    current_context = None
-    if current_scope:
-        first_item = current_scope[0]
-        current_context = {
-            "book_code": first_item.get("book_code", ""),
-            "book_name": first_item.get("book_name", ""),
-            "title_code": first_item.get("title_code", ""),
-            "title_name": first_item.get("title_name", ""),
-            "chapter_code": first_item.get("chapter_code", ""),
-            "chapter_name": first_item.get("chapter_name", ""),
-            "start_number": current_scope[0].get("number", ""),
-            "end_number": current_scope[-1].get("number", ""),
-        }
-    return render(request, "labor_code_v17.html", db, user, articles=visible, outline=outline, books=books, titles=titles, chapters=chapters, q=q, selected_book=book, selected_title=title, selected_chapter=chapter, status_filter=status_filter, article_query=article, page=page, pages=pages, total=total, stats=stats, source_registry=SOURCE_REGISTRY, sync_error=sync_error, synced=request.query_params.get("synced") == "1", version="1.6.0-preview", current_context=current_context)
+    return render(
+        request, "labor_code_v17.html", db, user,
+        articles=visible, outline=outline, books=books, titles=titles, chapters=chapters,
+        q=q, selected_book=book, selected_title=title, selected_chapter=chapter,
+        status_filter=status_filter, article_query=article, page=page, pages=pages, total=total,
+        result_start=offset + 1, result_end=offset + len(visible), stats=stats,
+        source_registry=SOURCE_REGISTRY, sync_error=sync_error, synced=request.query_params.get("synced") == "1",
+    )
 
 
 @app.post("/app/labor-code/sync")
