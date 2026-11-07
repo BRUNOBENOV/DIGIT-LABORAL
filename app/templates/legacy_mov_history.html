@@ -25,15 +25,15 @@
 </style>
 <div class="movh">
   <header class="movh-hero"><h1>Historial salarial del sistema anterior</h1><p>Antecedentes MOV vinculados a los funcionarios de DIGIT LABORAL. Los importes aquí consignados provienen de la fuente histórica y no representan por sí mismos liquidaciones aprobadas ni salarios vigentes.</p></header>
-  <div style="margin-bottom:14px"><a class="btn primary" href="/app/import/legacy-movements">Importar archivo MOV</a></div>
+  {% if user.role in ['administrador', 'contador'] %}<div style="margin-bottom:14px"><a class="btn primary" href="/app/import/legacy-movements">Importar archivo MOV</a></div>{% endif %}
   {% if request.query_params.get("imported") %}
   <div class="movh-note"><b>Importación registrada:</b> {{ request.query_params.get("imported") }} movimientos incorporados, {{ request.query_params.get("existing", "0") }} ya existentes, {{ request.query_params.get("rejected", "0") }} sin vínculo y {{ request.query_params.get("conflicts", "0") }} en conflicto.</div>
   {% endif %}
   <section class="movh-panel">
     <form method="get" action="/app/legacy-movements" class="movh-toolbar">
       <label>Mes del movimiento<input type="month" name="month" value="{{ month }}"></label>
-      <label>ID interno de empresa (opcional)<input type="number" min="1" name="company_id" value="{{ company_id or '' }}" placeholder="Todas"></label>
-      <label>ID interno del funcionario (opcional)<input type="number" min="1" name="employee_id" value="{{ employee_id or '' }}" placeholder="Todos"></label>
+      <label>Código histórico de empresa<input type="search" name="code_company" value="{{ code_company }}" placeholder="CODEMP"></label>
+      <label>Código histórico del funcionario<input type="search" name="code_employee" value="{{ code_employee }}" placeholder="CODTRA"></label>
       <button class="btn primary" type="submit">Filtrar</button>
       <a class="btn ghost" href="/app/legacy-movements">Limpiar</a>
     </form>
