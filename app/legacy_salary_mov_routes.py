@@ -178,6 +178,8 @@ def register_routes(
         request: Request,
         page: int = 1,
         month: str = "",
+        code_company: str = "",
+        code_employee: str = "",
         company_id: int | None = None,
         employee_id: int | None = None,
         user: User = Depends(require_user),
@@ -198,6 +200,15 @@ def register_routes(
         ]
         if company_id is not None:
             conditions.append(Employee.company_id == company_id)
+        code_company = code_company.strip()
+        code_employee = code_employee.strip()
+        for code in (code_company, code_employee):
+            if code and not re.fullmatch(r"[0-9]+(?:-[0-9]+)?", code):
+                raise HTTPException(422, "El código histórico debe contener solo cifras y, si corresponde, un guion.")
+        if code_company:
+            conditions.append(EmployeeEvent.detail.like('%"company_code":"' + code_company + '"%'))
+        if code_employee:
+            conditions.append(EmployeeEvent.detail.like('%"employee_code":"' + code_employee + '"%'))
         if employee_id is not None:
             conditions.append(EmployeeEvent.employee_id == employee_id)
         month = month.strip()
@@ -221,10 +232,15 @@ def register_routes(
             filters["employee_id"] = employee_id
         if month:
             filters["month"] = month
+        if code_company:
+            filters["code_company"] = code_company
+        if code_employee:
+            filters["code_employee"] = code_employee
         return render(
             request, "legacy_mov_history.html", db, user,
             rows=rows, total=total, page=page, pages=pages,
-            month=month, company_id=company_id, employee_id=employee_id,
+            month=month, code_company=code_company, code_employee=code_employee,
+            company_id=company_id, employee_id=employee_id,
             previous_query=urlencode({**filters, "page": page - 1}),
             next_query=urlencode({**filters, "page": page + 1}),
         )
