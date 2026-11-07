@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Historial salarial MOV | Digit Laboral{% endblock %}
+{% block page_name %}Historial salarial MOV{% endblock %}
+{% block content %}
+<style>
+.movh{max-width:1250px;margin:0 auto}
+.movh-hero{background:linear-gradient(113deg,#071e50,#113d80);padding:23px;border-radius:14px;color:#fff;margin-bottom:15px}
+.movh-hero h1{color:#fff;font-size:1.55rem;margin:0 0 8px}
+.movh-hero p{color:#d8e6fa;font-size:.85rem;margin:0;line-height:1.5}
+.movh-panel{background:#fff;border:1px solid #dae4f2;border-radius:12px;padding:18px;margin-bottom:15px}
+.movh-toolbar{display:flex;gap:10px;align-items:end;flex-wrap:wrap}
+.movh-toolbar label{font-size:.79rem;color:#49617f}
+.movh-toolbar input{display:block;margin-top:4px;max-width:220px}
+.movh-table{width:100%;overflow:auto;border:1px solid #e3eaf2;border-radius:9px}
+.movh-table table{width:100%;border-collapse:collapse;font-size:.8rem}
+.movh-table th{background:#f0f4f9;color:#193960;text-align:left;padding:11px;white-space:nowrap}
+.movh-table td{padding:10px;border-top:1px solid #e6ebf1;vertical-align:top}
+.movh-table details summary{cursor:pointer;font-weight:600;color:#194f9b}
+.movh-table dl{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin:8px 0}
+.movh-table dt{font-size:.72rem;color:#607086}
+.movh-table dd{margin:0;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.movh-foot{display:flex;gap:10px;justify-content:space-between;align-items:center;flex-wrap:wrap;margin-top:14px}
+.movh-note{background:#fff7e9;border:1px solid #e4c58d;padding:11px 14px;border-radius:9px;font-size:.81rem;line-height:1.5;margin:12px 0}
+@media(max-width:650px){.movh-table dl{grid-template-columns:repeat(2,minmax(0,1fr))}.movh-panel{padding:12px}}
+</style>
+<div class="movh">
+  <header class="movh-hero"><h1>Historial salarial del sistema anterior</h1><p>Antecedentes MOV vinculados a los funcionarios de DIGIT LABORAL. Los importes aquí consignados provienen de la fuente histórica y no representan por sí mismos liquidaciones aprobadas ni salarios vigentes.</p></header>
+  <div style="margin-bottom:14px"><a class="btn primary" href="/app/import/legacy-movements">Importar archivo MOV</a></div>
+  {% if request.query_params.get("imported") %}
+  <div class="movh-note"><b>Importación registrada:</b> {{ request.query_params.get("imported") }} movimientos incorporados, {{ request.query_params.get("existing", "0") }} ya existentes, {{ request.query_params.get("rejected", "0") }} sin vínculo y {{ request.query_params.get("conflicts", "0") }} en conflicto.</div>
+  {% endif %}
+  <section class="movh-panel">
+    <form method="get" action="/app/legacy-movements" class="movh-toolbar">
+      <label>Mes del movimiento<input type="month" name="month" value="{{ month }}"></label>
+      <label>ID interno de empresa (opcional)<input type="number" min="1" name="company_id" value="{{ company_id or '' }}" placeholder="Todas"></label>
+      <label>ID interno del funcionario (opcional)<input type="number" min="1" name="employee_id" value="{{ employee_id or '' }}" placeholder="Todos"></label>
+      <button class="btn primary" type="submit">Filtrar</button>
+      <a class="btn ghost" href="/app/legacy-movements">Limpiar</a>
+    </form>
+    <p style="font-size:.79rem;color:#61758a;margin-top:12px">Mostrando {{ rows|length }} movimientos en esta página · {{ total }} antecedentes vinculados según los filtros.</p>
+    <div class="movh-note"><b>Trazabilidad:</b> SALARI y SALARI1 se conservan como campos del sistema antiguo; no se presupone que sean equivalentes al total imponible, al neto pagado o al salario contractual. Los campos sin valor no se completan artificialmente.</div>
+    <div class="movh-table"><table>
+      <thead><tr><th>Mes</th><th>Empresa / COD</th><th>Funcionario / CODTRA</th><th>Días informados</th><th>SALARI (Gs.)</th><th>DESIPS (Gs.)</th><th>Fuente</th></tr></thead>
+      <tbody>
+      {% for entry in rows %}
+        {% set event = entry.event %}{% set d = entry.data or {} %}{% set v = d.get('values') or {} %}
+        <tr>
+          <td><b>{{ d.get('period', event.effective_date.strftime('%Y-%m')) }}</b></td>
+          <td>{{ event.employee.company.legal_name }}<div style="color:#708098;font-size:.72rem">{{ d.get('company_code', '') }}</div></td>
+          <td>{{ event.employee.full_name }}<div style="color:#708098;font-size:.72rem">{{ d.get('employee_code', '') }}</div></td>
+          <td>{{ v.get('DIATRA', '—') }}</td>
+          <td style="font-variant-numeric:tabular-nums">{{ v.get('SALARI', '—') }}</td>
+          <td style="font-variant-numeric:tabular-nums">{{ v.get('DESIPS', '—') }}</td>
+          <td><details><summary>Ver fuente</summary>
+            <p style="font-size:.72rem;color:#64748b">{{ d.get('filename','') }} · fila {{ d.get('source_row','') }}<br>Identificador: {{ d.get('legacy_key','') }}</p>
+            {% if d.get('warnings') %}<p style="color:#92600a;font-size:.75rem">{{ d.get('warnings')|join(' ') }}</p>{% endif %}
+            <dl>{% for label, value in v.items() %}<div><dt>{{ label }}</dt><dd>{{ value or '—' }}</dd></div>{% endfor %}</dl>
+          </details></td>
+        </tr>
+      {% else %}
+        <tr><td colspan="7" style="text-align:center;padding:24px">Aún no hay movimientos históricos vinculados para esta consulta.</td></tr>
+      {% endfor %}
+      </tbody></table></div>
+    <div class="movh-foot">
+      <span style="font-size:.83rem;color:#566b86">Página {{ page }} de {{ pages }}</span>
+      <div style="display:flex;gap:9px">
+        {% if page > 1 %}<a class="btn ghost" href="/app/legacy-movements?{{ previous_query }}">Anterior</a>{% endif %}
+        {% if page < pages %}<a class="btn ghost" href="/app/legacy-movements?{{ next_query }}">Siguiente</a>{% endif %}
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}
