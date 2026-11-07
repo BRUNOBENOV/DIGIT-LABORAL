@@ -163,6 +163,7 @@ from .historical_notice_context import (
     notice_history_summary, notice_history_detail, notice_history_page, notice_history_csv,
 )
 from .unified_labor_history import calculation_history_page, vacation_history_page
+from .legacy_salary_mov_import import EVENT_TYPE as LEGACY_MOV_EVENT_TYPE, historical_mov_detail
 from .legacy_notice_exceptions import list_notice_exceptions
 from .legacy_vacation_import import (
     EVENT_TYPE as LEGACY_VACATION_EVENT_TYPE, MAX_BYTES as LEGACY_VACATION_MAX_BYTES,
@@ -3838,10 +3839,11 @@ def employee_detail_page(
     historical_event_details = {
         event.id: (
             historical_vacation_detail(event) if event.event_type == LEGACY_VACATION_EVENT_TYPE
+            else historical_mov_detail(event) if event.event_type == LEGACY_MOV_EVENT_TYPE
             else notice_history_detail(event)
         )
         for event in events
-        if event.event_type in {LEGACY_VACATION_EVENT_TYPE, LEGACY_NOTICE_EVENT_TYPE}
+        if event.event_type in {LEGACY_VACATION_EVENT_TYPE, LEGACY_NOTICE_EVENT_TYPE, LEGACY_MOV_EVENT_TYPE}
     }
     return render(
         request, "employee_detail.html", db, user, employee=employee, events=events, salaries=salaries,
@@ -9526,11 +9528,12 @@ def employee_history_page(
         history = {
             "events": list(db.scalars(select(EmployeeEvent).where(
                 EmployeeEvent.employee_id == selected.id,
-                EmployeeEvent.event_type.notin_([LEGACY_NOTICE_EVENT_TYPE, LEGACY_VACATION_EVENT_TYPE]),
+                EmployeeEvent.event_type.notin_([LEGACY_NOTICE_EVENT_TYPE, LEGACY_VACATION_EVENT_TYPE, LEGACY_MOV_EVENT_TYPE]),
             ).order_by(EmployeeEvent.effective_date.desc(), EmployeeEvent.created_at.desc()).limit(100))),
             "salary_history": list(db.scalars(select(SalaryHistory).where(SalaryHistory.employee_id == selected.id).order_by(SalaryHistory.effective_from.desc()).limit(100))),
             "calculation_feed": calculation_history_page(
                 db, company_ids, employee_id=selected.id, page=1, page_size=40,
+                include_center_calculations=True, include_mov_salary=True,
             ),
             "operations": list(db.scalars(select(LaborOperation).where(LaborOperation.employee_id == selected.id).order_by(LaborOperation.effective_date.desc()).limit(100))),
             "vacation_feed": vacation_history_page(
