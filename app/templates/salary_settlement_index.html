@@ -43,7 +43,18 @@
 <div class="salary-report-notice"><strong>Recibo de liquidación salarial con formato inspirado en MTESS.</strong> Se presentan los importes guardados por Cálculo sin volver a calcularlos. El PDF contiene Original y Duplicado con numeración DIGIT-LABORAL, sin QR. Es un documento interno, no un formulario oficial del MTESS ni constancia de pago.</div>
 <div style="display:flex;justify-content:flex-end;gap:10px;margin:9px 0 15px">
   <a class="btn primary" href="/app/liquidaciones/salarios/importar-reop">Importar Excel REOP</a>
-  {% if user.role in ['administrador','contador'] %}<a class="btn outline" href="/app/import/legacy-movements">Incorporar movimientos del sistema anterior</a>{% endif %}
+  {% if user.role in ['administrador','contador'] %}
+  <details style="position:relative;min-width:170px">
+    <summary class="btn outline" style="cursor:pointer;list-style:none">Importar base antigua</summary>
+    <form method="post" action="/app/import/legacy-movements/preview" enctype="multipart/form-data" style="margin-top:8px;padding:12px;border:1px solid #d7e2ef;border-radius:9px;background:#fff;min-width:270px">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label style="font-size:.78rem;color:#435c7e">Archivo de movimientos MOV (.xlsx)
+        <input type="file" name="file" accept=".xlsx" required style="display:block;width:100%;margin-top:6px">
+      </label>
+      <button class="btn primary" type="submit" style="margin-top:9px">Conciliar con la nómina existente</button>
+    </form>
+  </details>
+  {% endif %}
   <a class="btn ghost" href="/app/reports/liquidaciones-salarios{{ '?' ~ history_toggle_query if history_toggle_query else '' }}">{{ 'Ocultar versiones anteriores' if show_superseded else 'Ver versiones anteriores' }}</a>
 </div>
 <form method="get" action="/app/reports/liquidaciones-salarios" id="salaryReportFilters" data-paginated-filters class="salary-report-filters">
@@ -55,10 +66,10 @@
   <label>Período<input type="month" name="period" value="{{ filters.period }}"></label>
   <label>Estado<select name="status"><option value="">Todos</option>{% for value in ['Borrador','Revisar','Aprobado','Anulado','Sin conciliar'] %}<option value="{{ value }}" {{ 'selected' if filters.status == value }}>{{ value }}</option>{% endfor %}</select></label>
   <label>Origen<select name="source"><option value="all" {{ 'selected' if filters.source == 'all' }}>Todos los registros</option><option value="current" {{ 'selected' if filters.source == 'current' }}>DIGIT LABORAL</option><option value="historical" {{ 'selected' if filters.source == 'historical' }}>Sistema anterior</option></select></label>
-  <label>Ordenar por<select name="sort" id="salaryReportSort" data-sort-control data-sort-server="true" data-sort-direction="{{ filters.direction|default('asc') }}">{% for key,label in [('period','Período'),('date','Fecha'),('company','Empresa'),('employee','Funcionario'),('amount','Neto guardado'),('status','Estado')] %}<option value="{{ key }}" {{ 'selected' if filters.sort|default('period') == key }}>{{ label }}</option>{% endfor %}</select></label>
+  <label>Ordenar por<select name="sort" id="salaryReportSort" data-sort-control data-sort-server="true" data-sort-direction="{{ filters.direction|default('asc') }}">{% for key,label in [('period','Período'),('date','Fecha'),('company','Empresa'),('employee','Funcionario'),('amount','Importe'),('status','Estado')] %}<option value="{{ key }}" {{ 'selected' if filters.sort|default('period') == key }}>{{ label }}</option>{% endfor %}</select></label>
   <button class="btn primary" type="submit">Aplicar filtros</button>
 </form>
-<div class="salary-report-summary"><span><strong>{{ total }}</strong> cálculos salariales {{ 'incluidas las versiones anteriores' if show_superseded else 'vigentes y borradores' }} · página {{ page }} de {{ pages }}</span><span>Registros actuales y antecedentes del sistema anterior, sin duplicar la emisión</span></div>
+<div class="salary-report-summary"><span><strong>{{ total }}</strong> movimientos de remuneración {{ 'incluidas las versiones anteriores' if show_superseded else 'vigentes y borradores' }} · página {{ page }} de {{ pages }}</span><span>Registros actuales y antecedentes del sistema anterior, sin duplicar la emisión</span></div>
 <section class="salary-report-table-shell"><div class="salary-report-scroll"><table class="salary-report-table" id="salaryReportTable" data-server-paginated data-sort-selector="salaryReportSort">
 <thead><tr><th data-sort-key="date">Registro / fecha</th><th data-sort-key="company">Empresa</th><th data-sort-key="employee">Funcionario</th><th data-sort-key="period">Período</th><th data-sort-key="status">Estado</th><th data-sort-key="amount">Importe registrado</th><th>Acciones</th></tr></thead>
 <tbody>
