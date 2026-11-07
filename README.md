@@ -1,3 +1,13 @@
+# Digit Laboral 2.7.4
+
+## Unificación de remuneraciones históricas con el sistema actual
+
+- Los movimientos históricos MOV se muestran en **Informes → Liquidación de Salarios** junto a cálculos actuales, con filtros comunes por empresa, funcionario, período, estado y origen.
+- Cálculo → Salario e Histórico del funcionario reutilizan la trazabilidad existente; el menú y el listado MOV independientes fueron retirados.
+- La importación del archivo MOV se inicia desde el informe salarial existente y realiza una conciliación por CODEMP y CODTRA antes de permitir guardar antecedentes.
+- Los importes SALARI originales conservan su identidad y precisión; los movimientos históricos no se confunden con recibos, pagos confirmados, nóminas cerradas, salarios contractuales ni comunicaciones REI/REOP.
+- Pruebas agregadas para la unión paginada, controles de empresa, deduplicación y lectura por origen.
+
 # Digit Laboral 2.7.3
 
 ## Movimientos salariales históricos MOV
