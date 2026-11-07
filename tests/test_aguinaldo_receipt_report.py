@@ -62,7 +62,10 @@ def test_aguinaldo_pdf_preview_download_are_same_one_page_two_copies(web_case):
         assert "Persona sintética" in text
         assert "DIGIT-LABORAL" in text
         assert "REOP/MTESS" not in text
-        assert "MINISTERIO DE TRABAJO" not in text
+        assert text.count("MINISTERIO DE TRABAJO, EMPLEO Y SEGURIDAD SOCIAL") == 2
+        assert text.count("Dirección: Luis A. de Herrera") == 2
+        assert text.count("DOCUMENTO INTERNO.") == 2
+        assert text.count("No emitido por el MTESS") == 2
         assert float(pdf.pages[0].mediabox.width) == 595
         assert float(pdf.pages[0].mediabox.height) == 678
         internal_code = f"DL-AG-{'A' if kind == 'registro' else 'C'}{record.id:06d}"
@@ -95,6 +98,13 @@ def test_source_model_layout_preserves_qr_area_blank(web_case):
     # Real installed Digit Laboral logo, displayed in both header slots.
     brand_images = page.get_image_info()
     assert len(brand_images) >= 2
+    # Reference ministry artwork is retained in the original header slot,
+    # not used as proof of official REOP issuance.
+    for top in (37, 356):
+        assert any(abs(info["bbox"][0] - 40) < 1 and
+                   abs(info["bbox"][1] - top) < 1 and
+                   abs(info["bbox"][2] - 169.04) < 1
+                   for info in brand_images)
     # The source's QR occupied x=460..576; both original and duplicate
     # deliberately keep that white space, with no barcode or replacement art.
     for offset in (0, 319):

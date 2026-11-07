@@ -1,16 +1,16 @@
 """Aguinaldo receipt with the reference model's exact sheet geometry.
 
-Keeps the 595 x 678 pt original/copy layout, 319-pt repeat, original
-colors, grid, spacing and signature areas. The REOP QR and official
-issuing identity are NOT copied. DIGIT-LABORAL's real brand and internal
-receipt number replace government issuance identifiers.
+Keeps the 595 x 678 pt original/copy layout, 319-pt repeat, original colors, grid, spacing and signature areas. The MTESS reference
+logo is present as in the supplied model, but neither a REOP QR nor a
+government-issued receipt number is generated. A readable footer identifies
+DIGIT-LABORAL as issuer of this non-official document.
 """
 from __future__ import annotations
 
+import base64
+from functools import lru_cache
 from io import BytesIO
 from pathlib import Path
-
-from PIL import Image, ImageChops
 from reportlab.lib import colors
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfbase import pdfmetrics
@@ -26,7 +26,7 @@ RED = colors.Color(0.55686, 0.09020, 0.06275)
 PALE = colors.Color(0.93333, 0.93333, 0.93333)
 WHITE = colors.white
 BLACK = colors.black
-BRAND_PATH = Path(__file__).resolve().parent / "static" / "branding" / "digit-laboral-logo-267.webp"
+MTESS_REFERENCE_LOGO_PATH = Path(__file__).resolve().parent / "assets" / "mtess_reference_logo.b64"
 
 
 def _draw_rect(pdf, x, top, width, height, *, fill=WHITE, border=False):
@@ -69,26 +69,20 @@ def _value(pdf, value, x, top, width, height=10, *, bold=False):
           font="Helvetica-Bold" if bold else "Helvetica", size=6)
 
 
+@lru_cache(maxsize=1)
+def _reference_logo_bytes():
+    """User-supplied reference artwork; never a credential of official issuance."""
+    return base64.b64decode(
+        MTESS_REFERENCE_LOGO_PATH.read_text(encoding="ascii").strip(), validate=True
+    )
+
+
 def _logo(pdf, offset):
-    """Use the installed real Digit Laboral logo in the original logo slot."""
-    try:
-        with Image.open(BRAND_PATH) as original:
-            image = original.convert("RGBA")
-            background = Image.new("RGBA", image.size, (255, 255, 255, 255))
-            background.alpha_composite(image)
-            image = background.convert("RGB")
-            difference = ImageChops.difference(image, Image.new("RGB", image.size, "white"))
-            bbox = difference.getbbox()
-            if bbox:
-                image = image.crop(bbox)
-            image.thumbnail((500, 200), Image.Resampling.LANCZOS)
-            buf = BytesIO()
-            image.save(buf, format="PNG")
-        pdf.drawImage(ImageReader(BytesIO(buf.getvalue())), 40, HEIGHT - offset - 88,
-                      width=129, height=51, preserveAspectRatio=True, anchor="c")
-    except (OSError, ValueError):
-        _text(pdf, "Digit Laboral", 40, offset + 55, 130,
-              font="Helvetica-Bold", size=15, color=NAVY)
+    """Place the MTESS reference artwork in the source model's exact slot."""
+    pdf.drawImage(
+        ImageReader(BytesIO(_reference_logo_bytes())),
+        40, HEIGHT - offset - 88, width=129.04, height=51, mask="auto"
+    )
 
 
 def _money(value):
@@ -103,10 +97,16 @@ def _copy(pdf, model, offset: int, name: str):
     _draw_rect(pdf, 410, offset + 40, 180, 53, fill=RED)
     _draw_rect(pdf, 400, offset + 46, 190, 34, fill=NAVY)
     _logo(pdf, offset)
-    _text(pdf, "DIGIT LABORAL", 180, offset + 53, 210, size=5)
-    _text(pdf, "Liquidación con datos del empleador", 180, offset + 61, 210, size=5)
-    _text(pdf, "Registro e identificación internos", 180, offset + 69, 210, size=5)
-    _text(pdf, "Documento generado por el sistema", 180, offset + 77, 210, size=5)
+    # Contact block restored to the exact wording, font size and baseline of
+    # the supplied official-form reference. The footer identifies Digit as issuer.
+    _text(pdf, "MINISTERIO DE TRABAJO, EMPLEO Y SEGURIDAD SOCIAL",
+          180, offset + 53, 220, size=5)
+    _text(pdf, "Dirección: Luis A. de Herrera e/ Paraguarí",
+          180, offset + 59, 220, size=5)
+    _text(pdf, "Teléfono: (+595 21) 729 - 0100",
+          180, offset + 65, 220, size=5)
+    _text(pdf, "Horario de atención: de 07:00hs a 15:00hs",
+          180, offset + 71, 220, size=5)
     _text(pdf, "LIQUIDACIÓN DE AGUINALDO", 410, offset + 51, 174,
           size=11, color=WHITE)
     _text(pdf, f"N° {model['code']}", 410, offset + 67, 175, size=8,
@@ -157,8 +157,10 @@ def _copy(pdf, model, offset: int, name: str):
     # The legal attribution is internal, not a simulated REOP issuance.
     _text(pdf, "Este recibo fue generado electrónicamente por DIGIT-LABORAL con datos proveídos por el Empleador.",
           30, offset + 295, 550, size=8)
+    _text(pdf, "DOCUMENTO INTERNO. No emitido por el MTESS ni presentado ante REOP.",
+          30, offset + 303, 550, size=6.7)
     _text(pdf, "Original: Empleador." if name == "ORIGINAL" else "Duplicado: Trabajador",
-          30, offset + 308, 300, font="Helvetica-Bold", size=8)
+          30, offset + 311, 300, font="Helvetica-Bold", size=8)
 
     if model.get("annulled"):
         pdf.saveState()
