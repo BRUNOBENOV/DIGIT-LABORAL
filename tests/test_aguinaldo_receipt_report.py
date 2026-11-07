@@ -60,7 +60,17 @@ def test_aguinaldo_pdf_preview_download_are_same_one_page_two_copies(web_case):
         assert "ORIGINAL" in text and "COPIA" in text
         assert "NO REGISTRADA" in text
         assert "Persona sintética" in text
-        assert "REOP/MTESS" in text
+        assert "DIGIT-LABORAL" in text
+        assert "REOP/MTESS" not in text
+        assert "MINISTERIO DE TRABAJO" not in text
+        assert float(pdf.pages[0].mediabox.width) == 595
+        assert float(pdf.pages[0].mediabox.height) == 678
+        internal_code = f"DL-AG-{'A' if kind == 'registro' else 'C'}{record.id:06d}"
+        assert text.count(internal_code) == 2
+        assert text.count("FIRMA DEL EMPLEADOR") == 2
+        assert text.count("FIRMA DEL EMPLEADO") == 2
+        assert text.count("MONTO TOTAL DE INGRESO") == 2
+        assert "QR" not in text
         assert "2.848.679" not in text  # no amounts copied from the user-supplied example
         assert "3.000.000" in text if kind == "registro" else "1.000.000" in text
         assert db.scalar(select(func.count(AuditLog.id)).where(AuditLog.action == "descarga_pdf_liquidacion_aguinaldo")) == 0 if kind == "registro" else 1
@@ -68,6 +78,29 @@ def test_aguinaldo_pdf_preview_download_are_same_one_page_two_copies(web_case):
         assert download.status_code == 200
         assert download.headers["content-disposition"].startswith("attachment;")
         assert download.content == preview.content or PdfReader(io.BytesIO(download.content)).pages[0].extract_text() == text
+
+
+def test_source_model_layout_preserves_qr_area_blank(web_case):
+    import fitz
+
+    client, db, _, company, employee, other = web_case
+    annual, _, _ = create_records(db, company, employee, other)
+    response = client.get(f"{ROOT}/registro/{annual.id}/pdf?vista=1")
+    assert response.status_code == 200
+    pdf = fitz.open(stream=response.content, filetype="pdf")
+    assert len(pdf) == 1
+    page = pdf[0]
+    assert page.rect == fitz.Rect(0, 0, 595, 678)
+    # The source's QR occupied x=460..576; both original and duplicate
+    # deliberately keep that white space, with no barcode or replacement art.
+    for offset in (0, 319):
+        pix = page.get_pixmap(
+            matrix=fitz.Matrix(1, 1),
+            clip=fitz.Rect(461, 205 + offset, 575, 291 + offset),
+            colorspace=fitz.csRGB,
+            alpha=False,
+        )
+        assert all(channel >= 248 for channel in pix.samples), "QR area should remain white"
 
 
 def test_payment_metadata_is_separate_audited_and_can_be_cleared(web_case):
