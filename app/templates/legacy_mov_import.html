@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Movimientos salariales históricos MOV | Digit Laboral{% endblock %}
+{% block page_name %}Movimientos salariales históricos{% endblock %}
+{% block content %}
+<style>
+.mov-wrap{max-width:1200px;margin:0 auto;color:#182e51}
+.mov-hero{background:linear-gradient(118deg,#071e50,#0a3980);border-radius:16px;color:#fff;padding:25px;margin-bottom:16px}
+.mov-hero h1{font-size:1.55rem;line-height:1.25;color:#fff;margin:6px 0}
+.mov-hero p{font-size:.87rem;color:#e4edfa;line-height:1.6;max-width:790px;margin:0}
+.mov-card{padding:21px;background:#fff;border:1px solid #dce5f2;border-radius:12px;margin-bottom:15px}
+.mov-card h2{font-size:1.08rem;color:#153667;margin:0 0 12px}
+.mov-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:11px;margin:17px 0}
+.mov-stat{padding:14px;background:#f5f8fc;border:1px solid #dce5f2;border-radius:10px}
+.mov-stat strong{display:block;font-size:1.45rem;font-variant-numeric:tabular-nums;color:#123976}
+.mov-stat span{font-size:.77rem;color:#586e88}
+.mov-note{background:#fff8eb;border:1px solid #e6c58a;border-radius:9px;padding:12px 14px;font-size:.84rem;line-height:1.6;color:#6d4d19;margin-top:13px}
+.mov-table{width:100%;overflow:auto;border:1px solid #e5ebf3;border-radius:10px}
+.mov-table table{border-collapse:collapse;width:100%;font-size:.8rem}
+.mov-table th{background:#eff4fb;text-align:left;color:#21456e;padding:10px;white-space:nowrap}
+.mov-table td{border-top:1px solid #e6ecf4;padding:10px;vertical-align:top}
+.mov-table td:last-child{min-width:190px}
+.mov-table code{font-size:.72rem}
+.mov-upload{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:15px}
+.mov-upload input{font-size:.85rem;max-width:100%}
+.mov-actions{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:15px}
+.mov-help{font-size:.81rem;color:#5c6b80;line-height:1.6}
+@media(max-width:750px){.mov-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.mov-card{padding:13px}}
+</style>
+<div class="mov-wrap">
+  <header class="mov-hero">
+    <div style="font-weight:800;letter-spacing:.14em;font-size:.71rem">DIGIT LABORAL · HISTORIA SALARIAL</div>
+    <h1>Importación de movimientos MOV</h1>
+    <p>Incorporá los movimientos de BASE DE DATOS MOV.csv.xlsx del sistema anterior mediante una conciliación verificable de empresa y funcionario. No se actualizan salarios vigentes ni se alteran nóminas o cálculos aprobados.</p>
+  </header>
+  <nav class="mov-actions">
+    <a class="btn ghost" href="/app/legacy-movements">Ver historial importado</a>
+    <a class="btn ghost" href="/app/payrolls">Volver a Nóminas</a>
+  </nav>
+  {% if request.query_params.get("error") %}<div class="mov-note" role="alert">{{ request.query_params.get("error") }}</div>{% endif %}
+  <section class="mov-card">
+    <h2>1. Seleccionar planilla histórica</h2>
+    <p class="mov-help">Formato Excel .xlsx con columnas <code>CODEMP</code>, <code>CODTRA</code>, <code>MESDEX</code>, <code>PAGDEL</code>, <code>PAGALX</code> y <code>SALARI</code>. Se preservan los 29 campos originales, incluso cuando su interpretación requiere validación profesional.</p>
+    <form method="post" action="/app/import/legacy-movements/preview" enctype="multipart/form-data">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="mov-upload">
+        <input type="file" accept=".xlsx" name="file" required aria-label="Planilla MOV histórica">
+        <button type="submit" class="btn primary">Analizar y vincular registros</button>
+      </div>
+    </form>
+    <div class="mov-note"><b>Importación segura:</b> los códigos históricos deben coincidir con una única empresa y un único legajo del estudio. Los casos no vinculados, duplicados o en conflicto se excluyen. Las filas se registran como antecedentes, no como liquidaciones emitidas, pagos verificados ni presentaciones ante IPS, REOP o REI.</div>
+  </section>
+  {% if preview %}
+  <section class="mov-card">
+    <h2>2. Conciliación previa — {{ source_filename }}</h2>
+    <div class="mov-help">SHA-256 del archivo: <code>{{ source_sha256[:24] }}…</code>. La vista previa no modifica datos.</div>
+    <div class="mov-stats">
+      <div class="mov-stat"><strong>{{ preview.summary.source_rows }}</strong><span>Movimientos de origen</span></div>
+      <div class="mov-stat"><strong>{{ preview.summary.ready }}</strong><span>Elegibles para importar</span></div>
+      <div class="mov-stat"><strong>{{ preview.summary.already_imported }}</strong><span>Ya importados (se omiten)</span></div>
+      <div class="mov-stat"><strong>{{ preview.summary.rejected }}</strong><span>Sin vínculo o inválidos</span></div>
+      <div class="mov-stat"><strong>{{ preview.summary.conflicts }}</strong><span>Conflictos de identidad o versión</span></div>
+      <div class="mov-stat"><strong>{{ preview.summary.warnings }}</strong><span>Movimientos con advertencias</span></div>
+    </div>
+    {% if preview.sample_ready %}
+    <h2>Ejemplos de movimientos elegibles</h2>
+    <div class="mov-table"><table><thead><tr><th>Fila</th><th>Empresa</th><th>Funcionario</th><th>Mes</th><th>SALARI (Gs.)</th><th>Observaciones</th></tr></thead>
+    <tbody>{% for row in preview.sample_ready %}<tr><td>{{ row.source_row }}</td><td>{{ row.company_name }} <code>{{ row.company_code }}</code></td><td>{{ row.employee_name }} <code>{{ row.employee_code }}</code></td><td>{{ row.period }}</td><td>{{ row.salary }}</td><td>{{ row.warnings or 'Sin advertencias' }}</td></tr>{% endfor %}</tbody></table></div>
+    {% endif %}
+    {% if preview.sample_issues %}
+    <h2 style="margin-top:18px">Ejemplos que requieren revisión o que ya existían</h2>
+    <div class="mov-table"><table><thead><tr><th>Fila</th><th>CODEMP / CODTRA</th><th>Mes</th><th>Estado</th><th>Motivo</th></tr></thead>
+    <tbody>{% for row in preview.sample_issues %}<tr><td>{{ row.source_row }}</td><td><code>{{ row.company_code }} / {{ row.employee_code }}</code></td><td>{{ row.period }}</td><td>{{ row.state }}</td><td>{{ row.reason or row.warnings or 'El registro ya existe' }}</td></tr>{% endfor %}</tbody></table></div>
+    {% endif %}
+  </section>
+  <section class="mov-card">
+    <h2>3. Confirmar incorporación</h2>
+    <p class="mov-help">Al confirmar se comprueban otra vez la coincidencia de códigos y los movimientos existentes. Se conserva la fila de origen, los valores originales y la identidad del usuario que ejecuta la importación.</p>
+    <form method="post" action="/app/import/legacy-movements/{{ token }}/confirm">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label style="display:flex;align-items:flex-start;gap:9px;margin-bottom:14px;font-size:.85rem">
+        <input type="checkbox" required name="verified" value="si" style="width:18px;height:18px">
+        Revisé las coincidencias y autorizo incorporar solo los antecedentes elegibles, sin sobrescribir salarios, recibos, nóminas ni registros ya existentes.
+      </label>
+      <button class="btn primary" type="submit" {% if preview.summary.ready == 0 %}disabled{% endif %}>Importar {{ preview.summary.ready }} movimientos históricos</button>
+    </form>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}
