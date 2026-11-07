@@ -299,3 +299,20 @@ def make_mov_event(row: dict, employee_id: int, filename: str, created_by: str) 
         detail=MARKER + json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
         created_by=created_by,
     )
+
+
+def historical_mov_detail(event: EmployeeEvent) -> str | None:
+    """Readable salary-source summary for the EXISTING employee timeline."""
+    record = event_data(event.detail)
+    if record is None:
+        return None
+    values = record.get("values") or {}
+    reference = record.get("period") or event.effective_date.strftime("%Y-%m")
+    text = (
+        f"MOV {reference} · SALARI registrado: {values.get('SALARI') or 'no informado'} Gs. "
+        f"DESIPS original: {values.get('DESIPS') or 'no informado'} Gs. "
+        f"Días registrados DIATRA: {values.get('DIATRA') or 'sin dato'}. "
+        f"Fuente: {record.get('filename') or 'MOV'}, fila {record.get('source_row') or '—'}. "
+        "Dato histórico sin conciliación; no es recibo ni pago comprobado."
+    )
+    return text
