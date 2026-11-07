@@ -58,7 +58,7 @@
 {% endif %}
 <section class="panel">
 <h2>Vista previa del documento listo para imprimir</h2>
-<p class="agu-muted">Es el mismo PDF que se descarga, en formato A4 con <strong>Original para empleador</strong> y <strong>Copia para trabajador</strong>. Se reproduce la organización visual del modelo aportado sin utilizar identificadores gubernamentales.</p>
+<p class="agu-muted">Es el mismo PDF que se descarga, con las dimensiones originales del modelo y los ejemplares <strong>Original para empleador</strong> y <strong>Copia para trabajador</strong>. Mantiene sus cuadros, colores y distribución, sin QR y con el número interno de DIGIT-LABORAL.</p>
 <iframe class="agu-preview-frame" id="aguinaldoReceiptPdf" title="Liquidación de Aguinaldo {{ model.code }} · Original y Copia" src="/app/reports/liquidaciones-aguinaldo/{{ model.source_kind }}/{{ model.id }}/pdf?vista=1#toolbar=0&navpanes=0" loading="eager"></iframe>
 <p class="agu-muted">Si el navegador no admite impresión del visor incorporado, utilizá «Abrir PDF para imprimir» y elegí Imprimir desde el visor.</p>
 </section>
