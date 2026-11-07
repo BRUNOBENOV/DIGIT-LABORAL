@@ -11610,3 +11610,11 @@ app.include_router(post_import_reactivation_router)
 # Importación REOP al cálculo salarial, sin sobrescribir liquidaciones.
 from .reop_salary_ingest_routes import router as reop_salary_ingest_router
 app.include_router(reop_salary_ingest_router)
+
+# Importador salarial histórico MOV: se registra tras construir autenticación y dependencias.
+from .legacy_salary_mov_routes import register_routes as register_mov_routes
+register_mov_routes(
+    app, import_dir=IMPORT_DIR, render=render, get_db=get_db,
+    require_user=require_user, require_roles=require_roles,
+    company_ids_for_user=company_ids_for_user, write_audit=write_audit,
+)
