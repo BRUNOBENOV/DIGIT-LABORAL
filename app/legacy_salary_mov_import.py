@@ -125,13 +125,14 @@ def parse_legacy_mov_workbook(content: bytes, filename: str) -> dict:
         missing = sorted(REQUIRED.difference(headers))
         if missing:
             raise ValueError("Faltan columnas obligatorias del archivo MOV: " + ", ".join(missing))
+        indexes = {name: headers.index(name) for name in FIELDS if name in headers}
         for row_number, values in enumerate(iterator, 2):
             if not any(v not in ("", None) for v in values):
                 continue
             if len(records) >= MAX_ROWS:
                 raise ValueError("La base supera los 100.000 movimientos admitidos.")
             data = {
-                name: _text(values[headers.index(name)]) if name in headers and headers.index(name) < len(values) else ""
+                name: _text(values[indexes[name]]) if name in indexes and indexes[name] < len(values) else ""
                 for name in FIELDS
             }
             records.append(_record(data, row_number))
