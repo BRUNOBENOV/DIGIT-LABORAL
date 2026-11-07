@@ -139,7 +139,7 @@ def test_cleanup_confirm(
     previous_backups = db.scalars(select(AuditLog).where(
         AuditLog.studio_id == user.studio_id,
         AuditLog.user_email == user.email,
-        AuditLog.action == "exportar_respaldo_depuracion_pruebas",
+        AuditLog.action == "exportar_respaldo_depuracion",
         AuditLog.entity == "funcionario",
         AuditLog.entity_id == str(employee.id),
     ).order_by(AuditLog.id.desc()).limit(30))
