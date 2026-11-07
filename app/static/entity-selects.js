@@ -141,7 +141,8 @@
       if (this.kind === "employee") {
         if (company && company !== "0") url.searchParams.set("company_id", company);
         if (this.select.dataset.ipsOnly === "true") url.searchParams.set("ips_only", "true");
-        if (this.select.dataset.ipsActiveOnly === "true") url.searchParams.set("active_only", "true");
+        // Todos los buscadores operativos de funcionarios muestran únicamente activos.
+        url.searchParams.set("active_only", "true");
       }
       return url;
     }
@@ -161,7 +162,7 @@
         if (sequence !== this.sequence || this.popover.hidden) return;
         this.items = data.items || [];
         const selected = this.select.selectedOptions[0];
-        if (!query && !this.isEmpty() && selected && !this.items.some(item => String(item.id) === this.value)) {
+        if (this.kind === "company" && !query && !this.isEmpty() && selected && !this.items.some(item => String(item.id) === this.value)) {
           this.items = [{id:this.value, label:selected.textContent.trim(), description:"Selección actual", company_id:selected.dataset.company}, ...this.items].slice(0,10);
         }
         this.active = this.items.findIndex(item => String(item.id) === this.value);
@@ -200,7 +201,7 @@
       this.selecting = true;
       const url = this.parameters(); url.searchParams.delete("q"); url.searchParams.set("selected_id", value);
       // Retain an existing record when editing history; suggestions still honor the operational scope.
-      if (!emit) { url.searchParams.set("scope", "all"); url.searchParams.delete("company_id"); }
+      if (!emit) { url.searchParams.set("scope", "all"); url.searchParams.delete("company_id"); url.searchParams.delete("active_only"); }
       this.busy.hidden = false; this.input.setCustomValidity("Esperá a que termine de cargar la selección.");
       try {
         const data = await this.request(url, this.detailAbort.signal);

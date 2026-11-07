@@ -204,6 +204,26 @@ def test_lookup_respects_company_accounts_and_lawyer_assignments(entity_director
         assert {item["company_id"] for item in lookup(client,"employees",q="207001")["items"]}=={expected}
 
 
+
+
+def test_active_only_employee_lookup_excludes_former_and_archived_staff(entity_directory):
+    client, data = entity_directory
+    for code, record_key in (("211099", "archived"), ("211100", "terminated")):
+        # The historic record remains available to read, not to suggest as a new choice.
+        assert lookup(client, "employees", q=code, company_id=data["company"], scope="all")["items"]
+        assert lookup(client, "employees", q=code, company_id=data["company"], active_only=True, scope="all")["items"] == []
+        assert client.get("/api/selectors/employees", params={
+            "selected_id": data[record_key], "active_only": True, "scope": "all",
+        }).status_code == 404
+
+
+def test_shared_employee_combobox_enforces_active_only_and_preserves_historical_read():
+    script = (Path(__file__).resolve().parents[1] / "app/static/entity-selects.js").read_text(encoding="utf-8")
+    assert 'url.searchParams.set("active_only", "true");' in script
+    assert 'url.searchParams.delete("active_only");' in script
+    # The current selection is not reintroduced into a filtered employee search list.
+    assert 'this.kind === "company" && !query' in script
+
 def test_all_company_and_employee_selects_use_the_shared_adapter_and_no_anonymous_data():
     root=Path(__file__).resolve().parents[1]
     total=0
