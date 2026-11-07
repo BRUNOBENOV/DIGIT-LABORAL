@@ -242,11 +242,11 @@
 <details class="dl-history dl-trace" id="labor-history" {% if request.query_params.get('history_page') %}open{% endif %}>
   <summary class="dl-trace-summary">
     <span class="dl-trace-icon" aria-hidden="true">↺</span>
-    <span class="dl-trace-title"><strong>Trazabilidad de cálculos</strong><small>Cálculos guardados · consultar, descargar o rectificar</small></span>
+    <span class="dl-trace-title"><strong>Trazabilidad de cálculos</strong><small>{{ "Liquidaciones actuales y antecedentes LIQ del mismo historial" if kind == "settlement" else "Cálculos guardados · consultar, descargar o rectificar" }}</small></span>
     <span class="dl-trace-count">{{ labor_history.total }} registros</span>
   </summary>
   <div class="dl-trace-body">
-    <div class="dl-trace-intro">Se muestra una sola versión vigente de cada cálculo salarial rectificado. El original deja de aparecer después de aprobar la rectificación y sigue disponible para auditoría. Los borradores no reemplazan cálculos aprobados.</div>
+    <div class="dl-trace-intro">{% if kind == "settlement" %}Las liquidaciones guardadas y los registros LIQ del sistema anterior comparten esta consulta. Los antecedentes LIQ se identifican como sin conciliar; no sustituyen un cálculo aprobado ni acreditan pagos.{% else %}Se muestra una sola versión vigente de cada cálculo salarial rectificado. El original deja de aparecer después de aprobar la rectificación y sigue disponible para auditoría. Los borradores no reemplazan cálculos aprobados.{% endif %}</div>
     {% if labor_history.superseded_count %}
     <div class="dl-trace-versions">
       <a class="dl-trace-action" href="/app/liquidaciones?{{ labor_toggle_query }}#labor-history">
