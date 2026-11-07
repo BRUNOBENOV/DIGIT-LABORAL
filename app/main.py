@@ -7518,6 +7518,7 @@ def salary_settlements_report_page(
     sort: str = "period",
     direction: str = "desc",
     history_all: str = "",
+    source: str = "all",
     user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ):
@@ -7546,79 +7547,53 @@ def salary_settlements_report_page(
         employees_query = employees_query.where(Employee.company_id == company_id)
     employees = seed_choices(db, employees_query, Employee, request=request)
 
-    conditions = [
-        CalculationRecord.company_id.in_(allowed_ids),
-        CalculationRecord.calculation_type.in_(SALARY_CALCULATION_TYPES),
-        CalculationRecord.employee_id.is_not(None),
-    ]
-    # La aprobación de una rectificación hace que el original deje de
-    # aparecer en el informe principal; el registro permanece para auditoría.
+    # El mismo informe combina liquidaciones nuevas con MOV históricos.
+    # Los antecedentes MOV no generan recibos ni cálculos aprobados.
+    from .salary_report_unified import salary_report_unified
+
     show_superseded = history_all == "1"
     superseded_ids = (
         _superseded_salary_record_ids(db, tuple(allowed_ids), company_id, employee_id)
         if not show_superseded else set()
     )
-    if superseded_ids:
-        conditions.append(CalculationRecord.id.not_in(superseded_ids))
-    if company_id:
-        conditions.append(CalculationRecord.company_id == company_id)
-    if employee_id:
-        conditions.append(CalculationRecord.employee_id == employee_id)
-    if period:
-        conditions.append(CalculationRecord.reference_period == period)
-    if status:
-        conditions.append(CalculationRecord.status == status)
-    if q:
-        term = f"%{q}%"
-        conditions.append(or_(
-            Company.legal_name.ilike(term), Company.ruc.ilike(term),
-            Employee.full_name.ilike(term), Employee.document_number.ilike(term),
-            CalculationRecord.notes.ilike(term), CalculationRecord.reference_period.ilike(term),
-        ))
-
-    query = (
-        select(CalculationRecord)
-        .join(Company, Company.id == CalculationRecord.company_id)
-        .join(Employee, Employee.id == CalculationRecord.employee_id)
-        .where(*conditions)
-        .options(selectinload(CalculationRecord.company), selectinload(CalculationRecord.employee))
-    )
-    count_query = (
-        select(func.count(CalculationRecord.id))
-        .join(Company, Company.id == CalculationRecord.company_id)
-        .join(Employee, Employee.id == CalculationRecord.employee_id)
-        .where(*conditions)
-    )
-    total = int(db.scalar(count_query) or 0)
-    sort_columns = {"date": CalculationRecord.created_at, "company": func.lower(Company.legal_name), "employee": func.lower(Employee.full_name), "period": CalculationRecord.reference_period, "status": CalculationRecord.status, "amount": CalculationRecord.amount}
-    if sort not in sort_columns:
+    if source not in {"all", "current", "historical"}:
+        raise HTTPException(422, "Origen salarial inválido.")
+    if sort not in {"date", "company", "employee", "period", "status", "amount"}:
         sort = "period"
     direction = "asc" if direction == "asc" else "desc"
+    try:
+        total, items = salary_report_unified(
+            db, allowed_ids, SALARY_CALCULATION_TYPES,
+            company_id=company_id, employee_id=employee_id,
+            period=period, status=status, q=q, source=source,
+            superseded_ids=superseded_ids, sort=sort, direction=direction,
+            page=page, page_size=page_size,
+        )
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
     pager = Pagination("/app/reports/liquidaciones-salarios", total, page, page_size, {
         "company_id": company_id, "employee_id": employee_id, "q": q, "period": period,
         "status": status, "sort": sort, "direction": direction,
+        "source": source if source != "all" else None,
         "history_all": "1" if show_superseded else None,
     })
     from urllib.parse import urlencode
-    toggle_fields = {key: value for key, value in request.query_params.items()
-                     if key not in {"history_all", "page"}}
+    toggle_fields = {
+        key: value for key, value in request.query_params.items()
+        if key not in {"history_all", "page"}
+    }
     if not show_superseded:
         toggle_fields["history_all"] = "1"
     history_toggle_query = urlencode(toggle_fields)
     page, page_size, pages = pager.page, pager.page_size, pager.pages
-    ordered = sort_columns[sort].desc() if direction == "desc" else sort_columns[sort].asc()
-    items = list(db.scalars(
-        query.order_by(ordered.nulls_last(), CalculationRecord.id.asc()).limit(page_size).offset((page - 1) * page_size)
-    ))
     return render(
         request, "salary_settlement_index.html", db, user,
         companies=companies, employees=employees, items=items, total=total, page=page, pages=pages,
         page_size=page_size, selected_company=company_id, selected_employee=employee_id,
-        filters={"period": period, "status": status, "q": q, "sort": sort, "direction": direction},
+        filters={"period": period, "status": status, "q": q, "sort": sort, "direction": direction, "source": source},
         show_superseded=show_superseded, history_toggle_query=history_toggle_query,
         pager=pager,
     )
-
 
 @app.get("/app/reports/liquidaciones-salarios/{calculation_id}", response_class=HTMLResponse)
 def salary_settlement_report_detail(
