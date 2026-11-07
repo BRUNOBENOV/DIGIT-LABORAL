@@ -91,6 +91,9 @@ def test_source_model_layout_preserves_qr_area_blank(web_case):
     assert len(pdf) == 1
     page = pdf[0]
     assert page.rect == fitz.Rect(0, 0, 595, 678)
+    # Real installed Digit Laboral logo, displayed in both header slots.
+    brand_images = page.get_image_info()
+    assert len(brand_images) >= 2
     # The source's QR occupied x=460..576; both original and duplicate
     # deliberately keep that white space, with no barcode or replacement art.
     for offset in (0, 319):
