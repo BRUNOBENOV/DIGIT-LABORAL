@@ -33,8 +33,8 @@
     <p>Incorporá los movimientos de BASE DE DATOS MOV.csv.xlsx del sistema anterior mediante una conciliación verificable de empresa y funcionario. No se actualizan salarios vigentes ni se alteran nóminas o cálculos aprobados.</p>
   </header>
   <nav class="mov-actions">
-    <a class="btn ghost" href="/app/legacy-movements">Ver historial importado</a>
-    <a class="btn ghost" href="/app/payrolls">Volver a Nóminas</a>
+    <a class="btn ghost" href="/app/reports/liquidaciones-salarios">Volver al informe salarial unificado</a>
+    
   </nav>
   {% if request.query_params.get("error") %}<div class="mov-note" role="alert">{{ request.query_params.get("error") }}</div>{% endif %}
   <section class="mov-card">
