@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Conciliar liquidaciones anteriores | DIGIT LABORAL{% endblock %}
+{% block page_name %}Liquidación final{% endblock %}
+{% block content %}
+<style>
+.liq-import{max-width:1160px;margin:0 auto;color:#183156}
+.liq-import__hero{background:linear-gradient(115deg,#071d4b,#0a438f);padding:24px 27px;border-radius:14px;color:#fff;margin-bottom:16px}
+.liq-import__hero h1{color:#fff;font-size:1.55rem;margin:7px 0}
+.liq-import__hero p{max-width:840px;color:#dceaff;font-size:.85rem;line-height:1.6}
+.liq-import__card{padding:20px;background:#fff;border:1px solid #d8e4f2;border-radius:12px;margin-bottom:14px}
+.liq-import__card h2{font-size:1.07rem;color:#173b71;margin:0 0 12px}
+.liq-import__stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:17px 0}
+.liq-import__stat{border:1px solid #dce6f2;background:#f6f9fd;border-radius:9px;padding:13px}
+.liq-import__stat strong{display:block;font-size:1.45rem;color:#153d86;font-variant-numeric:tabular-nums}
+.liq-import__stat span{font-size:.75rem;color:#50657f}
+.liq-import__note{padding:12px 14px;border:1px solid #e8c991;background:#fff8e9;border-radius:9px;font-size:.8rem;line-height:1.55;color:#624b20;margin:13px 0}
+.liq-import__table{overflow:auto;border:1px solid #dae4f0;border-radius:8px}
+.liq-import__table table{border-collapse:collapse;width:100%;font-size:.77rem}
+.liq-import__table th{background:#edf3fb;color:#1b3d69;text-align:left;padding:10px;white-space:nowrap}
+.liq-import__table td{padding:9px 10px;border-top:1px solid #e4eaf3;vertical-align:top}
+.liq-import__table td:last-child{min-width:170px}
+.liq-import__small{color:#677992;font-size:.78rem;line-height:1.6}
+@media(max-width:700px){.liq-import__stats{grid-template-columns:repeat(2,minmax(0,1fr))}.liq-import__card{padding:13px}}
+</style>
+<div class="liq-import">
+  <header class="liq-import__hero">
+    <div style="font-size:.68rem;letter-spacing:.13em;font-weight:800">CÁLCULO · LIQUIDACIÓN FINAL</div>
+    <h1>Incorporar liquidaciones del sistema anterior</h1>
+    <p>Este proceso vincula las liquidaciones de LSLIQ con las empresas y los legajos ya existentes, y permite consultarlas en la trazabilidad de Liquidación final y en el expediente laboral sin modificar registros actuales.</p>
+  </header>
+  <div style="margin-bottom:13px"><a class="btn ghost" href="/app/liquidaciones?tipo=settlement#labor-history">Volver a Liquidación final</a></div>
+  {% if request.query_params.get('error') %}<div class="liq-import__note" role="alert">{{ request.query_params.get('error') }}</div>{% endif %}
+  <section class="liq-import__card">
+    <h2>1. Planilla original LSLIQ</h2>
+    <p class="liq-import__small">Se necesitan los códigos históricos CODEMP y CODTRA, las fechas de ingreso y egreso, y los conceptos de liquidación. Los importes originales se conservan sin recalcular.</p>
+    <form method="post" action="/app/import/legacy-liquidations/preview" enctype="multipart/form-data" style="display:flex;align-items:end;gap:10px;flex-wrap:wrap;margin-top:13px">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label style="font-size:.8rem">Archivo Excel (.xlsx)<input style="display:block;margin-top:5px" type="file" name="file" accept=".xlsx" required></label>
+      <button type="submit" class="btn primary">Analizar coincidencias</button>
+    </form>
+    <div class="liq-import__note"><b>Alcance:</b> la incorporación no efectúa pagos, no registra egresos nuevos ni reemplaza una liquidación final operativa. Los motivos no consignados y los importes anómalos quedan disponibles para revisión, sin atribuirles una causa o validez no demostrada.</div>
+  </section>
+  {% if preview %}
+  <section class="liq-import__card">
+    <h2>2. Resultado de conciliación — {{ source_filename }}</h2>
+    <p class="liq-import__small">Identificador del archivo: <code>{{ source_sha256[:26] }}…</code>. La revisión no modifica datos.</p>
+    <div class="liq-import__stats">
+      <div class="liq-import__stat"><strong>{{ preview.summary.source_rows }}</strong><span>Movimientos en el Excel</span></div>
+      <div class="liq-import__stat"><strong>{{ preview.summary.ready }}</strong><span>Vinculados y elegibles</span></div>
+      <div class="liq-import__stat"><strong>{{ preview.summary.already_imported }}</strong><span>Ya existentes; se omitirán</span></div>
+      <div class="liq-import__stat"><strong>{{ preview.summary.rejected }}</strong><span>Sin vinculación o inválidos</span></div>
+      <div class="liq-import__stat"><strong>{{ preview.summary.conflicts }}</strong><span>Movimientos en conflicto</span></div>
+      <div class="liq-import__stat"><strong>{{ preview.summary.warnings }}</strong><span>Con advertencias en el origen</span></div>
+    </div>
+    {% if preview.sample_ready %}
+    <h2>Ejemplos de vinculaciones correctas</h2>
+    <div class="liq-import__table"><table>
+      <thead><tr><th>Fila</th><th>Empresa</th><th>Funcionario</th><th>Ingreso / egreso</th><th>Aguinaldo</th><th>Indemnización</th><th>Revisión</th></tr></thead>
+      <tbody>{% for item in preview.sample_ready %}
+        <tr>
+          <td>{{ item.source_row }}</td>
+          <td>{{ item.company_name }} <small>{{ item.company_code }}</small></td>
+          <td>{{ item.employee_name }} <small>{{ item.employee_code }}</small></td>
+          <td>{{ item.admission }} / {{ item.departure }}</td>
+          <td>Gs. {{ item.aguinaldo }}</td>
+          <td>Gs. {{ item.indemnizacion }}</td>
+          <td>{{ item.warnings or 'Sin advertencias de origen' }}</td>
+        </tr>
+      {% endfor %}</tbody>
+    </table></div>{% endif %}
+    {% if preview.sample_issues %}
+    <h2 style="margin-top:20px">Registros que requieren atención</h2>
+    <div class="liq-import__table"><table>
+      <thead><tr><th>Fila</th><th>CODEMP / CODTRA</th><th>Fecha egreso</th><th>Estado</th><th>Motivo</th></tr></thead>
+      <tbody>{% for item in preview.sample_issues %}
+        <tr><td>{{ item.source_row }}</td><td>{{ item.company_code }} / {{ item.employee_code }}</td><td>{{ item.departure or '—' }}</td><td>{{ item.state }}</td><td>{{ item.reason or item.warnings or 'Ya incorporado' }}</td></tr>
+      {% endfor %}</tbody>
+    </table></div>{% endif %}
+  </section>
+  <section class="liq-import__card">
+    <h2>3. Confirmación</h2>
+    <p class="liq-import__small">Volveremos a comprobar las coincidencias y los antecedentes ya incorporados antes de registrar las filas elegibles. No se crean liquidaciones finales nuevas ni se cambian estados de funcionarios.</p>
+    <form method="post" action="/app/import/legacy-liquidations/{{ token }}/confirm">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label style="display:flex;align-items:flex-start;gap:9px;font-size:.82rem;margin-bottom:14px">
+        <input type="checkbox" name="verified" value="si" required style="width:18px;height:18px">
+        Revisé la conciliación y autorizo incorporar únicamente los antecedentes correctamente vinculados, respetando los registros operativos ya guardados.
+      </label>
+      <button type="submit" class="btn primary" {% if preview.summary.ready == 0 %}disabled{% endif %}>Incorporar {{ preview.summary.ready }} liquidaciones históricas</button>
+    </form>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}
