@@ -1,3 +1,12 @@
+# Digit Laboral 2.7.3
+
+## Movimientos salariales históricos MOV
+
+- Cálculo → Historial salarial MOV incorpora un flujo autenticado para importar BASE DE DATOS MOV.csv.xlsx con previsualización, vinculación estricta CODEMP/CODTRA y bloqueo de filas ambiguas o repetidas.
+- Conserva los 29 campos originales, el mes, la fila fuente, su SHA-256 y las advertencias de calendario; deja consultar el historial paginado por códigos y período.
+- Registra antecedentes de solo lectura sin crear nóminas, recibos, salarios contractuales ni presentaciones oficiales, y mantiene trazabilidad del usuario que importa.
+- El contenido de los archivos fuente permanece fuera del repositorio: debe subirse desde la cuenta autorizada en la aplicación.
+
 # Digit Laboral 2.6.80
 
 Plataforma de gestión y cumplimiento laboral para estudios contables paraguayos.
