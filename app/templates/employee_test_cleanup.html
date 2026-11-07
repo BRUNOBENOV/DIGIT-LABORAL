@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Depurar legajo de prueba | DIGIT-LABORAL{% endblock %}
+{% block title %}Depuración controlada del expediente | DIGIT-LABORAL{% endblock %}
 {% block page_name %}Mantenimientos{% endblock %}
 {% block content %}
 <style>
@@ -21,7 +21,7 @@
 .cleanup-page .cleanup-counts th{color:#476482;font-size:.73rem}
 .cleanup-page .cleanup-counts td:last-child,.cleanup-page .cleanup-counts th:last-child{text-align:right;font-variant-numeric:tabular-nums}
 .cleanup-page .cleanup-form label{display:block;margin:14px 0;font-size:.83rem;font-weight:750}
-.cleanup-page .cleanup-form :is(input[type=text],textarea){display:block;width:100%;box-sizing:border-box;border:1px solid #c9d7e7;border-radius:9px;padding:11px;margin-top:7px;font:inherit}
+.cleanup-page .cleanup-form :is(input[type=text],select,textarea){display:block;width:100%;box-sizing:border-box;border:1px solid #c9d7e7;border-radius:9px;padding:11px;margin-top:7px;font:inherit}
 .cleanup-page .cleanup-form label.cleanup-check{display:flex;align-items:flex-start;gap:9px;font-size:.82rem;font-weight:500;line-height:1.5}
 .cleanup-page .cleanup-form label.cleanup-check input{margin-top:4px;flex:0 0 auto}
 .cleanup-page .cleanup-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
@@ -31,8 +31,8 @@
 <div class="cleanup-page">
   <a class="back-link" href="/app/employees/{{ employee.id }}/linked-records">← Registros vinculados</a>
   <header class="cleanup-hero"><span class="eyebrow">MANTENIMIENTOS · HERRAMIENTA ADMINISTRATIVA</span>
-    <h1>Depurar legajo de prueba</h1>
-    <p>Una única operación controlada para retirar un expediente sintético y sus antecedentes no presentados ni pagados. Para trabajadores reales, utilizá rectificación o archivado.</p>
+    <h1>Depuración controlada del expediente</h1>
+    <p>Para corregir duplicaciones, importaciones incorrectas y cargas erróneas. Se revisan todas las dependencias antes de permitir eliminar el legajo y sus registros aptos para depuración.</p>
   </header>
   {% if error %}<div class="cleanup-alert" role="alert">{{ error }}</div>{% endif %}
   <section class="cleanup-card">
@@ -42,7 +42,7 @@
       <div><span>Legajo</span><b>{{ employee.employee_code if employee.employee_code is not none else 'ID-' ~ employee.id }}</b></div>
       <div><span>Empresa / estado</span><b>{{ employee.company.legal_name }} · {{ employee.status }}</b></div>
     </div>
-    <p class="cleanup-help">El nombre del trabajador debe identificar expresamente datos sintéticos. Una empresa de prueba con trabajadores reales no habilita esta acción.</p>
+    <p class="cleanup-help">La elegibilidad depende de los antecedentes y su estado, no del nombre del funcionario. Si existen obligaciones de conservación, utilizá rectificación o archivado.</p>
   </section>
   <section class="cleanup-card">
     <h2>Vista previa de dependencias</h2>
@@ -63,28 +63,34 @@
   </section>
   {% else %}
   <section class="cleanup-card"><h2>Respaldo obligatorio</h2>
-    <p class="cleanup-neutral">La depuración es irreversible desde la interfaz. Descargá y conservá una copia JSON de los datos originales. Incluye los valores de los registros sintéticos y sus identificadores; manejala como información confidencial.</p>
+    <p class="cleanup-neutral">La depuración es irreversible desde la interfaz. Descargá y conservá una copia JSON de los datos originales. Incluye los datos y los identificadores de la ficha; manejala como información confidencial.</p>
     <div class="cleanup-actions" style="margin-top:14px">
-      <a class="btn primary" href="/app/employees/{{ employee.id }}/test-cleanup/backup.json">Descargar respaldo JSON</a>
+      <a class="btn primary" href="/app/employees/{{ employee.id }}/cleanup/backup.json">Descargar respaldo JSON</a>
     </div>
   </section>
   <section class="cleanup-card">
-    <h2>Confirmación del administrador</h2>
-    <p class="cleanup-alert">Esta acción eliminará también el legajo del funcionario, no solo los registros vinculados. No altera otros empleados ni empresas. Si existen datos reales, pagos o comunicaciones externas, no continúes.</p>
-    <form class="cleanup-form" method="post" action="/app/employees/{{ employee.id }}/test-cleanup">
+    <h2>Confirmación del responsable</h2>
+    <p class="cleanup-alert">Esta acción elimina definitivamente tanto el legajo como los registros vinculados autorizados. No afecta otros funcionarios ni empresas. Si los antecedentes tienen efectos jurídicos, se entregaron a terceros, fueron pagados o deben conservarse, no continúes.</p>
+    <form class="cleanup-form" method="post" action="/app/employees/{{ employee.id }}/cleanup">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <input type="hidden" name="token" value="{{ review_token }}">
-      <label>Motivo documentado de la depuración
-        <textarea name="reason" maxlength="600" rows="3" minlength="12" required placeholder="Ej.: Datos creados para pruebas funcionales, sin uso laboral ni presentación oficial."></textarea>
+      <label>Causa de la depuración
+        <select name="reason_type" required>
+          <option value="">Seleccioná una causa</option>
+          {% for value in cleanup_reasons %}<option value="{{ value }}">{{ value }}</option>{% endfor %}
+        </select>
       </label>
-      <label class="cleanup-check"><input type="checkbox" name="declare_synthetic" value="on" required>Certifico que este funcionario y sus antecedentes son exclusivamente datos ficticios de prueba.</label>
-      <label class="cleanup-check"><input type="checkbox" name="declare_no_external_use" value="on" required>Confirmo que no se entregaron documentos con efectos jurídicos, no se pagaron importes ni se realizaron presentaciones ante IPS, MTESS, REOP o REI.</label>
+      <label>Justificación documentada de la depuración
+        <textarea name="reason" maxlength="600" rows="3" minlength="12" required placeholder="Ej.: Legajo duplicado tras una importación. Se verificó que no tiene pagos ni registros oficiales vinculados."></textarea>
+      </label>
+      <label class="cleanup-check"><input type="checkbox" name="declare_eligible" value="on" required>Confirmo que revisé la ficha y que esta eliminación corrige un registro erróneo o duplicado, sin suprimir información que deba conservarse.</label>
+      <label class="cleanup-check"><input type="checkbox" name="declare_no_external_use" value="on" required>Confirmo que no existen documentos entregados con efectos jurídicos, pagos efectuados ni presentaciones ante IPS, MTESS, REOP o REI que impidan eliminar el expediente.</label>
       <label class="cleanup-check"><input type="checkbox" name="backup_saved" value="on" required>Descargué y conservé el respaldo JSON actualizado.</label>
       <label>Escribí exactamente: <strong>{{ review.confirmation }}</strong>
         <input type="text" name="confirmation" autocomplete="off" spellcheck="false" placeholder="{{ review.confirmation }}" required>
       </label>
       <p class="cleanup-help">La aprobación firmada vence en 10 minutos. Si cambian los datos, será obligatoria una nueva revisión y descarga.</p>
-      <div class="cleanup-actions"><button class="btn danger" type="submit">Depurar registros y eliminar legajo de prueba</button><a class="btn ghost" href="/app/employees/{{ employee.id }}/linked-records">Cancelar</a></div>
+      <div class="cleanup-actions"><button class="btn danger" type="submit">Depurar registros y eliminar legajo</button><a class="btn ghost" href="/app/employees/{{ employee.id }}/linked-records">Cancelar</a></div>
     </form>
   </section>
   {% endif %}
