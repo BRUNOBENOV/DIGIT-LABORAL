@@ -4,6 +4,7 @@
 {% block page_name %}Liquidaciones{% endblock %}
 {% block content %}
 <div class="dl"><a class="dl-button dl-payroll-link" href="/app/liquidaciones">Calcular y emitir una liquidación →</a></div>
+<div style="display:flex;gap:10px;flex-wrap:wrap;margin:12px 0"><a class="btn ghost" href="/app/legacy-movements">Ver historial salarial MOV</a>{% if user.role in ['administrador','contador'] %}<a class="btn outline" href="/app/import/legacy-movements">Importar base MOV antigua</a>{% endif %}</div>
 <div class="page-header"><div><span class="eyebrow">CÁLCULOS MENSUALES</span><h1>Liquidaciones de salarios</h1><p>Creá borradores por empresa y periodo. El cierre queda reservado al administrador o contador.</p></div>{% if user.role in ['administrador','contador','auxiliar'] %}<button class="btn primary" type="button" data-modal-open="payrollModal">+ Nueva liquidación</button>{% endif %}</div>
 <div class="legal-warning"><b>Control profesional obligatorio:</b> los importes son borradores operativos. Antes de cerrar, verificá actividad, jornada, conceptos imponibles, IPS y normativa aplicable.</div>
 <form method="get" action="/app/payrolls" id="payrollFilters" data-paginated-filters class="module-selection-form panel" data-module-selection>
