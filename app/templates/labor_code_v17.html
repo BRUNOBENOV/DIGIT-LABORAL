@@ -29,7 +29,7 @@
   {% if synced %}<div class="alert success" role="status">La biblioteca jurídica fue actualizada correctamente.</div>{% endif %}
   {% if sync_error %}<div class="alert danger" role="alert">{{ sync_error }}</div>{% endif %}
 
-  <form method="get" action="/app/labor-code" class="legal-search" id="legalFilters" role="search" aria-label="Buscar en el Código del Trabajo">
+  <form method="get" action="/app/labor-code" class="legal-code-search" id="legalFilters" role="search" aria-label="Buscar en el Código del Trabajo">
     <div class="legal-search-fields">
       <label><span>Buscar por tema</span><input name="q" value="{{ q }}" placeholder="Ej. vacaciones, preaviso, salario"></label>
       <label><span>Número de artículo</span><input name="article" value="{{ article_query }}" placeholder="Ej. 89 o 412 Bis"></label>
