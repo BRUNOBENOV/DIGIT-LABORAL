@@ -492,7 +492,8 @@ if (certificateForm) {
     if (type === 'contrato_trabajo' && contractFullEditor?.value.trim()) return;
     // Sin empresa y funcionario no existe un documento canónico; mantener el modelo local con marcadores claros.
     if (!companySelect.value || !employeeSelect.value) return;
-    if (type === 'notificacion_preaviso' && !selectedPreavisoCalculation()) return;
+    if (type === 'notificacion_preaviso' &&
+        !(selectedPreavisoCalculation() && noticeStartInput?.value && effectiveDateInput?.value)) return;
     canonicalCertificatePreviewTimer = window.setTimeout(async () => {
       const formData = new FormData(certificateForm);
       formData.set('intent', 'preview');
@@ -839,7 +840,7 @@ if (certificateForm) {
       const chosen = preavisoCalculations.find(item => String(item.id) === String(previousId)) ||
         preavisoCalculations.find(item => item.reference_period === previousPeriod) || preavisoCalculations[0];
       noticePeriodSelect.value = chosen.reference_period;
-      applyPreavisoCalculation(chosen, String(chosen.id) !== String(previousId));
+      applyPreavisoCalculation(chosen, changedContext || String(chosen.id) !== String(previousId));
     } catch (error) {
       if (requestSequence !== preavisoRequestSequence || typeInput.value !== 'notificacion_preaviso') return;
       if (calculationIdInput) calculationIdInput.value = '';
