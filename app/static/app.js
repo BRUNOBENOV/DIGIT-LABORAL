@@ -268,6 +268,7 @@ if (certificateForm) {
     const until = shortDate(leaveEndInput?.value);
     const startPeriod = shortDate(periodStartInput?.value);
     const endPeriod = shortDate(periodEndInput?.value);
+    const noticeEndDate = type === 'notificacion_preaviso' && selectedPreavisoCalculation() ? effectiveDateInput?.value : '';
     const amount = num('amount') || salaryRaw;
     const lastPeriodSalary = num('last_period_salary_amount');
     const lastPeriodSalaryDisplay = lastPeriodSalary > 0
@@ -413,7 +414,9 @@ if (certificateForm) {
       notificacion_preaviso: 'Señor(a)\n' + employee +
         '\n\nMe dirijo a usted para notificarle que la Firma Comercial ' + company +
         ' ha resuelto prescindir de sus servicios a partir del ' +
-        (effectiveDateInput?.value ? shortDate(effectiveDateInput.value).replace(/\/\d{2}(\d{2})$/, '/$1') : '[FECHA DE TERMINACIÓN]') + '.' +
+        (noticeEndDate
+          ? shortDate(noticeEndDate).replace(/\/\d{2}(\d{2})$/, '/$1')
+          : '[FECHA DE TERMINACIÓN]') + '.' +
         '\n\nPor tanto, y de conformidad con las normas laborales vigentes, queda usted preavisado. Podrá, pues, disponer de una licencia diaria de dos horas dentro de la jornada legal o de un día a la semana, para buscar otra ocupación.' +
         '\n\nSe servirá darse por notificado del contenido de la presente, firmando al pie de la misma.\n\nMuy atentamente.',
       renuncia: 'NOTA DE RENUNCIA\n\nA: ' + recipient + '\nEmpresa: ' + company + '\n\nYo, ' + identity +
@@ -489,6 +492,8 @@ if (certificateForm) {
     if (type === 'contrato_trabajo' && contractFullEditor?.value.trim()) return;
     // Sin empresa y funcionario no existe un documento canónico; mantener el modelo local con marcadores claros.
     if (!companySelect.value || !employeeSelect.value) return;
+    if (type === 'notificacion_preaviso' &&
+        !(selectedPreavisoCalculation() && noticeStartInput?.value && effectiveDateInput?.value)) return;
     canonicalCertificatePreviewTimer = window.setTimeout(async () => {
       const formData = new FormData(certificateForm);
       formData.set('intent', 'preview');
@@ -680,6 +685,7 @@ if (certificateForm) {
     return [result.getUTCFullYear(), String(result.getUTCMonth() + 1).padStart(2, '0'), String(result.getUTCDate()).padStart(2, '0')].join('-');
   };
   const selectedPreavisoCalculation = () => {
+    if (preavisoContext !== companySelect.value + ':' + employeeSelect.value) return null;
     const period = noticePeriodSelect?.value || '';
     const calculationId = calculationIdInput?.value || '';
     return preavisoCalculations.find(item => String(item.id) === String(calculationId) && item.reference_period === period) || null;
@@ -787,6 +793,7 @@ if (certificateForm) {
       updatePreavisoSummary(null);
       setPreavisoStatus('Seleccioná una empresa y un funcionario para consultar Cálculo → Preaviso.');
       updatePreavisoActionAvailability();
+      updatePreview();
       return;
     }
     noticePeriodSelect.disabled = true;
@@ -794,6 +801,7 @@ if (certificateForm) {
     setPreavisoStatus('Buscando cálculos de Preaviso para el funcionario y sus períodos…', '', 'loading');
     updatePreavisoSummary(null);
     updatePreavisoActionAvailability();
+    updatePreview();
     try {
       const url = '/api/certificates/preaviso-calculations?company_id=' + encodeURIComponent(companyId) +
         '&employee_id=' + encodeURIComponent(employeeId);
@@ -832,9 +840,9 @@ if (certificateForm) {
       const chosen = preavisoCalculations.find(item => String(item.id) === String(previousId)) ||
         preavisoCalculations.find(item => item.reference_period === previousPeriod) || preavisoCalculations[0];
       noticePeriodSelect.value = chosen.reference_period;
-      applyPreavisoCalculation(chosen, String(chosen.id) !== String(previousId));
+      applyPreavisoCalculation(chosen, changedContext || String(chosen.id) !== String(previousId));
     } catch (error) {
-      if (requestSequence !== preavisoRequestSequence) return;
+      if (requestSequence !== preavisoRequestSequence || typeInput.value !== 'notificacion_preaviso') return;
       if (calculationIdInput) calculationIdInput.value = '';
       preavisoCalculations = [];
       clearPreavisoDates();

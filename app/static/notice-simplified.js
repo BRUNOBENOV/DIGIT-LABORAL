@@ -5,9 +5,8 @@
   const field = name => form.elements.namedItem(name);
   const type = field('document_type'), company = field('company_id'), employee = field('employee_id');
   const card = form.querySelector('.certificate-form-card');
-  const preview = form.querySelector('.certificate-preview-shell');
   const nativeStatus = document.querySelector('#preavisoCalculationStatus');
-  if (!card || !preview || !nativeStatus || !type || !company || !employee) return;
+  if (!card || !nativeStatus || !type || !company || !employee) return;
   const canRegister = form.dataset.noticeCanRegister === 'true';
   const panel = document.createElement('section');
   panel.className = 'notice-simple-ui'; panel.id = 'noticeSimpleUI'; panel.hidden = true;
@@ -35,22 +34,15 @@
     </section>
     <details class="notice-simple-detail" id="noticeBaseDetails"><summary>Datos del legajo · edición</summary><div class="notice-simple-content" id="noticeBaseSlot"></div></details>
     <details class="notice-simple-detail" id="noticeOptionsDetails"><summary>Número y observaciones · opcional</summary><div class="notice-simple-content" id="noticeOptionsSlot"><p class="notice-simple-caption">Si dejás el número vacío, se asignará al guardar.</p></div></details>
-    <details class="notice-simple-detail" id="noticeTechnicalDetails"><summary>Ver cálculo y criterios de revisión</summary><div class="notice-simple-content" id="noticeTechnicalSlot"></div></details>`;
+    <details class="notice-simple-detail" id="noticeTechnicalDetails"><summary>Ver cálculo y criterios de revisión</summary><div class="notice-simple-content" id="noticeTechnicalSlot"></div></details>
+    <p class="notice-simple-caption" id="noticeActionHint"></p>`;
   employee.closest('label').after(panel);
-  const actions = document.createElement('section');
-  actions.className = 'notice-simple-actions'; actions.hidden = true;
-  actions.innerHTML = '<div class="notice-simple-heading"><h3>Tu notificación</h3><span class="notice-simple-active-label" id="noticeReadyBadge"></span></div><p class="notice-simple-caption" id="noticeActionHint"></p>';
-  const placeholder = document.createElement('section');
-  placeholder.className = 'notice-preview-empty'; placeholder.hidden = true;
-  placeholder.innerHTML = '<h3>La carta se verá aquí</h3><p>Vinculá un cálculo guardado y revisá sus fechas. Luego podrás imprimir o descargar el documento.</p>';
-  preview.prepend(actions, placeholder);
   const element = id => document.getElementById(id);
   const labelOf = name => field(name)?.closest('label');
   const places = new Map(), hiddenSources = new Set();
   let active = false;
   let identityWasOpen = false;
   let nativeLive = null;
-  let state = 'selection';
   const value = name => String(field(name)?.value || '').trim();
   const selection = select => select.selectedOptions[0];
   function move(node, target) {
@@ -80,11 +72,10 @@
   }
   function refresh() {
     if (!active) return;
-    state = !company.value || !employee.value ? 'selection' : nativeStatus.dataset.state || 'loading';
+    const state = !company.value || !employee.value ? 'selection' : nativeStatus.dataset.state || 'loading';
     panel.dataset.state = state;
     const hasRecord = Boolean(value('calculation_id'));
     panel.dataset.hasRecord = String(hasRecord);
-    form.dataset.noticePreview = String(hasRecord && Boolean(value('notice_start_date') && value('effective_date')));
     const text = {
       selection: 'Elegí una empresa y un funcionario.', loading: 'Buscando cálculos guardados…',
       empty: 'Este funcionario todavía no tiene un cálculo de preaviso guardado.',
@@ -103,9 +94,7 @@
       ? 'Se abrirá Cálculo → Preaviso con esta empresa y este funcionario. Guardá el cálculo, regresá a esta pestaña y pulsá Actualizar registros.'
       : 'Pedí al contador del estudio que registre el cálculo. Después pulsá Actualizar registros para vincularlo.';
     element('noticeRefreshRecords').disabled = state === 'loading' || !company.value || !employee.value;
-    const available = [...form.querySelectorAll('.certificate-actions button[type="submit"]')].every(button => !button.disabled);
-    element('noticeReadyBadge').textContent = available ? 'Para revisión' : state === 'loading' ? 'Consultando' : 'Pendiente';
-    element('noticeReadyBadge').dataset.missing = String(!available);
+    const available = [...card.querySelectorAll('.certificate-actions button[type="submit"]')].every(button => !button.disabled);
     element('noticeActionHint').textContent = available ? 'Revisá el contenido antes de imprimir o descargar.' : 'Vinculá un cálculo vigente y completá sus fechas para habilitar la emisión.';
     element('noticeDatesBadge').textContent = field('effective_date')?.dataset.preavisoAuto === 'true' ? 'Fecha propuesta' : 'Fechas registradas o editadas';
     element('noticeDatesBadge').title = 'La fecha propuesta se obtiene del inicio y del plazo guardado; requiere revisión.';
@@ -114,7 +103,7 @@
   }
   function activate() {
     if (active) return;
-    active = true; panel.hidden = false; actions.hidden = false; placeholder.hidden = false;
+    active = true; panel.hidden = false;
     form.classList.add('notice-simplified-active');
     const base = element('noticeBaseSlot'), dates = element('noticeDatesSlot'), options = element('noticeOptionsSlot'), technical = element('noticeTechnicalSlot');
     const dateGrid = field('issue_date')?.closest('.document-form-grid');
@@ -132,7 +121,6 @@
     nativeLive = live?.getAttribute('aria-live'); if (live) live.setAttribute('aria-live', 'off');
     move(live, technical); move(card.querySelector('[data-notice-legal]'), technical);
     move(labelOf('document_number'), options); move(labelOf('last_worked_date'), options); move(labelOf('observations'), options);
-    move(card.querySelector('.certificate-actions'), actions);
     [dateGrid, timingGrid, calculationGrid, card.querySelector('[data-notice-intro]')].forEach(hideSource);
     [element('noticeBaseDetails'), element('noticeOptionsDetails'), element('noticeTechnicalDetails')].forEach(detail => { detail.open = false; });
     refresh();
@@ -146,8 +134,8 @@
     if (live) { if (nativeLive === null) live.removeAttribute('aria-live'); else live.setAttribute('aria-live', nativeLive); }
     for (const [node, mark] of [...places.entries()].reverse()) { mark.before(node); mark.remove(); }
     places.clear(); hiddenSources.forEach(node => node.classList.remove('notice-source-hidden')); hiddenSources.clear();
-    panel.hidden = true; actions.hidden = true; placeholder.hidden = true;
-    form.classList.remove('notice-simplified-active'); delete form.dataset.noticePreview;
+    panel.hidden = true;
+    form.classList.remove('notice-simplified-active');
   }
   function syncType() { if (type.value === 'notificacion_preaviso') activate(); else deactivate(); }
   for (const button of form.querySelectorAll('[data-certificate-type]')) {
