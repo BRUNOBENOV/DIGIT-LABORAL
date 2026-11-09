@@ -69,7 +69,7 @@
               {% if item.employee_id %}
                 <a href="/app/liquidaciones?tipo=salary&amp;company_id={{ item.company_id }}&amp;employee_id={{ item.employee_id }}&amp;month={{ item.reference_period }}">Liquidar haberes del mes</a>
               {% endif %}
-              <a href="/app/compliance/salary-import?company_id={{ item.company_id }}&amp;period={{ item.reference_period }}&amp;source_type=approved{% if item.employee_id %}&amp;employee_id={{ item.employee_id }}{% endif %}">Exportar REOP / REI</a>
+              <a href="/app/compliance/salary-import?company_id={{ item.company_id }}&amp;period={{ item.reference_period }}{% if item.employee_id %}&amp;employee_id={{ item.employee_id }}{% endif %}">Exportar REOP / REI</a>
             {% endif %}
             {% if user.role in ['administrador','contador'] %}
               <form method="post" action="/app/calculations/{{ item.id }}/status">
@@ -95,7 +95,7 @@
           {% else %}
             <a href="{{ row.url }}">Ver</a>
             {% if row.label == 'Salario' and row.status == 'Aprobado' and row.employee %}
-              <a href="/app/compliance/salary-import?company_id={{ row.company.id }}&amp;period={{ row.period }}&amp;source_type=approved&amp;employee_id={{ row.employee.id }}">Exportar REOP / REI</a>
+              <a href="/app/compliance/salary-import?company_id={{ row.company.id }}&amp;period={{ row.period }}&amp;employee_id={{ row.employee.id }}">Exportar REOP / REI</a>
             {% endif %}
           {% endif %}
           </div>
