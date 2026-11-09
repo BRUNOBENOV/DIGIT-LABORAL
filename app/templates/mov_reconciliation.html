@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}Conciliación MOV | DIGIT LABORAL{% endblock %}
+{% block page_name %}Conciliación histórica MOV{% endblock %}
+{% block content %}
+<style>
+.mov-wrap{max-width:1110px;margin:0 auto}
+.mov-hero{background:#102b53;color:#f5f8ff;padding:23px;border-radius:14px;margin-bottom:16px}
+.mov-hero h1{color:#fff;font-size:1.55rem;margin:4px 0 8px}.mov-hero p{color:#d6e4f5;max-width:850px;margin:0;line-height:1.6}
+.mov-back{display:inline-block;color:#dbeafa;margin-bottom:10px;font-weight:650}
+.mov-layout{display:grid;grid-template-columns:1fr 1fr;gap:16px}.mov-panel{padding:20px;border:1px solid #d9e3f0;border-radius:13px;background:#fff;margin-bottom:14px}
+.mov-panel h2{font-size:1.1rem;color:#193a65;margin:0 0 12px}.mov-panel p{color:#4d627c;line-height:1.55}
+.mov-note{border:1px solid #e8d3aa;background:#fffaed;padding:12px 14px;border-radius:9px;color:#65502a;line-height:1.5;margin:12px 0}
+.mov-good{border:1px solid #b9d9c8;background:#f4fbf7;padding:12px 14px;border-radius:9px;color:#27573d}
+.mov-fields{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:14px 0}
+.mov-field{padding:10px;border:1px solid #e4eaf2;border-radius:8px;background:#f8fafc;overflow-wrap:anywhere}
+.mov-field small{display:block;color:#637794;font-size:.73rem;margin-bottom:3px}.mov-field b{color:#1e3c60}
+.mov-table{width:100%;border-collapse:collapse;font-size:.85rem}.mov-table th,.mov-table td{padding:10px;border-bottom:1px solid #e7ecf4;text-align:left}
+.mov-form label{display:block;color:#314a69;font-weight:650;margin:12px 0 7px}
+.mov-form textarea,.mov-form select{display:block;width:100%;padding:10px;border:1px solid #cbd8e9;border-radius:8px;background:#fff;min-height:42px;margin-top:5px}
+.mov-form textarea{min-height:82px}.mov-form button{margin-top:12px}
+.mov-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.mov-details{font-size:.8rem;max-height:250px;overflow:auto}
+.mov-details td:first-child{font-weight:650}
+@media(max-width:740px){.mov-layout,.mov-fields{grid-template-columns:1fr}.mov-hero{padding:18px}}
+</style>
+<div class="mov-wrap">
+<header class="mov-hero">
+<a class="mov-back" href="/app/reports/liquidaciones-salarios?source=historical">← Volver a liquidaciones históricas</a>
+<h1>{{ 'Conciliación masiva de MOV' if bulk else 'Conciliar y validar movimiento MOV' }}</h1>
+<p>Los importes importados son antecedentes del sistema anterior. Su revisión profesional no constituye recibo emitido, salario pagado, liquidación nueva ni presentación ante MTESS, REOP o REI.</p>
+</header>
+{% if request.query_params.get('saved') %}<div class="mov-good">La revisión se registró con su responsable y fecha. Se conservó íntegra la información del sistema anterior.</div>{% endif %}
+{% if bulk %}
+{% if request.query_params.get('processed') is not none %}<div class="mov-good">Conciliados en el lote anterior: {{ request.query_params.get('processed') }}. Podés repetir la operación si existen más coincidencias pendientes.</div>{% endif %}
+<section class="mov-panel">
+<h2>Coincidencias comprobables</h2>
+<div class="mov-fields">
+<div class="mov-field"><small>Antecedentes MOV del estudio</small><b>{{ total_mov }}</b></div>
+<div class="mov-field"><small>Candidatos para conciliación automática</small><b>{{ bulk_count }}</b></div>
+</div>
+<p>Solo se vincula un MOV sin advertencias con una única liquidación ya aprobada del mismo funcionario y período, con idéntico importe registrado. Los casos ambiguos, sin liquidación, con diferencias o advertencias permanecen para revisión individual.</p>
+{% if bulk_count %}
+<form method="post" action="/app/mov-conciliation/bulk/apply" class="mov-form" onsubmit="return confirm('¿Conciliar hasta 300 coincidencias exactas? No se generan recibos ni pagos.')">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+<label><input type="checkbox" name="confirmed" value="si" required> Revisé los criterios de coincidencia y autorizo vincular hasta 300 antecedentes por lote.</label>
+<button class="btn primary" type="submit">Conciliar coincidencias exactas</button>
+</form>
+{% else %}
+<div class="mov-note">No existen coincidencias exactas para conciliación automática. Podés ingresar en cada MOV y validarlo como antecedente tras verificar sus datos.</div>
+{% endif %}
+</section>
+{% if matches %}
+<section class="mov-panel"><h2>Vista previa (hasta 20)</h2>
+<div class="table-wrap"><table class="mov-table"><thead><tr><th>Funcionario</th><th>Período</th><th>Importe MOV</th><th>Liquidación</th><th>Acción</th></tr></thead><tbody>
+{% for event, source, calculation in matches %}
+<tr><td>{{ event.employee.full_name }}</td><td>{{ source.period }}</td>
+<td>Gs. {{ calculation.amount|gs }}</td><td>#{{ calculation.id }}</td>
+<td><a href="/app/mov-conciliation/{{ event.id }}">Revisar</a></td></tr>
+{% endfor %}
+</tbody></table></div></section>
+{% endif %}
+{% else %}
+<div class="mov-layout">
+<section class="mov-panel">
+<h2>Antecedente original</h2>
+<div class="mov-fields">
+<div class="mov-field"><small>Funcionario</small><b>{{ event.employee.full_name }}</b></div>
+<div class="mov-field"><small>Empresa</small><b>{{ event.employee.company.legal_name }}</b></div>
+<div class="mov-field"><small>Período MOV</small><b>{{ source.period or 'No informado' }}</b></div>
+<div class="mov-field"><small>SALARI en origen</small><b>{{ ('Gs. ' ~ (amount|gs)) if amount is not none else 'Sin importe válido' }}</b></div>
+<div class="mov-field"><small>Archivo y fila</small><b>{{ source.filename or 'MOV' }} · {{ source.source_row or '—' }}</b></div>
+<div class="mov-field"><small>Estado de revisión</small><b>{{ review.status if review else 'Sin conciliar' }}</b></div>
+</div>
+{% if source.warnings %}<div class="mov-note"><b>Advertencias del origen:</b><ul>{% for warning in source.warnings %}<li>{{ warning }}</li>{% endfor %}</ul>Para validar este MOV, justificá su tratamiento en la observación.</div>{% endif %}
+<details><summary>Ver todos los valores originales</summary><div class="mov-details"><table class="mov-table"><tbody>
+{% for key, value in source.get('values', {}).items() %}<tr><td>{{ key }}</td><td>{{ value or '—' }}</td></tr>{% endfor %}
+</tbody></table></div></details>
+<p><small>Huella SHA-256 de origen: {{ source.source_hash or 'No disponible' }}</small></p>
+</section>
+<section class="mov-panel">
+<h2>Revisión profesional</h2>
+{% if review and review.status != 'Sin conciliar' %}
+<div class="mov-good"><b>{{ review.status }}</b><p>Responsable: {{ review.reviewed_by }}<br>Fecha: {{ review.reviewed_at|fecha }}<br>Liquidación vinculada: {{ ('#' ~ review.calculation_record_id) if review.calculation_record_id else 'Ninguna' }}</p><p>Observación: {{ review.notes }}</p></div>
+<form method="post" action="/app/mov-conciliation/{{ event.id }}" class="mov-form" onsubmit="return confirm('¿Reabrir la revisión? Se conserva el cambio en auditoría.')">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+<input type="hidden" name="expected_hash" value="{{ source.source_hash or '' }}">
+<input type="hidden" name="confirmed" value="si">
+<input type="hidden" name="action" value="reopen">
+<label>Motivo de rectificación<textarea name="note" required minlength="8" maxlength="1000"></textarea></label>
+<button class="btn outline" type="submit">Reabrir revisión</button>
+</form>
+{% else %}
+{% if not valid or amount is none or not source.source_hash %}
+<div class="mov-note">No se puede validar hasta corregir la inconsistencia de origen. El dato histórico no será alterado automáticamente.</div>
+{% else %}
+<p>Podés validar el antecedente sin generar una nueva liquidación, o vincularlo a un registro operativo aprobado cuando el importe coincida exactamente.</p>
+<form method="post" action="/app/mov-conciliation/{{ event.id }}" class="mov-form">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+<input type="hidden" name="expected_hash" value="{{ source.source_hash }}">
+<label>Liquidación aprobada existente (opcional)
+<select name="calculation_id"><option value="">Sin vinculación operativa</option>
+{% for item in candidates %}
+<option value="{{ item.id }}" {{ 'disabled' if item.amount != amount }}>
+#{{ item.id }} · {{ item.reference_period }} · Gs. {{ item.amount|gs }} {{ '— importe diferente' if item.amount != amount else '— coincidencia exacta' }}
+</option>
+{% endfor %}</select></label>
+<label>Observación y respaldo de la revisión<textarea name="note" maxlength="1000" minlength="8" required placeholder="Indicá qué comprobaste y qué documentos respaldan la revisión. Para registros con advertencias, justificá las diferencias."></textarea></label>
+<label><input type="checkbox" name="confirmed" value="si" required> Confirmo que revisé funcionario, empresa, período, importe y advertencias, y entiendo que esta validación no prueba el pago.</label>
+<div class="mov-actions">
+<button class="btn outline" name="action" value="validate" type="submit">Validar como antecedente</button>
+<button class="btn primary" name="action" value="match" type="submit" {{ 'disabled' if not candidates }}>Conciliar con liquidación</button>
+</div>
+</form>
+{% endif %}
+{% endif %}
+</section>
+</div>
+{% endif %}
+</div>
+{% endblock %}
