@@ -662,9 +662,20 @@ async def save_calculation(request: Request,
             or correction_origin.calculation_type != "suite_salary"
             or correction_origin.company_id != scoped["company"].id
             or correction_origin.employee_id != scoped["employee"].id
-            or correction_origin.reference_period != result["period"][:20]
             or correction_origin.status == "Anulado"):
-            raise HTTPException(409, "La rectificación debe mantener funcionario, empresa y mes del cálculo original.")
+            raise HTTPException(409, "El cálculo de origen no corresponde a esta empresa y funcionario, o fue anulado.")
+        if correction_origin.reference_period != result["period"][:20]:
+            response = page(
+                request, data["kind"], data,
+                error=CalculationError(
+                    f"El cálculo original pertenece a {correction_origin.reference_period}. "
+                    "Para rectificarlo, conservá ese mes. Para otro período creá una liquidación independiente.",
+                    "month",
+                ),
+                db=db, user=user, copied_from=correction_origin.id,
+            )
+            response.status_code = 409
+            return response
         if db.scalar(select(FinalSettlement.id).where(
             FinalSettlement.calculation_record_id == correction_origin.id
         )):
