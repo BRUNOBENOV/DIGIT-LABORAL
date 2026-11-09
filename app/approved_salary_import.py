@@ -332,9 +332,15 @@ def salary_excluded_records(db: Session, company_id: int, period: str, *, author
         ).order_by(CalculationRecord.created_at.desc(), CalculationRecord.id.desc())
     ))
     latest = select_salary_versions(rows)
+    # A salary already approved in the imported history is not "pending"
+    # merely because a different operational draft exists for that worker.
+    known_approvals = set(salary_source_summary(
+        db, company_id, period, authority=authority
+    )["approved_employee_ids"])
     excluded = [
         {"employee_id": row.employee_id, "calculation_id": row.id, "status": row.status}
-        for row in latest.values() if row.status not in APPROVED
+        for row in latest.values()
+        if row.status not in APPROVED and row.employee_id not in known_approvals
     ]
     if excluded:
         candidates = {e.id: e for e in db.scalars(select(Employee).where(
