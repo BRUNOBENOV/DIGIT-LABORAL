@@ -137,14 +137,14 @@ def _legacy_salary(event: EmployeeEvent, review: HistoricalMovReconciliation | N
     return dict(
         origin="imported", id=event.id, date=event.effective_date,
         employee=event.employee, company=event.employee.company,
-        label="Salario · MOV", period=source.get("period") or event.effective_date.strftime("%Y-%m"),
+        label="Salario", period=source.get("period") or event.effective_date.strftime("%Y-%m"),
         amount=amount, status="Aprobado",
         detail=(
             "Antecedente vinculado a una liquidación aprobada existente; no constituye un pago nuevo."
             if review and review.status == "Conciliado" else
             "Antecedente revisado profesionalmente; sin constancia de pago ni recibo nuevo."
             if review and review.status == "Validado como antecedente" else
-            "Remuneración histórica aprobada para integrar el historial de DIGIT LABORAL; no acredita por sí misma pago ni recibo emitido."
+            "Remuneración aprobada e incluida en el historial. Exportable cuando contiene los datos requeridos; no constituye constancia de pago."
         ),
         reconciliation_url=f"/app/mov-conciliation/{event.id}",
         source=source, days=values.get("DIATRA"), used_days=None, balance=None,
