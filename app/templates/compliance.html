@@ -83,6 +83,9 @@
           <a class="btn primary" href="/app/compliance/salary-import?company_id={{ selected_company.id }}&authority={{ system }}">Preparar salarios {{ system }}</a>
           {% endif %}
           <a class="btn ghost" href="{{ official_portals[system] }}" target="_blank" rel="noopener noreferrer">Abrir {{ system }} oficial ↗</a>
+          {% if can_manage and system == 'REI' %}
+          <a class="btn ghost" href="/app/compliance/rei-movements?company_id={{ selected_company.id }}">Preparar movimientos CSV</a>
+          {% endif %}
         </div>
       </section>
       {% endfor %}
@@ -351,6 +354,9 @@
           </p>
           {% endif %}
           {% if batch.error_message %}<p class="compliance-observation">{{ batch.error_message }}</p>{% endif %}
+          {% if batch.authority == 'REI' and batch.file_name.endswith('.csv') %}
+          <p class="compliance-batch-evidence">Cargá el CSV en REI → Movimiento por Lotes. Registrá acá el resultado del portal.</p>
+          {% endif %}
           <div class="integration-actions">
             <a class="btn primary" href="/app/compliance/batches/{{ batch.id }}/download">Descargar archivo</a>
             {% if batch.id in batch_receipts %}<a class="btn ghost" href="/app/compliance/batches/{{ batch.id }}/receipt">Descargar comprobante</a>{% endif %}
@@ -402,6 +408,7 @@
       <article class="panel">
         <span class="eyebrow">IPS · REI</span><h2>Declaración de salarios y aportes</h2>
         <p>El manual del IPS describe la carga por lotes en «Declaración de Salarios → Importar Salarios». Verificá el formato TXT con tu cuenta y conservá la constancia de la operación.</p>
+        <p>Para entradas y salidas, podés preparar un CSV según la plantilla vigente de tu cuenta REI.</p>
         <div class="integration-actions">
           <a class="btn ghost" href="{{ official_sources.REI }}" target="_blank" rel="noopener noreferrer">Manual y formato del IPS ↗</a>
         </div>
