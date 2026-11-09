@@ -36,6 +36,29 @@ def select_salary_versions(rows):
     return {eid: decided.get(eid, row) for eid, row in latest.items()}
 
 
+
+def official_salary_period_submitted(db, company_id: int, period: str) -> bool:
+    """Guard against silently relocating wages in a submitted REOP/REI period.
+
+    Submitted records require the authority's rectification process; do not
+    turn them into an unpublished internal-only correction.
+    """
+    from sqlalchemy import or_
+
+    return db.scalar(select(IntegrationBatch.id).where(
+        IntegrationBatch.company_id == company_id,
+        IntegrationBatch.period == period,
+        IntegrationBatch.authority.in_(("REOP", "REI")),
+        or_(
+            IntegrationBatch.status.in_(("Presentado", "Aceptado")),
+            IntegrationBatch.submitted_at.is_not(None),
+            IntegrationBatch.receipt_storage_key != "",
+            IntegrationBatch.receipt_bytes.is_not(None),
+        ),
+    ).limit(1)) is not None
+
+
+
 def salary_query(company_id, period, employee_id=None):
     query = select(CalculationRecord).where(
         CalculationRecord.company_id == company_id,
