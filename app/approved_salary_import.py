@@ -86,9 +86,9 @@ def salary_source_summary(db: Session, company_id: int, period: str, employee_id
         if item.employee_id is not None:
             newest.setdefault(item.employee_id, item)
 
-    # Imported MOV is part of the same salary history, not a separate workflow.
-    # It is selected only when this employee/month has no operative approval;
-    # an annulled operational record is never resurrected from older evidence.
+    # Imported MOV remains an independent approved historical salary record.
+    # A separate operational draft or annulment does not delete that source.
+    # Never resurrect an older superseded operational calculation.
     mov_ids: set[int] = set()
     all_mov_ids: set[int] = set()
     if hasattr(db, "execute") and re.fullmatch(r"20\d{2}-(0[1-9]|1[0-2])", period or ""):
@@ -105,7 +105,9 @@ def salary_source_summary(db: Session, company_id: int, period: str, employee_id
             if salary_export_employee_eligible(worker, authority):
                 mov_ids.add(worker.id)
     native_approved = {eid for eid, item in latest.items() if item.status in APPROVED}
-    finalized = {eid for eid, item in latest.items() if item.status not in PENDING}
+    # Choose the native approved salary when present; otherwise the imported
+    # MOV is independently approved even if an unrelated native record is void.
+    finalized = native_approved
     mov_fallback = mov_ids - finalized
     eligible_ids = native_approved | mov_fallback
     return {
@@ -534,7 +536,7 @@ def approved_salary_records(db: Session, company, period: str, *, authority: str
         from .historical_mov_salary_export import mov_salary_records
         # Drafts alone do not hide an earlier incorporated approval. An
         # annulment or actual operational approval does supersede that MOV.
-        blocked_ids = {eid for eid, item in selected.items() if item.status not in PENDING}
+        blocked_ids = {eid for eid, item in selected.items() if item.status in APPROVED}
         historical, historical_errors, _ = mov_salary_records(
             db, company, period, authority=authority, employee_id=employee_id,
             payment_code=payment_code,
