@@ -10686,6 +10686,104 @@ def salary_import_page(
     )
 
 
+@app.post("/app/compliance/salary-import/approve-pending")
+def approve_pending_salary_import(
+    company_id: Annotated[int, Form()],
+    period: Annotated[str, Form()],
+    authority: Annotated[str, Form()] = "REOP",
+    payment_code: Annotated[str, Form()] = "",
+    confirmed: Annotated[str, Form()] = "",
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    """Approve only current, export-ready salary calculations, never historical MOV/LIQ.
+
+    The user must explicitly authorize this operation. Each calculation is
+    revalidated and tested against the same official export data requirements
+    before saving approval. An invalid record stays unchanged; no file is
+    submitted, and historical imported EmployeeEvent records remain untouched.
+    """
+    from .approved_salary_import import (
+        approved_salary_records, salary_excluded_records,
+    )
+
+    company = company_allowed(db, user, company_id)
+    if confirmed != "si":
+        raise HTTPException(422, "Confirmá la revisión documental antes de aprobar salarios.")
+    if authority not in {"REOP", "REI"}:
+        raise HTTPException(422, "Organismo de exportación inválido.")
+    if not re.fullmatch(r"(19|20)\\d{2}-(0[1-9]|1[0-2])", period or ""):
+        raise HTTPException(422, "Seleccioná un período válido AAAA-MM.")
+    if authority == "REOP" and payment_code not in {"1", "2", "3", "4"}:
+        raise HTTPException(422, "Seleccioná una forma de pago real para verificar REOP.")
+
+    # Re-fetch the selected company/period on the server; do not trust employee
+    # IDs or calculation IDs from a submitted form.
+    candidates = salary_excluded_records(db, company.id, period, authority=authority)
+    approved_count = 0
+    blocked_count = 0
+    for row in candidates[:100]:
+        item = db.get(CalculationRecord, row["calculation_id"])
+        if (
+            item is None
+            or item.company_id != company.id
+            or item.reference_period != period
+            or item.employee_id != row["employee_id"]
+            or item.calculation_type not in {"salary", "suite_salary"}
+            or item.status not in {"Borrador", "Revisar"}
+        ):
+            blocked_count += 1
+            continue
+        if db.scalar(
+            select(FinalSettlement.id).where(FinalSettlement.calculation_record_id == item.id)
+        ):
+            blocked_count += 1
+            continue
+        original_status = item.status
+        try:
+            _revalidate_calculation_before_approval(item, db)
+            item.status = "Aprobado"
+            db.flush()
+            # Reuse the official export's actual checks: attendance, hours,
+            # IPS, salary components and saved net must be consistent.
+            prepared, warnings, _ = approved_salary_records(
+                db, company, period, authority=authority,
+                employee_id=item.employee_id, payment_code=payment_code,
+            )
+            if warnings or len(prepared) != 1:
+                item.status = original_status
+                db.flush()
+                blocked_count += 1
+                continue
+        except HTTPException:
+            item.status = original_status
+            db.flush()
+            blocked_count += 1
+            continue
+        write_audit(
+            db, user, "aprobar", "calculo", str(item.id),
+            f"Revalidación y aprobación para {authority} · empresa {company.id} · período {period}. "
+            "No se envió al portal ni se registró comprobante de pago.",
+        )
+        approved_count += 1
+
+    if len(candidates) > 100:
+        blocked_count += len(candidates) - 100
+    db.commit()
+    from urllib.parse import urlencode
+    return RedirectResponse(
+        "/app/compliance/salary-import?" + urlencode({
+            "company_id": company.id,
+            "period": period,
+            "authority": authority,
+            "payment_code": payment_code,
+            "source_type": "approved",
+            "auto_approved": approved_count,
+            "auto_blocked": blocked_count,
+        }), status_code=303,
+    )
+
+
 @app.post("/app/compliance/salary-import/details")
 def save_salary_import_details(
     calculation_id: Annotated[int, Form()],
