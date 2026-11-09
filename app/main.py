@@ -6081,12 +6081,58 @@ def calculation_status(
         raise HTTPException(409, "La liquidación final vinculada solo se aprueba desde su procedimiento.")
     if status_value not in {"Revisar", "Aprobado"}:
         raise HTTPException(400, "Estado inválido.")
-    if item.status == "Anulado":
-        raise HTTPException(409, "Una carga eliminada no puede cambiar de estado.")
+    if item.status in {"Anulado", "Rectificado"}:
+        raise HTTPException(409, "Una liquidación anulada o sustituida no puede volver a aprobarse.")
+    replaced_origin = None
     if status_value == "Aprobado":
         _revalidate_calculation_before_approval(item, db)
+        if item.calculation_type == "suite_salary" and item.source == "Centro laboral":
+            from .salary_data import official_salary_period_submitted, SALARY_TYPES
+            stored_inputs = json_dict(item.input_json)
+            try:
+                old_id = int(stored_inputs.get("rectifies_record_id") or 0)
+            except (ValueError, TypeError):
+                raise HTTPException(409, "El enlace al cálculo original es inválido.") from None
+            if old_id:
+                origin = db.get(CalculationRecord, old_id)
+                if (
+                    not origin or origin.id == item.id
+                    or origin.company_id != item.company_id
+                    or origin.employee_id != item.employee_id
+                    or origin.calculation_type != "suite_salary"
+                    or origin.source != "Centro laboral"
+                ):
+                    raise HTTPException(409, "La rectificación no coincide con la empresa y funcionario originales.")
+                if origin.reference_period != item.reference_period:
+                    if origin.status in {"Anulado", "Rectificado"}:
+                        raise HTTPException(409, "La liquidación del mes original ya fue anulada o sustituida.")
+                    if official_salary_period_submitted(db, origin.company_id, origin.reference_period):
+                        raise HTTPException(
+                            409, "Ya existe presentación oficial de este mes en REOP/REI. "
+                            "La rectificación interna no puede sustituirla sin realizar el trámite ante el organismo.",
+                        )
+                    conflict = db.scalar(select(CalculationRecord.id).where(
+                        CalculationRecord.company_id == item.company_id,
+                        CalculationRecord.employee_id == item.employee_id,
+                        CalculationRecord.reference_period == item.reference_period,
+                        CalculationRecord.calculation_type.in_(SALARY_TYPES),
+                        CalculationRecord.status.in_(("Aprobado", "Validado")),
+                        CalculationRecord.id != item.id,
+                    ).limit(1))
+                    if conflict is not None:
+                        raise HTTPException(409, "El mes de destino ya tiene otra liquidación aprobada de este funcionario.")
+                    replaced_origin = origin
     item.status = status_value
     write_audit(db, user, "actualizar_estado", "calculo", str(item.id), status_value)
+    if replaced_origin is not None:
+        # Only after the replacement passed all approval checks. Preserve
+        # every original amount, input and document for the audit trail.
+        replaced_origin.status = "Rectificado"
+        write_audit(
+            db, user, "sustituir_periodo", "calculo", str(replaced_origin.id),
+            f"Mes corregido: {replaced_origin.reference_period} → {item.reference_period}; "
+            f"nueva liquidación aprobada #{item.id}. Original conservado para auditoría.",
+        )
     db.commit()
     target = f"/app/calculations?tipo={quote(item.calculation_type)}" if item.calculation_type in CALCULATION_MODULES else "/app/calculations"
     if item.calculation_type in {"salary", "suite_salary"} and item.employee_id:
