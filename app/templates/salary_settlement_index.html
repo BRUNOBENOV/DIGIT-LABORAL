@@ -89,15 +89,15 @@
       <span class="salary-report-sub">{{ item.created_at|fecha if item.created_at else 'Fecha no registrada' }} · #{{ item.id }}</span>
       <span class="salary-report-sub">Origen: módulo Cálculo · {{ item.record.source }}</span>
     {% else %}
-      <b>Remuneración incorporada</b>
-      <span class="salary-report-sub">Archivo MOV · fila {{ item.source_row or '—' }}</span>
+      <b>Registro salarial</b>
+      <span class="salary-report-sub">{{ item.created_at|fecha if item.created_at else 'Fecha no registrada' }}</span>
     {% endif %}
   </td>
   <td>{{ item.company.legal_name }}<span class="salary-report-sub">RUC {{ item.company.ruc }}</span></td>
   <td><span class="salary-report-name">{{ item.employee.full_name }}</span><span class="salary-report-sub">{{ item.employee.position or 'Cargo no registrado' }} · CI {{ item.employee.document_number }}</span></td>
   <td>{{ item.reference_period or 'Sin período' }}</td>
   <td><span class="salary-report-state">{{ 'Eliminado' if item.status == 'Anulado' else item.status }}</span>
-    {% if item.origin == 'historical' %}<span class="salary-report-sub">Aprobado como registro histórico · no equivale a recibo ni pago acreditado</span>{% endif %}
+
   </td>
   <td class="salary-report-money">
     {% if item.origin == 'current' %}Gs. {{ item.amount|gs }}
@@ -124,11 +124,8 @@
       </details>
       {% endif %}
     {% else %}
-      {% if user.role in ['administrador','contador'] %}
-      <a href="/app/mov-conciliation/{{ item.id }}" style="font-weight:700">Verificar vínculo documental</a>
-      {% endif %}
       <details>
-        <summary style="color:#174b9b;cursor:pointer;font-weight:700">Ver movimiento</summary>
+        <summary style="color:#174b9b;cursor:pointer;font-weight:700">Ver detalle</summary>
         <div class="salary-report-sub" style="min-width:190px;margin:8px 0;white-space:normal">
           <b>{{ item.source_filename or 'MOV' }}</b> · fila {{ item.source_row or '—' }}
           {% if item.warnings %}<p>{{ item.warnings|join(' ') }}</p>{% endif %}
@@ -137,6 +134,7 @@
           {% endfor %}
         </div>
       </details>
+      <span class="salary-report-sub"><a href="/app/compliance/salary-import?company_id={{ item.company.id }}&amp;period={{ item.reference_period }}&amp;source_type=approved&amp;employee_id={{ item.employee.id }}">Exportar REOP / REI</a></span>
       <span class="salary-report-sub"><a href="/app/employee-history?company_id={{ item.employee.company_id }}&amp;employee_id={{ item.employee.id }}">Ver expediente</a></span>
     {% endif %}
   </td>
@@ -145,5 +143,5 @@
 </tbody></table></div>
 </section>
 {{ render_pagination(pager, 'salaryReportFilters', 'salaryReportTable', 'liquidaciones') }}
-<p class="salary-report-help">Los movimientos importados se consultan junto a las liquidaciones actuales, pero se identifican como antecedentes sin conciliar. No crean pagos, recibos ni registros de comunicación REI/REOP. Los importes y campos originales se preservan para su revisión.</p>
+<p class="salary-report-help">Todas las remuneraciones guardadas se consultan en este informe. Antes de exportar a REOP o REI, el sistema verifica los conceptos, el IPS, los días y las horas. La incorporación al historial no acredita un pago ni sustituye el comprobante emitido.</p>
 {% endblock %}
