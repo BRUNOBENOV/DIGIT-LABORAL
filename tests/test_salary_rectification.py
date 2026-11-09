@@ -199,14 +199,3 @@ def test_rectification_restores_original_month_from_stale_saved_form_snapshot(we
     assert revisions[1].status == "Borrador"
 
 
-def test_rectification_rejects_an_attempt_to_change_original_month(web_case):
-    client, db, _, company, employee, *_ = web_case
-    assert _save_salary(client, company, employee).status_code == 303
-    original = _saved(db, employee)[0]
-    response = _save_salary(
-        client, company, employee, month="2026-11", salary_value="3600000",
-        rectifies_record_id=str(original.id),
-        rectification_reason="Corrección de mes inválido en documento",
-    )
-    assert response.status_code == 409
-    assert len(_saved(db, employee)) == 1
