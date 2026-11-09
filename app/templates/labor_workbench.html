@@ -271,7 +271,7 @@
             {% if row.rectifies is defined and row.rectifies %} · Rectifica #{{ row.rectifies }}{% endif %}</small>
           </td>
           <td>{{ row.period }}{% if row.origin == 'imported' and row.detail %}<small class="dl-trace-detail">{{ row.detail }}</small>{% endif %}</td>
-          <td class="dl-trace-amount">{% if row.amount is none %}—{% elif row.origin == 'current' %}Gs. {{ row.amount|gs }}{% else %}{{ row.amount }}{% endif %}</td>
+          <td class="dl-trace-amount">{% if row.amount is none %}—{% elif row.origin == 'current' %}Gs. {{ row.amount|gs }}{% elif row.label == 'Salario' %}Gs. {{ row.amount }}{% else %}{{ row.amount }}{% endif %}</td>
           <td><span class="dl-trace-status {{ 'is-void' if row.superseded else 'is-approved' if row.status in ['Aprobado','Validado'] else 'is-void' if row.status in ['Anulado','Borrado en origen'] else 'is-draft' }}">{{ row.display_status }}</span></td>
           <td><div class="dl-trace-actions">
           {% if row.origin == 'current' %}
@@ -300,8 +300,8 @@
             {% endif %}
           {% elif row.url %}
             <a href="{{ row.url }}" class="dl-trace-action">Ver</a>
-            {% if row.label == 'Salario · MOV' and user.role in ['administrador','contador'] %}
-              <a href="{{ row.reconciliation_url }}" class="dl-trace-action">Verificar vínculo</a>
+            {% if row.label == 'Salario' and row.status == 'Aprobado' and row.employee %}
+              <a href="/app/compliance/salary-import?company_id={{ row.company.id }}&amp;period={{ row.period }}&amp;source_type=approved&amp;employee_id={{ row.employee.id }}" class="dl-trace-action">Exportar REOP / REI</a>
             {% endif %}
           {% else %}—{% endif %}
           </div></td>
