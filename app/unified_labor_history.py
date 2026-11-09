@@ -138,13 +138,13 @@ def _legacy_salary(event: EmployeeEvent, review: HistoricalMovReconciliation | N
         origin="imported", id=event.id, date=event.effective_date,
         employee=event.employee, company=event.employee.company,
         label="Salario · MOV", period=source.get("period") or event.effective_date.strftime("%Y-%m"),
-        amount=amount, status=("Incorporado" if review and review.status == "Sin conciliar" else review.status) if review else "Incorporado",
+        amount=amount, status="Aprobado",
         detail=(
             "Antecedente vinculado a una liquidación aprobada existente; no constituye un pago nuevo."
             if review and review.status == "Conciliado" else
             "Antecedente revisado profesionalmente; sin constancia de pago ni recibo nuevo."
             if review and review.status == "Validado como antecedente" else
-            "Remuneración incluida en el historial de DIGIT LABORAL; no acredita por sí misma pago o recibo emitido."
+            "Remuneración histórica aprobada para integrar el historial de DIGIT LABORAL; no acredita por sí misma pago ni recibo emitido."
         ),
         reconciliation_url=f"/app/mov-conciliation/{event.id}",
         source=source, days=values.get("DIATRA"), used_days=None, balance=None,
@@ -170,10 +170,10 @@ def _legacy_settlement(event: EmployeeEvent) -> dict:
         employee=event.employee, company=event.employee.company,
         label="Liquidación final · LIQ",
         period=source.get("departure") or event.effective_date.isoformat(),
-        amount=None, status="Incorporado",
+        amount=None, status="Aprobado",
         detail="; ".join(pieces) + ". Motivo de origen: " +
                str(values.get("MOTSAL") or "no informado") +
-               ". Registro incluido en el historial de DIGIT LABORAL; sin constancia de pago ni aprobación operativa.",
+               ". Liquidación histórica aprobada para integrar el historial de DIGIT LABORAL; sin constancia de pago ni recibo operativo nuevo.",
         source=source, days=None, used_days=None, balance=None,
         url=f"/app/employees/{event.employee_id}#timeline",
         record=event, can_use_document=False,
