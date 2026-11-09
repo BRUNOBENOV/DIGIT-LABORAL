@@ -324,6 +324,14 @@ def historical_liq_detail(event: EmployeeEvent) -> str | None:
     ]
     pieces = "; ".join(f"{label}: {values.get(field) or 'sin dato'} Gs."
                        for field, label in concepts)
+    warnings = record.get("warnings") or []
+    if not isinstance(warnings, list):
+        warnings = [str(warnings)]
+    warning_detail = (
+        " ADVERTENCIAS DE ORIGEN: " + "; ".join(str(value) for value in warnings if value) + ". "
+        "Requiere revisión profesional antes de uso jurídico o contable."
+        if warnings else ""
+    )
     return (
         f"LSLIQ · Ingreso: {record.get('admission') or '—'}; "
         f"egreso: {record.get('departure') or '—'}; "
@@ -331,4 +339,5 @@ def historical_liq_detail(event: EmployeeEvent) -> str | None:
         f"{pieces}. Fuente: {record.get('filename') or 'LIQ'}, "
         f"fila {record.get('source_row') or '—'}. "
         "Antecedente histórico no conciliado; no acredita pago ni validez jurídica."
+        f"{warning_detail}"
     )
