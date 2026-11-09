@@ -78,33 +78,89 @@ def test_rectification_creates_linked_draft_without_modifying_approved_original(
     assert "Rectificación del cálculo" in detail.text
 
 
-def test_rectification_requires_reason_and_same_period(web_case):
+def test_rectification_can_change_month_without_mutating_original_until_approval(web_case):
+    from bs4 import BeautifulSoup
+    from app.salary_data import approved_salary
+    from app.unified_labor_history import _superseded_salary_record_ids
     client, db, _, company, employee, *_ = web_case
     assert _save_salary(client, company, employee).status_code == 303
     original = _saved(db, employee)[0]
-
-    no_reason = _save_salary(
-        client, company, employee,
-        rectifies_record_id=str(original.id), rectification_reason="Error",
-    )
-    assert no_reason.status_code == 422
-    assert "motivo de la rectificación" in no_reason.text
-    assert len(_saved(db, employee)) == 1
+    original.status = "Aprobado"
+    old_amount, old_inputs, old_results = original.amount, original.input_json, original.result_json
+    db.commit()
+    form = client.get(f"/app/liquidaciones/{original.id}/rectificar")
+    assert form.status_code == 200
+    field = BeautifulSoup(form.text, "html.parser").select_one('#labor-form [name="month"]')
+    assert field["value"] == "2026-10"
+    assert not field.has_attr("readonly")
+    assert "month.readOnly = true" not in form.text
 
     csrf = token(client, f"/app/liquidaciones?tipo=salary&company_id={company.id}&employee_id={employee.id}")
-    changed_period = client.post("/app/liquidaciones/guardar", data=salary(
+    response = client.post("/app/liquidaciones/guardar", data=salary(
         company_id=str(company.id), employee_id=str(employee.id), csrf_token=csrf,
-        month="2026-11", salary="3600000", days_paid="30",
+        month="2026-11", salary="3600000", days_paid="30", days_worked="22",
+        hours_worked="176", period_start="2026-11-01", period_end="2026-11-30",
         rectifies_record_id=str(original.id),
-        rectification_reason="Corrección de sueldo documentada",
+        rectification_reason="El mes de la liquidación era incorrecto y se corrige con respaldo",
+    ), follow_redirects=False)
+    assert response.status_code == 303, response.text[:400]
+    records = _saved(db, employee)
+    assert len(records) == 2
+    rectified = records[1]
+    assert rectified.reference_period == "2026-11"
+    assert rectified.status == "Borrador"
+    assert records[0].status == "Aprobado"
+    assert json.loads(rectified.input_json)["rectification_original_period"] == "2026-10"
+    assert original.id not in _superseded_salary_record_ids(
+        db, (company.id,), company.id, employee.id,
+    )
+
+    approve = client.post(f"/app/calculations/{rectified.id}/status", data={
+        "csrf_token": token(client, f"/app/liquidaciones/{rectified.id}"),
+        "status": "Aprobado",
+    }, follow_redirects=False)
+    assert approve.status_code == 303, approve.text[:400]
+    db.expire_all()
+    source = db.get(CalculationRecord, original.id)
+    assert source.status == "Rectificado"
+    assert source.reference_period == "2026-10"
+    assert source.amount == old_amount
+    assert source.input_json == old_inputs
+    assert source.result_json == old_results
+    assert db.get(CalculationRecord, rectified.id).status == "Aprobado"
+    assert original.id in _superseded_salary_record_ids(
+        db, (company.id,), company.id, employee.id,
+    )
+    assert approved_salary(db, company.id, employee.id, "2026-10") is None
+    assert approved_salary(db, company.id, employee.id, "2026-11").id == rectified.id
+    assert db.scalar(select(AuditLog).where(
+        AuditLog.action == "sustituir_periodo", AuditLog.entity_id == str(original.id)
+    )) is not None
+
+
+def test_rectification_rejects_duplicate_approved_target_month(web_case):
+    client, db, _, company, employee, *_ = web_case
+    assert _save_salary(client, company, employee).status_code == 303
+    original = _saved(db, employee)[0]
+    original.status = "Aprobado"
+    db.add(CalculationRecord(
+        company_id=company.id, employee_id=employee.id,
+        calculation_type="suite_salary", reference_period="2026-11",
+        status="Aprobado", source="Centro laboral", amount=3500000,
+        input_json="{}", result_json="{}",
     ))
-    assert changed_period.status_code == 409
-    assert "El cálculo original pertenece a 2026-10" in changed_period.text
-    from bs4 import BeautifulSoup
-    returned = BeautifulSoup(changed_period.text, "html.parser")
-    assert returned.select_one('#labor-form [name="month"]')["value"] == "2026-10"
-    assert "dl-error" in changed_period.text
-    assert len(_saved(db, employee)) == 1
+    db.commit()
+    csrf = token(client, f"/app/liquidaciones?tipo=salary&company_id={company.id}&employee_id={employee.id}")
+    response = client.post("/app/liquidaciones/guardar", data=salary(
+        company_id=str(company.id), employee_id=str(employee.id), csrf_token=csrf,
+        month="2026-11", salary="3600000", days_paid="30", days_worked="22",
+        hours_worked="176", period_start="2026-11-01", period_end="2026-11-30",
+        rectifies_record_id=str(original.id),
+        rectification_reason="El mes de la liquidación era incorrecto y se corrige con respaldo",
+    ))
+    assert response.status_code == 422
+    assert "ya existe una liquidación aprobada" in response.text
+    assert len(_saved(db, employee)) == 2
 
 
 def test_copy_is_independent_and_approved_put_cannot_overwrite(web_case):
@@ -183,7 +239,7 @@ def test_rectification_restores_original_month_from_stale_saved_form_snapshot(we
     assert form.select_one('[name="employee_id"]')["value"] == str(employee.id)
     locked = form.select_one("[data-rectification-period]")
     assert locked is not None and locked["data-rectification-period"] == "2026-10"
-    assert "month.readOnly = true" in response.text
+    assert "month.readOnly = true" not in response.text
 
     corrected_month = form.select_one('[name="month"]')["value"]
     result = _save_salary(
