@@ -11,7 +11,7 @@ from sqlalchemy import String, cast, func, literal, or_, select, union_all
 from sqlalchemy.orm import Session, selectinload
 
 from .legacy_salary_mov_import import EVENT_TYPE as MOV_TYPE, event_data
-from .models import CalculationRecord, Company, Employee, EmployeeEvent
+from .models import CalculationRecord, Company, Employee, EmployeeEvent, HistoricalMovReconciliation
 
 
 def salary_report_unified(
@@ -59,11 +59,18 @@ def salary_report_unified(
     if not status:
         live_conditions.append(CalculationRecord.status != "Anulado")
     if status:
-        live_conditions.append(CalculationRecord.status == status)
-        if status != "Sin conciliar":
-            archive_conditions.append(literal(False))
-        else:
+        if status in {"Sin conciliar", "Conciliado", "Validado como antecedente"}:
             live_conditions.append(literal(False))
+            if status == "Sin conciliar":
+                archive_conditions.append(or_(
+                    HistoricalMovReconciliation.id.is_(None),
+                    HistoricalMovReconciliation.status == "Sin conciliar",
+                ))
+            else:
+                archive_conditions.append(HistoricalMovReconciliation.status == status)
+        else:
+            live_conditions.append(CalculationRecord.status == status)
+            archive_conditions.append(literal(False))
     if q:
         like = f"%{q}%"
         live_conditions.append(or_(
@@ -107,9 +114,11 @@ def salary_report_unified(
         func.lower(Company.legal_name).label(common[4]),
         func.lower(Employee.full_name).label(common[5]),
         EmployeeEvent.amount.label(common[6]),
-        literal("Sin conciliar").label(common[7]),
+        func.coalesce(HistoricalMovReconciliation.status, literal("Sin conciliar")).label(common[7]),
     ).join(Employee, Employee.id == EmployeeEvent.employee_id).join(
         Company, Company.id == Employee.company_id
+    ).outerjoin(
+        HistoricalMovReconciliation, HistoricalMovReconciliation.event_id == EmployeeEvent.id
     ).where(*archive_conditions)
 
     if source == "current":
@@ -148,6 +157,13 @@ def salary_report_unified(
             .options(selectinload(EmployeeEvent.employee).selectinload(Employee.company))
         )
     } if archive_ids else {}
+    review_map = {
+        review.event_id: review for review in db.scalars(
+            select(HistoricalMovReconciliation).where(
+                HistoricalMovReconciliation.event_id.in_(archive_ids)
+            )
+        )
+    } if archive_ids else {}
     items = []
     for origin, rid in selections:
         if origin == "current" and rid in existing:
@@ -161,12 +177,14 @@ def salary_report_unified(
         elif origin == "historical" and rid in previous:
             record = previous[rid]
             source_data = event_data(record.detail) or {}
+            review = review_map.get(record.id)
             items.append(SimpleNamespace(
                 origin="historical", id=record.id, record=record,
                 company=record.employee.company, employee=record.employee,
                 reference_period=source_data.get("period") or record.effective_date.strftime("%Y-%m"),
                 created_at=record.effective_date, amount=record.amount,
-                status="Sin conciliar", raw_values=source_data.get("values") or {},
+                status=review.status if review else "Sin conciliar",
+                reconciliation=review, raw_values=source_data.get("values") or {},
                 source_row=source_data.get("source_row"),
                 source_filename=source_data.get("filename"), warnings=source_data.get("warnings") or [],
             ))
