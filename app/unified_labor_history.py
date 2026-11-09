@@ -216,10 +216,11 @@ def _superseded_salary_record_ids(
     db: Session, company_ids: tuple[int, ...],
     company_id: int | None, employee_id: int | None,
 ) -> set[int]:
-    """Only approved, same-employee/period rectifications hide their source.
+    """Approved salary rectifications hide their source from the active list.
 
-    Keep originals and links intact for audits. Drafts never replace the
-    approved record, including the one used for REOP/REI exports.
+    A cross-period revision is valid only after approval and only when the
+    source is marked Rectificado. Drafts never supersede prior approvals.
+    Both documents and their linkage stay accessible for audits.
     """
     if not company_ids:
         return set()
@@ -257,6 +258,7 @@ def _superseded_salary_record_ids(
     originals = db.execute(select(
         CalculationRecord.id, CalculationRecord.company_id,
         CalculationRecord.employee_id, CalculationRecord.reference_period,
+        CalculationRecord.status,
     ).where(
         CalculationRecord.id.in_(lineage),
         CalculationRecord.company_id.in_(company_ids),
@@ -265,10 +267,11 @@ def _superseded_salary_record_ids(
     ))
     return {
         source_id
-        for source_id, source_company, source_employee, source_period in originals
+        for source_id, source_company, source_employee, source_period, source_status in originals
         if any(
-            (source_company, source_employee, source_period) == expected
-            for expected in lineage[source_id]
+            source_company == expected_company and source_employee == expected_employee
+            and (source_period == expected_period or source_status == "Rectificado")
+            for expected_company, expected_employee, expected_period in lineage[source_id]
         )
     }
 
