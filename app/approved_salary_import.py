@@ -360,7 +360,7 @@ def approved_salary_records(db: Session, company, period: str, *, authority: str
     if employee_id is not None:
         query = query.where(CalculationRecord.employee_id == employee_id)
     rows = list(db.scalars(query.order_by(CalculationRecord.created_at.desc(), CalculationRecord.id.desc())))
-    if not rows:
+    if not rows and not hasattr(db, "execute"):
         return [], ["No hay cálculos de Salario guardados para esta empresa y período."], []
     selected: dict[int, CalculationRecord] = {}
     errors: list[str] = []
@@ -370,8 +370,8 @@ def approved_salary_records(db: Session, company, period: str, *, authority: str
                 errors.append(f"Cálculo #{item.id}: no tiene funcionario asociado; debe identificarse antes de exportar.")
             continue
     selected = select_salary_versions(rows)
-    if not selected:
-        return [], list(dict.fromkeys([*errors, "No hay cálculos de Salario vinculados a legajos."])), []
+    # The stored MOV salary events are eligible for the same read-only source
+    # selection when no current operational approval supersedes them.
     employee_map = {e.id: e for e in db.scalars(select(Employee).where(
         Employee.company_id == company.id, Employee.id.in_(list(selected))
     ))}
@@ -520,4 +520,18 @@ def approved_salary_records(db: Session, company, period: str, *, authority: str
                                     "period_start": supplementary.get("period_start", start.isoformat()),
                                     "period_end": supplementary.get("period_end", end.isoformat()),
                                 }))
+    if hasattr(db, "execute"):
+        from .historical_mov_salary_export import mov_salary_records
+        # Drafts alone do not hide an earlier incorporated approval. An
+        # annulment or actual operational approval does supersede that MOV.
+        blocked_ids = {eid for eid, item in selected.items() if item.status not in PENDING}
+        historical, historical_errors, _ = mov_salary_records(
+            db, company, period, authority=authority, employee_id=employee_id,
+            payment_code=payment_code,
+            exclude_employee_ids=blocked_ids, allow_empty=True,
+        )
+        source.extend(historical)
+        errors.extend(historical_errors)
+    if not source and not errors:
+        errors.append("No hay salarios de funcionarios con IPS Sí guardados en esta empresa y período.")
     return source, list(dict.fromkeys(errors)), diagnostics
