@@ -8000,6 +8000,48 @@ def salary_settlement_report_pdf(
 
 
 
+@app.get("/app/import/historical-review", response_class=HTMLResponse)
+def historical_import_review(
+    request: Request,
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    """Resumen verificable por estudio; las filas rechazadas no sobreviven al cierre del lote."""
+    source_types = (
+        ("mov", "importacion_historica_mov", "Movimientos salariales MOV"),
+        ("liq", "importacion_historica_liq", "Liquidaciones antiguas LIQ"),
+    )
+    summaries = []
+    for source, entity, title in source_types:
+        log = db.scalar(
+            select(AuditLog).where(
+                AuditLog.studio_id == user.studio_id,
+                AuditLog.entity == entity,
+                AuditLog.action == "importar",
+            ).order_by(AuditLog.created_at.desc(), AuditLog.id.desc()).limit(1)
+        )
+        info = {"source": source, "title": title, "date": None, "detail": "",
+                "imported": None, "already": None, "rejected": None,
+                "conflicts": None, "warnings": None}
+        if log:
+            detail = log.detail or ""
+            patterns = {
+                "imported": r"·\s*(\d+) antecedentes (?:incorporados|vinculados)",
+                "already": r"(\d+) (?:omitidos por existir|ya existentes)",
+                "rejected": r"(\d+) (?:rechazados|no vinculados)",
+                "conflicts": r"(\d+) conflictos",
+                "warnings": r"(\d+) (?:advertencias|con advertencias)",
+            }
+            for key, pattern in patterns.items():
+                match = re.search(pattern, detail, re.IGNORECASE)
+                if match:
+                    info[key] = int(match.group(1))
+            info["date"] = log.created_at
+            info["detail"] = detail
+        summaries.append(info)
+    return render(request, "historical_import_review.html", db, user, summaries=summaries)
+
+
 # Dedicated aguinaldo receipt routes MUST precede the report-key catch-all.
 from .aguinaldo_report_routes import router as aguinaldo_report_router
 app.include_router(aguinaldo_report_router)
