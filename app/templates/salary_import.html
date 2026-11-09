@@ -149,6 +149,41 @@
 
   {% if request.query_params.get("details_saved") %}<div class="import-salary-ok">Datos complementarios guardados. Ejecutá la verificación nuevamente antes de descargar.</div>{% endif %}
   {% if selected_company and preview %}
+  {% if request.query_params.get('auto_approved') is not none %}
+  <div class="import-salary-ok" role="status">
+    Cálculos aprobados y revalidados para exportación: <strong>{{ request.query_params.get('auto_approved') }}</strong>.
+    No aprobados por validaciones o estado incompatible: <strong>{{ request.query_params.get('auto_blocked', '0') }}</strong>.
+    La vista previa se actualizó; ninguna declaración fue enviada.
+  </div>
+  {% endif %}
+  {% if effective_source == 'approved' and source_summary and source_summary.pending and user.role in ['administrador', 'contador'] %}
+  <section class="import-salary-card" aria-label="Aprobación de cálculos pendientes">
+    <h2>Revisar y aprobar cálculos elegibles ({{ source_summary.pending }})</h2>
+    <p class="import-salary-info">
+      Se verifican uno por uno los cálculos salariales operativos de esta empresa y período:
+      importes guardados, IPS, conceptos, asistencia y horas. Solo se aprueban los que
+      superen las validaciones. Los registros históricos MOV/LIQ conservan su origen y no
+      se convierten automáticamente en salarios declarables. Nada se envía a REOP o REI.
+    </p>
+    <form method="post" action="/app/compliance/salary-import/approve-pending"
+          class="import-salary-form" onsubmit="return confirm('¿Validar y aprobar solo los cálculos completos de esta empresa y período? Los incompletos permanecerán pendientes.')">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="company_id" value="{{ selected_company.id }}">
+      <input type="hidden" name="period" value="{{ period }}">
+      <input type="hidden" name="authority" value="{{ authority }}">
+      <input type="hidden" name="payment_code" value="{{ payment_code }}">
+      {% if authority == 'REOP' and not payment_code %}
+      <p class="import-salary-info">Primero seleccioná la forma de pago real y pulsá «Verificar archivo».</p>
+      {% endif %}
+      <label class="import-salary-confirm"><input type="checkbox" name="confirmed" value="si" required>
+        Revisé los respaldos salariales y autorizo la aprobación únicamente de registros que superen los controles.
+      </label>
+      <div class="import-salary-actions">
+        <button class="btn primary" type="submit" {% if authority == 'REOP' and not payment_code %}disabled{% endif %}>Validar y aprobar elegibles</button>
+      </div>
+    </form>
+  </section>
+  {% endif %}
   <section class="import-salary-card">
     <h2>2. {{ item_count }} trabajador(es) para {{ authority }}{% if errors %} · {{ errors|length }} dato(s) pendiente(s){% else %} · Listo para descargar{% endif %}</h2>
     <p class="import-salary-info">{{ selected_company.legal_name }} · {{ period }}{% if excluded_salary %} · {{ excluded_salary|length }} sin aprobación no se incluirán{% endif %}</p>
