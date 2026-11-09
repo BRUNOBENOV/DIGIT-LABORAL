@@ -86,6 +86,7 @@
     {% if item.origin == 'current' %}
       <a href="/app/reports/liquidaciones-salarios/{{ item.id }}">DL-LS-{{ "%06d"|format(item.id) }}</a>
       <span class="salary-report-sub">{{ item.created_at|fecha if item.created_at else 'Fecha no registrada' }} · #{{ item.id }}</span>
+      <span class="salary-report-sub">Origen: módulo Cálculo · {{ item.record.source }}</span>
     {% else %}
       <b>Movimiento histórico</b>
       <span class="salary-report-sub">Archivo MOV · fila {{ item.source_row or '—' }}</span>
