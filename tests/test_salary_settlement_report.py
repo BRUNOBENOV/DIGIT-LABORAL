@@ -149,7 +149,7 @@ def test_existing_report_center_entry_opens_enhanced_salary_report_without_dupli
         assert "Liquidación de Salarios" in catalog.text
         assert catalog.text.count("Liquidación de Salarios") == 1
         assert "INFORME DEDICADO" not in catalog.text
-        assert 'href="/app/reports/liquidaciones-salarios"' not in catalog.text
+        assert 'href="/app/reports/liquidaciones-salarios"' in catalog.text
 
         legacy_entry = client.get(
             "/app/reports/liquidacion-salario?period=2026-10",
