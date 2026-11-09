@@ -159,7 +159,7 @@ def test_rectification_rejects_duplicate_approved_target_month(web_case):
         rectification_reason="El mes de la liquidación era incorrecto y se corrige con respaldo",
     ))
     assert response.status_code == 422
-    assert "ya existe una liquidación aprobada" in response.text
+    assert "ya existe una liquidación aprobada" in response.text.lower()
     assert len(_saved(db, employee)) == 2
 
 
