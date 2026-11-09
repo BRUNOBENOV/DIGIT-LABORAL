@@ -59,12 +59,12 @@ def salary_report_unified(
     if not status:
         live_conditions.append(CalculationRecord.status != "Anulado")
     if status:
-        if status in {"Sin conciliar", "Conciliado", "Validado como antecedente"}:
+        if status in {"Incorporado", "Sin conciliar", "Conciliado", "Validado como antecedente"}:
             live_conditions.append(literal(False))
-            if status == "Sin conciliar":
+            if status in {"Incorporado", "Sin conciliar"}:
                 archive_conditions.append(or_(
                     HistoricalMovReconciliation.id.is_(None),
-                    HistoricalMovReconciliation.status == "Sin conciliar",
+                    HistoricalMovReconciliation.status.in_(("Incorporado", "Sin conciliar")),
                 ))
             else:
                 archive_conditions.append(HistoricalMovReconciliation.status == status)
@@ -114,7 +114,7 @@ def salary_report_unified(
         func.lower(Company.legal_name).label(common[4]),
         func.lower(Employee.full_name).label(common[5]),
         EmployeeEvent.amount.label(common[6]),
-        func.coalesce(HistoricalMovReconciliation.status, literal("Sin conciliar")).label(common[7]),
+        func.coalesce(HistoricalMovReconciliation.status, literal("Incorporado")).label(common[7]),
     ).join(Employee, Employee.id == EmployeeEvent.employee_id).join(
         Company, Company.id == Employee.company_id
     ).outerjoin(
