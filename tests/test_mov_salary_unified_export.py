@@ -8,7 +8,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from app.database import Base
-from app.models import CalculationRecord, Company, Employee, EmployeeEvent, Payroll, Studio
+from app.models import CalculationRecord, Company, Employee, EmployeeEvent, Payroll, Studio, HistoricalMovExportDetail
 from app.legacy_salary_mov_import import make_mov_event
 from app.approved_salary_import import (
     salary_source_summary, choose_salary_source, approved_salary_records,
@@ -142,6 +142,114 @@ def test_mov_bookmark_uses_same_approved_salary_path():
             db, company, "2026-10", "REOP", source_type="mov", payment_code="1",
         )
         assert len(rows) == 1 and not errors
+    finally:
+        db.close()
+        engine.dispose()
+
+
+def test_salario1_equal_to_gross_is_not_mistaken_for_salary_net():
+    db, engine, company, worker, event = setup_mov()
+    try:
+        from app.legacy_salary_mov_import import event_data, MARKER
+        import json
+        payload = event_data(event.detail)
+        payload["values"]["SALARI1"] = payload["values"]["SALARI"]
+        event.detail = MARKER + json.dumps(payload)
+        db.commit()
+        rows, errors = prepare_import(
+            db, company, "2026-10", "REOP", source_type="auto", payment_code="1",
+        )
+        assert len(rows) == 1 and not errors, errors
+        assert rows[0][9] == 3_044_000
+        assert rows[0][25] == 273_960
+    finally:
+        db.close()
+        engine.dispose()
+
+
+def test_horasx_clock_is_not_converted_into_worked_hours():
+    db, engine, company, worker, event = setup_mov(hours="11:54:58")
+    try:
+        rows, errors = prepare_import(
+            db, company, "2026-10", "REOP", source_type="auto", payment_code="1",
+        )
+        assert rows == []
+        assert any("hora de reloj" in error for error in errors)
+    finally:
+        db.close()
+        engine.dispose()
+
+
+def test_seven_migrated_workers_reconcile_to_official_salary_total_even_with_older_annulments():
+    from decimal import Decimal
+    from app.legacy_salary_mov_import import event_data, MARKER
+    from app.approved_salary_import import salary_excluded_records
+    from app.historical_mov_salary_export import mov_salary_records
+    import json
+
+    db, engine, company, first, first_event = setup_mov(hours="11:54:58")
+    try:
+        employees = [(first, first_event, 3_044_000)]
+        for i in range(2, 8):
+            amount = 3_500_000 if i == 7 else 3_044_000
+            worker = Employee(
+                company_id=company.id, employee_code=11 + i, full_name=f"TRABAJADOR {i} HIJAZI",
+                document_number=str(1234567 + i), admission_date=date(2020, 1, 1),
+                base_salary=amount, ips_contributor=True, payment_frequency="Mensual",
+                status="Activo",
+            )
+            db.add(worker)
+            db.flush()
+            source = dict(
+                source_row=i + 1, company_code="2121", employee_code=str(11 + i),
+                period="2026-10", legacy_key=f"key-mov-{i}", source_hash=f"{i}" * 64,
+                warnings=[],
+                raw={"SALARI": str(amount), "SALARI1": str(amount), "SALACT": str(amount),
+                     "DESIPS": str(amount * 9 // 100), "DESOTR": "0",
+                     "DIATRA": "30", "DIATRA1": "30", "HORASX": "11:54:58",
+                     "PAGDEL": "1", "PAGALX": "31", "MONEDA": "Gs"},
+            )
+            event = make_mov_event(source, worker.id, "MOV.xlsx", "migration@example.invalid")
+            db.add(event)
+            db.flush()
+            employees.append((worker, event, amount))
+        for idx, (worker, event, amount) in enumerate(employees):
+            payload = event_data(event.detail)
+            payload["values"]["SALARI1"] = str(amount)
+            payload["values"]["DIATRA"] = "30"
+            payload["values"]["DIATRA1"] = "30"
+            payload["values"]["HORASX"] = "11:54:58"
+            event.detail = MARKER + json.dumps(payload)
+            db.add(HistoricalMovExportDetail(
+                studio_id=company.studio_id, company_id=company.id,
+                employee_id=worker.id, event_id=event.id,
+                source_hash=payload["source_hash"],
+                days_worked=30, days_paid=30, hours_worked=Decimal("222"),
+                pay_basis="monthly", ips_base=amount,
+                notes="Comprobantes documentales de asistencia del mes.",
+            ))
+            if idx in (1, 6):
+                db.add(CalculationRecord(
+                    company_id=company.id, employee_id=worker.id,
+                    calculation_type="salary", reference_period="2026-10",
+                    status="Anulado", amount=0, source="Calculadora",
+                    input_json="{}", result_json="{}",
+                ))
+        db.commit()
+        summary = salary_source_summary(db, company.id, "2026-10")
+        assert summary["approved"] == 7
+        assert summary["approved_mov"] == 7
+        assert summary["pending"] == 0
+        assert not salary_excluded_records(db, company.id, "2026-10", authority="REOP")
+        rows, errors = prepare_import(
+            db, company, "2026-10", "REOP", source_type="auto", payment_code="1",
+        )
+        assert errors == [], errors
+        assert len(rows) == 7
+        assert sum(row[9] for row in rows) == 21_764_000
+        assert {row[5] for row in rows} == {30}
+        assert {row[7] for row in rows} == {222}
+        assert len(list(db.scalars(select(CalculationRecord)))) == 2
     finally:
         db.close()
         engine.dispose()
