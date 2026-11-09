@@ -767,8 +767,13 @@ def rectify_saved_calculation(
     if db.scalar(select(FinalSettlement.id).where(FinalSettlement.calculation_record_id == item.id)):
         raise HTTPException(409, "Esta liquidación se rectifica desde el procedimiento de egreso.")
     values = json.loads(item.input_json)
+    # The canonical identity and salary month live on the approved record,
+    # not on an old form snapshot. Legacy/stale input_json may contain a
+    # different "month", which otherwise causes a spurious 409 on save.
     values.update(
+        kind="salary",
         company_id=item.company_id, employee_id=item.employee_id or 0,
+        month=item.reference_period,
         rectifies_record_id=str(item.id), rectification_reason="",
         attendance_source_id="", attendance_source_sha256="", attendance_override="on",
         prepared_by=user.full_name,
