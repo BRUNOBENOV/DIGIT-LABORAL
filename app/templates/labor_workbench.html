@@ -301,7 +301,7 @@
           {% elif row.url %}
             <a href="{{ row.url }}" class="dl-trace-action">Ver</a>
             {% if row.label == 'Salario' and row.status == 'Aprobado' and row.employee %}
-              <a href="/app/compliance/salary-import?company_id={{ row.company.id }}&amp;period={{ row.period }}&amp;source_type=approved&amp;employee_id={{ row.employee.id }}" class="dl-trace-action">Exportar REOP / REI</a>
+              <a href="/app/compliance/salary-import?company_id={{ row.company.id }}&amp;period={{ row.period }}&amp;employee_id={{ row.employee.id }}" class="dl-trace-action">Exportar REOP / REI</a>
             {% endif %}
           {% else %}—{% endif %}
           </div></td>
