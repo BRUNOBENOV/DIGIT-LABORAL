@@ -152,3 +152,56 @@ def test_rectification_approval_links_back_and_history_has_badges(web_case):
     history = client.get(f"/app/liquidaciones?tipo=salary&company_id={company.id}&employee_id={employee.id}")
     assert "dl-trace-status" in history.text
     assert f"Rectifica #{first.id}" in history.text
+
+
+def test_rectification_restores_original_month_from_stale_saved_form_snapshot(web_case):
+    """A stale saved month must not make the normal rectify-and-save flow fail 409."""
+    from bs4 import BeautifulSoup
+
+    client, db, _, company, employee, *_ = web_case
+    assert _save_salary(client, company, employee).status_code == 303
+    original = _saved(db, employee)[0]
+    original.status = "Aprobado"
+    saved_snapshot = json.loads(original.input_json)
+    saved_snapshot["month"] = "2026-11"  # Historical saved form drifted from approved record.
+    original.input_json = json.dumps(saved_snapshot)
+    db.commit()
+
+    response = client.get(f"/app/liquidaciones/{original.id}/rectificar")
+    assert response.status_code == 200, response.text[:400]
+    soup = BeautifulSoup(response.text, "html.parser")
+    form = soup.select_one("#labor-form")
+    assert form is not None
+    assert form.select_one('[name="kind"]')["value"] == "salary"
+    assert form.select_one('[name="month"]')["value"] == "2026-10"
+    assert form.select_one('[name="company_id"]')["value"] == str(company.id)
+    assert form.select_one('[name="employee_id"]')["value"] == str(employee.id)
+    locked = form.select_one("[data-rectification-period]")
+    assert locked is not None and locked["data-rectification-period"] == "2026-10"
+    assert "month.readOnly = true" in response.text
+
+    corrected_month = form.select_one('[name="month"]')["value"]
+    result = _save_salary(
+        client, company, employee, month=corrected_month,
+        salary_value="3600000", rectifies_record_id=str(original.id),
+        rectification_reason="Corrección salarial verificada con recibo del mes",
+    )
+    assert result.status_code == 303, result.text[:400]
+    revisions = _saved(db, employee)
+    assert len(revisions) == 2
+    assert revisions[0].reference_period == revisions[1].reference_period == "2026-10"
+    assert revisions[0].status == "Aprobado"
+    assert revisions[1].status == "Borrador"
+
+
+def test_rectification_rejects_an_attempt_to_change_original_month(web_case):
+    client, db, _, company, employee, *_ = web_case
+    assert _save_salary(client, company, employee).status_code == 303
+    original = _saved(db, employee)[0]
+    response = _save_salary(
+        client, company, employee, month="2026-11", salary_value="3600000",
+        rectifies_record_id=str(original.id),
+        rectification_reason="Corrección de mes inválido en documento",
+    )
+    assert response.status_code == 409
+    assert len(_saved(db, employee)) == 1
