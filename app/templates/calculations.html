@@ -44,7 +44,7 @@
         <td>{{ row.label }}</td>
         <td>
           {{ row.period }}
-          {% if row.origin == 'imported' and row.detail %}
+          {% if row.origin == 'imported' and row.detail and row.label != 'Salario' %}
             <small class="table-sub">{{ row.detail }}</small>
           {% endif %}
         </td>
