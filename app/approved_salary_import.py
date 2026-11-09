@@ -86,52 +86,30 @@ def salary_source_summary(db: Session, company_id: int, period: str, employee_id
         if item.employee_id is not None:
             newest.setdefault(item.employee_id, item)
 
-    # Imported MOV remains an independent approved historical salary record.
-    # A separate operational draft or annulment does not delete that source.
-    # Never resurrect an older superseded operational calculation.
-    mov_ids: set[int] = set()
-    all_mov_ids: set[int] = set()
-    if hasattr(db, "execute") and re.fullmatch(r"20\d{2}-(0[1-9]|1[0-2])", period or ""):
-        from .legacy_salary_mov_import import EVENT_TYPE as MOV_EVENT_TYPE
-        for (worker,) in db.execute(
-            select(Employee).join(EmployeeEvent, EmployeeEvent.employee_id == Employee.id).where(
-                Employee.company_id == company_id,
-                EmployeeEvent.event_type == MOV_EVENT_TYPE,
-                EmployeeEvent.effective_date == date.fromisoformat(period + "-01"),
-                *([Employee.id == employee_id] if employee_id is not None else []),
-            ).distinct()
-        ):
-            all_mov_ids.add(worker.id)
-            if salary_export_employee_eligible(worker, authority):
-                mov_ids.add(worker.id)
-    native_approved = {eid for eid, item in latest.items() if item.status in APPROVED}
-    # Choose the native approved salary when present; otherwise the imported
-    # MOV is independently approved even if an unrelated native record is void.
-    finalized = native_approved
-    mov_fallback = mov_ids - finalized
-    eligible_ids = native_approved | mov_fallback
+    # REOP/REI select only approved operational salary calculations here.
+    # Imported MOV/LIQ events remain visible in Trazabilidad, but their
+    # historic display label "Aprobado" does not make them export sources.
+    approved_ids = {eid for eid, item in latest.items() if item.status in APPROVED}
     return {
         "closed_payroll": bool(payroll and payroll.status == "Cerrada" and payroll.closed_at),
         "payroll_status": payroll.status if payroll else "No existe",
-        "approved": len(eligible_ids),
-        "approved_native": len(native_approved),
-        "approved_mov": len(mov_fallback),
-        "mov_source_count": len(all_mov_ids),
-        "pending": sum(eid not in eligible_ids and item.status not in APPROVED
-                       for eid, item in latest.items()),
+        "approved": len(approved_ids),
+        "approved_native": len(approved_ids),
+        "approved_mov": 0,
+        "mov_source_count": 0,
+        "pending": sum(item.status not in APPROVED for item in latest.values()),
         "drafts_in_progress": sum(newest[eid].id != item.id for eid, item in latest.items()),
-        "total": len(set(latest) | mov_ids),
+        "total": len(latest),
         "without_employee": sum(x.employee_id is None and x.status in APPROVED for x in records),
-        "approved_employee_ids": sorted(eligible_ids),
+        "approved_employee_ids": sorted(approved_ids),
     }
-
 
 def choose_salary_source(db: Session, company_id: int, period: str, requested: str, employee_id: int | None = None,
                          *, authority: str = "REOP") -> str:
     if requested not in {"auto", "payroll", "approved", "mov"}:
         raise ValueError("Seleccioná un origen de salarios válido.")
     if requested == "mov":
-        # Compatibility for old bookmarks; no special source is required.
+        # Legacy bookmarks cannot force exporting historical MOV events.
         return "approved"
     if requested != "auto":
         return requested
@@ -152,8 +130,7 @@ def choose_salary_source(db: Session, company_id: int, period: str, requested: s
             if payroll_employees and payroll_employees.issubset(set(summary["approved_employee_ids"])):
                 return "approved"
         return "payroll"
-    return "approved" if (summary["total"] or summary["without_employee"]
-                           or summary.get("mov_source_count")) else "payroll"
+    return "approved" if (summary["total"] or summary["without_employee"]) else "payroll"
 
 
 REOP_PAYMENT_METHODS = {
@@ -338,15 +315,9 @@ def salary_excluded_records(db: Session, company_id: int, period: str, *, author
         ).order_by(CalculationRecord.created_at.desc(), CalculationRecord.id.desc())
     ))
     latest = select_salary_versions(rows)
-    # A salary already approved in the imported history is not "pending"
-    # merely because a different operational draft exists for that worker.
-    known_approvals = set(salary_source_summary(
-        db, company_id, period, authority=authority
-    )["approved_employee_ids"])
     excluded = [
         {"employee_id": row.employee_id, "calculation_id": row.id, "status": row.status}
-        for row in latest.values()
-        if row.status not in APPROVED and row.employee_id not in known_approvals
+        for row in latest.values() if row.status not in APPROVED
     ]
     if excluded:
         candidates = {e.id: e for e in db.scalars(select(Employee).where(
@@ -372,8 +343,8 @@ def approved_salary_records(db: Session, company, period: str, *, authority: str
     if employee_id is not None:
         query = query.where(CalculationRecord.employee_id == employee_id)
     rows = list(db.scalars(query.order_by(CalculationRecord.created_at.desc(), CalculationRecord.id.desc())))
-    if not rows and not hasattr(db, "execute"):
-        return [], ["No hay cálculos de Salario guardados para esta empresa y período."], []
+    if not rows:
+        return [], ["No hay liquidaciones de salario guardadas para esta empresa y período."], []
     selected: dict[int, CalculationRecord] = {}
     errors: list[str] = []
     for item in rows:
@@ -382,8 +353,7 @@ def approved_salary_records(db: Session, company, period: str, *, authority: str
                 errors.append(f"Cálculo #{item.id}: no tiene funcionario asociado; debe identificarse antes de exportar.")
             continue
     selected = select_salary_versions(rows)
-    # The stored MOV salary events are eligible for the same read-only source
-    # selection when no current operational approval supersedes them.
+    # Only operational CalculationRecord rows can be selected for export.
     employee_map = {e.id: e for e in db.scalars(select(Employee).where(
         Employee.company_id == company.id, Employee.id.in_(list(selected))
     ))}
@@ -532,18 +502,6 @@ def approved_salary_records(db: Session, company, period: str, *, authority: str
                                     "period_start": supplementary.get("period_start", start.isoformat()),
                                     "period_end": supplementary.get("period_end", end.isoformat()),
                                 }))
-    if hasattr(db, "execute"):
-        from .historical_mov_salary_export import mov_salary_records
-        # Drafts alone do not hide an earlier incorporated approval. An
-        # annulment or actual operational approval does supersede that MOV.
-        blocked_ids = {eid for eid, item in selected.items() if item.status in APPROVED}
-        historical, historical_errors, _ = mov_salary_records(
-            db, company, period, authority=authority, employee_id=employee_id,
-            payment_code=payment_code,
-            exclude_employee_ids=blocked_ids, allow_empty=True,
-        )
-        source.extend(historical)
-        errors.extend(historical_errors)
     if not source and not errors:
         errors.append("No hay salarios de funcionarios con IPS Sí guardados en esta empresa y período.")
     return source, list(dict.fromkeys(errors)), diagnostics
