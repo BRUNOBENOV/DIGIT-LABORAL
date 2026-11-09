@@ -10942,10 +10942,17 @@ def download_integration_batch(
     if batch.file_sha256 and hashlib.sha256(content).hexdigest() != batch.file_sha256:
         raise HTTPException(409, "El archivo almacenado difiere de la huella registrada para este lote.")
     write_audit(db, user, "descargar", "lote_integracion", str(batch.id), batch.file_name)
+    extension = Path(batch.file_name).suffix.lower()
+    media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    if extension == ".txt":
+        media_type = "text/plain; charset=windows-1252"
+    elif extension == ".csv":
+        encoding = json_dict(batch.payload_json).get("csv_encoding")
+        media_type = "text/csv; charset=windows-1252" if encoding == "cp1252" else "text/csv; charset=utf-8"
     db.commit()
     return StreamingResponse(
         io.BytesIO(content),
-        media_type=("text/plain; charset=windows-1252" if batch.file_name.lower().endswith(".txt") else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+        media_type=media_type,
         headers={"Content-Disposition": f'attachment; filename="{safe_filename(batch.file_name)}"',
                  "Cache-Control": "no-store"},
     )
@@ -11883,6 +11890,8 @@ app.include_router(post_import_reactivation_router)
 # Importación REOP al cálculo salarial, sin sobrescribir liquidaciones.
 from .reop_salary_ingest_routes import router as reop_salary_ingest_router
 app.include_router(reop_salary_ingest_router)
+from .rei_movement_routes import router as rei_movement_router
+app.include_router(rei_movement_router)
 
 # Importador salarial histórico MOV: se registra tras construir autenticación y dependencias.
 from .legacy_salary_mov_routes import register_routes as register_mov_routes

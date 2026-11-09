@@ -1,3 +1,8 @@
+## 2.7.9 — Movimientos REI por lotes
+
+- Prepara CSV de entradas y salidas validadas según el modelo de la patronal, con asignación de columnas y vista previa antes de la descarga.
+- Comprueba la empresa, el número patronal, los movimientos repetidos y la vigencia de los datos revisados. El lote conserva los movimientos incluidos y permite registrar el comprobante del IPS.
+
 ## 2.7.8 — Cumplimiento REOP y REI
 
 - Organiza comunicaciones, vencimientos, perfiles, archivos y comprobantes por empresa y organismo. Agrega filtros por estado y accesos a los portales oficiales.

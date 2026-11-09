@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block title %}Movimientos REI | Digit Laboral{% endblock %}
+{% block content %}
+<style>
+.rei-movement-page .rei-checklist { display: grid; gap: 7px; margin: 12px 0 18px; }
+.rei-movement-page .rei-checklist label { display: flex; align-items: flex-start; gap: 9px; padding: 10px; border: 1px solid #d7e2f0; border-radius: 9px; overflow-wrap: anywhere; }
+.rei-movement-page .rei-checklist small { display: block; color: #536682; margin-top: 3px; }
+.rei-movement-page .rei-columns { display: grid; gap: 10px; margin: 14px 0; }
+.rei-movement-page .rei-column { min-width: 0; margin: 0; border: 1px solid #d7e2f0; border-radius: 9px; padding: 10px 12px; }
+.rei-movement-page .rei-column legend { font-size: .83rem; font-weight: 750; overflow-wrap: anywhere; }
+.rei-movement-page .rei-movement-actions { margin: 12px 0 16px; }
+.rei-movement-page .rei-confirm { display: flex; gap: 8px; align-items: flex-start; margin: 12px 0; }
+.rei-movement-page .rei-preview-table { max-width: 100%; }
+.app-body .main-content .table-wrap.rei-preview-table > table { min-width: 0; }
+.rei-movement-page .rei-preview-table th, .rei-movement-page .rei-preview-table td { white-space: normal; overflow-wrap: anywhere; }
+.rei-movement-page .rei-preview-table th { min-width: 60px; }
+</style>
+<div class="rei-movement-page compliance-center">
+  <div class="page-header">
+    <div>
+      <span class="eyebrow">INFORMES · CUMPLIMIENTO IPS</span>
+      <h1>Movimientos REI por lotes</h1>
+      <p>{{ company.legal_name }} · Prepará entradas y salidas en el formato que indica tu plantilla del IPS.</p>
+    </div>
+  </div>
+
+  <nav class="integration-actions rei-movement-actions" aria-label="Accesos de movimientos REI">
+    <a class="btn ghost" href="/app/compliance?company_id={{ company.id }}&amp;authority=REI">← Cumplimiento</a>
+    <a class="btn ghost" href="{{ official_portal }}" target="_blank" rel="noopener noreferrer">Abrir REI oficial ↗</a>
+    <a class="btn ghost" href="{{ manual }}" target="_blank" rel="noopener noreferrer">Manual del IPS ↗</a>
+  </nav>
+
+  {% if stage == 'select' %}
+  <section class="panel">
+    <div class="panel-head"><div><span>PASO 1 DE 3</span><h2>Seleccionar movimientos y modelo</h2></div></div>
+    <form class="compliance-filters" method="get" action="{{ path }}">
+      <input type="hidden" name="company_id" value="{{ company.id }}">
+      <label>Movimiento<select name="movement">{% for option in movement_types %}<option {{ 'selected' if movement == option }}>{{ option }}</option>{% endfor %}</select></label>
+      <label>Mes<input type="month" name="period" value="{{ period }}" required></label>
+      <button type="submit" class="btn ghost">Ver movimientos</button>
+    </form>
+    {% if events %}
+    <p>Seleccioná las comunicaciones validadas de una misma patronal. Si el IPS pide un código común de motivo o categoría, agrupá los movimientos que usan ese código.</p>
+    {% if more %}<p class="muted">Se muestran los primeros {{ max_movements }} movimientos disponibles. Al generar un lote se habilitan los siguientes.</p>{% endif %}
+    <form method="post" action="{{ path }}/layout" enctype="multipart/form-data">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="company_id" value="{{ company.id }}">
+      <input type="hidden" name="movement" value="{{ movement }}">
+      <input type="hidden" name="period" value="{{ period }}">
+      <div class="rei-checklist">
+      {% for event in events %}
+        <label><input type="checkbox" name="event_ids" value="{{ event.id }}">
+          <span><strong>{{ event.employee.full_name }}</strong><small>Documento {{ event.employee.document_number or 'pendiente' }} · {{ event.event_date|fecha }} · N.º patronal {{ patronals[event.id] or 'pendiente' }} · Comunicación #{{ event.id }}</small></span>
+        </label>
+      {% endfor %}
+      </div>
+      <div class="form-grid">
+        <label class="span-2">Plantilla CSV del IPS
+          <input type="file" name="template" accept=".csv,text/csv" required>
+          <small>Usá el modelo vigente de tu cuenta REI con sus encabezados o una fila de ejemplo ficticia. El modelo debe tener una fila por movimiento.</small>
+        </label>
+        <label>Primera fila
+          <select name="first_row"><option value="header">Encabezados</option><option value="sample">Ejemplo de un modelo sin encabezados</option></select>
+        </label>
+        <label>Separador del modelo
+          <select name="separator"><option value="semicolon">Punto y coma (;)</option><option value="comma">Coma (,)</option><option value="tab">Tabulación</option></select>
+        </label>
+        <label>Codificación
+          <select name="encoding"><option value="utf-8">UTF-8</option><option value="cp1252">Windows-1252</option></select>
+        </label>
+        <div class="form-actions span-2"><button class="btn primary" type="submit">Configurar columnas</button></div>
+      </div>
+    </form>
+    {% else %}
+    <div class="empty-state"><b>No hay movimientos REI disponibles para este tipo y mes.</b><span>La bandeja muestra entradas y salidas validadas de funcionarios con IPS Sí, disponibles para un nuevo lote.</span></div>
+    <div class="integration-actions">
+      <a class="btn ghost" href="/app/compliance?company_id={{ company.id }}&amp;authority=REI#comunicaciones">Revisar comunicaciones</a>
+    </div>
+    {% endif %}
+  </section>
+
+  {% elif stage == 'map' %}
+  <section class="panel">
+    <div class="panel-head"><div><span>PASO 2 DE 3</span><h2>Asignar los datos del CSV</h2></div><small>{{ events|length }} movimiento{{ 's' if events|length != 1 }} · {{ movement }} · {{ period }}</small></div>
+    {% if error %}<div class="alert danger" role="alert">{{ error }}</div>{% endif %}
+    <p>Indicá qué dato corresponde a cada columna, según el modelo del IPS. Los valores de la fila de ejemplo quedan fuera del archivo generado.</p>
+    <form method="post" action="{{ path }}/preview">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="review" value="{{ review }}">
+      <div class="form-grid">
+        <label>N.º patronal seleccionado en REI
+          <input name="patronal" value="{{ form.patronal if form is defined else '' }}" maxlength="80" required>
+          <small>N.º patronal previsto en Digit Laboral {{ expected_patronal }}</small>
+        </label>
+        <label>Formato de fecha según el modelo
+          <select name="date_format" required>
+            <option value="">Elegí el formato</option>
+            {% for value, label in [('dma', 'DD/MM/AAAA'), ('amd', 'AAAA-MM-DD'), ('dma-guion', 'DD-MM-AAAA'), ('compacta', 'AAAAMMDD')] %}
+            <option value="{{ value }}" {{ 'selected' if form is defined and form.date_format == value }}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+      </div>
+      <div class="rei-columns">
+        {% for column in layout.columns %}
+        {% set index = loop.index0 %}
+        <fieldset class="rei-column form-grid">
+          <legend>{{ loop.index }} · {{ column }}</legend>
+          <label>Dato de esta columna
+            <select name="field" required>
+              <option value="">Elegí un dato</option>
+              {% for value, label in movement_fields.items() %}
+              <option value="{{ value }}" {{ 'selected' if form is defined and form.fields[index] == value }}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>Valor común, si corresponde
+            <input name="constant" maxlength="220" value="{{ form.constants[index] if form is defined else '' }}" placeholder="Código o valor indicado por el IPS">
+          </label>
+        </fieldset>
+        {% endfor %}
+      </div>
+      <div class="form-actions"><button class="btn primary" type="submit">Ver vista previa</button></div>
+    </form>
+  </section>
+
+  {% else %}
+  <section class="panel">
+    <div class="panel-head"><div><span>PASO 3 DE 3</span><h2>Verificar el lote</h2></div><small>{{ movement }} · {{ period }}</small></div>
+    <p>{{ events|length }} movimiento{{ 's' if events|length != 1 }} del N.º patronal {{ patronal }}. Revisá los documentos, las fechas y los códigos antes de generar el CSV.</p>
+    <div class="table-wrap rei-preview-table">
+      <table data-ui-no-enhance>
+        <thead><tr>{% for column in layout.columns %}<th scope="col">{{ column }}</th>{% endfor %}</tr></thead>
+        <tbody>{% for row in rows %}<tr>{% for value in row %}<td>{{ value }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+      </table>
+    </div>
+    <form method="post" action="{{ path }}/export">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="export_token" value="{{ export_token }}">
+      <label class="rei-confirm"><input type="checkbox" name="confirmed" value="si" required><span>Verifiqué que el modelo corresponde a esta patronal y que los datos del lote coinciden con lo que voy a declarar.</span></label>
+      <div class="form-actions">
+        <a class="btn ghost" href="{{ path }}?company_id={{ company.id }}&amp;movement={{ movement }}&amp;period={{ period }}">Empezar otra preparación</a>
+        <button class="btn primary" type="submit">Generar lote CSV</button>
+      </div>
+    </form>
+  </section>
+  {% endif %}
+  <p class="compliance-footer-note">La carga y la confirmación se hacen en REI, en «Movimiento por Lotes». Después podés registrar el comprobante en Lotes y comprobantes.</p>
+</div>
+{% endblock %}
