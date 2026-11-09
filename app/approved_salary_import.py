@@ -99,7 +99,7 @@ def salary_source_summary(db: Session, company_id: int, period: str, employee_id
 
 def choose_salary_source(db: Session, company_id: int, period: str, requested: str, employee_id: int | None = None,
                          *, authority: str = "REOP") -> str:
-    if requested not in {"auto", "payroll", "approved"}:
+    if requested not in {"auto", "payroll", "approved", "mov"}:
         raise ValueError("Seleccioná un origen de salarios válido.")
     if requested != "auto":
         return requested
