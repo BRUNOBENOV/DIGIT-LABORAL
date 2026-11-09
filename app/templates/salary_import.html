@@ -184,7 +184,7 @@
   {% endif %}
   <section class="import-salary-card">
     <h2>2. Revisión de {{ 'Liquidación de salario REOP' if authority == 'REOP' else 'Declaración de salarios REI' }}</h2>
-    <p class="import-salary-info"><strong>{{ source_summary.approved if source_summary else item_count }} liquidaciones identificadas</strong> · <strong>{{ item_count }} fila(s) preparada(s)</strong>{% if errors %} · <strong>{{ errors|length }} observación(es) por corregir</strong>{% else %} · Datos listos para descargar{% endif %}. No se genera una planilla mientras existan errores de validación.</p>
+    <p class="import-salary-info"><strong>{{ source_summary.approved if source_summary else item_count }} liquidaciones identificadas</strong> · <strong>{{ item_count }} trabajador(es) para {{ authority }} con fila(s) preparadas</strong>{% if errors %} · <strong>{{ errors|length }} observación(es) por corregir</strong>{% else %} · Datos listos para descargar{% endif %}. No se genera una planilla mientras existan errores de validación.</p>
     <p class="import-salary-info">{{ selected_company.legal_name }} · {{ period }}{% if excluded_salary %} · {{ excluded_salary|length }} cálculo(s) operativo(s) pendientes{% endif %}</p>
     {% if authority == 'REOP' and vacation_links %}
     <section class="import-salary-card" aria-label="Conciliación de vacaciones" style="margin:12px 0;background:#f7faff">
@@ -219,7 +219,7 @@
     {% endif %}
     {% if excluded_salary %}
     <details style="margin:12px 0;font-size:.8rem;color:#425776">
-      <summary style="cursor:pointer">{{ excluded_salary|length }} cálculo(s) pendiente(s) · revisar en Cálculo</summary>
+      <summary style="cursor:pointer">{{ excluded_salary|length }} sin aprobación operativa · revisar en Cálculo (solo cálculos nuevos)</summary>
       <ul>{% for excluded in excluded_salary[:30] %}
         <li>{% if excluded.employee_code is not none %}Legajo {{ excluded.employee_code }}{% else %}Funcionario ID {{ excluded.employee_id }}{% endif %} · {{ excluded.employee_name }} · cálculo #{{ excluded.calculation_id }}: <strong>{{ excluded.status }}</strong>
           · <a href="/app/reports/liquidaciones-salarios/{{ excluded.calculation_id }}">Ver cálculo</a>
