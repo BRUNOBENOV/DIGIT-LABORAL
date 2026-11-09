@@ -33,7 +33,7 @@ from .payroll_average import annotate_average, propose_monthly_average, verify_a
 from .payroll_annual import annotate_annual, propose_annual_remuneration, verify_annual_selection
 from .settlement_presets import settlement_defaults
 from .settlement_evidence import annotate_judicial_document, judicial_document_choices, verify_judicial_document
-from .salary_data import attendance_proposal, apply_attendance_proposal, verify_attendance_inheritance, SALARY_TYPES
+from .salary_data import attendance_proposal, apply_attendance_proposal, verify_attendance_inheritance, SALARY_TYPES, official_salary_period_submitted
 from .salary_novelties import salary_novelties
 
 router = APIRouter()
@@ -662,23 +662,34 @@ async def save_calculation(request: Request,
             or correction_origin.calculation_type != "suite_salary"
             or correction_origin.company_id != scoped["company"].id
             or correction_origin.employee_id != scoped["employee"].id
-            or correction_origin.status == "Anulado"):
-            raise HTTPException(409, "El cálculo de origen no corresponde a esta empresa y funcionario, o fue anulado.")
+            or correction_origin.status in {"Anulado", "Rectificado"}):
+            raise HTTPException(409, "El cálculo de origen no pertenece a esta empresa y funcionario o ya fue sustituido.")
         if correction_origin.reference_period != result["period"][:20]:
-            # Restore the canonical month on the returned correction form.
-            # Never persist a calculation under the wrong period.
-            data["month"] = correction_origin.reference_period
-            response = page(
-                request, data["kind"], data,
-                error=CalculationError(
-                    f"El cálculo original pertenece a {correction_origin.reference_period}. "
-                    "Para rectificarlo, conservá ese mes. Para otro período creá una liquidación independiente.",
-                    "month",
-                ),
-                db=db, user=user, copied_from=correction_origin.id,
-            )
-            response.status_code = 409
-            return response
+            # A cross-month rectification corrects the original period, not
+            # just the amount. Keep the original intact until the new draft
+            # has passed a separate approval, and block conflicting approvals.
+            target_approved = db.scalar(select(CalculationRecord.id).where(
+                CalculationRecord.company_id == correction_origin.company_id,
+                CalculationRecord.employee_id == correction_origin.employee_id,
+                CalculationRecord.reference_period == result["period"][:20],
+                CalculationRecord.calculation_type.in_(SALARY_TYPES),
+                CalculationRecord.status.in_(("Aprobado", "Validado")),
+            ).limit(1))
+            if target_approved is not None:
+                return page(
+                    request, data["kind"], data,
+                    error=CalculationError(
+                        "Ya existe una liquidación aprobada en el mes de destino. "
+                        "Revisá ese cálculo antes de trasladar otra liquidación al mismo mes.",
+                        "month",
+                    ),
+                    db=db, user=user, copied_from=correction_origin.id,
+                )
+            if official_salary_period_submitted(db, correction_origin.company_id, correction_origin.reference_period):
+                raise HTTPException(
+                    409, "El período original ya tiene una comunicación REOP/REI presentada. "
+                    "Primero rectificá la comunicación ante el organismo; no se cambiará el registro interno automáticamente.",
+                )
         if db.scalar(select(FinalSettlement.id).where(
             FinalSettlement.calculation_record_id == correction_origin.id
         )):
@@ -690,9 +701,14 @@ async def save_calculation(request: Request,
                         db=db, user=user, copied_from=correction_origin.id)
         data["rectification_reason"] = reason
         data["rectifies_record_id"] = str(correction_origin.id)
+        period_shift = correction_origin.reference_period != result["period"][:20]
+        if period_shift:
+            data["rectification_original_period"] = correction_origin.reference_period
         result.setdefault("notes", []).append(
             f"Rectificación del cálculo #{correction_origin.id}: {reason}. "
-            "El cálculo original permanece conservado; este registro requiere aprobación independiente."
+            + (f"Cambio de mes {correction_origin.reference_period} → {result['period'][:20]}. "
+               if period_shift else "")
+            + "El cálculo original permanece conservado; este registro requiere aprobación independiente."
         )
     item = CalculationRecord(company_id=scoped["company"].id, employee_id=scoped["employee"].id,
         calculation_type="suite_" + data["kind"], reference_period=result["period"][:20],
@@ -776,8 +792,8 @@ def rectify_saved_calculation(
     db: Session = Depends(core.get_db),
 ):
     item, _ = saved_result(db, user, record_id)
-    if item.calculation_type != "suite_salary" or item.status == "Anulado":
-        raise HTTPException(409, "Solo se pueden rectificar cálculos salariales no anulados desde este apartado.")
+    if item.calculation_type != "suite_salary" or item.status in {"Anulado", "Rectificado"}:
+        raise HTTPException(409, "Solo se pueden rectificar cálculos salariales que no estén anulados ni sustituidos.")
     if db.scalar(select(FinalSettlement.id).where(FinalSettlement.calculation_record_id == item.id)):
         raise HTTPException(409, "Esta liquidación se rectifica desde el procedimiento de egreso.")
     values = json.loads(item.input_json)
