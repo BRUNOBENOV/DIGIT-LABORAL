@@ -122,6 +122,12 @@ def prepare_import(db: Session, company, period: str, authority: str, *,
             db, company, period, authority=authority, employee_id=employee_id,
             payment_code=payment_code if authority == "REOP" else "",
         )
+    elif effective_source == "mov":
+        from .historical_mov_salary_export import mov_salary_records
+        records, source_errors, _details = mov_salary_records(
+            db, company, period, authority=authority, employee_id=employee_id,
+            payment_code=payment_code if authority == "REOP" else "",
+        )
     else:
         _payroll, records = _source(db, company, period)
         if employee_id is not None:
