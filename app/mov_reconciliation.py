@@ -267,7 +267,7 @@ def register_routes(app, *, render, get_db, require_roles, company_ids_for_user,
             f"/app/mov-conciliation/{event.id}?saved={quote(action)}", status_code=303,
         )
 
-    @app.post("/app/mov-conciliation/bulk")
+    @app.post("/app/mov-conciliation/bulk/apply")
     def mov_reconciliation_bulk(
         confirmed: str = Form(""),
         user: User = Depends(require_roles("administrador", "contador")),
