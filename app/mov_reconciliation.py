@@ -98,7 +98,17 @@ def _save_review(db, user, event, data, *, record=None, notes=""):
     ))
     if review and review.status != PENDING:
         raise HTTPException(409, "Este movimiento ya fue revisado. Reabrí la revisión si necesitás corregirlo.")
+    _check_source(event, data)
     if record is not None:
+        if (
+            record.employee_id != event.employee_id
+            or record.company_id != event.employee.company_id
+            or record.reference_period != data["period"]
+            or record.calculation_type not in SALARY_TYPES
+            or record.status not in APPROVED
+            or record.amount != source_amount(data)
+        ):
+            raise HTTPException(409, "La liquidación no coincide íntegramente con el MOV.")
         used = db.scalar(select(HistoricalMovReconciliation).where(
             HistoricalMovReconciliation.calculation_record_id == record.id,
             HistoricalMovReconciliation.event_id != event.id,
