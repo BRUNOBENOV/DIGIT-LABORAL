@@ -41,7 +41,7 @@
 @media print{.salary-reports-hero,.salary-report-filters,.salary-report-pagination,.salary-report-help,.workspace-sidebar,.modern-topbar{display:none!important}.salary-report-table-shell{border:none}.salary-report-scroll{overflow:visible}.salary-report-table{min-width:0;font-size:8pt}.salary-report-table th,.salary-report-table td{padding:5px;color:#000!important}}
 </style>
 <section class="salary-reports-hero">
-  <div><span class="eyebrow">INFORMES · REMUNERACIONES</span><h1>Liquidación de Salarios</h1><p>Consultá en una misma lista las liquidaciones guardadas en DIGIT LABORAL y los movimientos históricos vinculados desde el sistema anterior. Los recibos y PDF solo corresponden a liquidaciones emitidas en DIGIT LABORAL.</p></div>
+  <div><span class="eyebrow">INFORMES · REMUNERACIONES</span><h1>Liquidación de Salarios</h1><p>Consultá juntos los registros salariales de DIGIT LABORAL, incluidos los antecedentes ya incorporados al historial. Los recibos y PDF se emiten únicamente desde liquidaciones operativas que cuentan con sus datos completos.</p></div>
   <div class="salary-reports-count"><b>{{ total }}</b><span>registros encontrados</span></div>
 </section>
 {% if request.query_params.get('deleted') %}<div class="salary-report-notice" role="status"><strong>Carga eliminada:</strong> ya no figura entre los salarios operativos. Podés consultarla desde el filtro «Eliminado»; su trazabilidad permanece en auditoría.</div>{% endif %}
@@ -72,12 +72,12 @@
   <label>Empresa<select name="company_id" data-searchable-entity="company" data-entity-scope="all"><option value="">Todas las autorizadas</option>{% for company in companies|entity_choices %}<option value="{{ company.id }}" {{ 'selected' if selected_company == company.id }}>{{ company.legacy_code or (company.company_code if company.company_code is not none else 'Sin código') }} - {{ company.legal_name }}</option>{% endfor %}</select></label>
   <label>Funcionario<select name="employee_id" data-searchable-entity="employee" data-entity-scope="all"><option value="">Todos</option>{% for employee in employees|entity_choices %}<option value="{{ employee.id }}" {{ 'selected' if selected_employee == employee.id }} data-company="{{ employee.company_id }}">{{ employee.employee_code if employee.employee_code is not none else 'Sin legajo' }} - {{ employee.full_name }}</option>{% endfor %}</select></label>
   <label>Período<input type="month" name="period" value="{{ filters.period }}"></label>
-  <label>Estado<select name="status"><option value="">Vigentes e históricos</option>{% for value in ['Borrador','Revisar','Aprobado','Sin conciliar','Validado como antecedente','Conciliado','Anulado'] %}<option value="{{ value }}" {{ 'selected' if filters.status == value }}>{{ 'Eliminado' if value == 'Anulado' else value }}</option>{% endfor %}</select></label>
-  <label>Origen<select name="source"><option value="all" {{ 'selected' if filters.source == 'all' }}>Todos los registros</option><option value="current" {{ 'selected' if filters.source == 'current' }}>DIGIT LABORAL</option><option value="historical" {{ 'selected' if filters.source == 'historical' }}>Sistema anterior</option></select></label>
+  <label>Estado<select name="status"><option value="">Vigentes e históricos</option>{% for value in ['Borrador','Revisar','Aprobado','Incorporado','Validado como antecedente','Conciliado','Anulado'] %}<option value="{{ value }}" {{ 'selected' if filters.status == value }}>{{ 'Eliminado' if value == 'Anulado' else value }}</option>{% endfor %}</select></label>
+  <label>Origen<select name="source"><option value="all" {{ 'selected' if filters.source == 'all' }}>Todos los registros</option><option value="current" {{ 'selected' if filters.source == 'current' }}>DIGIT LABORAL</option><option value="historical" {{ 'selected' if filters.source == 'historical' }}>Historial incorporado</option></select></label>
   <label>Ordenar por<select name="sort" id="salaryReportSort" data-sort-control data-sort-server="true" data-sort-direction="{{ filters.direction|default('asc') }}">{% for key,label in [('period','Período'),('date','Fecha'),('company','Empresa'),('employee','Funcionario'),('amount','Importe'),('status','Estado')] %}<option value="{{ key }}" {{ 'selected' if filters.sort|default('period') == key }}>{{ label }}</option>{% endfor %}</select></label>
   <button class="btn primary" type="submit">Aplicar filtros</button>
 </form>
-<div class="salary-report-summary"><span><strong>{{ total }}</strong> movimientos de remuneración {{ 'incluidas las versiones anteriores' if show_superseded else 'vigentes y borradores' }} · página {{ page }} de {{ pages }}</span><span>Registros actuales y antecedentes del sistema anterior, sin duplicar la emisión</span></div>
+<div class="salary-report-summary"><span><strong>{{ total }}</strong> movimientos de remuneración {{ 'incluidas las versiones anteriores' if show_superseded else 'vigentes y borradores' }} · página {{ page }} de {{ pages }}</span><span>Registros operativos e históricos ya incluidos, sin duplicar la emisión</span></div>
 <section class="salary-report-table-shell"><div class="salary-report-scroll"><table class="salary-report-table" id="salaryReportTable" data-server-paginated data-sort-selector="salaryReportSort">
 <thead><tr><th data-sort-key="date">Registro / fecha</th><th data-sort-key="company">Empresa</th><th data-sort-key="employee">Funcionario</th><th data-sort-key="period">Período</th><th data-sort-key="status">Estado</th><th data-sort-key="amount">Importe registrado</th><th>Acciones</th></tr></thead>
 <tbody>
@@ -89,7 +89,7 @@
       <span class="salary-report-sub">{{ item.created_at|fecha if item.created_at else 'Fecha no registrada' }} · #{{ item.id }}</span>
       <span class="salary-report-sub">Origen: módulo Cálculo · {{ item.record.source }}</span>
     {% else %}
-      <b>Movimiento histórico</b>
+      <b>Remuneración incorporada</b>
       <span class="salary-report-sub">Archivo MOV · fila {{ item.source_row or '—' }}</span>
     {% endif %}
   </td>
@@ -97,7 +97,7 @@
   <td><span class="salary-report-name">{{ item.employee.full_name }}</span><span class="salary-report-sub">{{ item.employee.position or 'Cargo no registrado' }} · CI {{ item.employee.document_number }}</span></td>
   <td>{{ item.reference_period or 'Sin período' }}</td>
   <td><span class="salary-report-state">{{ 'Eliminado' if item.status == 'Anulado' else item.status }}</span>
-    {% if item.origin == 'historical' %}<span class="salary-report-sub">Origen: sistema anterior · sin emisión nueva ni constancia de pago</span>{% endif %}
+    {% if item.origin == 'historical' %}<span class="salary-report-sub">Incluido en el historial · no es un nuevo recibo ni constancia de pago</span>{% endif %}
   </td>
   <td class="salary-report-money">
     {% if item.origin == 'current' %}Gs. {{ item.amount|gs }}
@@ -125,7 +125,7 @@
       {% endif %}
     {% else %}
       {% if user.role in ['administrador','contador'] %}
-      <a href="/app/mov-conciliation/{{ item.id }}" style="font-weight:700">{{ 'Ver conciliación' if item.status == 'Conciliado' else 'Ver validación' if item.status == 'Validado como antecedente' else 'Conciliar y validar' }}</a>
+      <a href="/app/mov-conciliation/{{ item.id }}" style="font-weight:700">{{ 'Ver conciliación' if item.status == 'Conciliado' else 'Ver validación' if item.status == 'Validado como antecedente' else 'Verificar vínculo' }}</a>
       {% endif %}
       <details>
         <summary style="color:#174b9b;cursor:pointer;font-weight:700">Ver movimiento</summary>
