@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ 'Liquidación de salario · REOP' if authority == 'REOP' else 'Declaración de salarios · REI' }} | DIGIT LABORAL{% endblock %}
+{% block title %}Exportar salarios REOP / REI | DIGIT-LABORAL{% endblock %}
 {% block content %}
 <style>
 .import-salary-page{max-width:1120px;margin:0 auto;color:#172033}
@@ -24,44 +24,20 @@
 .import-salary-download-status[data-state="success"]{border-color:#c4e8d2;background:#f2faf5;color:#17603e}
 .import-salary-actions [hidden]{display:none}
 .import-salary-setup summary{cursor:pointer;font-size:.83rem;font-weight:750;color:#17335e}
-.import-salary-tabs{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px}
-.import-salary-tabs a{flex:1;min-width:230px;border:1px solid #c9d7eb;background:#fff;color:#27476c;font-size:.86rem;font-weight:750;text-align:center;text-decoration:none;padding:12px 16px;border-radius:10px}
-.import-salary-tabs a.active{background:#173c76;color:#fff;border-color:#173c76}
-.import-salary-steps{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 14px;font-size:.76rem}
-.import-salary-steps span{border:1px solid #d6e2f1;background:#f4f7fd;border-radius:999px;padding:7px 11px;color:#244362;font-weight:700}
-.import-salary-advanced{border:1px solid #e1e7f0;border-radius:9px;padding:12px;margin:12px 0;background:#fbfcfe}
-.import-salary-advanced summary{cursor:pointer;font-size:.78rem;font-weight:750;color:#284a70}
-.import-salary-advanced p{margin:7px 0}
-.import-salary-scope{font-size:.78rem;color:#2d4e73;line-height:1.6}
-.import-salary-card h2{line-height:1.35}
 @media(max-width:800px){.import-salary-grid{grid-template-columns:1fr}.import-salary-hero{padding:18px}}
 </style>
 <div class="import-salary-page">
   <header class="import-salary-hero">
     <div style="font-size:.68rem;font-weight:850;letter-spacing:.13em;color:#c9daff">DIGIT-LABORAL · CUMPLIMIENTO</div>
-    <h1>{{ 'Liquidación de salario · REOP' if authority == 'REOP' else 'Declaración de salarios · REI' }}</h1>
-    <p>{% if authority == 'REOP' %}Prepará la comunicación «Liquidación Salario» del MTESS desde las liquidaciones ya guardadas en DIGIT LABORAL.{% else %}Prepará el archivo de declaración salarial del IPS utilizando los mismos registros guardados, con los requisitos propios del REI.{% endif %}</p>
+    <h1>Exportación de salarios REOP / REI</h1>
+    <p>Exportá desde una nómina cerrada o desde los cálculos individuales aprobados. No se recalculan importes.</p>
   </header>
-  <nav class="import-salary-tabs" aria-label="Elegir trámite">
-    <a class="{{ 'active' if authority == 'REOP' }}" href="/app/compliance/salary-import?authority=REOP{% if selected_company %}&amp;company_id={{ selected_company.id }}{% endif %}&amp;period={{ period }}">REOP · Liquidación de salario</a>
-    <a class="{{ 'active' if authority == 'REI' }}" href="/app/compliance/salary-import?authority=REI{% if selected_company %}&amp;company_id={{ selected_company.id }}{% endif %}&amp;period={{ period }}">REI · Declaración de salarios</a>
-  </nav>
-  <div class="import-salary-steps" aria-label="Etapas del trámite">
-    <span>1 · Elegir empresa y mes</span><span>2 · Verificar liquidaciones y datos</span><span>3 · Descargar y presentar en {{ authority }}</span>
-  </div>
   <div style="margin-bottom:15px;display:flex;gap:9px;flex-wrap:wrap">
-    <a href="/app/compliance{% if selected_company %}?company_id={{ selected_company.id }}&amp;authority={{ authority }}{% endif %}" class="btn ghost">← Centro de cumplimiento</a>
-    <a href="/app/reports/liquidaciones-salarios{% if selected_company %}?company_id={{ selected_company.id }}&amp;period={{ period }}{% endif %}" class="btn ghost">Ver liquidaciones guardadas</a>
-    <a href="{{ official_portal }}" class="btn ghost" target="_blank" rel="noopener noreferrer">Abrir portal {{ authority }} oficial ↗</a>
+    <a href="/app/compliance{% if selected_company %}?company_id={{ selected_company.id }}&amp;authority={{ authority }}{% endif %}" class="btn ghost">← Volver a Cumplimiento</a>
+    <a href="{{ official_portal }}" class="btn ghost" target="_blank" rel="noopener noreferrer">Abrir {{ authority }} oficial ↗</a>
+    <a href="/app/liquidaciones/conciliar-planilla" class="btn ghost">Conciliar planilla contable antes de exportar</a>
+    <a href="/app/liquidaciones/salarios/importar-reop" class="btn ghost">Importar salarios desde REOP</a>
   </div>
-  <details class="import-salary-advanced">
-    <summary>Herramientas complementarias</summary>
-    <div class="import-salary-actions">
-      <a class="btn ghost" href="/app/liquidaciones/conciliar-planilla">Conciliar con planilla contable</a>
-      <a class="btn ghost" href="/app/liquidaciones/salarios/importar-reop">Importar datos desde Excel REOP</a>
-    </div>
-    <p class="import-salary-info">Importar datos es una operación distinta de comunicar una liquidación al MTESS; no se necesita repetir una importación que ya está guardada.</p>
-  </details>
   {% if reop_assistant_id %}
   <details class="import-salary-card import-salary-setup" id="asistente-reop">
     <summary>Cargar en REOP con el asistente de Chrome</summary>
@@ -72,12 +48,11 @@
   {% endif %}
   <p class="import-salary-info"><strong>Criterios de días:</strong> REOP mensualizados = días remunerados del mes (incluidos descansos legales pagados); REOP jornaleros = jornadas efectivamente trabajadas. REI utiliza los días remunerados guardados y su propia base imponible IPS. Las horas ordinarias REOP siempre deben corresponder a asistencia real, no a un divisor de salario.</p>
   <section class="import-salary-card">
-    <h2>1. Seleccionar empresa, mes y alcance</h2>
-    <p class="import-salary-scope">Seleccioná los datos de la comunicación. El sistema recuperará las liquidaciones aprobadas y las remuneraciones previamente incorporadas, sin volver a cargarlas.</p>
+    <h2>1. Seleccionar la empresa, el origen y el formato</h2>
     {% if selected_employee %}
       <p class="import-salary-info"><strong>Exportación individual:</strong> {{ selected_employee.full_name }} ·
       solo se validará este legajo.
-      <a href="/app/compliance/salary-import?company_id={{ selected_company.id }}&amp;period={{ period }}&amp;authority={{ authority }}">Ver todos los funcionarios</a></p>
+      <a href="/app/compliance/salary-import?company_id={{ selected_company.id }}&amp;period={{ period }}&amp;authority={{ authority }}&amp;source_type=approved">Ver todos los funcionarios</a></p>
     {% endif %}
     <form method="get" action="/app/compliance/salary-import" class="import-salary-form">
       <div class="import-salary-grid">
@@ -92,14 +67,15 @@
         <label>Mes de liquidación
           <input type="month" name="period" value="{{ period }}" required>
         </label>
-        <input type="hidden" name="authority" value="{{ authority }}">
-        <div class="import-salary-scope" style="padding:10px 11px;border:1px solid #d9e4f3;border-radius:8px;background:#f7faff">
-          <strong>Trámite seleccionado</strong>
-          <div>{{ 'MTESS · REOP · Liquidación Salario (Excel)' if authority == 'REOP' else 'IPS · REI · Declaración de salarios (TXT)' }}</div>
-        </div>
+        <label>Organismo
+          <select name="authority" onchange="this.form.requestSubmit()">
+            <option value="REOP" {{ 'selected' if authority == 'REOP' }}>REOP — MTESS (Excel)</option>
+            <option value="REI" {{ 'selected' if authority == 'REI' }}>REI — IPS (TXT)</option>
+          </select>
+        </label>
       </div>
       <div class="import-salary-grid" style="margin-top:12px">
-        <label>Funcionarios a incluir
+        <label>Alcance de la exportación
           <select name="employee_id" data-searchable-entity="employee" data-entity-scope="all" data-ips-only="true" data-ips-active-only="{{ 'true' if authority == 'REI' else 'false' }}">
             <option value="" {{ 'selected' if not selected_employee }}>{{ 'Toda la empresa · solo IPS Sí (activos)' if authority == 'REI' else 'Toda la empresa · solo IPS Sí' }}</option>
             {% for worker in approved_choices %}
@@ -108,30 +84,28 @@
             </option>
             {% endfor %}
           </select>
-          <small>Dejá «Toda la empresa» para preparar la comunicación mensual completa. Se verificarán los requisitos de cada funcionario.</small>
+          <small>Para un solo trabajador, seleccioná su legajo. Los borradores de otros funcionarios no bloquearán esta exportación.</small>
         </label>
       </div>
-      <details class="import-salary-advanced" {{ 'open' if source_type not in ['auto',''] }}>
-        <summary>Opciones avanzadas de lectura (no es necesario elegir un origen)</summary>
-        <div class="import-salary-grid" style="margin-top:10px">
-          <label>Registros que utilizará la comunicación
-            <select name="source_type">
-              <option value="auto" {{ 'selected' if source_type == 'auto' }}>Automático · registros vigentes del período</option>
-              <option value="payroll" {{ 'selected' if source_type == 'payroll' }}>Solo nómina mensual cerrada</option>
-              <option value="approved" {{ 'selected' if source_type == 'approved' or source_type == 'mov' }}>Liquidaciones aprobadas (incluye migradas)</option>
-            </select>
-            <small>Automático es la opción habitual. Los salarios incorporados desde MOV no requieren una segunda carga ni aprobación.</small>
-          </label>
-        </div>
-      </details>
+      <div class="import-salary-grid" style="margin-top:12px">
+        <label>Origen de los salarios
+          <select name="source_type">
+            <option value="auto" {{ 'selected' if source_type == 'auto' }}>Automático · nómina cerrada o cálculos aprobados</option>
+            <option value="payroll" {{ 'selected' if source_type == 'payroll' }}>Solo nómina mensual cerrada</option>
+            <option value="approved" {{ 'selected' if source_type == 'approved' or source_type == 'mov' }}>Salarios aprobados del historial</option>
+          </select>
+          <small>La selección automática incluye las remuneraciones aprobadas que ya figuran en DIGIT LABORAL y evita duplicar al mismo funcionario y período.</small>
+        </label>
+      </div>
       {% if source_summary %}
-      <p class="import-salary-info"><strong>{{ source_summary.approved }} funcionarios con liquidación salarial aprobada identificados</strong> · {{ period }}. La selección automática incluye los importados del historial y prioriza los registros vigentes sin duplicar funcionarios.</p>
+      <p class="import-salary-info"><strong>{{ source_summary.approved }} registros salariales aprobados identificados</strong> · {{ 'Historial de remuneraciones' if effective_source == 'approved' else 'Nómina cerrada' }} · {{ period }}</p>
       {% if effective_source == 'approved' and source_summary.approved == 0 and source_summary.pending %}
       <p class="import-salary-info" role="status" style="padding:10px 12px;border:1px solid #ebcf96;background:#fff9eb;border-radius:8px">
-        Hay {{ source_summary.pending }} liquidación(es) sin aprobación del cálculo operativo. Los registros migrados que ya figuran aprobados se recuperan automáticamente. La planilla solo se habilitará cuando los datos del organismo estén completos.
+        Hay {{ source_summary.pending }} cálculo(s) salarial(es) del período sin aprobación operativa. Abrí «Ver excluidos» más abajo para revisar cada uno.
+        El exportador reconoce las remuneraciones ya incluidas en el historial. Los documentos con datos de IPS, conceptos o asistencia incompletos deberán verificarse antes de generar la declaración.
       </p>
       {% endif %}
-      {% if effective_source == 'payroll' and source_summary.approved %}<p class="import-salary-info">Se seleccionó expresamente la nómina mensual cerrada. El modo automático es preferible para consultar las liquidaciones ya guardadas.</p>{% endif %}
+      {% if effective_source == 'payroll' and source_summary.approved %}<p class="import-salary-info">La vista usa los datos de la nómina cerrada. Para usar la asistencia de los cálculos individuales, elegí Cálculos individuales aprobados en Origen de los salarios.</p>{% endif %}
       {% endif %}
       {% if authority == 'REOP' %}
       <p class="import-salary-info">Solo funcionarios con <strong>IPS Sí</strong>. Elegí la forma real de pago.</p>
@@ -169,7 +143,7 @@
         </label>
       </div>
       {% endif %}
-      <div class="import-salary-actions"><button class="btn primary" type="submit">{{ 'Verificar liquidación para REOP' if authority == 'REOP' else 'Verificar declaración para REI' }}</button></div>
+      <div class="import-salary-actions"><button class="btn primary" type="submit">Verificar archivo</button></div>
     </form>
   </section>
 
@@ -182,10 +156,37 @@
     La vista previa se actualizó; ninguna declaración fue enviada.
   </div>
   {% endif %}
+  {% if effective_source == 'approved' and source_summary and source_summary.pending and user.role in ['administrador', 'contador'] %}
+  <section class="import-salary-card" aria-label="Aprobación de cálculos pendientes">
+    <h2>Revisar y aprobar cálculos elegibles ({{ source_summary.pending }})</h2>
+    <p class="import-salary-info">
+      Se verifican uno por uno los cálculos salariales operativos de esta empresa y período:
+      importes guardados, IPS, conceptos, asistencia y horas. Solo se aprueban los que
+      superen las validaciones. Los registros históricos MOV/LIQ conservan su origen y no
+      se convierten automáticamente en salarios declarables. Nada se envía a REOP o REI.
+    </p>
+    <form method="post" action="/app/compliance/salary-import/approve-pending"
+          class="import-salary-form" onsubmit="return confirm('¿Validar y aprobar solo los cálculos completos de esta empresa y período? Los incompletos permanecerán pendientes.')">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="company_id" value="{{ selected_company.id }}">
+      <input type="hidden" name="period" value="{{ period }}">
+      <input type="hidden" name="authority" value="{{ authority }}">
+      <input type="hidden" name="payment_code" value="{{ payment_code }}">
+      {% if authority == 'REOP' and not payment_code %}
+      <p class="import-salary-info">Primero seleccioná la forma de pago real y pulsá «Verificar archivo».</p>
+      {% endif %}
+      <label class="import-salary-confirm"><input type="checkbox" name="confirmed" value="si" required>
+        Revisé los respaldos salariales y autorizo la aprobación únicamente de registros que superen los controles.
+      </label>
+      <div class="import-salary-actions">
+        <button class="btn primary" type="submit" {% if authority == 'REOP' and not payment_code %}disabled{% endif %}>Validar y aprobar elegibles</button>
+      </div>
+    </form>
+  </section>
+  {% endif %}
   <section class="import-salary-card">
-    <h2>2. Revisión de {{ 'Liquidación de salario REOP' if authority == 'REOP' else 'Declaración de salarios REI' }}</h2>
-    <p class="import-salary-info"><strong>{{ source_summary.approved if source_summary else item_count }} liquidaciones identificadas</strong> · <strong>{{ item_count }} trabajador(es) para {{ authority }} con fila(s) preparadas</strong>{% if errors %} · <strong>{{ errors|length }} observación(es) por corregir</strong>{% else %} · Datos listos para descargar{% endif %}. No se genera una planilla mientras existan errores de validación.</p>
-    <p class="import-salary-info">{{ selected_company.legal_name }} · {{ period }}{% if excluded_salary %} · {{ excluded_salary|length }} cálculo(s) operativo(s) pendientes{% endif %}</p>
+    <h2>2. {{ item_count }} trabajador(es) para {{ authority }}{% if errors %} · {{ errors|length }} dato(s) pendiente(s){% else %} · Listo para descargar{% endif %}</h2>
+    <p class="import-salary-info">{{ selected_company.legal_name }} · {{ period }}{% if excluded_salary %} · {{ excluded_salary|length }} sin aprobación no se incluirán{% endif %}</p>
     {% if authority == 'REOP' and vacation_links %}
     <section class="import-salary-card" aria-label="Conciliación de vacaciones" style="margin:12px 0;background:#f7faff">
       <h3>Vacaciones vinculadas al período ({{ vacation_links|length }})</h3>
@@ -219,18 +220,24 @@
     {% endif %}
     {% if excluded_salary %}
     <details style="margin:12px 0;font-size:.8rem;color:#425776">
-      <summary style="cursor:pointer">{{ excluded_salary|length }} sin aprobación operativa · revisar en Cálculo (solo cálculos nuevos)</summary>
+      <summary style="cursor:pointer">{{ excluded_salary|length }} sin aprobación · ver excluidos (no bloquean esta exportación parcial)</summary>
       <ul>{% for excluded in excluded_salary[:30] %}
         <li>{% if excluded.employee_code is not none %}Legajo {{ excluded.employee_code }}{% else %}Funcionario ID {{ excluded.employee_id }}{% endif %} · {{ excluded.employee_name }} · cálculo #{{ excluded.calculation_id }}: <strong>{{ excluded.status }}</strong>
           · <a href="/app/reports/liquidaciones-salarios/{{ excluded.calculation_id }}">Ver cálculo</a>
-
+          {% if user.role in ['administrador','contador'] and excluded.status not in ['Anulado','Aprobado','Validado'] %}
+          <form method="post" action="/app/calculations/{{ excluded.calculation_id }}/status" style="display:inline" onsubmit="return confirm('¿Aprobar este cálculo salarial para su uso operativo? El sistema volverá a validar los datos antes de aceptar.')">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="status" value="Aprobado">
+            <button type="submit" class="btn ghost" style="padding:3px 8px;font-size:.75rem">Revisado · Aprobar</button>
+          </form>
+          {% endif %}
         </li>
       {% endfor %}</ul>
     </details>
     {% endif %}
     {% if effective_source == 'approved' and mov_diagnostics %}
     <section class="import-salary-card" aria-label="Datos históricos MOV" style="margin:12px 0;background:#f7faff">
-      <h3>Datos complementarios de liquidaciones guardadas ({{ mov_diagnostics|length }})</h3>
+      <h3>Revisar datos faltantes ({{ mov_diagnostics|length }} trabajadores del historial)</h3>
       <p class="import-salary-info">La exportación utiliza las liquidaciones aprobadas que ya están guardadas. Solo completá datos respaldados por planillas o documentos; no se recalculan importes ni se crea una liquidación duplicada.</p>
       {% for mov in mov_diagnostics %}
       <details style="padding:12px;border:1px solid #d9e4f2;border-radius:9px;background:#fff;margin:10px 0" {{ 'open' if request.query_params.get('mov_details_saved') == (mov.id|string) }}>
@@ -354,11 +361,11 @@
     {% endif %}
     {% if errors %}
     <div class="import-salary-errors">
-      <h3>{{ errors|length }} observación(es) antes de preparar el archivo</h3>
+      <h3>{{ errors|length }} dato(s) que impiden descargar</h3>
       <ul>{% for error in errors[:100] %}<li>{{ error }}</li>{% endfor %}</ul>
       {% if errors|length > 100 %}<p>Se muestran las primeras 100 observaciones.</p>{% endif %}
     </div>
-    <p class="import-salary-info">Corregí los datos identificados y volvé a verificar la {{ 'liquidación' if authority == 'REOP' else 'declaración' }}.</p>
+    <p class="import-salary-info">Corregí solo estos datos y pulsá «Verificar archivo».</p>
     {% else %}
     <div class="import-salary-ok">La validación técnica local finalizó sin observaciones. El archivo todavía requiere revisión humana y aceptación del organismo.</div>
     <form method="post" action="/app/compliance/salary-import/export" class="import-salary-form" data-download-form data-download-format="{{ 'xlsx' if authority == 'REOP' else 'txt' }}"{% if reop_assistant_patronal %} data-reop-assistant-id="{{ reop_assistant_id }}"{% endif %}>
@@ -398,7 +405,7 @@
   </section>
   {% endif %}
   <section class="import-salary-card">
-    <h2>3. Presentación y comprobante oficial</h2>
+    <h2>Presentación y comprobante</h2>
     <p class="import-salary-info">
       {% if authority == 'REOP' %}Importá el Excel en REOP → Comunicaciones → Liquidación Salario. Revisá el resultado y pulsá «Confirmar Planilla» cuando esté correcto.
       {% else %}Verificá el TXT con tu cuenta e importalo en REI → Declaración de Salarios → Importar Salarios.{% endif %}
