@@ -26,8 +26,8 @@
 <div class="mov-wrap">
 <header class="mov-hero">
 <a class="mov-back" href="/app/reports/liquidaciones-salarios?source=historical">← Volver a liquidaciones históricas</a>
-<h1>{{ 'Conciliación masiva de MOV' if bulk else 'Conciliar y validar movimiento MOV' }}</h1>
-<p>Los importes importados son antecedentes del sistema anterior. Su revisión profesional no constituye recibo emitido, salario pagado, liquidación nueva ni presentación ante MTESS, REOP o REI.</p>
+<h1>{{ 'Conciliación masiva de MOV' if bulk else 'Verificar vínculo de remuneración histórica' }}</h1>
+<p>Los registros MOV ya forman parte del historial de DIGIT LABORAL. Esta revisión es opcional y sirve para comprobar documentos o vincularlos con una liquidación ya aprobada, sin emitir un nuevo recibo ni registrar un pago.</p>
 </header>
 {% if request.query_params.get('saved') %}<div class="mov-good">La revisión se registró con su responsable y fecha. Se conservó íntegra la información del sistema anterior.</div>{% endif %}
 {% if bulk %}
@@ -38,7 +38,7 @@
 <div class="mov-field"><small>Antecedentes MOV del estudio</small><b>{{ total_mov }}</b></div>
 <div class="mov-field"><small>Candidatos para conciliación automática</small><b>{{ bulk_count }}</b></div>
 </div>
-<p>Solo se vincula un MOV sin advertencias con una única liquidación ya aprobada del mismo funcionario y período, con idéntico importe registrado. Los casos ambiguos, sin liquidación, con diferencias o advertencias permanecen para revisión individual.</p>
+<p>Solo se vincula un MOV sin advertencias con una única liquidación ya aprobada del mismo funcionario y período, con idéntico importe registrado. Los demás registros siguen incorporados al historial y pueden verificarse individualmente cuando corresponda.</p>
 {% if bulk_count %}
 <form method="post" action="/app/mov-conciliation/bulk/apply" class="mov-form" onsubmit="return confirm('¿Conciliar hasta 300 coincidencias exactas? No se generan recibos ni pagos.')">
 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -46,7 +46,7 @@
 <button class="btn primary" type="submit">Conciliar coincidencias exactas</button>
 </form>
 {% else %}
-<div class="mov-note">No existen coincidencias exactas para conciliación automática. Podés ingresar en cada MOV y validarlo como antecedente tras verificar sus datos.</div>
+<div class="mov-note">No existen coincidencias exactas para vinculación automática. Los MOV ya incorporados siguen disponibles normalmente en el historial.</div>
 {% endif %}
 </section>
 {% if matches %}
@@ -69,9 +69,9 @@
 <div class="mov-field"><small>Período MOV</small><b>{{ source.period or 'No informado' }}</b></div>
 <div class="mov-field"><small>SALARI en origen</small><b>{{ ('Gs. ' ~ (amount|gs)) if amount is not none else 'Sin importe válido' }}</b></div>
 <div class="mov-field"><small>Archivo y fila</small><b>{{ source.filename or 'MOV' }} · {{ source.source_row or '—' }}</b></div>
-<div class="mov-field"><small>Estado de revisión</small><b>{{ review.status if review else 'Sin conciliar' }}</b></div>
+<div class="mov-field"><small>Estado de revisión</small><b>{{ review.status if review else 'Incorporado' }}</b></div>
 </div>
-{% if source.warnings %}<div class="mov-note"><b>Advertencias del origen:</b><ul>{% for warning in source.warnings %}<li>{{ warning }}</li>{% endfor %}</ul>Para validar este MOV, justificá su tratamiento en la observación.</div>{% endif %}
+{% if source.warnings %}<div class="mov-note"><b>Advertencias del origen:</b><ul>{% for warning in source.warnings %}<li>{{ warning }}</li>{% endfor %}</ul>Si decidís hacer una verificación documental, justificá su tratamiento en la observación.</div>{% endif %}
 <details><summary>Ver todos los valores originales</summary><div class="mov-details"><table class="mov-table"><tbody>
 {% for key, value in source.get('values', {}).items() %}<tr><td>{{ key }}</td><td>{{ value or '—' }}</td></tr>{% endfor %}
 </tbody></table></div></details>
@@ -93,7 +93,7 @@
 {% if not valid or amount is none or not source.source_hash %}
 <div class="mov-note">No se puede validar hasta corregir la inconsistencia de origen. El dato histórico no será alterado automáticamente.</div>
 {% else %}
-<p>Podés validar el antecedente sin generar una nueva liquidación, o vincularlo a un registro operativo aprobado cuando el importe coincida exactamente.</p>
+<p>El registro ya está incorporado. Opcionalmente podés documentar una verificación profesional o vincularlo a una liquidación aprobada con importe idéntico.</p>
 <form method="post" action="/app/mov-conciliation/{{ event.id }}" class="mov-form">
 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 <input type="hidden" name="expected_hash" value="{{ source.source_hash }}">
@@ -107,7 +107,7 @@
 <label>Observación y respaldo de la revisión<textarea name="note" maxlength="1000" minlength="8" required placeholder="Indicá qué comprobaste y qué documentos respaldan la revisión. Para registros con advertencias, justificá las diferencias."></textarea></label>
 <label><input type="checkbox" name="confirmed" value="si" required> Confirmo que revisé funcionario, empresa, período, importe y advertencias, y entiendo que esta validación no prueba el pago.</label>
 <div class="mov-actions">
-<button class="btn outline" name="action" value="validate" type="submit">Validar como antecedente</button>
+<button class="btn outline" name="action" value="validate" type="submit">Registrar verificación</button>
 <button class="btn primary" name="action" value="match" type="submit" {{ 'disabled' if not candidates }}>Conciliar con liquidación</button>
 </div>
 </form>
