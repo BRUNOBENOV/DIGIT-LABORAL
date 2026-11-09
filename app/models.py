@@ -626,6 +626,30 @@ class EmployeeEvent(Base):
     employee: Mapped[Employee] = relationship()
 
 
+    
+class HistoricalMovReconciliation(Base):
+    """Professional review of MOV evidence; never creates a payslip or payment."""
+    __tablename__ = "historical_mov_reconciliations"
+    __table_args__ = (
+        UniqueConstraint("event_id", name="uq_mov_reconciliation_event"),
+        UniqueConstraint("calculation_record_id", name="uq_mov_reconciliation_calculation"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    studio_id: Mapped[int] = mapped_column(ForeignKey("studios.id"), index=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), index=True)
+    event_id: Mapped[int] = mapped_column(ForeignKey("employee_events.id"), index=True)
+    calculation_record_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("calculation_records.id"), nullable=True, index=True,
+    )
+    status: Mapped[str] = mapped_column(String(40), default="Validado como antecedente")
+    source_hash: Mapped[str] = mapped_column(String(64), default="")
+    notes: Mapped[str] = mapped_column(Text, default="")
+    reviewed_by: Mapped[str] = mapped_column(String(180), default="")
+    reviewed_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+
+
 class LaborOperation(Base):
     """Tenant-scoped operational record for hours, salary advances, employee actions and labour telegram drafts."""
 
