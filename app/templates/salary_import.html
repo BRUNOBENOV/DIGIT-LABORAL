@@ -92,22 +92,17 @@
           <select name="source_type">
             <option value="auto" {{ 'selected' if source_type == 'auto' }}>Automático · nómina cerrada o cálculos aprobados</option>
             <option value="payroll" {{ 'selected' if source_type == 'payroll' }}>Solo nómina mensual cerrada</option>
-            <option value="approved" {{ 'selected' if source_type == 'approved' }}>Cálculos individuales aprobados</option>
-            <option value="mov" {{ 'selected' if source_type == 'mov' }}>Salarios históricos MOV · aprobados en Trazabilidad</option>
+            <option value="approved" {{ 'selected' if source_type == 'approved' or source_type == 'mov' }}>Salarios aprobados del historial</option>
           </select>
-          <small>Para utilizar los registros aprobados «Salario · MOV» de Trazabilidad, elegí «Salarios históricos MOV». No es necesario crear otra liquidación.</small>
+          <small>La selección automática incluye las remuneraciones aprobadas que ya figuran en DIGIT LABORAL y evita duplicar al mismo funcionario y período.</small>
         </label>
       </div>
       {% if source_summary %}
-      {% if effective_source == 'mov' %}
-      <p class="import-salary-info"><strong>{{ mov_diagnostics|length if mov_diagnostics is defined else 0 }} movimientos MOV identificados</strong> · Historial aprobado de DIGIT LABORAL · {{ period }}. Para exportar solo se usan datos documentados y completos.</p>
-      {% else %}
-      <p class="import-salary-info"><strong>{{ source_summary.approved }} aprobados para exportación</strong> · {{ 'Cálculos salariales operativos' if effective_source == 'approved' else 'Nómina cerrada' }} · {{ period }}</p>
-      {% endif %}
+      <p class="import-salary-info"><strong>{{ source_summary.approved }} registros salariales aprobados identificados</strong> · {{ 'Historial de remuneraciones' if effective_source == 'approved' else 'Nómina cerrada' }} · {{ period }}</p>
       {% if effective_source == 'approved' and source_summary.approved == 0 and source_summary.pending %}
       <p class="import-salary-info" role="status" style="padding:10px 12px;border:1px solid #ebcf96;background:#fff9eb;border-radius:8px">
         Hay {{ source_summary.pending }} cálculo(s) salarial(es) del período sin aprobación operativa. Abrí «Ver excluidos» más abajo para revisar cada uno.
-        Los antecedentes MOV y LIQ que figuran «Aprobado» en Trazabilidad ya están incorporados, pero no son cálculos operativos ni se consideran pagos comprobados. REOP necesita un salario guardado con sus conceptos, IPS y asistencia verificables.
+        El exportador reconoce las remuneraciones ya incluidas en el historial. Los documentos con datos de IPS, conceptos o asistencia incompletos deberán verificarse antes de generar la declaración.
       </p>
       {% endif %}
       {% if effective_source == 'payroll' and source_summary.approved %}<p class="import-salary-info">La vista usa los datos de la nómina cerrada. Para usar la asistencia de los cálculos individuales, elegí Cálculos individuales aprobados en Origen de los salarios.</p>{% endif %}
@@ -240,17 +235,17 @@
       {% endfor %}</ul>
     </details>
     {% endif %}
-    {% if effective_source == 'mov' and mov_diagnostics %}
+    {% if effective_source == 'approved' and mov_diagnostics %}
     <section class="import-salary-card" aria-label="Datos históricos MOV" style="margin:12px 0;background:#f7faff">
-      <h3>Salarios MOV aprobados en Trazabilidad ({{ mov_diagnostics|length }})</h3>
-      <p class="import-salary-info">Los registros ya están incorporados. La exportación requiere datos originales de remuneración, IPS, días y horas verificables. Los campos incompletos se documentan aquí; nunca se reemplaza el MOV ni se crean nóminas o recibos.</p>
+      <h3>Completar datos salariales que faltan ({{ mov_diagnostics|length }})</h3>
+      <p class="import-salary-info">La exportación utiliza las liquidaciones aprobadas que ya están guardadas. Solo completá datos respaldados por planillas o documentos; no se recalculan importes ni se crea una liquidación duplicada.</p>
       {% for mov in mov_diagnostics %}
       <details style="padding:12px;border:1px solid #d9e4f2;border-radius:9px;background:#fff;margin:10px 0" {{ 'open' if request.query_params.get('mov_details_saved') == (mov.id|string) }}>
         <summary style="cursor:pointer;color:#203b64;font-weight:750;font-size:.84rem">
-          {{ mov.employee }} · MOV #{{ mov.id }} · archivo {{ mov.origin }} (fila {{ mov.source_row or '—' }})
+          {{ mov.employee }} · Registro #{{ mov.id }}
           {% if mov.warnings %} · {{ mov.warnings|length }} pendiente(s){% else %} · datos completos{% endif %}
         </summary>
-        <p class="import-salary-info">Original: SALARI {{ mov.raw.SALARI or '—' }} · DESIPS {{ mov.raw.DESIPS or '—' }} · DIATRA {{ mov.raw.DIATRA or '—' }} · HORASX {{ mov.raw.HORASX or '—' }}. Los valores originales permanecen inalterados.</p>
+        <p class="import-salary-info">Datos guardados: salario {{ mov.raw.SALARI or '—' }} · IPS {{ mov.raw.DESIPS or '—' }} · días {{ mov.raw.DIATRA or '—' }} · horas {{ mov.raw.HORASX or '—' }}. Los datos importados no se alteran. <small>Origen y fila disponibles para auditoría: {{ mov.origin }}, {{ mov.source_row or '—' }}.</small></p>
         {% if mov.warnings %}
         <ul style="color:#9a471b;font-size:.78rem">{% for problem in mov.warnings %}<li>{{ problem }}</li>{% endfor %}</ul>
         {% endif %}
@@ -289,7 +284,7 @@
           </label>
           <label class="import-salary-confirm">
             <input type="checkbox" name="confirmed" value="si" required>
-            Confirmo que estos datos son reales y están respaldados; no se alterará el antecedente MOV.
+            Confirmo que los datos complementarios están respaldados y que no se modificará el cálculo original.
           </label>
           <div class="import-salary-actions"><button class="btn primary" type="submit">Guardar datos documentados</button></div>
         </form>
