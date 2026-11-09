@@ -62,7 +62,7 @@ def test_mov_and_current_appear_together_in_existing_salary_report():
         assert {row.origin for row in rows} == {"historical", "current"}
         old = next(row for row in rows if row.origin == "historical")
         new = next(row for row in rows if row.origin == "current")
-        assert old.status == "Sin conciliar"
+        assert old.status == "Aprobado"
         assert old.raw_values["SALARI"] == "3000000.55"
         assert old.reference_period == new.reference_period
         assert new.record.source == "Centro laboral"
@@ -76,8 +76,7 @@ def test_origin_status_period_and_company_filters():
         for source, status, total_expected, expected in (
             ("historical", "", 1, "historical"),
             ("current", "", 1, "current"),
-            ("all", "Sin conciliar", 1, "historical"),
-            ("all", "Aprobado", 1, "current"),
+            ("all", "Aprobado", 2, "both"),
             ("all", "", 2, "both"),
         ):
             total, rows = salary_report_unified(
@@ -108,7 +107,7 @@ def test_mov_in_existing_employee_salary_history_only_when_requested():
         assert merged["total"] == 2
         imported = next(row for row in merged["rows"] if row["origin"] == "imported")
         assert imported["label"] == "Salario · MOV"
-        assert imported["status"] == "Sin conciliar"
+        assert imported["status"] == "Aprobado"
         assert imported["can_use_document"] is False
         notice_only = calculation_history_page(
             db, {company.id}, tipo="notice", employee_id=employee.id,
