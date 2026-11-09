@@ -6004,6 +6004,66 @@ def _revalidate_calculation_before_approval(item: CalculationRecord, db: Session
     raise HTTPException(409, "Este cálculo tiene un origen histórico no reconocido por la validación (" + (item.source or "Sin origen") + "). Se conserva sin cambios; verificá los datos originales y recreá una versión si no puede reproducirse.")
 
 
+def _delete_calculation_operational(db: Session, user: User, item: CalculationRecord, reason: str) -> None:
+    """Retira un cálculo de uso operativo sin destruirlo ni perder su auditoría."""
+    reason = clean_text(reason or "", max_length=500).strip()
+    if len(reason) < 8:
+        raise HTTPException(422, "Indicá un motivo de eliminación de al menos ocho caracteres.")
+    if item.company_id not in company_ids_for_user(db, user):
+        raise HTTPException(404, "No se encontró el cálculo en tus empresas.")
+    if item.status == "Anulado":
+        raise HTTPException(409, "Esta carga ya fue eliminada. Consultá el historial de eliminaciones.")
+    if db.scalar(select(FinalSettlement.id).where(FinalSettlement.calculation_record_id == item.id)):
+        raise HTTPException(409, "El cálculo está vinculado a una liquidación final. Debés resolver primero su procedimiento.")
+    batches = list(db.scalars(select(IntegrationBatch).where(
+        IntegrationBatch.calculation_record_id == item.id,
+    )))
+    if any(
+        batch.submitted_at is not None or batch.external_reference
+        or batch.receipt_bytes is not None or batch.receipt_storage_key
+        or batch.status not in {"Generado", "Rechazado", "Observado", "Cancelado"}
+        for batch in batches
+    ):
+        raise HTTPException(
+            409,
+            "Existen presentaciones, validaciones o comprobantes REOP/REI vinculados. "
+            "Regularizá esas referencias antes de eliminar la carga interna.",
+        )
+    prior_status = item.status
+    item.status = "Anulado"  # Estado interno histórico: excluido de los cálculos vigentes.
+    write_audit(
+        db, user, "eliminar", "calculo", str(item.id),
+        f"Eliminación lógica | estado anterior: {prior_status} | tipo: {item.calculation_type} "
+        f"| período: {item.reference_period} | motivo: {reason}. "
+        "Se conservan el registro y su procedencia para auditoría.",
+    )
+
+
+@app.post("/app/calculations/{calculation_id}/delete")
+def delete_calculation_from_workspace(
+    calculation_id: int,
+    reason: Annotated[str, Form()],
+    return_to: Annotated[str, Form()] = "trace",
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    item = db.get(CalculationRecord, calculation_id)
+    if not item:
+        raise HTTPException(404, "Cálculo no encontrado.")
+    _delete_calculation_operational(db, user, item, reason)
+    db.commit()
+    if return_to == "report" and item.calculation_type in {"salary", "suite_salary"}:
+        url = "/app/reports/liquidaciones-salarios?deleted=1"
+    elif return_to == "trace" and item.source == "Centro laboral":
+        kind = "salary" if item.calculation_type == "suite_salary" and (
+            json_dict(item.input_json).get("kind") == "salary"
+        ) else "settlement"
+        url = f"/app/liquidaciones?tipo={kind}&deleted=1#labor-history"
+    else:
+        url = "/app/calculations?deleted=1"
+    return RedirectResponse(url, status_code=303)
+
+
 @app.post("/app/calculations/{calculation_id}/status")
 def calculation_status(
     calculation_id: int,
@@ -6016,8 +6076,10 @@ def calculation_status(
         raise HTTPException(404)
     if db.scalar(select(FinalSettlement.id).where(FinalSettlement.calculation_record_id == item.id)):
         raise HTTPException(409, "La liquidación final vinculada solo se aprueba desde su procedimiento.")
-    if status_value not in {"Revisar", "Aprobado", "Anulado"}:
+    if status_value not in {"Revisar", "Aprobado"}:
         raise HTTPException(400, "Estado inválido.")
+    if item.status == "Anulado":
+        raise HTTPException(409, "Una carga eliminada no puede cambiar de estado.")
     if status_value == "Aprobado":
         _revalidate_calculation_before_approval(item, db)
     item.status = status_value
