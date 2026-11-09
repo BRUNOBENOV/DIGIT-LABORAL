@@ -79,7 +79,7 @@ def test_workspace_sidebar_is_the_single_global_navigation():
         ):
             assert label in sidebar
         for href in (
-            "/app/calculations?tipo=salary",
+            "/app/liquidaciones?tipo=salary",
             "/app/payrolls",
             "/app/medical-exams",
             "/app/notifications",
@@ -124,11 +124,11 @@ def test_workspace_sidebar_is_the_single_global_navigation():
         calculation_index = client.get("/app/calculations")
         assert calculation_index.status_code == 200
         assert 'class="workspace-nav-link active" href="/app/calculations">Calculadoras laborales</a>' in calculation_index.text
-        assert 'class="workspace-nav-link active" href="/app/calculations?tipo=salary">Salario</a>' not in calculation_index.text
+        assert 'class="workspace-nav-link active" href="/app/liquidaciones?tipo=salary">Cálculo de salario</a>' not in calculation_index.text
 
-        salary_page = client.get("/app/calculations?tipo=salary")
+        salary_page = client.get("/app/liquidaciones?tipo=salary")
         assert salary_page.status_code == 200
-        assert 'class="workspace-nav-link active" href="/app/calculations?tipo=salary">Salario</a>' in salary_page.text
+        assert 'class="workspace-nav-link active" href="/app/liquidaciones?tipo=salary">Cálculo de salario</a>' in salary_page.text
         assert 'class="workspace-nav-link active" href="/app/calculations">Calculadoras laborales</a>' not in salary_page.text
 
 
