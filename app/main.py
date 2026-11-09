@@ -10797,6 +10797,100 @@ def approve_pending_salary_import(
     )
 
 
+@app.post("/app/compliance/salary-import/mov-details")
+def save_historical_mov_export_detail(
+    event_id: Annotated[int, Form()],
+    company_id: Annotated[int, Form()],
+    period: Annotated[str, Form()],
+    authority: Annotated[str, Form()] = "REOP",
+    payment_code: Annotated[str, Form()] = "",
+    source_hash: Annotated[str, Form()] = "",
+    days_worked: Annotated[str, Form()] = "",
+    days_paid: Annotated[str, Form()] = "",
+    hours_worked: Annotated[str, Form()] = "",
+    pay_basis: Annotated[str, Form()] = "",
+    ips_base: Annotated[str, Form()] = "",
+    notes: Annotated[str, Form()] = "",
+    confirmed: Annotated[str, Form()] = "",
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    """Document original MOV export facts; do not edit the imported event itself."""
+    from datetime import UTC, datetime
+    from .legacy_salary_mov_import import EVENT_TYPE, event_data
+    from .models import HistoricalMovExportDetail, EmployeeEvent
+
+    company = company_allowed(db, user, company_id)
+    event = db.get(EmployeeEvent, event_id)
+    if not event or event.event_type != EVENT_TYPE or event.employee.company_id != company.id:
+        raise HTTPException(404, "Movimiento MOV no encontrado en esta empresa.")
+    info = event_data(event.detail) or {}
+    if info.get("period") != period or event.effective_date.strftime("%Y-%m") != period:
+        raise HTTPException(409, "El período o el MOV ya no coinciden.")
+    if not source_hash or source_hash != info.get("source_hash"):
+        raise HTTPException(409, "El archivo de origen cambió: actualizá la vista previa.")
+    if authority not in {"REOP", "REI"}:
+        raise HTTPException(422, "Organismo no válido.")
+    if confirmed != "si" or not 12 <= len(notes.strip()) <= 1000:
+        raise HTTPException(422, "Confirmá el respaldo y registrá una observación de 12 a 1000 caracteres.")
+    if pay_basis not in {"monthly", "daily", ""}:
+        raise HTTPException(422, "Modalidad salarial no válida.")
+
+    def optional_integer(value, label, maximum):
+        if not value.strip():
+            return None
+        if not re.fullmatch(r"\\d+", value.strip()):
+            raise HTTPException(422, f"{label}: ingresá un número entero no negativo.")
+        n = int(value)
+        if n > maximum:
+            raise HTTPException(422, f"{label}: el máximo admitido es {maximum}.")
+        return n
+
+    worked = optional_integer(days_worked, "Jornadas efectivas", 31)
+    paid = optional_integer(days_paid, "Días remunerados", 31)
+    base = optional_integer(ips_base, "Base IPS", 2_147_483_647)
+    hours = None
+    if hours_worked.strip():
+        try:
+            hours = Decimal(hours_worked.strip())
+            if not hours.is_finite() or hours < 0 or hours > 744 or -hours.as_tuple().exponent > 2:
+                raise ValueError
+        except (ValueError, ArithmeticError):
+            raise HTTPException(422, "Horas trabajadas fuera de rango o con más de dos decimales.") from None
+
+    detail = db.scalar(select(HistoricalMovExportDetail).where(
+        HistoricalMovExportDetail.event_id == event.id,
+        HistoricalMovExportDetail.company_id == company.id,
+    ))
+    if detail is None:
+        detail = HistoricalMovExportDetail(
+            studio_id=company.studio_id, company_id=company.id,
+            employee_id=event.employee_id, event_id=event.id, source_hash=source_hash,
+        )
+        db.add(detail)
+    detail.source_hash = source_hash
+    detail.days_worked = worked
+    detail.days_paid = paid
+    detail.hours_worked = hours
+    detail.pay_basis = pay_basis or None
+    detail.ips_base = base
+    detail.notes = notes.strip()
+    detail.updated_at = datetime.now(UTC)
+    detail.updated_by = user.email
+    write_audit(db, user, "complementar_mov", "mov_exportacion", str(event.id),
+                f"Se documentaron jornadas, horas, modalidad o base IPS en MOV {period}; "
+                f"origen SHA256={source_hash}; respaldo: {detail.notes}. No se modificó MOV ni se presentó al organismo.")
+    db.commit()
+    from urllib.parse import urlencode
+    return RedirectResponse(
+        "/app/compliance/salary-import?" + urlencode({
+            "company_id": company.id, "period": period, "authority": authority,
+            "source_type": "mov", "payment_code": payment_code,
+            "mov_details_saved": event.id,
+        }), status_code=303,
+    )
+
+
 @app.post("/app/compliance/salary-import/details")
 def save_salary_import_details(
     calculation_id: Annotated[int, Form()],
