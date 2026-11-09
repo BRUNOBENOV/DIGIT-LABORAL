@@ -77,7 +77,7 @@
     {% if selected_employee %}
       <p class="import-salary-info"><strong>Exportación individual:</strong> {{ selected_employee.full_name }} ·
       solo se validará este legajo.
-      <a href="/app/compliance/salary-import?company_id={{ selected_company.id }}&amp;period={{ period }}&amp;authority={{ authority }}&amp;source_type=approved">Ver todos los funcionarios</a></p>
+      <a href="/app/compliance/salary-import?company_id={{ selected_company.id }}&amp;period={{ period }}&amp;authority={{ authority }}">Ver todos los funcionarios</a></p>
     {% endif %}
     <form method="get" action="/app/compliance/salary-import" class="import-salary-form">
       <div class="import-salary-grid">
@@ -92,15 +92,14 @@
         <label>Mes de liquidación
           <input type="month" name="period" value="{{ period }}" required>
         </label>
-        <label>Organismo
-          <select name="authority" onchange="this.form.requestSubmit()">
-            <option value="REOP" {{ 'selected' if authority == 'REOP' }}>REOP — MTESS (Excel)</option>
-            <option value="REI" {{ 'selected' if authority == 'REI' }}>REI — IPS (TXT)</option>
-          </select>
-        </label>
+        <input type="hidden" name="authority" value="{{ authority }}">
+        <div class="import-salary-scope" style="padding:10px 11px;border:1px solid #d9e4f3;border-radius:8px;background:#f7faff">
+          <strong>Trámite seleccionado</strong>
+          <div>{{ 'MTESS · REOP · Liquidación Salario (Excel)' if authority == 'REOP' else 'IPS · REI · Declaración de salarios (TXT)' }}</div>
+        </div>
       </div>
       <div class="import-salary-grid" style="margin-top:12px">
-        <label>Alcance de la exportación
+        <label>Funcionarios a incluir
           <select name="employee_id" data-searchable-entity="employee" data-entity-scope="all" data-ips-only="true" data-ips-active-only="{{ 'true' if authority == 'REI' else 'false' }}">
             <option value="" {{ 'selected' if not selected_employee }}>{{ 'Toda la empresa · solo IPS Sí (activos)' if authority == 'REI' else 'Toda la empresa · solo IPS Sí' }}</option>
             {% for worker in approved_choices %}
@@ -109,28 +108,30 @@
             </option>
             {% endfor %}
           </select>
-          <small>Para un solo trabajador, seleccioná su legajo. Los borradores de otros funcionarios no bloquearán esta exportación.</small>
+          <small>Dejá «Toda la empresa» para preparar la comunicación mensual completa. Se verificarán los requisitos de cada funcionario.</small>
         </label>
       </div>
-      <div class="import-salary-grid" style="margin-top:12px">
-        <label>Origen de los salarios
-          <select name="source_type">
-            <option value="auto" {{ 'selected' if source_type == 'auto' }}>Automático · nómina cerrada o cálculos aprobados</option>
-            <option value="payroll" {{ 'selected' if source_type == 'payroll' }}>Solo nómina mensual cerrada</option>
-            <option value="approved" {{ 'selected' if source_type == 'approved' or source_type == 'mov' }}>Salarios aprobados del historial</option>
-          </select>
-          <small>La selección automática incluye las remuneraciones aprobadas que ya figuran en DIGIT LABORAL y evita duplicar al mismo funcionario y período.</small>
-        </label>
-      </div>
+      <details class="import-salary-advanced" {{ 'open' if source_type not in ['auto',''] }}>
+        <summary>Opciones avanzadas de lectura (no es necesario elegir un origen)</summary>
+        <div class="import-salary-grid" style="margin-top:10px">
+          <label>Registros que utilizará la comunicación
+            <select name="source_type">
+              <option value="auto" {{ 'selected' if source_type == 'auto' }}>Automático · registros vigentes del período</option>
+              <option value="payroll" {{ 'selected' if source_type == 'payroll' }}>Solo nómina mensual cerrada</option>
+              <option value="approved" {{ 'selected' if source_type == 'approved' or source_type == 'mov' }}>Liquidaciones aprobadas (incluye migradas)</option>
+            </select>
+            <small>Automático es la opción habitual. Los salarios incorporados desde MOV no requieren una segunda carga ni aprobación.</small>
+          </label>
+        </div>
+      </details>
       {% if source_summary %}
-      <p class="import-salary-info"><strong>{{ source_summary.approved }} registros salariales aprobados identificados</strong> · {{ 'Historial de remuneraciones' if effective_source == 'approved' else 'Nómina cerrada' }} · {{ period }}</p>
+      <p class="import-salary-info"><strong>{{ source_summary.approved }} funcionarios con liquidación salarial aprobada identificados</strong> · {{ period }}. La selección automática incluye los importados del historial y prioriza los registros vigentes sin duplicar funcionarios.</p>
       {% if effective_source == 'approved' and source_summary.approved == 0 and source_summary.pending %}
       <p class="import-salary-info" role="status" style="padding:10px 12px;border:1px solid #ebcf96;background:#fff9eb;border-radius:8px">
-        Hay {{ source_summary.pending }} cálculo(s) salarial(es) del período sin aprobación operativa. Abrí «Ver excluidos» más abajo para revisar cada uno.
-        El exportador reconoce las remuneraciones ya incluidas en el historial. Los documentos con datos de IPS, conceptos o asistencia incompletos deberán verificarse antes de generar la declaración.
+        Hay {{ source_summary.pending }} liquidación(es) sin aprobación del cálculo operativo. Los registros migrados que ya figuran aprobados se recuperan automáticamente. La planilla solo se habilitará cuando los datos del organismo estén completos.
       </p>
       {% endif %}
-      {% if effective_source == 'payroll' and source_summary.approved %}<p class="import-salary-info">La vista usa los datos de la nómina cerrada. Para usar la asistencia de los cálculos individuales, elegí Cálculos individuales aprobados en Origen de los salarios.</p>{% endif %}
+      {% if effective_source == 'payroll' and source_summary.approved %}<p class="import-salary-info">Se seleccionó expresamente la nómina mensual cerrada. El modo automático es preferible para consultar las liquidaciones ya guardadas.</p>{% endif %}
       {% endif %}
       {% if authority == 'REOP' %}
       <p class="import-salary-info">Solo funcionarios con <strong>IPS Sí</strong>. Elegí la forma real de pago.</p>
@@ -168,7 +169,7 @@
         </label>
       </div>
       {% endif %}
-      <div class="import-salary-actions"><button class="btn primary" type="submit">Verificar archivo</button></div>
+      <div class="import-salary-actions"><button class="btn primary" type="submit">{{ 'Verificar liquidación para REOP' if authority == 'REOP' else 'Verificar declaración para REI' }}</button></div>
     </form>
   </section>
 
