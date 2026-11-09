@@ -12,7 +12,7 @@ from app.database import Base
 from app.legacy_notice_import import EVENT_TYPE as NOTICE_TYPE, MARKER as NOTICE_MARKER
 from app.legacy_vacation_import import EVENT_TYPE as VACATION_TYPE, MARKER as VACATION_MARKER
 from app.models import (
-    CalculationRecord, Company, Employee, EmployeeEvent, Studio, Vacation,
+    CalculationRecord, Company, Employee, EmployeeEvent, Studio, Vacation, HistoricalMovReconciliation,
 )
 from app.unified_labor_history import (
     calculation_history_page, vacation_history_page,
@@ -25,6 +25,7 @@ def setup_records():
     Base.metadata.create_all(engine, tables=[
         Studio.__table__, Company.__table__, Employee.__table__,
         EmployeeEvent.__table__, CalculationRecord.__table__, Vacation.__table__,
+        HistoricalMovReconciliation.__table__,
     ])
     db = Session(engine)
     db.add_all([Studio(id=1, name="Estudio A"), Studio(id=2, name="Estudio B")])
