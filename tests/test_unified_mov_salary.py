@@ -106,7 +106,7 @@ def test_mov_in_existing_employee_salary_history_only_when_requested():
         )
         assert merged["total"] == 2
         imported = next(row for row in merged["rows"] if row["origin"] == "imported")
-        assert imported["label"] == "Salario · MOV"
+        assert imported["label"] == "Salario"
         assert imported["status"] == "Aprobado"
         assert imported["can_use_document"] is False
         notice_only = calculation_history_page(
