@@ -62,7 +62,7 @@
   <input type="hidden" name="rectifies_record_id" value="{{ values.get('rectifies_record_id') }}">
   <div class="dl-rectify-heading">
     <strong id="rectify-heading">Rectificación del cálculo #{{ values.get('rectifies_record_id') }}</strong>
-    <span>Período original: {{ values.get('month','') }} · Podés corregir el mes de destino</span>
+    <span>Se guardará una nueva versión en borrador · Período original: {{ values.get('month','') }} · Podés corregir el mes de destino</span>
   </div>
   <label for="rectification-reason">Motivo de la corrección <span aria-hidden="true">*</span></label>
   <textarea id="rectification-reason" name="rectification_reason" rows="2" minlength="12" maxlength="300" required
