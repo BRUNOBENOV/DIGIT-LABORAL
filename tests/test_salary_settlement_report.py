@@ -324,7 +324,7 @@ def test_cancelled_salary_download_is_clearly_archival_not_blocked():
         route = f"/app/reports/liquidaciones-salarios/{record_id}"
         response = client.get(route)
         assert response.status_code == 200
-        assert "Descargar copia ANULADA" in response.text
+        assert "Descargar copia histórica" in response.text
         assert "ANULADO · COPIA HISTÓRICA" in response.text
         pdf = client.get(route + "/pdf")
         assert pdf.status_code == 200, pdf.text[:150] if not pdf.content.startswith(b"%PDF") else ""
