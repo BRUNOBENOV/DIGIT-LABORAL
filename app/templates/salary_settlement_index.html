@@ -72,7 +72,7 @@
   <label>Empresa<select name="company_id" data-searchable-entity="company" data-entity-scope="all"><option value="">Todas las autorizadas</option>{% for company in companies|entity_choices %}<option value="{{ company.id }}" {{ 'selected' if selected_company == company.id }}>{{ company.legacy_code or (company.company_code if company.company_code is not none else 'Sin código') }} - {{ company.legal_name }}</option>{% endfor %}</select></label>
   <label>Funcionario<select name="employee_id" data-searchable-entity="employee" data-entity-scope="all"><option value="">Todos</option>{% for employee in employees|entity_choices %}<option value="{{ employee.id }}" {{ 'selected' if selected_employee == employee.id }} data-company="{{ employee.company_id }}">{{ employee.employee_code if employee.employee_code is not none else 'Sin legajo' }} - {{ employee.full_name }}</option>{% endfor %}</select></label>
   <label>Período<input type="month" name="period" value="{{ filters.period }}"></label>
-  <label>Estado<select name="status"><option value="">Vigentes e históricos</option>{% for value in ['Borrador','Revisar','Aprobado','Incorporado','Validado como antecedente','Conciliado','Anulado'] %}<option value="{{ value }}" {{ 'selected' if filters.status == value }}>{{ 'Eliminado' if value == 'Anulado' else value }}</option>{% endfor %}</select></label>
+  <label>Estado<select name="status"><option value="">Vigentes e históricos</option>{% for value in ['Borrador','Revisar','Aprobado','Anulado'] %}<option value="{{ value }}" {{ 'selected' if filters.status == value }}>{{ 'Eliminado' if value == 'Anulado' else value }}</option>{% endfor %}</select></label>
   <label>Origen<select name="source"><option value="all" {{ 'selected' if filters.source == 'all' }}>Todos los registros</option><option value="current" {{ 'selected' if filters.source == 'current' }}>DIGIT LABORAL</option><option value="historical" {{ 'selected' if filters.source == 'historical' }}>Historial incorporado</option></select></label>
   <label>Ordenar por<select name="sort" id="salaryReportSort" data-sort-control data-sort-server="true" data-sort-direction="{{ filters.direction|default('asc') }}">{% for key,label in [('period','Período'),('date','Fecha'),('company','Empresa'),('employee','Funcionario'),('amount','Importe'),('status','Estado')] %}<option value="{{ key }}" {{ 'selected' if filters.sort|default('period') == key }}>{{ label }}</option>{% endfor %}</select></label>
   <button class="btn primary" type="submit">Aplicar filtros</button>
@@ -97,7 +97,7 @@
   <td><span class="salary-report-name">{{ item.employee.full_name }}</span><span class="salary-report-sub">{{ item.employee.position or 'Cargo no registrado' }} · CI {{ item.employee.document_number }}</span></td>
   <td>{{ item.reference_period or 'Sin período' }}</td>
   <td><span class="salary-report-state">{{ 'Eliminado' if item.status == 'Anulado' else item.status }}</span>
-    {% if item.origin == 'historical' %}<span class="salary-report-sub">Incluido en el historial · no es un nuevo recibo ni constancia de pago</span>{% endif %}
+    {% if item.origin == 'historical' %}<span class="salary-report-sub">Aprobado como registro histórico · no equivale a recibo ni pago acreditado</span>{% endif %}
   </td>
   <td class="salary-report-money">
     {% if item.origin == 'current' %}Gs. {{ item.amount|gs }}
@@ -125,7 +125,7 @@
       {% endif %}
     {% else %}
       {% if user.role in ['administrador','contador'] %}
-      <a href="/app/mov-conciliation/{{ item.id }}" style="font-weight:700">{{ 'Ver conciliación' if item.status == 'Conciliado' else 'Ver validación' if item.status == 'Validado como antecedente' else 'Verificar vínculo' }}</a>
+      <a href="/app/mov-conciliation/{{ item.id }}" style="font-weight:700">Verificar vínculo documental</a>
       {% endif %}
       <details>
         <summary style="color:#174b9b;cursor:pointer;font-weight:700">Ver movimiento</summary>
