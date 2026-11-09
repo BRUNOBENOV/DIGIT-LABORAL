@@ -10652,11 +10652,11 @@ def salary_import_page(
             ).order_by(CalculationRecord.created_at.desc(), CalculationRecord.id.desc())
         ))
         decided = select_salary_versions(present)
-        blocked = {eid for eid, item in decided.items() if item.status not in PENDING}
+        blocked = {eid for eid, item in decided.items() if item.status in {"Aprobado", "Validado"}}
         _mov_rows, _mov_errors, mov_diagnostics = mov_salary_records(
             db, company, period, authority=authority, employee_id=employee_id,
             payment_code=payment_code if authority == "REOP" else "",
-            exclude_employee_ids=blocked, allow_empty=True,
+            exclude_employee_ids=blocked, allow_empty=True, show_ineligible=True,
         )
     errors: list[str] = []
     rows: list[list] = []
