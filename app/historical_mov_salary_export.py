@@ -71,6 +71,7 @@ def mov_employee_choices(db: Session, company_id: int, period: str, *, authority
 def mov_salary_records(
     db: Session, company, period: str, *, authority: str = "REOP",
     employee_id: int | None = None, payment_code: str = "",
+    exclude_employee_ids: set[int] | None = None, allow_empty: bool = False,
 ):
     """Return (line, employee, detail) for source-verified MOV entries.
 
@@ -85,8 +86,12 @@ def mov_salary_records(
     if authority not in {"REOP", "REI"}:
         return [], ["Organismo inválido."], []
     entries = mov_events(db, company.id, period, employee_id=employee_id)
+    if exclude_employee_ids:
+        entries = [(event, worker) for event, worker in entries
+                   if worker.id not in exclude_employee_ids]
     if not entries:
-        return [], ["No hay remuneraciones MOV incorporadas en esta empresa y período."], []
+        return [], ([] if allow_empty else
+                    ["No hay salarios guardados en esta empresa y período."]), []
 
     counts = Counter(emp.id for _, emp in entries if salary_export_employee_eligible(emp, authority))
     event_ids = [event.id for event, emp in entries]
@@ -239,6 +244,6 @@ def mov_salary_records(
             other_category_bonus="", other_category_income="",
         )
         source.append((line, employee, detail))
-    if not diagnostics:
-        errors.append("No existen MOV de funcionarios elegibles con IPS Sí para este origen.")
+    if not diagnostics and not allow_empty:
+        errors.append("No existen salarios de funcionarios elegibles con IPS Sí.")
     return source, list(dict.fromkeys(errors)), diagnostics
