@@ -187,3 +187,11 @@ def register_routes(
             if value:
                 params[new] = value
         return RedirectResponse("/app/reports/liquidaciones-salarios?" + urlencode(params), status_code=303)
+
+
+    # Revisión profesional separada: el original MOV nunca se convierte en pago.
+    from .mov_reconciliation import register_routes as register_reconciliation_routes
+    register_reconciliation_routes(
+        app, render=render, get_db=get_db, require_roles=require_roles,
+        company_ids_for_user=company_ids_for_user, write_audit=write_audit,
+    )
