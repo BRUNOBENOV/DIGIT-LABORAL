@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Exportar salarios REOP / REI | DIGIT-LABORAL{% endblock %}
+{% block title %}{{ 'Liquidación de salario · REOP' if authority == 'REOP' else 'Declaración de salarios · REI' }} | DIGIT LABORAL{% endblock %}
 {% block content %}
 <style>
 .import-salary-page{max-width:1120px;margin:0 auto;color:#172033}
@@ -24,20 +24,44 @@
 .import-salary-download-status[data-state="success"]{border-color:#c4e8d2;background:#f2faf5;color:#17603e}
 .import-salary-actions [hidden]{display:none}
 .import-salary-setup summary{cursor:pointer;font-size:.83rem;font-weight:750;color:#17335e}
+.import-salary-tabs{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px}
+.import-salary-tabs a{flex:1;min-width:230px;border:1px solid #c9d7eb;background:#fff;color:#27476c;font-size:.86rem;font-weight:750;text-align:center;text-decoration:none;padding:12px 16px;border-radius:10px}
+.import-salary-tabs a.active{background:#173c76;color:#fff;border-color:#173c76}
+.import-salary-steps{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 14px;font-size:.76rem}
+.import-salary-steps span{border:1px solid #d6e2f1;background:#f4f7fd;border-radius:999px;padding:7px 11px;color:#244362;font-weight:700}
+.import-salary-advanced{border:1px solid #e1e7f0;border-radius:9px;padding:12px;margin:12px 0;background:#fbfcfe}
+.import-salary-advanced summary{cursor:pointer;font-size:.78rem;font-weight:750;color:#284a70}
+.import-salary-advanced p{margin:7px 0}
+.import-salary-scope{font-size:.78rem;color:#2d4e73;line-height:1.6}
+.import-salary-card h2{line-height:1.35}
 @media(max-width:800px){.import-salary-grid{grid-template-columns:1fr}.import-salary-hero{padding:18px}}
 </style>
 <div class="import-salary-page">
   <header class="import-salary-hero">
     <div style="font-size:.68rem;font-weight:850;letter-spacing:.13em;color:#c9daff">DIGIT-LABORAL · CUMPLIMIENTO</div>
-    <h1>Exportación de salarios REOP / REI</h1>
-    <p>Exportá desde una nómina cerrada o desde los cálculos individuales aprobados. No se recalculan importes.</p>
+    <h1>{{ 'Liquidación de salario · REOP' if authority == 'REOP' else 'Declaración de salarios · REI' }}</h1>
+    <p>{% if authority == 'REOP' %}Prepará la comunicación «Liquidación Salario» del MTESS desde las liquidaciones ya guardadas en DIGIT LABORAL.{% else %}Prepará el archivo de declaración salarial del IPS utilizando los mismos registros guardados, con los requisitos propios del REI.{% endif %}</p>
   </header>
-  <div style="margin-bottom:15px;display:flex;gap:9px;flex-wrap:wrap">
-    <a href="/app/compliance{% if selected_company %}?company_id={{ selected_company.id }}&amp;authority={{ authority }}{% endif %}" class="btn ghost">← Volver a Cumplimiento</a>
-    <a href="{{ official_portal }}" class="btn ghost" target="_blank" rel="noopener noreferrer">Abrir {{ authority }} oficial ↗</a>
-    <a href="/app/liquidaciones/conciliar-planilla" class="btn ghost">Conciliar planilla contable antes de exportar</a>
-    <a href="/app/liquidaciones/salarios/importar-reop" class="btn ghost">Importar salarios desde REOP</a>
+  <nav class="import-salary-tabs" aria-label="Elegir trámite">
+    <a class="{{ 'active' if authority == 'REOP' }}" href="/app/compliance/salary-import?authority=REOP{% if selected_company %}&amp;company_id={{ selected_company.id }}{% endif %}&amp;period={{ period }}">REOP · Liquidación de salario</a>
+    <a class="{{ 'active' if authority == 'REI' }}" href="/app/compliance/salary-import?authority=REI{% if selected_company %}&amp;company_id={{ selected_company.id }}{% endif %}&amp;period={{ period }}">REI · Declaración de salarios</a>
+  </nav>
+  <div class="import-salary-steps" aria-label="Etapas del trámite">
+    <span>1 · Elegir empresa y mes</span><span>2 · Verificar liquidaciones y datos</span><span>3 · Descargar y presentar en {{ authority }}</span>
   </div>
+  <div style="margin-bottom:15px;display:flex;gap:9px;flex-wrap:wrap">
+    <a href="/app/compliance{% if selected_company %}?company_id={{ selected_company.id }}&amp;authority={{ authority }}{% endif %}" class="btn ghost">← Centro de cumplimiento</a>
+    <a href="/app/reports/liquidaciones-salarios{% if selected_company %}?company_id={{ selected_company.id }}&amp;period={{ period }}{% endif %}" class="btn ghost">Ver liquidaciones guardadas</a>
+    <a href="{{ official_portal }}" class="btn ghost" target="_blank" rel="noopener noreferrer">Abrir portal {{ authority }} oficial ↗</a>
+  </div>
+  <details class="import-salary-advanced">
+    <summary>Herramientas complementarias</summary>
+    <div class="import-salary-actions">
+      <a class="btn ghost" href="/app/liquidaciones/conciliar-planilla">Conciliar con planilla contable</a>
+      <a class="btn ghost" href="/app/liquidaciones/salarios/importar-reop">Importar datos desde Excel REOP</a>
+    </div>
+    <p class="import-salary-info">Importar datos es una operación distinta de comunicar una liquidación al MTESS; no se necesita repetir una importación que ya está guardada.</p>
+  </details>
   {% if reop_assistant_id %}
   <details class="import-salary-card import-salary-setup" id="asistente-reop">
     <summary>Cargar en REOP con el asistente de Chrome</summary>
@@ -48,7 +72,8 @@
   {% endif %}
   <p class="import-salary-info"><strong>Criterios de días:</strong> REOP mensualizados = días remunerados del mes (incluidos descansos legales pagados); REOP jornaleros = jornadas efectivamente trabajadas. REI utiliza los días remunerados guardados y su propia base imponible IPS. Las horas ordinarias REOP siempre deben corresponder a asistencia real, no a un divisor de salario.</p>
   <section class="import-salary-card">
-    <h2>1. Seleccionar la empresa, el origen y el formato</h2>
+    <h2>1. Seleccionar empresa, mes y alcance</h2>
+    <p class="import-salary-scope">Seleccioná los datos de la comunicación. El sistema recuperará las liquidaciones aprobadas y las remuneraciones previamente incorporadas, sin volver a cargarlas.</p>
     {% if selected_employee %}
       <p class="import-salary-info"><strong>Exportación individual:</strong> {{ selected_employee.full_name }} ·
       solo se validará este legajo.
