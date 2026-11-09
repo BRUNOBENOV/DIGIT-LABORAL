@@ -94,6 +94,9 @@
             {% endif %}
           {% else %}
             <a href="{{ row.url }}">Ver registro</a>
+            {% if row.label == 'Salario · MOV' and user.role in ['administrador', 'contador'] %}
+              <a href="{{ row.reconciliation_url }}" style="font-weight:700">{{ 'Ver conciliación' if row.status == 'Conciliado' else 'Ver validación' if row.status == 'Validado como antecedente' else 'Conciliar y validar' }}</a>
+            {% endif %}
           {% endif %}
           </div>
         </td>
