@@ -10852,7 +10852,7 @@ def save_historical_mov_export_detail(
     def optional_integer(value, label, maximum):
         if not value.strip():
             return None
-        if not re.fullmatch(r"\\d+", value.strip()):
+        if not re.fullmatch(r"\d+", value.strip()):
             raise HTTPException(422, f"{label}: ingresá un número entero no negativo.")
         n = int(value)
         if n > maximum:
