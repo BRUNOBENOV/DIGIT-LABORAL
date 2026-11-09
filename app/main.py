@@ -10614,12 +10614,6 @@ def salary_import_page(
         approved_choices = approved_employee_choices(
             db, company.id, period, authority=authority
         ) if company else []
-        if company and effective_source == "approved":
-            from .historical_mov_salary_export import mov_employee_choices
-            choices_by_id = {worker.id: worker for worker in approved_choices}
-            for worker in mov_employee_choices(db, company.id, period, authority=authority):
-                choices_by_id.setdefault(worker.id, worker)
-            approved_choices = sorted(choices_by_id.values(), key=lambda worker: (worker.full_name, worker.id))
     excluded_salary = (
         salary_excluded_records(db, company.id, period, authority=authority)
         if company and effective_source == "approved" and employee_id is None
@@ -10634,29 +10628,10 @@ def salary_import_page(
             row["employee_code"] = worker.employee_code if worker else None
             row["employee_name"] = worker.full_name if worker else "Registro no disponible"
     diagnostics = []
-    mov_diagnostics = []
     if preview and effective_source == "approved":
         _source_rows, _source_errors, diagnostics = approved_salary_records(
             db, company, period, authority=authority, employee_id=employee_id,
             payment_code=payment_code if authority == "REOP" else "",
-        )
-        # Supplement the very same salary preflight. No separate imported
-        # salary source or approval ceremony is needed.
-        from .salary_data import select_salary_versions, PENDING, SALARY_TYPES
-        from .historical_mov_salary_export import mov_salary_records
-        present = list(db.scalars(
-            select(CalculationRecord).where(
-                CalculationRecord.company_id == company.id,
-                CalculationRecord.reference_period == period,
-                CalculationRecord.calculation_type.in_(SALARY_TYPES),
-            ).order_by(CalculationRecord.created_at.desc(), CalculationRecord.id.desc())
-        ))
-        decided = select_salary_versions(present)
-        blocked = {eid for eid, item in decided.items() if item.status in {"Aprobado", "Validado"}}
-        _mov_rows, _mov_errors, mov_diagnostics = mov_salary_records(
-            db, company, period, authority=authority, employee_id=employee_id,
-            payment_code=payment_code if authority == "REOP" else "",
-            exclude_employee_ids=blocked, allow_empty=True, show_ineligible=True,
         )
     errors: list[str] = []
     rows: list[list] = []
@@ -10702,7 +10677,7 @@ def salary_import_page(
         evaluated_count=(source_summary["total"] if effective_source == "approved" and source_summary
                          else len(rows)),
         source_type=source_type, effective_source=effective_source,
-        source_summary=source_summary, diagnostics=diagnostics, mov_diagnostics=mov_diagnostics,
+        source_summary=source_summary, diagnostics=diagnostics, mov_diagnostics=[],
         employee_id=employee_id, selected_employee=selected_employee,
         excluded_salary=excluded_salary, approved_choices=approved_choices,
         preview_headers=preview_headers, preview_rows=preview_rows,
