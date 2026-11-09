@@ -155,7 +155,21 @@
   {% endif %}
   <div class="salary-slip-actions">
     <a class="btn ghost" href="/app/reports/liquidaciones-salarios">← Historial de liquidaciones</a>
-    <a class="btn ghost" href="/app/reports/liquidaciones-salarios/{{ item.id }}/pdf">{{ 'Descargar copia ANULADA (PDF)' if model.is_annulled else 'Descargar PDF · Original y Duplicado' }}</a>
+    <a class="btn ghost" href="/app/reports/liquidaciones-salarios/{{ item.id }}/pdf">{{ 'Descargar copia histórica (PDF)' if model.is_annulled else 'Descargar PDF · Original y Duplicado' }}</a>
+    {% if user.role in ['administrador','contador'] and item.status != 'Anulado' %}
+      {% if item.calculation_type == 'suite_salary' and item.source == 'Centro laboral' %}
+      <a class="btn ghost" href="/app/liquidaciones/{{ item.id }}/rectificar">Rectificar</a>
+      {% endif %}
+      <details style="display:inline-block;position:relative">
+        <summary class="btn ghost" style="color:#a12632;cursor:pointer">Eliminar</summary>
+        <form method="post" action="/app/calculations/{{ item.id }}/delete" style="margin-top:8px;max-width:270px;display:grid;gap:8px;padding:12px;background:white;border:1px solid #ddd;border-radius:10px" onsubmit="return confirm('¿Eliminar esta liquidación del registro operativo? El historial se conserva.')">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="return_to" value="report">
+          <label>Motivo de eliminación<textarea name="reason" minlength="8" maxlength="500" rows="2" required placeholder="Ej.: carga duplicada o error de ingreso" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:7px"></textarea></label>
+          <button class="btn ghost" type="submit">Confirmar eliminación</button>
+        </form>
+      </details>
+    {% endif %}
     {% if model.can_reprint %}
     <form method="post" action="/app/reports/liquidaciones-salarios/{{ item.id }}/reimprimir"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn primary" type="submit">Imprimir con registro</button></form>
     {% endif %}
