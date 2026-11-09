@@ -15,7 +15,7 @@ def _calculation_sidebar_block() -> str:
 def test_calculation_sidebar_has_one_global_entry_for_each_work_area():
     block = _calculation_sidebar_block()
     expected = [
-        'href="/app/calculations?tipo=salary">Salario</a>',
+        'href="/app/liquidaciones?tipo=salary">Cálculo de salario</a>',
         'href="/app/liquidaciones?tipo=settlement">Liquidación final</a>',
         'href="/app/payrolls">Nóminas mensuales</a>',
         'href="/app/calculations?tipo=hours">Horas y recargos</a>',
@@ -55,7 +55,7 @@ def test_salary_entry_uses_the_selected_calculation_and_keeps_the_professional_w
     cards = (ROOT / "app" / "templates" / "calculations.html").read_text(encoding="utf-8")
     workbench = (ROOT / "app" / "templates" / "labor_workbench.html").read_text(encoding="utf-8")
     fields = (ROOT / "app" / "calculator_fields.py").read_text(encoding="utf-8")
-    assert 'href="/app/calculations?tipo=salary">Salario</a>' in _calculation_sidebar_block()
+    assert 'href="/app/liquidaciones?tipo=salary">Cálculo de salario</a>' in _calculation_sidebar_block()
     assert 'href="/app/liquidaciones?tipo=salary{% if selected_company %}' in cards
     assert "Volver al módulo Cálculo" in workbench
     assert 'href="/app/payrolls"' not in workbench
