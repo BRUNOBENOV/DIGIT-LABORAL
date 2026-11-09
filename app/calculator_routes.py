@@ -665,6 +665,9 @@ async def save_calculation(request: Request,
             or correction_origin.status == "Anulado"):
             raise HTTPException(409, "El cálculo de origen no corresponde a esta empresa y funcionario, o fue anulado.")
         if correction_origin.reference_period != result["period"][:20]:
+            # Restore the canonical month on the returned correction form.
+            # Never persist a calculation under the wrong period.
+            data["month"] = correction_origin.reference_period
             response = page(
                 request, data["kind"], data,
                 error=CalculationError(
