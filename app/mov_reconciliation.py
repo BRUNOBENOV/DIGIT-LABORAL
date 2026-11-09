@@ -23,7 +23,7 @@ from .models import (
 
 VALIDATED = "Validado como antecedente"
 MATCHED = "Conciliado"
-PENDING = "Sin conciliar"
+PENDING = "Incorporado"
 APPROVED = ("Aprobado", "Validado")
 SALARY_TYPES = ("salary", "suite_salary")
 
@@ -96,7 +96,7 @@ def _save_review(db, user, event, data, *, record=None, notes=""):
     review = db.scalar(select(HistoricalMovReconciliation).where(
         HistoricalMovReconciliation.event_id == event.id
     ))
-    if review and review.status != PENDING:
+    if review and review.status not in {PENDING, "Sin conciliar"}:
         raise HTTPException(409, "Este movimiento ya fue revisado. Reabrí la revisión si necesitás corregirlo.")
     _check_source(event, data)
     if record is not None:
@@ -163,7 +163,7 @@ def _bulk_candidates(db: Session, allowed_ids: set[int]) -> tuple[list, int]:
         data = sources[event.id]
         key = (event.employee_id, data.get("period"))
         prior = reviews.get(event.id)
-        if prior and prior.status != PENDING:
+        if prior and prior.status not in {PENDING, "Sin conciliar"}:
             continue
         if keys[key] != 1 or data.get("warnings") or not valid_period(data):
             continue
@@ -241,8 +241,8 @@ def register_routes(app, *, render, get_db, require_roles, company_ids_for_user,
             HistoricalMovReconciliation.studio_id == user.studio_id,
         ))
         if action == "reopen":
-            if not review or review.status == PENDING:
-                raise HTTPException(409, "El MOV ya está pendiente de revisión.")
+            if not review or review.status in {PENDING, "Sin conciliar"}:
+                raise HTTPException(409, "El MOV ya está incorporado al historial.")
             old_status = review.status
             old_calculation_id = review.calculation_record_id
             review.status = PENDING
@@ -251,7 +251,7 @@ def register_routes(app, *, render, get_db, require_roles, company_ids_for_user,
             review.reviewed_by = user.email
             review.reviewed_at = datetime.now(UTC)
             write_audit(db, user, "reabrir", "conciliacion_mov", str(event.id),
-                        f"{old_status} -> pendiente; liquidación #{old_calculation_id}; {note.strip()}")
+                        f"{old_status} -> incorporado; liquidación #{old_calculation_id}; {note.strip()}")
         else:
             _check_source(event, data)
             if data.get("warnings") and len(note.strip()) < 20:
