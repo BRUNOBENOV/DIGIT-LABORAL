@@ -190,3 +190,18 @@ def test_seven_historical_mov_rows_do_not_generate_any_reop_rows():
     finally:
         db.close()
         engine.dispose()
+
+
+def test_reop_form_does_not_offer_a_separate_historical_mov_export():
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    template = (root / "app/templates/salary_import.html").read_text(encoding="utf-8")
+    main = (root / "app/main.py").read_text(encoding="utf-8")
+    exporter = (root / "app/approved_salary_import.py").read_text(encoding="utf-8")
+    assert "mov_diagnostics|length" not in template
+    assert 'aria-label="Datos históricos MOV"' not in template
+    assert "mov_salary_records(" not in main
+    assert "mov_salary_records(" not in exporter
+    assert "mov_employee_choices(" not in main
+    assert "approved_salary_records(" in main
+    assert "CalculationRecord" in exporter
