@@ -266,6 +266,7 @@ def calculation_history_page(
     page: int = 1, page_size: int = DEFAULT_PAGE_SIZE,
     include_center_calculations: bool = False,
     include_superseded_salary: bool = False,
+    include_deleted: bool = False,
     include_mov_salary: bool = False,
     include_liq_settlement: bool = False,
 ) -> dict[str, Any]:
@@ -279,6 +280,8 @@ def calculation_history_page(
     ) if ids else select(CalculationRecord).where(False)
     if not include_center_calculations:
         live = live.where(CalculationRecord.source != "Centro laboral")
+    if not include_deleted:
+        live = live.where(CalculationRecord.status != "Anulado")
     if superseded and not include_superseded_salary:
         live = live.where(CalculationRecord.id.not_in(superseded))
     if tipo:
@@ -329,7 +332,7 @@ def calculation_history_page(
             row["display_status"] = "Sustituido"
         else:
             row["superseded"] = False
-            row["display_status"] = row["status"]
+            row["display_status"] = "Eliminado" if row["status"] == "Anulado" else row["status"]
     return result
 
 
