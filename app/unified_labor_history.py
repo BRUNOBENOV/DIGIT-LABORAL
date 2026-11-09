@@ -18,7 +18,7 @@ from .legacy_notice_import import EVENT_TYPE as NOTICE_EVENT_TYPE, legacy_notice
 from .legacy_vacation_import import EVENT_TYPE as VACATION_EVENT_TYPE, event_legacy_data
 from .legacy_salary_mov_import import EVENT_TYPE as MOV_EVENT_TYPE, event_data as mov_event_data
 from .legacy_liq_import import EVENT_TYPE as LIQ_EVENT_TYPE, liq_event_data
-from .models import CalculationRecord, Employee, EmployeeEvent, Vacation
+from .models import CalculationRecord, Employee, EmployeeEvent, Vacation, HistoricalMovReconciliation
 
 DEFAULT_PAGE_SIZE = 40
 MAX_PAGE_SIZE = 100
@@ -67,6 +67,13 @@ def _unified_page(
         )
     } if archive_ids else {}
 
+    mov_reviews = {
+        review.event_id: review for review in db.scalars(
+            select(HistoricalMovReconciliation).where(
+                HistoricalMovReconciliation.event_id.in_(archive_ids)
+            )
+        )
+    } if archive_ids and live_model is CalculationRecord else {}
     rows = []
     for kind, record_id in keys:
         if kind == "current" and record_id in live:
@@ -77,7 +84,7 @@ def _unified_page(
             if archived_kind == "vacation" or record.event_type == VACATION_EVENT_TYPE:
                 rows.append(_legacy_vacation(record))
             elif record.event_type == MOV_EVENT_TYPE:
-                rows.append(_legacy_salary(record))
+                rows.append(_legacy_salary(record, mov_reviews.get(record.id)))
             elif record.event_type == LIQ_EVENT_TYPE:
                 rows.append(_legacy_settlement(record))
             else:
@@ -123,7 +130,7 @@ def _legacy_notice(event: EmployeeEvent) -> dict:
     )
 
 
-def _legacy_salary(event: EmployeeEvent) -> dict:
+def _legacy_salary(event: EmployeeEvent, review: HistoricalMovReconciliation | None = None) -> dict:
     source = mov_event_data(event.detail) or {}
     values = source.get("values") or {}
     amount = values.get("SALARI") or None
@@ -131,8 +138,15 @@ def _legacy_salary(event: EmployeeEvent) -> dict:
         origin="imported", id=event.id, date=event.effective_date,
         employee=event.employee, company=event.employee.company,
         label="Salario · MOV", period=source.get("period") or event.effective_date.strftime("%Y-%m"),
-        amount=amount, status="Sin conciliar",
-        detail="Movimiento del sistema anterior; importe de origen sin aprobación ni recibo en DIGIT LABORAL.",
+        amount=amount, status=review.status if review else "Sin conciliar",
+        detail=(
+            "Antecedente vinculado a una liquidación aprobada existente; no constituye un pago nuevo."
+            if review and review.status == "Conciliado" else
+            "Antecedente revisado profesionalmente; sin constancia de pago ni recibo nuevo."
+            if review and review.status == "Validado como antecedente" else
+            "Movimiento del sistema anterior; importe de origen sin aprobación ni recibo en DIGIT LABORAL."
+        ),
+        reconciliation_url=f"/app/mov-conciliation/{event.id}",
         source=source, days=values.get("DIATRA"), used_days=None, balance=None,
         url=("/app/reports/liquidaciones-salarios?employee_id=" + str(event.employee_id)
              + "&period=" + (source.get("period") or event.effective_date.strftime("%Y-%m"))
