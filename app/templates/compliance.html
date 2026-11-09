@@ -8,8 +8,8 @@
   <header class="compliance-hero">
     <div>
       <span class="eyebrow">INFORMES · CUMPLIMIENTO LABORAL</span>
-      <h1>Centro de cumplimiento · REOP y REI</h1>
-      <p>Para MTESS prepará «Liquidación Salario» en REOP; para IPS, la declaración de salarios en REI. Son comunicaciones distintas basadas en los registros de remuneración del sistema.</p>
+      <h1>Centro REI y REOP</h1>
+      <p>Prepará las declaraciones de cada empresa y registrá el resultado del portal oficial.</p>
     </div>
     {% if selected_company %}
     <form method="get" action="/app/compliance" class="compliance-company-switcher">
@@ -80,7 +80,7 @@
         {% endif %}
         <div class="integration-actions">
           {% if can_manage %}
-          <a class="btn primary" href="/app/compliance/salary-import?company_id={{ selected_company.id }}&amp;authority={{ system }}">{{ 'Preparar liquidación de salario · REOP' if system == 'REOP' else 'Preparar declaración de salarios · REI' }}</a>
+          <a class="btn primary" href="/app/compliance/salary-import?company_id={{ selected_company.id }}&authority={{ system }}">Preparar salarios {{ system }}</a>
           {% endif %}
           <a class="btn ghost" href="{{ official_portals[system] }}" target="_blank" rel="noopener noreferrer">Abrir {{ system }} oficial ↗</a>
           {% if can_manage and system == 'REI' %}
