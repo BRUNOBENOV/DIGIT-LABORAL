@@ -90,7 +90,7 @@ def salary_source_summary(db: Session, company_id: int, period: str, employee_id
     # It is selected only when this employee/month has no operative approval;
     # an annulled operational record is never resurrected from older evidence.
     mov_ids: set[int] = set()
-    if hasattr(db, "execute") and re.fullmatch(r"20\\d{2}-(0[1-9]|1[0-2])", period or ""):
+    if hasattr(db, "execute") and re.fullmatch(r"20\d{2}-(0[1-9]|1[0-2])", period or ""):
         from .legacy_salary_mov_import import EVENT_TYPE as MOV_EVENT_TYPE
         for (worker,) in db.execute(
             select(Employee).join(EmployeeEvent, EmployeeEvent.employee_id == Employee.id).where(
