@@ -237,7 +237,7 @@
     {% endif %}
     {% if effective_source == 'approved' and mov_diagnostics %}
     <section class="import-salary-card" aria-label="Datos históricos MOV" style="margin:12px 0;background:#f7faff">
-      <h3>Completar datos salariales que faltan ({{ mov_diagnostics|length }})</h3>
+      <h3>Revisar datos faltantes ({{ mov_diagnostics|length }} trabajadores del historial)</h3>
       <p class="import-salary-info">La exportación utiliza las liquidaciones aprobadas que ya están guardadas. Solo completá datos respaldados por planillas o documentos; no se recalculan importes ni se crea una liquidación duplicada.</p>
       {% for mov in mov_diagnostics %}
       <details style="padding:12px;border:1px solid #d9e4f2;border-radius:9px;background:#fff;margin:10px 0" {{ 'open' if request.query_params.get('mov_details_saved') == (mov.id|string) }}>
@@ -245,11 +245,15 @@
           {{ mov.employee }} · Registro #{{ mov.id }}
           {% if mov.warnings %} · {{ mov.warnings|length }} pendiente(s){% else %} · datos completos{% endif %}
         </summary>
-        <p class="import-salary-info">Datos guardados: salario {{ mov.raw.SALARI or '—' }} · IPS {{ mov.raw.DESIPS or '—' }} · días {{ mov.raw.DIATRA or '—' }} · horas {{ mov.raw.HORASX or '—' }}. Los datos importados no se alteran. <small>Origen y fila disponibles para auditoría: {{ mov.origin }}, {{ mov.source_row or '—' }}.</small></p>
+        {% if mov.ineligible %}
+        <p class="import-salary-info"><strong>Revisar ficha laboral:</strong> este funcionario figura como no elegible para la comunicación seleccionada. <a href="/app/employees/{{ mov.employee_id }}">Abrir funcionario y verificar IPS/estado</a>.</p>
+        {% else %}
+        <p class="import-salary-info">Datos guardados: salario Gs. {{ mov.raw.SALARI or '—' }} · aporte IPS Gs. {{ mov.raw.DESIPS or '—' }} · días {{ mov.raw.DIATRA or '—' }}. El valor HORASX ({{ mov.raw.HORASX or 'vacío' }}) puede ser una hora de reloj y no debe usarse como horas trabajadas. <small>Origen conservado para auditoría: {{ mov.origin }}, fila {{ mov.source_row or '—' }}.</small></p>
+        {% endif %}
         {% if mov.warnings %}
         <ul style="color:#9a471b;font-size:.78rem">{% for problem in mov.warnings %}<li>{{ problem }}</li>{% endfor %}</ul>
         {% endif %}
-        {% if user.role in ['administrador','contador'] %}
+        {% if not mov.ineligible and user.role in ['administrador','contador'] %}
         <form method="post" action="/app/compliance/salary-import/mov-details" class="import-salary-form">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <input type="hidden" name="event_id" value="{{ mov.id }}">
@@ -273,7 +277,8 @@
               <input type="number" name="days_paid" min="0" max="31" step="1" value="{{ mov.supplement.days_paid if mov.supplement.days_paid is not none else '' }}" placeholder="{{ mov.raw.DIATRA1 or 'Sin dato MOV' }}">
             </label>
             <label>Horas ordinarias reales
-              <input type="number" name="hours_worked" min="0" max="744" step=".01" value="{{ mov.supplement.hours_worked if mov.supplement.hours_worked is not none else '' }}" placeholder="{{ mov.raw.HORASX or 'Sin dato MOV' }}">
+              <input type="number" name="hours_worked" min="0" max="744" step=".01" value="{{ mov.supplement.hours_worked if mov.supplement.hours_worked is not none else '' }}" placeholder="Horas efectivas documentadas (p. ej. 222)">
+              <small>Una hora como 11:54:58 no es una cantidad de horas trabajadas. Usá el registro de asistencia real.</small>
             </label>
             <label>Base imponible IPS documentada
               <input type="number" name="ips_base" min="0" max="2147483647" step="1" value="{{ mov.supplement.ips_base if mov.supplement.ips_base is not none else '' }}" placeholder="No inventar base IPS">
