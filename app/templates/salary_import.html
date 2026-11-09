@@ -98,7 +98,13 @@
         </label>
       </div>
       {% if source_summary %}
-      <p class="import-salary-info"><strong>{{ source_summary.approved }} aprobados</strong> · {{ 'Cálculos aprobados' if effective_source == 'approved' else 'Nómina cerrada' }} · {{ period }}</p>
+      <p class="import-salary-info"><strong>{{ source_summary.approved }} aprobados para exportación</strong> · {{ 'Cálculos salariales operativos' if effective_source == 'approved' else 'Nómina cerrada' }} · {{ period }}</p>
+      {% if effective_source == 'approved' and source_summary.approved == 0 and source_summary.pending %}
+      <p class="import-salary-info" role="status" style="padding:10px 12px;border:1px solid #ebcf96;background:#fff9eb;border-radius:8px">
+        Hay {{ source_summary.pending }} cálculo(s) salarial(es) del período sin aprobación operativa. Abrí «Ver excluidos» más abajo para revisar cada uno.
+        Los antecedentes MOV y LIQ que figuran «Aprobado» en Trazabilidad ya están incorporados, pero no son cálculos operativos ni se consideran pagos comprobados. REOP necesita un salario guardado con sus conceptos, IPS y asistencia verificables.
+      </p>
+      {% endif %}
       {% if effective_source == 'payroll' and source_summary.approved %}<p class="import-salary-info">La vista usa los datos de la nómina cerrada. Para usar la asistencia de los cálculos individuales, elegí Cálculos individuales aprobados en Origen de los salarios.</p>{% endif %}
       {% endif %}
       {% if authority == 'REOP' %}
@@ -181,7 +187,16 @@
     <details style="margin:12px 0;font-size:.8rem;color:#425776">
       <summary style="cursor:pointer">{{ excluded_salary|length }} sin aprobación · ver excluidos (no bloquean esta exportación parcial)</summary>
       <ul>{% for excluded in excluded_salary[:30] %}
-        <li>{% if excluded.employee_code is not none %}Legajo {{ excluded.employee_code }}{% else %}Funcionario ID {{ excluded.employee_id }}{% endif %} · {{ excluded.employee_name }} · cálculo #{{ excluded.calculation_id }}: {{ excluded.status }}</li>
+        <li>{% if excluded.employee_code is not none %}Legajo {{ excluded.employee_code }}{% else %}Funcionario ID {{ excluded.employee_id }}{% endif %} · {{ excluded.employee_name }} · cálculo #{{ excluded.calculation_id }}: <strong>{{ excluded.status }}</strong>
+          · <a href="/app/reports/liquidaciones-salarios/{{ excluded.calculation_id }}">Ver cálculo</a>
+          {% if user.role in ['administrador','contador'] and excluded.status not in ['Anulado','Aprobado','Validado'] %}
+          <form method="post" action="/app/calculations/{{ excluded.calculation_id }}/status" style="display:inline" onsubmit="return confirm('¿Aprobar este cálculo salarial para su uso operativo? El sistema volverá a validar los datos antes de aceptar.')">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="status" value="Aprobado">
+            <button type="submit" class="btn ghost" style="padding:3px 8px;font-size:.75rem">Revisado · Aprobar</button>
+          </form>
+          {% endif %}
+        </li>
       {% endfor %}</ul>
     </details>
     {% endif %}
