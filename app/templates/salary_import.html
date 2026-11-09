@@ -93,12 +93,17 @@
             <option value="auto" {{ 'selected' if source_type == 'auto' }}>Automático · nómina cerrada o cálculos aprobados</option>
             <option value="payroll" {{ 'selected' if source_type == 'payroll' }}>Solo nómina mensual cerrada</option>
             <option value="approved" {{ 'selected' if source_type == 'approved' }}>Cálculos individuales aprobados</option>
+            <option value="mov" {{ 'selected' if source_type == 'mov' }}>Salarios históricos MOV · aprobados en Trazabilidad</option>
           </select>
-          <small>Automático selecciona la nómina cerrada o los cálculos aprobados.</small>
+          <small>Para utilizar los registros aprobados «Salario · MOV» de Trazabilidad, elegí «Salarios históricos MOV». No es necesario crear otra liquidación.</small>
         </label>
       </div>
       {% if source_summary %}
+      {% if effective_source == 'mov' %}
+      <p class="import-salary-info"><strong>{{ mov_diagnostics|length if mov_diagnostics is defined else 0 }} movimientos MOV identificados</strong> · Historial aprobado de DIGIT LABORAL · {{ period }}. Para exportar solo se usan datos documentados y completos.</p>
+      {% else %}
       <p class="import-salary-info"><strong>{{ source_summary.approved }} aprobados para exportación</strong> · {{ 'Cálculos salariales operativos' if effective_source == 'approved' else 'Nómina cerrada' }} · {{ period }}</p>
+      {% endif %}
       {% if effective_source == 'approved' and source_summary.approved == 0 and source_summary.pending %}
       <p class="import-salary-info" role="status" style="padding:10px 12px;border:1px solid #ebcf96;background:#fff9eb;border-radius:8px">
         Hay {{ source_summary.pending }} cálculo(s) salarial(es) del período sin aprobación operativa. Abrí «Ver excluidos» más abajo para revisar cada uno.
@@ -234,6 +239,64 @@
         </li>
       {% endfor %}</ul>
     </details>
+    {% endif %}
+    {% if effective_source == 'mov' and mov_diagnostics %}
+    <section class="import-salary-card" aria-label="Datos históricos MOV" style="margin:12px 0;background:#f7faff">
+      <h3>Salarios MOV aprobados en Trazabilidad ({{ mov_diagnostics|length }})</h3>
+      <p class="import-salary-info">Los registros ya están incorporados. La exportación requiere datos originales de remuneración, IPS, días y horas verificables. Los campos incompletos se documentan aquí; nunca se reemplaza el MOV ni se crean nóminas o recibos.</p>
+      {% for mov in mov_diagnostics %}
+      <details style="padding:12px;border:1px solid #d9e4f2;border-radius:9px;background:#fff;margin:10px 0" {{ 'open' if request.query_params.get('mov_details_saved') == (mov.id|string) }}>
+        <summary style="cursor:pointer;color:#203b64;font-weight:750;font-size:.84rem">
+          {{ mov.employee }} · MOV #{{ mov.id }} · archivo {{ mov.origin }} (fila {{ mov.source_row or '—' }})
+          {% if mov.warnings %} · {{ mov.warnings|length }} pendiente(s){% else %} · datos completos{% endif %}
+        </summary>
+        <p class="import-salary-info">Original: SALARI {{ mov.raw.SALARI or '—' }} · DESIPS {{ mov.raw.DESIPS or '—' }} · DIATRA {{ mov.raw.DIATRA or '—' }} · HORASX {{ mov.raw.HORASX or '—' }}. Los valores originales permanecen inalterados.</p>
+        {% if mov.warnings %}
+        <ul style="color:#9a471b;font-size:.78rem">{% for problem in mov.warnings %}<li>{{ problem }}</li>{% endfor %}</ul>
+        {% endif %}
+        {% if user.role in ['administrador','contador'] %}
+        <form method="post" action="/app/compliance/salary-import/mov-details" class="import-salary-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="event_id" value="{{ mov.id }}">
+          <input type="hidden" name="company_id" value="{{ selected_company.id }}">
+          <input type="hidden" name="period" value="{{ period }}">
+          <input type="hidden" name="authority" value="{{ authority }}">
+          <input type="hidden" name="payment_code" value="{{ payment_code }}">
+          <input type="hidden" name="source_hash" value="{{ mov.source_hash }}">
+          <div class="import-salary-grid">
+            <label>Modalidad histórica
+              <select name="pay_basis">
+                <option value="">Seleccionar si es necesaria</option>
+                <option value="monthly" {{ 'selected' if mov.supplement.pay_basis == 'monthly' }}>Mensualizado</option>
+                <option value="daily" {{ 'selected' if mov.supplement.pay_basis == 'daily' }}>Jornalero</option>
+              </select>
+            </label>
+            <label>Días efectivamente trabajados
+              <input type="number" name="days_worked" min="0" max="31" step="1" value="{{ mov.supplement.days_worked if mov.supplement.days_worked is not none else '' }}" placeholder="{{ mov.raw.DIATRA or 'Sin dato MOV' }}">
+            </label>
+            <label>Días remunerados (mensualizado / REI)
+              <input type="number" name="days_paid" min="0" max="31" step="1" value="{{ mov.supplement.days_paid if mov.supplement.days_paid is not none else '' }}" placeholder="{{ mov.raw.DIATRA1 or 'Sin dato MOV' }}">
+            </label>
+            <label>Horas ordinarias reales
+              <input type="number" name="hours_worked" min="0" max="744" step=".01" value="{{ mov.supplement.hours_worked if mov.supplement.hours_worked is not none else '' }}" placeholder="{{ mov.raw.HORASX or 'Sin dato MOV' }}">
+            </label>
+            <label>Base imponible IPS documentada
+              <input type="number" name="ips_base" min="0" max="2147483647" step="1" value="{{ mov.supplement.ips_base if mov.supplement.ips_base is not none else '' }}" placeholder="No inventar base IPS">
+            </label>
+          </div>
+          <label>Observación y respaldo documental
+            <textarea name="notes" minlength="12" maxlength="1000" required placeholder="Indicá qué comprobantes o planillas respaldan los datos que confirmás.">{{ mov.supplement.notes or '' }}</textarea>
+          </label>
+          <label class="import-salary-confirm">
+            <input type="checkbox" name="confirmed" value="si" required>
+            Confirmo que estos datos son reales y están respaldados; no se alterará el antecedente MOV.
+          </label>
+          <div class="import-salary-actions"><button class="btn primary" type="submit">Guardar datos documentados</button></div>
+        </form>
+        {% endif %}
+      </details>
+      {% endfor %}
+    </section>
     {% endif %}
     {% if effective_source == 'approved' and diagnostics %}
     <details class="import-salary-card" style="background:#f7faff;margin:12px 0">
