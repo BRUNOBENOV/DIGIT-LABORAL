@@ -247,8 +247,8 @@
   </summary>
   <div class="dl-trace-body">
     {% if request.query_params.get('deleted') %}<p class="dl-alert" role="status">Carga eliminada del historial operativo. El registro original permanece protegido para auditoría.</p>{% endif %}
-    <p style="margin:0 0 10px"><a class="dl-trace-action" href="/app/import/historical-review">Revisar importaciones MOV / LIQ y casos pendientes</a></p>
-    <div class="dl-trace-intro">{% if kind == "settlement" %}Las liquidaciones guardadas y los registros LIQ del sistema anterior comparten esta consulta. Los antecedentes LIQ se identifican como sin conciliar; no sustituyen un cálculo aprobado ni acreditan pagos.{% else %}Se muestra una sola versión vigente de cada cálculo salarial rectificado. El original deja de aparecer después de aprobar la rectificación y sigue disponible para auditoría. Los borradores no reemplazan cálculos aprobados.{% endif %}</div>
+    <p style="margin:0 0 10px"><a class="dl-trace-action" href="/app/import/historical-review">Auditar origen MOV / LIQ y advertencias</a></p>
+    <div class="dl-trace-intro">{% if kind == "settlement" %}Las liquidaciones LIQ ya migradas forman parte de DIGIT LABORAL y figuran como Aprobado en el historial. Este estado reconoce su incorporación, no acredita pagos ni emite un nuevo recibo.{% else %}Se muestra una sola versión vigente de cada cálculo salarial rectificado. El original deja de aparecer después de aprobar la rectificación y sigue disponible para auditoría. Los borradores no reemplazan cálculos aprobados.{% endif %}</div>
     <div class="dl-trace-versions">
       <a class="dl-trace-action" href="/app/liquidaciones?{{ labor_deleted_toggle_query }}#labor-history">{{ 'Ocultar eliminados' if show_deleted_calculations else 'Historial de eliminaciones' }}</a>
     </div>
@@ -298,7 +298,11 @@
                 </form>
               </details>
             {% endif %}
-          {% elif row.url %}<a href="{{ row.url }}" class="dl-trace-action">Ver</a>
+          {% elif row.url %}
+            <a href="{{ row.url }}" class="dl-trace-action">Ver</a>
+            {% if row.label == 'Salario · MOV' and user.role in ['administrador','contador'] %}
+              <a href="{{ row.reconciliation_url }}" class="dl-trace-action">Verificar vínculo</a>
+            {% endif %}
           {% else %}—{% endif %}
           </div></td>
         </tr>
