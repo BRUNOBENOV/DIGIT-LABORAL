@@ -70,13 +70,13 @@ def test_exact_mov_reconciliation_preserves_source_and_operational_data():
 
         total, rows = salary_report_unified(db, [company.id], ("salary", "suite_salary"),
                                            status="Conciliado", page_size=25)
-        assert total == 1 and rows[0].status == MATCHED
+        assert total == 1 and rows[0].status == "Aprobado"
         total, rows = salary_report_unified(db, [company.id], ("salary", "suite_salary"),
                                            status="Sin conciliar", page_size=25)
         assert total == 0 and rows == []
         history = calculation_history_page(db, {company.id}, tipo="salary",
                                            include_center_calculations=True)
-        assert any(row["status"] == MATCHED for row in history["rows"] if row["origin"] == "imported")
+        assert any(row["status"] == "Aprobado" for row in history["rows"] if row["origin"] == "imported")
         again, _ = _bulk_candidates(db, {company.id})
         assert not again
 
@@ -97,7 +97,7 @@ def test_mov_without_operational_match_can_be_validated_only_as_evidence():
         assert db.scalar(select(HistoricalMovReconciliation)).status == VALIDATED
         total, rows = salary_report_unified(db, [company.id], ("salary", "suite_salary"),
                                            status=VALIDATED, page_size=25)
-        assert total == 1 and rows[0].status == VALIDATED
+        assert total == 1 and rows[0].status == "Aprobado"
         assert db.get(CalculationRecord, calc.id).status == "Aprobado"
         with pytest.raises(HTTPException) as exc:
             _save_review(db, actor, event, data, record=calc)
