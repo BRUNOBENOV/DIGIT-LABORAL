@@ -56,6 +56,8 @@ def salary_report_unified(
         archive_conditions.append(
             func.substr(cast(EmployeeEvent.effective_date, String), 1, 7) == period
         )
+    if not status:
+        live_conditions.append(CalculationRecord.status != "Anulado")
     if status:
         live_conditions.append(CalculationRecord.status == status)
         if status != "Sin conciliar":
