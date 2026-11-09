@@ -31,7 +31,7 @@
 {% set vacation_days_entered = (values.get('pending_days','')|string|trim) or (values.get('double_days','')|string|trim) or (values.get('proportional_days','')|string|trim) %}
 <div class="dl dl-workbench {{ 'dl-quick' if quick_steps else '' }} {{ 'dl-wrap' if not private else '' }}">
 <header class="dl-workbench-head"><p class="dl-eyebrow">{{ 'CENTRO PROFESIONAL' if private else 'CALCULADORAS LABORALES · PARAGUAY' }}</p><h1>{{ titles[kind] if private else 'Calculá. Revisá. Emití.' }}</h1><p>{% if private and kind == 'salary' %}Liquidá el período con desglose de sueldo, horas extras, comisiones, bonificaciones, aportes y descuentos. Revisá la base y el resultado antes de aprobar o imprimir.{% elif private and kind == 'settlement' %}Revisá salarios, conceptos de egreso y bases aplicables en un módulo dedicado, con desglose y descarga del resultado.{% elif private %}Completá los datos de esta liquidación. La revisión y el desglose permanecen dentro del módulo seleccionado.{% else %}Completá los datos y obtené un desglose listo para descargar. Los campos con * son obligatorios.{% endif %}</p></header>
-{% if private %}<div class="dl-output-actions"><a class="dl-textlink" href="/app/calculations">Volver al módulo Cálculo</a>{% if kind == 'salary' %}<a class="dl-textlink" href="/app/reports/liquidaciones-salarios">Liquidaciones y recibos guardados</a><a class="dl-textlink" href="/app/compliance/salary-import?authority=REOP">Preparar Liquidación de salario en REOP</a>{% endif %}</div>{% else %}<div class="dl-output-actions"><a class="dl-textlink" href="/empezar">Guía para empezar</a><a class="dl-textlink" href="/herramientas/comparar?tipo={{ kind }}">Comparar dos escenarios</a></div>{% endif %}
+{% if private %}<div class="dl-output-actions"><a class="dl-textlink" href="/app/calculations">Volver al módulo Cálculo</a>{% if kind == 'salary' %}<a class="dl-textlink" href="/app/liquidaciones/salarios/importar-reop">Importar salarios desde Excel REOP</a><a class="dl-textlink" href="/app/liquidaciones/conciliar-planilla">Conciliar Excel de contabilidad</a><a class="dl-textlink" href="/app/compliance/salary-import">Validar REOP / REI</a>{% endif %}</div>{% else %}<div class="dl-output-actions"><a class="dl-textlink" href="/empezar">Guía para empezar</a><a class="dl-textlink" href="/herramientas/comparar?tipo={{ kind }}">Comparar dos escenarios</a></div>{% endif %}
 {% if private and kind == 'settlement' and user.role in ['administrador', 'contador'] %}
 <details style="border:1px solid #dae3f1;border-radius:10px;background:#f7faff;padding:12px 15px;margin:12px 0">
   <summary style="cursor:pointer;color:#173b79;font-size:.85rem;font-weight:750">Incorporar liquidaciones del sistema anterior (LSLIQ)</summary>
@@ -301,7 +301,7 @@
           {% elif row.url %}
             <a href="{{ row.url }}" class="dl-trace-action">Ver</a>
             {% if row.label == 'Salario' and row.status == 'Aprobado' and row.employee %}
-              <a href="/app/compliance/salary-import?company_id={{ row.company.id }}&amp;period={{ row.period }}&amp;employee_id={{ row.employee.id }}" class="dl-trace-action">Exportar REOP / REI</a>
+              <a href="/app/compliance/salary-import?company_id={{ row.company.id }}&amp;period={{ row.period }}&amp;source_type=approved&amp;employee_id={{ row.employee.id }}" class="dl-trace-action">Exportar REOP / REI</a>
             {% endif %}
           {% else %}—{% endif %}
           </div></td>
