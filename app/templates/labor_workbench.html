@@ -93,7 +93,7 @@
   const month = form?.elements.namedItem("month");
   if (!locked || !month) return;
   const originalMonth = locked.dataset.rectificationPeriod;
-  if (!/^\\d{4}-(0[1-9]|1[0-2])$/.test(originalMonth)) return;
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(originalMonth)) return;
   month.value = originalMonth;
   month.readOnly = true;
   month.setAttribute("aria-readonly", "true");
