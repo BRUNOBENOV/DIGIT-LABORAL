@@ -765,7 +765,6 @@ def saved_page(request: Request, record_id: int, user: User = Depends(core.requi
         related = db.scalars(select(CalculationRecord).where(
             CalculationRecord.company_id == item.company_id,
             CalculationRecord.employee_id == item.employee_id,
-            CalculationRecord.reference_period == item.reference_period,
             CalculationRecord.calculation_type == item.calculation_type,
             CalculationRecord.source == SOURCE,
             CalculationRecord.id != item.id,
