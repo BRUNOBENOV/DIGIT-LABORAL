@@ -140,7 +140,7 @@
           {% endfor %}
         </div>
       </details>
-      <span class="salary-report-sub"><a href="/app/compliance/salary-import?company_id={{ item.company.id }}&amp;period={{ item.reference_period }}&amp;source_type=approved&amp;employee_id={{ item.employee.id }}">Exportar REOP / REI</a></span>
+      <span class="salary-report-sub"><a href="/app/compliance/salary-import?company_id={{ item.company.id }}&amp;period={{ item.reference_period }}&amp;employee_id={{ item.employee.id }}">Exportar REOP / REI</a></span>
       <span class="salary-report-sub"><a href="/app/employee-history?company_id={{ item.employee.company_id }}&amp;employee_id={{ item.employee.id }}">Ver expediente</a></span>
     {% endif %}
   </td>
