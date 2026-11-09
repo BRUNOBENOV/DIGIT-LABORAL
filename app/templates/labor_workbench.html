@@ -62,12 +62,12 @@
   <input type="hidden" name="rectifies_record_id" value="{{ values.get('rectifies_record_id') }}">
   <div class="dl-rectify-heading">
     <strong id="rectify-heading">Rectificación del cálculo #{{ values.get('rectifies_record_id') }}</strong>
-    <span>Se guardará una nueva versión en borrador del período {{ values.get('month','') }}</span>
+    <span>Período original: {{ values.get('month','') }} · Podés corregir el mes de destino</span>
   </div>
   <label for="rectification-reason">Motivo de la corrección <span aria-hidden="true">*</span></label>
   <textarea id="rectification-reason" name="rectification_reason" rows="2" minlength="12" maxlength="300" required
     placeholder="Ej.: corregí las jornadas remuneradas y el aporte del mes.">{{ values.get('rectification_reason','') }}</textarea>
-  <small>El documento original no se modifica. Revisá los importes y aprobá la nueva versión cuando corresponda.</small>
+  <small>Si cambiás de mes, revisá también las fechas de pago y asistencia. El original se conserva. Solo al aprobar la rectificación se marcará como sustituido, siempre que no exista una presentación oficial que deba rectificarse por otra vía.</small>
 </section>
 {% endif %}
 {% if not quick_steps %}<div class="dl-form-title"><span class="dl-step">01</span><h2>{{ titles[kind] }}</h2></div>{% endif %}
@@ -83,28 +83,6 @@
 
 <div class="dl-form-submit {{ 'dl-quick-fallback' if quick_steps else '' }}"><button class="dl-button" type="submit" data-keep-enabled="true">{{ 'Recalcular' if result else 'Calcular liquidación' }} <span aria-hidden="true">→</span></button><span>Revisá los conceptos antes de firmar.</span></div>
 </form>
-{% if private and kind == 'salary' and values.get('rectifies_record_id') %}
-<script>
-(() => {
-  // The rectification must never switch the source record's month. Keep the
-  // visible month input enabled (so it is submitted), but read-only.
-  const form = document.getElementById("labor-form");
-  const locked = form?.querySelector("[data-rectification-period]");
-  const month = form?.elements.namedItem("month");
-  if (!locked || !month) return;
-  const originalMonth = locked.dataset.rectificationPeriod;
-  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(originalMonth)) return;
-  month.value = originalMonth;
-  month.readOnly = true;
-  month.setAttribute("aria-readonly", "true");
-  month.title = "El período de la rectificación debe coincidir con el cálculo original";
-  const keepMonth = () => { if (month.value !== originalMonth) month.value = originalMonth; };
-  month.addEventListener("input", keepMonth);
-  month.addEventListener("change", keepMonth);
-  form.addEventListener("submit", keepMonth);
-})();
-</script>
-{% endif %}
 {% if kind == 'salary' %}
 <script>
 (() => {
