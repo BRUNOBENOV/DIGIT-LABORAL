@@ -90,6 +90,7 @@ def salary_source_summary(db: Session, company_id: int, period: str, employee_id
     # It is selected only when this employee/month has no operative approval;
     # an annulled operational record is never resurrected from older evidence.
     mov_ids: set[int] = set()
+    all_mov_ids: set[int] = set()
     if hasattr(db, "execute") and re.fullmatch(r"20\d{2}-(0[1-9]|1[0-2])", period or ""):
         from .legacy_salary_mov_import import EVENT_TYPE as MOV_EVENT_TYPE
         for (worker,) in db.execute(
@@ -100,6 +101,7 @@ def salary_source_summary(db: Session, company_id: int, period: str, employee_id
                 *([Employee.id == employee_id] if employee_id is not None else []),
             ).distinct()
         ):
+            all_mov_ids.add(worker.id)
             if salary_export_employee_eligible(worker, authority):
                 mov_ids.add(worker.id)
     native_approved = {eid for eid, item in latest.items() if item.status in APPROVED}
@@ -112,6 +114,7 @@ def salary_source_summary(db: Session, company_id: int, period: str, employee_id
         "approved": len(eligible_ids),
         "approved_native": len(native_approved),
         "approved_mov": len(mov_fallback),
+        "mov_source_count": len(all_mov_ids),
         "pending": sum(eid not in eligible_ids and item.status not in APPROVED
                        for eid, item in latest.items()),
         "drafts_in_progress": sum(newest[eid].id != item.id for eid, item in latest.items()),
@@ -147,7 +150,8 @@ def choose_salary_source(db: Session, company_id: int, period: str, requested: s
             if payroll_employees and payroll_employees.issubset(set(summary["approved_employee_ids"])):
                 return "approved"
         return "payroll"
-    return "approved" if summary["total"] or summary["without_employee"] else "payroll"
+    return "approved" if (summary["total"] or summary["without_employee"]
+                           or summary.get("mov_source_count")) else "payroll"
 
 
 REOP_PAYMENT_METHODS = {
