@@ -99,6 +99,11 @@ def test_rectification_requires_reason_and_same_period(web_case):
         rectification_reason="Corrección de sueldo documentada",
     ))
     assert changed_period.status_code == 409
+    assert "El cálculo original pertenece a 2026-10" in changed_period.text
+    from bs4 import BeautifulSoup
+    returned = BeautifulSoup(changed_period.text, "html.parser")
+    assert returned.select_one('#labor-form [name="month"]')["value"] == "2026-10"
+    assert "dl-error" in changed_period.text
     assert len(_saved(db, employee)) == 1
 
 
