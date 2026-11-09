@@ -97,9 +97,9 @@ def salary_source_summary(db: Session, company_id: int, period: str, employee_id
         "approved_native": len(approved_ids),
         "approved_mov": 0,
         "mov_source_count": 0,
-        "pending": sum(item.status not in APPROVED for item in latest.values()),
+        "pending": sum(item.status not in APPROVED and item.status != "Rectificado" for item in latest.values()),
         "drafts_in_progress": sum(newest[eid].id != item.id for eid, item in latest.items()),
-        "total": len(latest),
+        "total": sum(item.status != "Rectificado" for item in latest.values()),
         "without_employee": sum(x.employee_id is None and x.status in APPROVED for x in records),
         "approved_employee_ids": sorted(approved_ids),
     }
@@ -317,7 +317,7 @@ def salary_excluded_records(db: Session, company_id: int, period: str, *, author
     latest = select_salary_versions(rows)
     excluded = [
         {"employee_id": row.employee_id, "calculation_id": row.id, "status": row.status}
-        for row in latest.values() if row.status not in APPROVED
+        for row in latest.values() if row.status not in APPROVED and row.status != "Rectificado"
     ]
     if excluded:
         candidates = {e.id: e for e in db.scalars(select(Employee).where(
