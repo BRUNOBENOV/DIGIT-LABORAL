@@ -62,7 +62,7 @@ def test_compliance_center_renders_after_login():
         _login(client)
         response = client.get("/app/compliance")
         assert response.status_code == 200
-        assert "Centro REI y REOP" in response.text
+        assert "Centro de cumplimiento · REOP y REI" in response.text
         assert "no almacena contraseñas" in response.text
 
 
