@@ -5,6 +5,7 @@
   document.querySelectorAll('form[data-download-form]').forEach(form => {
     const button = form.querySelector('button[type="submit"]');
     const status = form.querySelector('[data-download-status]');
+    const batchLink = form.querySelector('[data-download-batch]');
     if (!button || !status) return;
     let busy = false;
     const notify = (text, state) => {
@@ -28,6 +29,7 @@
       button.disabled = true;
       button.textContent = 'Preparando descarga…';
       button.setAttribute('aria-busy', 'true');
+      if (batchLink) batchLink.hidden = true;
       notify('Generando el archivo. Conservamos los datos y las confirmaciones de esta pantalla.', 'loading');
       const controller = new AbortController();
       const timer = window.setTimeout(() => controller.abort(), 30000);
@@ -65,6 +67,14 @@
         document.body.append(link);
         try { link.click(); } finally { link.remove(); }
         notify('Archivo generado. Revisá la carpeta de descargas. Esto no equivale a una presentación oficial.', 'success');
+        const batchId = response.headers.get('X-Integration-Batch-Id');
+        if (batchLink && /^\d+$/.test(batchId || '')) {
+          const url = new URL(batchLink.href, window.location.origin);
+          url.searchParams.set('batch_id', batchId);
+          url.hash = `lote-${batchId}`;
+          batchLink.href = url.href;
+          batchLink.hidden = false;
+        }
       } catch (error) {
         notify(error.name === 'AbortError'
           ? 'La descarga tardó demasiado. Conservamos la planilla y podés volver a intentar.'

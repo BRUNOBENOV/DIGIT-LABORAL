@@ -29,7 +29,11 @@ from .models import (
 
 OFFICIAL_SOURCES = {
     "REI": "https://portal.ips.gov.py/sistemas/ipsportal/contenido.php?c=119",
-    "REOP": "https://www.mtess.gov.py/?page_id=24021",
+    "REOP": "https://www.mtess.gov.py/?page_id=31365",
+}
+OFFICIAL_PORTALS = {
+    "REI": "https://servicios.ips.gov.py/newrei/rei/",
+    "REOP": "https://regobpat.mtess.gov.py/",
 }
 
 REOP_EVENT_TYPES = {
@@ -37,10 +41,11 @@ REOP_EVENT_TYPES = {
     "Suspensión", "Preaviso", "Accidente laboral", "Liquidación salarial", "Aguinaldo",
 }
 REI_EVENT_TYPES = {"Entrada", "Salida", "Declaración salarial", "Aportes", "Reposo"}
+PENDING_COMPLIANCE_STATUSES = ("Borrador", "Validado", "Exportado", "Observado", "Rechazado")
 
 COMPLIANCE_STATUS_TRANSITIONS: dict[str, set[str]] = {
     "Borrador": {"Borrador", "Validado", "Anulado"},
-    "Validado": {"Validado", "Borrador", "Anulado"},
+    "Validado": {"Validado", "Borrador", "Presentado", "Anulado"},
     "Exportado": {"Exportado", "Presentado", "Observado", "Anulado"},
     "Presentado": {"Presentado", "Aceptado", "Observado", "Rechazado"},
     "Aceptado": {"Aceptado"},
@@ -64,8 +69,6 @@ INTEGRATION_BATCH_STATUS_TRANSITIONS: dict[str, set[str]] = {
 def can_transition_compliance_status(current: str, target: str) -> bool:
     return target in COMPLIANCE_STATUS_TRANSITIONS.get(current, {current})
 
-
-
 def _sheet_style(sheet) -> None:  # noqa: ANN001
     fill = PatternFill("solid", fgColor="173B86")
     for cell in sheet[1]:
@@ -73,7 +76,11 @@ def _sheet_style(sheet) -> None:  # noqa: ANN001
         cell.font = Font(color="FFFFFF", bold=True)
         cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
     sheet.freeze_panes = "A2"
+    sheet.auto_filter.ref = sheet.dimensions
     for column in sheet.columns:
+        for cell in column:
+            if cell.data_type == "f":
+                cell.data_type = "s"
         width = min(42, max(12, max(len(str(cell.value or "")) for cell in column) + 2))
         sheet.column_dimensions[column[0].column_letter].width = width
 
@@ -117,47 +124,15 @@ def _patronal_for_branch(
     return (profile.mtess_employer_number if profile else "") or company.mtess_employer_number
 
 
-def validate_company_for_authority(db: Session, company: Company, authority: str) -> list[str]:
-    authority = authority.upper()
+def company_profile_issues(company: Company, profile: CompanyComplianceProfile | None, authority: str) -> list[str]:
     errors: list[str] = []
-    company_profile, employee_profiles = _profile_map(db, company.id)
-    branch_map, branch_profiles = _branch_context(db, company.id)
-    if authority == "REI" and not company.ips_employer_number:
-        errors.append("Falta el número patronal IPS de la casa matriz.")
-    if authority == "REOP" and not company.mtess_employer_number:
-        errors.append("Falta el número patronal MTESS de la casa matriz.")
-    if not company_profile:
-        errors.append("Falta completar el perfil oficial de la empresa.")
-    elif not company_profile.department or not company_profile.district or not company_profile.economic_activity:
-        errors.append("El perfil oficial de la empresa está incompleto.")
-    employees = list(db.scalars(select(Employee).where(Employee.company_id == company.id, Employee.status == "Activo")))
-    checked_branches: set[int] = set()
-    for employee in employees:
-        profile = employee_profiles.get(employee.id)
-        missing = []
-        if not employee.document_number:
-            missing.append("cédula")
-        if not profile:
-            missing.append("perfil oficial")
-        else:
-            for label, value in (("sexo", profile.sex), ("nacionalidad", profile.nationality), ("estado civil", profile.marital_status), ("ocupación", profile.occupation_code)):
-                if not value:
-                    missing.append(label)
-        if employee.branch_id and employee.branch_id in branch_map:
-            checked_branches.add(employee.branch_id)
-            branch_profile = branch_profiles.get(employee.branch_id)
-            patronal = _patronal_for_branch(company, authority, employee.branch_id, branch_profiles)
-            if not branch_profile:
-                missing.append(f"perfil oficial de sucursal ({branch_map[employee.branch_id].name})")
-            if not patronal:
-                label = "IPS" if authority == "REI" else "MTESS"
-                missing.append(f"número patronal {label} de la sucursal")
-        if missing:
-            errors.append(f"{employee.full_name}: falta {', '.join(missing)}.")
-    for branch_id in checked_branches:
-        branch_profile = branch_profiles.get(branch_id)
-        if branch_profile and (not branch_profile.department or not branch_profile.district):
-            errors.append(f"Sucursal {branch_map[branch_id].name}: ubicación oficial incompleta.")
+    if not (company.ruc or "").strip():
+        errors.append("RUC de la empresa")
+    if not (_patronal_for_branch(company, authority, None, {}) or "").strip():
+        errors.append(f"Número patronal {'IPS' if authority == 'REI' else 'MTESS'} de la matriz")
+    for key, label in (("department", "Departamento"), ("district", "Distrito"), ("economic_activity", "Actividad económica")):
+        if not (getattr(profile, key, "") or "").strip():
+            errors.append(label)
     return errors
 
 
@@ -249,7 +224,15 @@ def ensure_compliance_event(
     )
 
 
-def build_event_workbook(db: Session, company: Company, authority: str, events: Iterable[ComplianceEvent]) -> bytes:
+def build_event_workbook(
+    db: Session,
+    company: Company,
+    authority: str,
+    events: Iterable[ComplianceEvent],
+    *,
+    validate: bool = False,
+) -> bytes:
+    events = list(events)
     authority = authority.upper()
     wb = Workbook()
     ws = wb.active
@@ -258,13 +241,23 @@ def build_event_workbook(db: Session, company: Company, authority: str, events: 
         "Nro Patronal", "Establecimiento", "RUC", "Sistema", "Tipo de comunicación", "Cédula", "Trabajador",
         "Fecha del evento", "Vencimiento", "Estado", "Datos complementarios", "ID Digit Laboral",
     ])
-    employee_map = {item.id: item for item in db.scalars(select(Employee).where(Employee.company_id == company.id))}
+    employee_ids = {event.employee_id for event in events if event.employee_id is not None}
+    employee_map = {
+        item.id: item for item in db.scalars(
+            select(Employee).where(Employee.company_id == company.id, Employee.id.in_(employee_ids))
+        )
+    } if employee_ids else {}
     branch_map, branch_profiles = _branch_context(db, company.id)
+    errors = ["Falta el RUC de la empresa."] if not (company.ruc or "").strip() else []
     for event in events:
         employee = employee_map.get(event.employee_id) if event.employee_id else None
         branch_id = event.branch_id or (employee.branch_id if employee else None)
         branch = branch_map.get(branch_id) if branch_id else None
         patronal = _patronal_for_branch(company, authority, branch_id, branch_profiles)
+        if not (patronal or "").strip():
+            errors.append(f"Comunicación #{event.id}: falta el número patronal de {branch.name if branch else 'la matriz'}.")
+        if event.employee_id is not None and (not employee or not (employee.document_number or "").strip()):
+            errors.append(f"Comunicación #{event.id}: falta el documento del funcionario.")
         ws.append([
             patronal,
             branch.name if branch else "Casa matriz",
@@ -279,6 +272,9 @@ def build_event_workbook(db: Session, company: Company, authority: str, events: 
             event.payload_json,
             event.id,
         ])
+    if validate and errors:
+        remaining = f" Hay {len(errors) - 6} observaciones más." if len(errors) > 6 else ""
+        raise ValueError(" ".join(errors[:6]) + remaining)
     _sheet_style(ws)
     meta = wb.create_sheet("METADATOS")
     meta.append(["Campo", "Valor"])
@@ -286,7 +282,7 @@ def build_event_workbook(db: Session, company: Company, authority: str, events: 
     meta.append(["RUC", company.ruc])
     meta.append(["Sistema", authority])
     meta.append(["Fuente oficial", OFFICIAL_SOURCES[authority]])
-    meta.append(["Advertencia", "Archivo de interoperabilidad preparado por Digit Laboral. Verificar contra el modelo oficial vigente antes de presentarlo."])
+    meta.append(["Uso", "Archivo interno de apoyo. Registrá cada comunicación en el portal oficial y guardá el resultado en Digit Laboral."])
     _sheet_style(meta)
     output = io.BytesIO()
     wb.save(output)
@@ -296,14 +292,32 @@ def build_event_workbook(db: Session, company: Company, authority: str, events: 
 def build_reop_annual_workbook(db: Session, company: Company, year: int) -> bytes:
     company_profile, employee_profiles = _profile_map(db, company.id)
     branch_map, branch_profiles = _branch_context(db, company.id)
-    employees = list(db.scalars(select(Employee).where(Employee.company_id == company.id).order_by(Employee.full_name)))
-    payrolls = list(db.scalars(select(Payroll).where(Payroll.company_id == company.id, Payroll.period.like(f"{year}-%"))))
+    year_start, year_end = date(year, 1, 1), date(year, 12, 31)
+    employees = list(db.scalars(
+        select(Employee).where(
+            Employee.company_id == company.id, Employee.admission_date <= year_end,
+            or_(Employee.termination_date.is_(None), Employee.termination_date >= year_start),
+        ).order_by(Employee.full_name, Employee.id)
+    ))
+    payrolls = list(db.scalars(
+        select(Payroll).where(
+            Payroll.company_id == company.id, Payroll.period.like(f"{year}-%"),
+            Payroll.status == "Cerrada", Payroll.closed_at.is_not(None),
+        ).order_by(Payroll.period, Payroll.id)
+    ))
     payroll_ids = [item.id for item in payrolls]
     lines = list(db.scalars(select(PayrollLine).where(PayrollLine.payroll_id.in_(payroll_ids)))) if payroll_ids else []
     line_details = list(db.scalars(select(PayrollComplianceDetail).where(PayrollComplianceDetail.payroll_line_id.in_([line.id for line in lines])))) if lines else []
     details_by_line = {item.payroll_line_id: item for item in line_details}
     payroll_by_id = {item.id: item for item in payrolls}
     employee_by_id = {item.id: item for item in employees}
+    missing_employee_ids = {line.employee_id for line in lines} - employee_by_id.keys()
+    if missing_employee_ids:
+        employee_by_id.update(
+            (item.id, item) for item in db.scalars(select(Employee).where(
+                Employee.company_id == company.id, Employee.id.in_(missing_employee_ids),
+            ))
+        )
 
     wb = Workbook()
     workers = wb.active
@@ -350,7 +364,6 @@ def build_reop_annual_workbook(db: Session, company: Company, year: int) -> byte
         payroll = payroll_by_id[line.payroll_id]
         employee = employee_by_id.get(line.employee_id)
         detail = details_by_line.get(line.id)
-        month_start = f"{payroll.period}-01"
         branch = branch_map.get(employee.branch_id) if employee and employee.branch_id else None
         wages.append([
             _patronal_for_branch(company, "REOP", employee.branch_id if employee else None, branch_profiles),
@@ -358,11 +371,11 @@ def build_reop_annual_workbook(db: Session, company: Company, year: int) -> byte
             payroll.period,
             employee.document_number if employee else "",
             employee.full_name if employee else "",
-            detail.period_start.isoformat() if detail and detail.period_start else month_start,
+            detail.period_start.isoformat() if detail and detail.period_start else "",
             detail.period_end.isoformat() if detail and detail.period_end else "",
-            detail.payment_method if detail else "Transferencia",
-            detail.days_worked if detail else 30,
-            detail.hours_worked if detail else 0,
+            detail.payment_method if detail else "",
+            detail.days_worked if detail else None,
+            detail.hours_worked if detail else None,
             line.base_salary,
             detail.night_surcharge if detail else 0,
             detail.overtime_day if detail else line.overtime,
@@ -383,10 +396,9 @@ def build_reop_annual_workbook(db: Session, company: Company, year: int) -> byte
     _sheet_style(wages)
 
     summary = wb.create_sheet("RESUMEN_GENERAL")
-    active = [item for item in employees if item.status == "Activo"]
-    sex_counts = Counter((employee_profiles.get(item.id).sex if employee_profiles.get(item.id) else "Sin dato") for item in active)
+    sex_counts = Counter((employee_profiles[item.id].sex or "Sin dato") if item.id in employee_profiles else "Sin dato" for item in employees)
     summary.append(["Concepto", "Cantidad"])
-    summary.append(["Total personas activas", len(active)])
+    summary.append(["Legajos con fechas de vínculo en el ejercicio", len(employees)])
     for key, value in sorted(sex_counts.items()):
         summary.append([f"Sexo: {key}", value])
     summary.append(["Empresa", company.legal_name])
@@ -398,8 +410,9 @@ def build_reop_annual_workbook(db: Session, company: Company, year: int) -> byte
     metadata.append(["Campo", "Valor"])
     metadata.append(["Generado", datetime.now().isoformat(timespec="seconds")])
     metadata.append(["Fuente oficial de referencia", OFFICIAL_SOURCES["REOP"]])
-    metadata.append(["Estado", "Borrador para validación y presentación manual en REOP"])
-    metadata.append(["Advertencia", "Antes de presentar, comparar las columnas con el modelo Excel oficial vigente del MTESS."])
+    metadata.append(["Uso", "Reporte interno. Los Libros de Información Laboral se gestionan en el portal REOP."])
+    metadata.append(["Períodos con nómina cerrada", ", ".join(sorted({item.period for item in payrolls})) or "Sin nóminas cerradas"])
+    metadata.append(["Cobertura", "Incluye nóminas cerradas. Las celdas vacías indican datos sin registrar."])
     _sheet_style(metadata)
 
     output = io.BytesIO()

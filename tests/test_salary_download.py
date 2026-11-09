@@ -56,6 +56,7 @@ def test_salary_file_download_preserves_bytes_attendance_audit_and_source(downlo
         fields = lines[0].split("\t")
         assert len(fields) == 11 and fields[6] == "22" and fields[7] == "3500000"
     batch = db.scalar(select(IntegrationBatch))
+    assert response.headers["X-Integration-Batch-Id"] == str(batch.id)
     assert batch.status == "Generado" and batch.item_count == 1
     assert batch.file_sha256 == hashlib.sha256(response.content).hexdigest()
     assert core.storage.get(batch.storage_key) == response.content

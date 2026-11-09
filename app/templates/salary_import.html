@@ -31,7 +31,8 @@
     <p>Exportá desde una nómina cerrada o desde los cálculos individuales aprobados. No se recalculan importes.</p>
   </header>
   <div style="margin-bottom:15px;display:flex;gap:9px;flex-wrap:wrap">
-    <a href="/app/compliance{% if selected_company %}?company_id={{ selected_company.id }}{% endif %}" class="btn ghost">← Volver a Cumplimiento</a>
+    <a href="/app/compliance{% if selected_company %}?company_id={{ selected_company.id }}&amp;authority={{ authority }}{% endif %}" class="btn ghost">← Volver a Cumplimiento</a>
+    <a href="{{ official_portal }}" class="btn ghost" target="_blank" rel="noopener noreferrer">Abrir {{ authority }} oficial ↗</a>
     <a href="/app/liquidaciones/conciliar-planilla" class="btn ghost">Conciliar planilla contable antes de exportar</a>
     <a href="/app/liquidaciones/salarios/importar-reop" class="btn ghost">Importar salarios desde REOP</a>
   </div>
@@ -266,15 +267,23 @@
       </label>
       <button class="btn primary" type="submit">Descargar {{ 'Excel REOP (.xlsx)' if authority == 'REOP' else 'TXT REI (.txt)' }}</button>
       <p class="import-salary-download-status" data-download-status role="status" aria-live="polite" hidden></p>
+      <a class="btn ghost" data-download-batch href="/app/compliance?company_id={{ selected_company.id }}&amp;tab=batches&amp;authority={{ authority }}" hidden>Ir al lote y registrar el comprobante</a>
     </form>
     {% endif %}
     <script src="{{ url_for('static', path='download-form.js') }}?v={{ app_version }}" defer></script>
   </section>
   {% endif %}
   <section class="import-salary-card">
-    <h2>Control y responsabilidad</h2>
-    <p class="import-salary-info">Las exportaciones registran empresa, período, usuario, cantidad de trabajadores y SHA-256 del archivo. Se mantiene la distinción entre «exportado» y «presentado». Debés ingresar al organismo, importar, verificar y conservar el comprobante de aceptación.</p>
-    <p class="import-salary-info">REOP: <a href="https://www.mtess.gov.py/?page_id=31365" target="_blank" rel="noopener">modelos e instructivos MTESS</a>. REI: <a href="https://portal.ips.gov.py/sistemas/ipsportal/contenido.php?c=119" target="_blank" rel="noopener">manual y formato IPS</a>.</p>
+    <h2>Presentación y comprobante</h2>
+    <p class="import-salary-info">
+      {% if authority == 'REOP' %}Cargá el Excel en REOP → Comunicaciones → Liquidación Salario.
+      {% else %}Verificá el TXT con tu cuenta e importalo en REI → Declaración de Salarios → Importar Salarios.{% endif %}
+      Luego guardá el resultado y el comprobante del portal en el lote correspondiente.
+    </p>
+    <div class="import-salary-actions">
+      <a class="btn ghost" href="{{ official_source }}" target="_blank" rel="noopener noreferrer">Ver instrucciones de {{ authority }} ↗</a>
+      {% if selected_company %}<a class="btn ghost" href="/app/compliance?company_id={{ selected_company.id }}&amp;tab=batches&amp;authority={{ authority }}#lotes">Ver lotes de {{ authority }}</a>{% endif %}
+    </div>
   </section>
 </div>
 <script src="{{ url_for('static', path='salary-attendance.js') }}?v={{ app_version }}" defer></script>
