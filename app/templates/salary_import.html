@@ -22,6 +22,8 @@
 .import-salary-download-status{border:1px solid #cbdaf2;border-radius:8px;background:#f4f8ff;padding:11px 13px;font-size:.78rem;line-height:1.5}
 .import-salary-download-status[data-state="error"]{border-color:#e5c0a4;background:#fff8ef;color:#85380f}
 .import-salary-download-status[data-state="success"]{border-color:#c4e8d2;background:#f2faf5;color:#17603e}
+.import-salary-actions [hidden]{display:none}
+.import-salary-setup summary{cursor:pointer;font-size:.83rem;font-weight:750;color:#17335e}
 @media(max-width:800px){.import-salary-grid{grid-template-columns:1fr}.import-salary-hero{padding:18px}}
 </style>
 <div class="import-salary-page">
@@ -36,6 +38,14 @@
     <a href="/app/liquidaciones/conciliar-planilla" class="btn ghost">Conciliar planilla contable antes de exportar</a>
     <a href="/app/liquidaciones/salarios/importar-reop" class="btn ghost">Importar salarios desde REOP</a>
   </div>
+  {% if reop_assistant_id %}
+  <details class="import-salary-card import-salary-setup" id="asistente-reop">
+    <summary>Cargar en REOP con el asistente de Chrome</summary>
+    <p class="import-salary-info">Instalación por única vez en Chrome de escritorio. Descargá y descomprimí el ZIP, abrí <code>chrome://extensions</code>, activá «Modo de desarrollador» y elegí «Cargar descomprimida». Seleccioná la carpeta <code>digit-laboral-reop</code>.</p>
+    <a class="btn ghost" href="/app/compliance/reop-assistant.zip">Descargar asistente REOP</a>
+    <p class="import-salary-info">Verificá la planilla y pulsá «Preparar carga en REOP». Dejá esta pestaña abierta. En la misma ventana de Chrome, ingresá a REOP, abrí «Liquidación Salario» y pulsá la extensión de Digit Laboral. Verificá la patronal abierta y seguí los pasos del asistente. Revisá y confirmá la planilla en REOP.</p>
+  </details>
+  {% endif %}
   <p class="import-salary-info"><strong>Criterios de días:</strong> REOP mensualizados = días remunerados del mes (incluidos descansos legales pagados); REOP jornaleros = jornadas efectivamente trabajadas. REI utiliza los días remunerados guardados y su propia base imponible IPS. Las horas ordinarias REOP siempre deben corresponder a asistencia real, no a un divisor de salario.</p>
   <section class="import-salary-card">
     <h2>1. Seleccionar la empresa, el origen y el formato</h2>
@@ -245,7 +255,7 @@
     <p class="import-salary-info">Corregí solo estos datos y pulsá «Verificar archivo».</p>
     {% else %}
     <div class="import-salary-ok">La validación técnica local finalizó sin observaciones. El archivo todavía requiere revisión humana y aceptación del organismo.</div>
-    <form method="post" action="/app/compliance/salary-import/export" class="import-salary-form" data-download-form data-download-format="{{ 'xlsx' if authority == 'REOP' else 'txt' }}">
+    <form method="post" action="/app/compliance/salary-import/export" class="import-salary-form" data-download-form data-download-format="{{ 'xlsx' if authority == 'REOP' else 'txt' }}"{% if reop_assistant_patronal %} data-reop-assistant-id="{{ reop_assistant_id }}"{% endif %}>
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <input type="hidden" name="company_id" value="{{ selected_company.id }}">
       <input type="hidden" name="period" value="{{ period }}">
@@ -255,6 +265,7 @@
       <input type="hidden" name="rei_category" value="{{ rei_category }}">
       <input type="hidden" name="name_order" value="{{ name_order }}">
       <input type="hidden" name="source_type" value="{{ source_type }}">
+      {% if reop_assistant_patronal %}<input type="hidden" name="reop_review" value="{{ reop_assistant_review }}">{% endif %}
       {% if selected_employee %}<input type="hidden" name="employee_id" value="{{ selected_employee.id }}">{% endif %}
       {% if excluded_salary %}
       <label class="import-salary-confirm">
@@ -263,9 +274,16 @@
       </label>
       {% endif %}
       <label class="import-salary-confirm"><input type="checkbox" name="confirmed" value="si" required>
-        <span>Confirmo que los datos{% if authority == 'REOP' %} y la forma de pago seleccionada{% endif %} son reales y revisados. Descargar no equivale a presentar ante el organismo.</span>
+        <span>Confirmo que los datos{% if authority == 'REOP' %} y la forma de pago seleccionada{% endif %} son reales y revisados.</span>
       </label>
-      <button class="btn primary" type="submit">Descargar {{ 'Excel REOP (.xlsx)' if authority == 'REOP' else 'TXT REI (.txt)' }}</button>
+      <div class="import-salary-actions">
+        <button class="btn {{ 'ghost' if reop_assistant_patronal else 'primary' }}" type="submit">Descargar {{ 'Excel REOP (.xlsx)' if authority == 'REOP' else 'TXT REI (.txt)' }}</button>
+        {% if reop_assistant_patronal %}
+        <button class="btn primary" type="submit" data-reop-browser hidden>Preparar carga en REOP</button>
+        <a class="btn ghost" href="{{ official_portal }}" data-reop-open target="_blank" rel="noopener noreferrer" hidden>Abrir REOP oficial ↗</a>
+        {% endif %}
+      </div>
+      {% if reop_assistant_id and not reop_assistant_patronal %}<p class="import-salary-info">La carga con Chrome requiere una sola patronal por lote.</p>{% endif %}
       <p class="import-salary-download-status" data-download-status role="status" aria-live="polite" hidden></p>
       <a class="btn ghost" data-download-batch href="/app/compliance?company_id={{ selected_company.id }}&amp;tab=batches&amp;authority={{ authority }}" hidden>Ir al lote y registrar el comprobante</a>
     </form>
@@ -276,7 +294,7 @@
   <section class="import-salary-card">
     <h2>Presentación y comprobante</h2>
     <p class="import-salary-info">
-      {% if authority == 'REOP' %}Cargá el Excel en REOP → Comunicaciones → Liquidación Salario.
+      {% if authority == 'REOP' %}Importá el Excel en REOP → Comunicaciones → Liquidación Salario. Revisá el resultado y pulsá «Confirmar Planilla» cuando esté correcto.
       {% else %}Verificá el TXT con tu cuenta e importalo en REI → Declaración de Salarios → Importar Salarios.{% endif %}
       Luego guardá el resultado y el comprobante del portal en el lote correspondiente.
     </p>

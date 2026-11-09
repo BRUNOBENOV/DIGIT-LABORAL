@@ -2,6 +2,7 @@
 import hashlib
 import io
 import json
+import zipfile
 
 import pytest
 from bs4 import BeautifulSoup
@@ -117,3 +118,51 @@ def test_preview_has_recoverable_download_and_versioned_shared_scripts(download_
     for file in ("v20.js", "experience.js", "download-form.js"):
         script = html.select_one(f'script[src*="/{file}"]')
         assert script and "?v=" in script["src"]
+
+
+def reop_review_from_preview(case):
+    client, _, _, company, employee, *_ = case
+    response = client.get("/app/compliance/salary-import", params={
+        "company_id": company.id, "employee_id": employee.id, "period": "2026-10", "payment_code": "1",
+    })
+    html = BeautifulSoup(response.text, "html.parser")
+    form = html.select_one("form[data-reop-assistant-id]")
+    assert form and form.select_one("[data-reop-browser]")
+    return form.select_one('[name="reop_review"]')["value"], form["data-reop-assistant-id"]
+
+
+def test_reop_assistant_uses_same_reviewed_workbook_and_audited_batch(download_case):
+    client, db, *_ = download_case
+    review, extension_id = reop_review_from_preview(download_case)
+    download = client.get("/app/compliance/reop-assistant.zip")
+    assert download.status_code == 200 and download.headers["cache-control"] == "no-store"
+    with zipfile.ZipFile(io.BytesIO(download.content)) as archive:
+        assert set(archive.namelist()) == {
+            "digit-laboral-reop/manifest.json", "digit-laboral-reop/worker.js", "digit-laboral-reop/portal.js",
+        }
+        manifest = json.loads(archive.read("digit-laboral-reop/manifest.json"))
+    assert set(manifest["permissions"]) == {"activeTab", "scripting", "storage", "alarms"}
+    assert "host_permissions" not in manifest and "content_scripts" not in manifest
+    assert len(extension_id) == 32
+
+    response = client.post("/app/compliance/salary-import/export", data=data(
+        download_case, delivery="reop-browser", reop_review=review,
+    ))
+    assert response.status_code == 200, response.text[:400]
+    assert response.headers["X-REOP-Patronal"] == "123456"
+    assert response.headers["X-REOP-Period"] == "2026-10" and response.headers["X-REOP-Rows"] == "1"
+    batch = db.get(IntegrationBatch, int(response.headers["X-Integration-Batch-Id"]))
+    assert response.headers["X-REOP-SHA256"] == batch.file_sha256 == hashlib.sha256(response.content).hexdigest()
+    assert json.loads(batch.payload_json)["delivery"] == "reop-browser" and batch.status == "Generado"
+
+
+def test_reop_assistant_rejects_changed_patronal_or_other_authority_without_creating_batch(download_case):
+    client, db, _, company, *_ = download_case
+    review, _ = reop_review_from_preview(download_case)
+    company.mtess_employer_number = "654321"
+    db.commit()
+    payload = data(download_case, delivery="reop-browser", reop_review=review)
+    stale = client.post("/app/compliance/salary-import/export", data=payload, headers={"Accept": "application/json"})
+    assert stale.status_code == 409 and "Verificar archivo" in stale.json()["detail"]
+    assert client.post("/app/compliance/salary-import/export", data=dict(payload, authority="REI")).status_code == 422
+    assert db.scalar(select(func.count(IntegrationBatch.id))) == 0
