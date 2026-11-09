@@ -128,7 +128,7 @@
     </details>
     {% endif %}
 
-    <section id="comunicaciones" class="panel table-panel">
+    <section id="comunicaciones" class="panel table-panel" data-server-search>
       <div class="panel-head">
         <div><span>BANDEJA DE TRABAJO</span><h2>Comunicaciones</h2></div>
         {% if selected_event_id %}<a href="{{ scoped_center }}#comunicaciones" class="btn ghost">Ver todas</a>{% endif %}
@@ -145,7 +145,7 @@
         <button class="btn ghost" type="submit">Filtrar</button>
       </form>
 
-      {% if can_manage and (ready_counts.REOP or ready_counts.REI) %}
+      {% if can_manage and (ready_counts[authority_filter] if authority_filter else ready_counts.REOP or ready_counts.REI) %}
       <div class="compliance-export-bar" id="exportar-comunicaciones">
         <div>
           <strong>Excel de apoyo para comunicaciones</strong>
@@ -167,7 +167,7 @@
       <div id="compliance-event-list">
         {% if events %}
         <div class="table-wrap">
-          <table class="compliance-event-table">
+          <table class="compliance-event-table" data-ui-no-enhance>
             <thead><tr><th scope="col">Comunicación</th><th scope="col">Funcionario</th><th scope="col">Vencimiento</th><th scope="col">Estado</th><th scope="col">Gestión</th></tr></thead>
             <tbody>
             {% for item in events %}
@@ -176,9 +176,9 @@
             {% set previous_batch = last_batch_ids.get(item.id) %}
             <tr id="comunicacion-{{ item.id }}" class="{{ 'overdue-row' if overdue_row }}">
               <td><span class="authority-badge {{ item.authority|lower }}">{{ item.authority }}</span> <strong>{{ item.event_type }}</strong><small class="table-sub">#{{ item.id }} · Evento {{ item.event_date|fecha }}</small></td>
-              <td>{{ item.employee.full_name if item.employee else 'Empresa' }}<small class="table-sub">{{ item.branch.name if item.branch else 'Casa matriz' }}</small></td>
-              <td>{{ item.due_date|fecha if item.due_date else 'Sin asignar' }}{% if overdue_row %}<small class="table-sub compliance-late">Vencida</small>{% endif %}</td>
-              <td>
+              <td data-label="Funcionario">{{ item.employee.full_name if item.employee else 'Empresa' }}<small class="table-sub">{{ item.branch.name if item.branch else 'Casa matriz' }}</small></td>
+              <td data-label="Vencimiento">{{ item.due_date|fecha if item.due_date else 'Sin asignar' }}{% if overdue_row %}<small class="table-sub compliance-late">Vencida</small>{% endif %}</td>
+              <td data-label="Estado">
                 <span class="status-pill {{ item.status|lower }}">{{ item.status }}</span>
                 {% if item.external_reference %}<small class="table-sub">Ref. {{ item.external_reference }}</small>{% endif %}
               </td>
