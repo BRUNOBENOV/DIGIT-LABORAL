@@ -188,12 +188,14 @@ def page(request, kind, data=None, result=None, error=None, db=None, user=None, 
     labor_history = None
     labor_prev_query, labor_next_query, labor_toggle_query = "", "", ""
     show_superseded_salary = False
+    show_deleted_calculations = False
     if private and db is not None and user is not None:
         try:
             requested_page = int(request.query_params.get("history_page", "1"))
         except (ValueError, TypeError):
             requested_page = 1
         show_superseded_salary = request.query_params.get("history_all") == "1"
+        show_deleted_calculations = request.query_params.get("deleted_all") == "1"
         labor_history = calculation_history_page(
             db, core.company_ids_for_user(db, user),
             company_id=private.get("company_id") or None,
@@ -201,6 +203,7 @@ def page(request, kind, data=None, result=None, error=None, db=None, user=None, 
             page=requested_page, page_size=30,
             include_center_calculations=True,
             include_superseded_salary=show_superseded_salary,
+            include_deleted=show_deleted_calculations,
             include_mov_salary=(kind == "salary"),
             include_liq_settlement=(kind == "settlement"),
         )
@@ -210,11 +213,17 @@ def page(request, kind, data=None, result=None, error=None, db=None, user=None, 
                 "company_id": private.get("company_id") or None,
                 "employee_id": private.get("employee_id") or None,
                 "history_all": "1" if show_superseded_salary else None,
+                "deleted_all": "1" if show_deleted_calculations else None,
             }.items() if val is not None
         }
         labor_toggle_query = urlencode({
             **{key: value for key, value in filters.items() if key != "history_all"},
             **({} if show_superseded_salary else {"history_all": "1"}),
+            "history_page": 1,
+        })
+        labor_deleted_toggle_query = urlencode({
+            **{key: value for key, value in filters.items() if key != "deleted_all"},
+            **({} if show_deleted_calculations else {"deleted_all": "1"}),
             "history_page": 1,
         })
         labor_prev_query = urlencode({**filters, "history_page": labor_history["page"] - 1})
@@ -230,6 +239,8 @@ def page(request, kind, data=None, result=None, error=None, db=None, user=None, 
     ctx.update(labor_history=labor_history,
                labor_prev_query=labor_prev_query, labor_next_query=labor_next_query,
                labor_toggle_query=labor_toggle_query,
+               labor_deleted_toggle_query=locals().get("labor_deleted_toggle_query", ""),
+               show_deleted_calculations=show_deleted_calculations,
                show_superseded_salary=show_superseded_salary)
     ctx.update(private, salary_history_data=salary_history_data, result=result,
                average_suggestion_label=suggestion_label,
@@ -966,7 +977,9 @@ async def api_update_calculation_status(
     if not isinstance(payload, dict):
         raise HTTPException(422, "El cuerpo debe ser un objeto JSON.")
     if "status" in payload:
-        if payload["status"] not in {"Borrador", "Revisar", "Aprobado", "Anulado"}:
+        if item.status == "Anulado":
+            raise HTTPException(409, "Una carga eliminada no puede modificarse.")
+        if payload["status"] not in {"Borrador", "Revisar", "Aprobado"}:
             raise HTTPException(422, "Estado no válido.")
         if payload["status"] == "Aprobado":
             core._revalidate_calculation_before_approval(item, db)
@@ -982,14 +995,12 @@ async def api_update_calculation_status(
 @router.delete("/api/calculations/{record_id}", status_code=204)
 def api_delete_calculation(
     record_id: int,
+    request: Request,
     user: User = Depends(core.require_roles("administrador", "contador")),
     db: Session = Depends(core.get_db),
 ):
     item, _ = saved_result(db, user, record_id)
-    if db.scalar(select(FinalSettlement.id).where(FinalSettlement.calculation_record_id == item.id)):
-        raise HTTPException(409, "No se puede anular un cálculo asociado a un procedimiento de egreso.")
-    item.status = "Anulado"
-    core.write_audit(db, user, "anular_api", "liquidacion", str(item.id), item.status)
+    core._delete_calculation_operational(db, user, item, request.query_params.get("motivo", ""))
     db.commit()
     return Response(status_code=204)
 
