@@ -137,7 +137,8 @@
         <details class="workspace-nav-group" {% if active_path.startswith('/app/reports') or (user.role != 'empresa' and active_path.startswith('/app/compliance')) or (user.role == 'administrador' and active_path.startswith('/app/audit')) %}open{% endif %}>
           <summary><span class="workspace-group-symbol">03</span><span class="workspace-group-name">Informes</span><span class="workspace-group-chevron">⌄</span></summary>
           <div class="workspace-submenu">
-            <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/reports') else '' }}" href="/app/reports" title="Abrir catálogo de informes laborales">Centro de informes</a>
+            <a class="workspace-nav-link {{ 'active' if active_path == '/app/reports' else '' }}" href="/app/reports" title="Abrir catálogo de informes laborales">Centro de informes</a>
+            <a class="workspace-nav-link {{ 'active' if active_path.startswith('/app/reports/liquidaciones-salarios') else '' }}" href="/app/reports/liquidaciones-salarios">Liquidaciones y recibos de salario</a>
             {% if user.role != 'empresa' %}
               <a class="workspace-nav-link {{ 'active' if active_path == '/app/compliance' else '' }}" href="/app/compliance">Centro de cumplimiento</a>
               <a class="workspace-nav-link {{ 'active' if active_path == '/app/compliance/salary-import' and request.query_params.get('authority', 'REOP') == 'REOP' else '' }}" href="/app/compliance/salary-import?authority=REOP">Liquidación de salario · REOP</a>
