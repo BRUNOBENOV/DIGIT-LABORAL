@@ -1,19 +1,4 @@
 (() => {
-  const tabs = document.querySelector('[data-compliance-tabs]');
-  if (tabs) {
-    const buttons = [...tabs.querySelectorAll('[data-compliance-tab]')];
-    const panels = [...document.querySelectorAll('[data-compliance-panel]')];
-    const activate = name => {
-      buttons.forEach(button => button.classList.toggle('active', button.dataset.complianceTab === name));
-      panels.forEach(panel => panel.classList.toggle('active', panel.dataset.compliancePanel === name));
-      try { sessionStorage.setItem('digit-compliance-tab', name); } catch (_) {}
-    };
-    buttons.forEach(button => button.addEventListener('click', () => activate(button.dataset.complianceTab)));
-    let initial = 'communications';
-    try { initial = sessionStorage.getItem('digit-compliance-tab') || initial; } catch (_) {}
-    activate(initial);
-  }
-
   const authority = document.querySelector('[data-authority-select]');
   const eventType = document.querySelector('[data-event-type-select]');
   if (authority && eventType) {

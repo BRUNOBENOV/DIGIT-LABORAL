@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import io
 import re
 import uuid
@@ -995,7 +996,7 @@ def test_local_uploads_remain_downloadable_and_exportable_after_storage_copy_is_
                 file_name="test-batch.xlsx",
                 storage_key=f"integrations/{company_id}/test-batch.xlsx",
                 file_bytes=batch_content,
-                file_sha256="a" * 64,
+                file_sha256=hashlib.sha256(batch_content).hexdigest(),
                 item_count=1,
                 created_by=email,
             )

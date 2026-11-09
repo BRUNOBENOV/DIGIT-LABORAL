@@ -4,6 +4,7 @@ import asyncio
 import csv
 import calendar
 import hmac
+import hashlib
 import io
 import gzip
 import json
@@ -29,9 +30,9 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import String, func, or_, select, text
+from sqlalchemy import String, case, func, or_, select, text
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session, defer, selectinload
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
@@ -187,16 +188,18 @@ from .form_utils import OptionalQueryId, optional_int, optional_date, clean_text
 from .compliance_service import (
     COMPLIANCE_STATUS_TRANSITIONS,
     INTEGRATION_BATCH_STATUS_TRANSITIONS,
+    OFFICIAL_PORTALS,
     OFFICIAL_SOURCES,
+    PENDING_COMPLIANCE_STATUSES,
     REI_EVENT_TYPES,
     REOP_EVENT_TYPES,
     build_event_workbook,
     build_reop_annual_workbook,
     can_transition_compliance_status,
+    company_profile_issues,
     create_compliance_event,
     ensure_compliance_event,
     register_batch,
-    validate_company_for_authority,
 )
 from .security_service import (
     build_totp_qr_svg,
@@ -1809,14 +1812,14 @@ def dashboard(request: Request, user: User = Depends(require_user), db: Session 
     compliance_pending_count = db.scalar(
         select(func.count(ComplianceEvent.id)).where(
             ComplianceEvent.company_id.in_(company_ids),
-            ComplianceEvent.status.in_(["Borrador", "Validado", "Exportado", "Observado"]),
+            ComplianceEvent.status.in_(PENDING_COMPLIANCE_STATUSES),
         )
     ) if company_ids else 0
     compliance_overdue_count = db.scalar(
         select(func.count(ComplianceEvent.id)).where(
             ComplianceEvent.company_id.in_(company_ids),
-            ComplianceEvent.due_date < date.today(),
-            ComplianceEvent.status.notin_(["Presentado", "Aceptado", "Anulado"]),
+            ComplianceEvent.due_date < current_paraguay_date(),
+            ComplianceEvent.status.in_(PENDING_COMPLIANCE_STATUSES),
         )
     ) if company_ids else 0
     companies = list(db.scalars(select(Company).where(Company.id.in_(company_ids)).order_by(Company.created_at.desc()).limit(5))) if company_ids else []
@@ -10020,114 +10023,186 @@ def compliance_page(
     request: Request,
     company_id: OptionalQueryId = None,
     authority: str = "",
+    tab: str = "communications",
+    status: str = "",
+    event_id: OptionalQueryId = None,
+    batch_id: OptionalQueryId = None,
+    employee_id: OptionalQueryId = None,
+    year: int | None = None,
+    page: int = 1,
+    page_size: int = 25,
     user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ):
     company_ids = company_ids_for_user(db, user)
-    companies = seed_choices(db, select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name), Company, request=request) if company_ids else []
-    selected_company = None
-    if company_id:
-        selected_company = company_allowed(db, user, company_id)
-    elif companies:
-        selected_company = companies[0]
-    employees: list[Employee] = []
-    branches: list[Branch] = []
-    company_profile = None
-    branch_profiles: dict[int, BranchComplianceProfile] = {}
-    employee_profiles: dict[int, EmployeeComplianceProfile] = {}
-    events: list[ComplianceEvent] = []
-    batches: list[IntegrationBatch] = []
-    batch_receipt_available: dict[int, bool] = {}
-    rei_errors: list[str] = []
-    reop_errors: list[str] = []
-    if selected_company:
-        employees = list(db.scalars(select(Employee).where(Employee.company_id == selected_company.id).order_by(Employee.full_name)))
-        branches = list(db.scalars(select(Branch).where(Branch.company_id == selected_company.id).order_by(Branch.name)))
-        company_profile = db.scalar(select(CompanyComplianceProfile).where(CompanyComplianceProfile.company_id == selected_company.id))
-        branch_profile_rows = list(
-            db.scalars(
-                select(BranchComplianceProfile)
-                .join(Branch, Branch.id == BranchComplianceProfile.branch_id)
-                .where(Branch.company_id == selected_company.id)
-            )
-        )
-        branch_profiles = {item.branch_id: item for item in branch_profile_rows}
-        profiles = list(
-            db.scalars(
-                select(EmployeeComplianceProfile)
-                .join(Employee, Employee.id == EmployeeComplianceProfile.employee_id)
-                .where(Employee.company_id == selected_company.id)
-            )
-        )
-        employee_profiles = {item.employee_id: item for item in profiles}
-        event_query = select(ComplianceEvent).where(ComplianceEvent.company_id == selected_company.id)
-        if authority.upper() in {"REI", "REOP"}:
-            event_query = event_query.where(ComplianceEvent.authority == authority.upper())
-        events = list(db.scalars(event_query.order_by(ComplianceEvent.created_at.desc()).limit(100)))
-        batches = list(
-            db.scalars(
-                select(IntegrationBatch)
-                .where(IntegrationBatch.company_id == selected_company.id)
-                .order_by(IntegrationBatch.created_at.desc())
-                .limit(40)
-            )
-        )
-        if batches:
-            batch_ids = [item.id for item in batches]
-            linked_receipts: dict[int, list[str]] = {}
-            for event in db.scalars(
-                select(ComplianceEvent).where(
-                    ComplianceEvent.batch_id.in_(batch_ids),
-                    ComplianceEvent.receipt_storage_key != "",
-                )
-            ):
-                linked_receipts.setdefault(event.batch_id, []).append(event.receipt_storage_key)
-            receipt_extensions = ("pdf", "png", "jpg")
-            for batch in batches:
-                deterministic_keys = [
-                    f"integrations/{batch.company_id}/receipts/batch-{batch.id}.{extension}"
-                    for extension in receipt_extensions
-                ]
-                legacy_keys = linked_receipts.get(batch.id, [])
-                candidate_keys = (batch.receipt_storage_key, *deterministic_keys, *legacy_keys)
-                batch_receipt_available[batch.id] = (
-                    batch.receipt_bytes is not None
-                    or any(storage.exists(key) for key in candidate_keys if key)
-                )
-        rei_errors = validate_company_for_authority(db, selected_company, "REI")
-        reop_errors = validate_company_for_authority(db, selected_company, "REOP")
-    pending = sum(item.status in {"Borrador", "Validado", "Exportado", "Observado"} for item in events)
-    overdue = sum(bool(item.due_date and item.due_date < date.today() and item.status not in {"Presentado", "Aceptado", "Anulado"}) for item in events)
-    return render(
-        request,
-        "compliance.html",
-        db,
-        user,
-        companies=companies,
-        selected_company=selected_company,
-        company_profile=company_profile,
-        branches=branches,
-        branch_profiles=branch_profiles,
-        employees=employees,
-        employee_profiles=employee_profiles,
-        events=events,
-        batches=batches,
-        batch_receipt_available=batch_receipt_available,
-        authority_filter=authority.upper(),
-        rei_errors=rei_errors,
-        reop_errors=reop_errors,
-        pending=pending,
-        overdue=overdue,
-        rei_event_types=sorted(REI_EVENT_TYPES),
-        reop_event_types=sorted(REOP_EVENT_TYPES),
-        official_sources=OFFICIAL_SOURCES,
-        direct_rei=settings.rei_direct_enabled,
-        direct_reop=settings.reop_direct_enabled,
-        storage_backend=settings.storage_backend,
-        compliance_status_transitions={key: sorted(value) for key, value in COMPLIANCE_STATUS_TRANSITIONS.items()},
-        integration_batch_transitions={key: sorted(value) for key, value in INTEGRATION_BATCH_STATUS_TRANSITIONS.items()},
-        compliance_dual_approval=settings.compliance_dual_approval,
+    companies = seed_choices(
+        db, select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name, Company.id),
+        Company, request=request,
+    ) if company_ids else []
+    company = company_allowed(db, user, company_id) if company_id else (companies[0] if companies else None)
+    authority = authority.upper()
+    authority = authority if authority in OFFICIAL_PORTALS else ""
+    tab = tab if tab in {"communications", "profiles", "batches", "controls"} else "communications"
+    page_size = normalize_page_size(page_size, default=25)
+    today = current_paraguay_date()
+
+    context = {
+        "companies": companies,
+        "selected_company": company,
+        "authority_filter": authority,
+        "active_tab": tab,
+        "today": today,
+        "official_sources": OFFICIAL_SOURCES,
+        "official_portals": OFFICIAL_PORTALS,
+        "compliance_dual_approval": settings.compliance_dual_approval,
+        "report_year": year if year is not None and 2000 <= year <= today.year else today.year - 1,
+    }
+    if not company:
+        return render(request, "compliance.html", db, user, **context)
+
+    company_profile = db.scalar(select(CompanyComplianceProfile).where(CompanyComplianceProfile.company_id == company.id))
+    event_scope = ComplianceEvent.company_id == company.id
+    is_overdue = (
+        (ComplianceEvent.due_date < today)
+        & ComplianceEvent.status.in_(PENDING_COMPLIANCE_STATUSES)
     )
+    totals = db.execute(
+        select(
+            ComplianceEvent.authority, ComplianceEvent.status, func.count(),
+            func.count(case((is_overdue, 1))),
+        ).where(event_scope).group_by(ComplianceEvent.authority, ComplianceEvent.status)
+    ).all()
+    scoped_totals = [row for row in totals if not authority or row.authority == authority]
+    context.update(
+        company_profile=company_profile,
+        profile_issues={system: company_profile_issues(company, company_profile, system) for system in OFFICIAL_PORTALS},
+        ready_counts={system: sum(row[2] for row in totals if row.authority == system and row.status == "Validado")
+                      for system in OFFICIAL_PORTALS},
+        pending=sum(row[2] for row in scoped_totals if row.status in PENDING_COMPLIANCE_STATUSES),
+        overdue=sum(row[3] for row in scoped_totals),
+        review_count=sum(row[2] for row in scoped_totals if row.status in {"Observado", "Rechazado"}),
+    )
+    pager_filters = {"company_id": company.id, "authority": authority, "tab": tab}
+
+    if tab == "communications":
+        status_options = ("Pendientes", "Vencidas", "Por corregir", *COMPLIANCE_STATUS_TRANSITIONS)
+        status = status if status in status_options else ""
+        filters = [event_scope]
+        if authority:
+            filters.append(ComplianceEvent.authority == authority)
+        if event_id:
+            filters.append(ComplianceEvent.id == event_id)
+        if status == "Vencidas":
+            filters.append(is_overdue)
+        elif status == "Pendientes":
+            filters.append(ComplianceEvent.status.in_(PENDING_COMPLIANCE_STATUSES))
+        elif status == "Por corregir":
+            filters.append(ComplianceEvent.status.in_(("Observado", "Rechazado")))
+        elif status:
+            filters.append(ComplianceEvent.status == status)
+        pager = Pagination("/app/compliance", db.scalar(select(func.count()).where(*filters)), page, page_size, {
+            **pager_filters, "status": status, "event_id": event_id,
+        })
+        events = list(db.scalars(
+            select(ComplianceEvent).where(*filters)
+            .options(selectinload(ComplianceEvent.employee), selectinload(ComplianceEvent.branch))
+            .order_by(case((is_overdue, 0), else_=1), ComplianceEvent.created_at.desc(), ComplianceEvent.id.desc())
+            .limit(pager.page_size).offset(pager.offset)
+        ))
+        event_ids = [event.id for event in events]
+        last_batch_ids = dict(db.execute(
+            select(IntegrationBatchItem.compliance_event_id, func.max(IntegrationBatchItem.batch_id))
+            .join(IntegrationBatch, IntegrationBatch.id == IntegrationBatchItem.batch_id)
+            .where(IntegrationBatch.company_id == company.id, IntegrationBatchItem.compliance_event_id.in_(event_ids))
+            .group_by(IntegrationBatchItem.compliance_event_id)
+        ).all()) if event_ids else {}
+        employee_options = seed_choices(db, select(Employee).where(
+            Employee.company_id == company.id, Employee.status == "Activo",
+        ).order_by(Employee.full_name, Employee.id), Employee)
+        context.update(
+            events=events, event_data={event.id: json_dict(event.payload_json) for event in events},
+            pager=pager, status_filter=status, status_options=status_options, employee_options=employee_options,
+            rei_event_types=sorted(REI_EVENT_TYPES), reop_event_types=sorted(REOP_EVENT_TYPES),
+            compliance_status_transitions=COMPLIANCE_STATUS_TRANSITIONS,
+            pending_statuses=PENDING_COMPLIANCE_STATUSES,
+            selected_event_id=event_id,
+            last_batch_ids=last_batch_ids,
+        )
+    elif tab == "profiles":
+        branches = list(db.scalars(select(Branch).where(Branch.company_id == company.id).order_by(Branch.name)))
+        branch_profiles = {
+            profile.branch_id: profile for profile in db.scalars(select(BranchComplianceProfile)
+                .join(Branch, Branch.id == BranchComplianceProfile.branch_id).where(Branch.company_id == company.id))
+        }
+        employee_scope = Employee.company_id == company.id
+        employee_query = select(Employee).where(employee_scope).order_by(Employee.full_name, Employee.id)
+        employee_options = seed_choices(db, employee_query.where(Employee.status == "Activo"), Employee, request=request)
+        employee_filter = next((employee for employee in employee_options if employee.id == employee_id), None)
+        if employee_id is not None and not employee_filter:
+            raise HTTPException(404, "El funcionario activo no pertenece a la empresa seleccionada.")
+        if employee_filter:
+            employee_scope &= Employee.id == employee_filter.id
+        pager = Pagination("/app/compliance", db.scalar(select(func.count()).where(employee_scope)), page, page_size, {
+            **pager_filters, "employee_id": employee_id,
+        })
+        employees = list(db.scalars(employee_query.where(employee_scope).limit(pager.page_size).offset(pager.offset)))
+        employee_profiles = {
+            profile.employee_id: profile for profile in db.scalars(select(EmployeeComplianceProfile).where(
+                EmployeeComplianceProfile.employee_id.in_([employee.id for employee in employees])
+            ))
+        } if employees else {}
+        context.update(
+            branches=branches, branch_profiles=branch_profiles, employees=employees, employee_profiles=employee_profiles,
+            employee_options=employee_options, employee_filter=employee_filter, pager=pager,
+        )
+    elif tab == "batches":
+        status = status if status in INTEGRATION_BATCH_STATUS_TRANSITIONS else ""
+        filters = [IntegrationBatch.company_id == company.id]
+        if authority:
+            filters.append(IntegrationBatch.authority == authority)
+        if status:
+            filters.append(IntegrationBatch.status == status)
+        if batch_id:
+            filters.append(IntegrationBatch.id == batch_id)
+        pager = Pagination("/app/compliance", db.scalar(select(func.count()).where(*filters)), page, page_size, {
+            **pager_filters, "status": status, "batch_id": batch_id,
+        })
+        rows = db.execute(
+            select(IntegrationBatch, IntegrationBatch.receipt_bytes.is_not(None)).where(*filters)
+            .options(defer(IntegrationBatch.file_bytes), defer(IntegrationBatch.receipt_bytes))
+            .order_by(IntegrationBatch.created_at.desc(), IntegrationBatch.id.desc())
+            .limit(pager.page_size).offset(pager.offset)
+        ).all()
+        batches = [batch for batch, _ in rows]
+        batch_ids = [batch.id for batch in batches]
+        legacy_receipts = set(db.scalars(select(ComplianceEvent.batch_id).where(
+            ComplianceEvent.company_id == company.id, ComplianceEvent.batch_id.in_(batch_ids),
+            ComplianceEvent.receipt_storage_key != "",
+        ))) if batch_ids else set()
+        batch_receipts = {
+            batch.id for batch, stored in rows
+            if stored or batch.receipt_storage_key or batch.id in legacy_receipts
+        }
+        salary_retry_urls = {}
+        for batch in batches:
+            if batch.batch_type != "Importación de salarios" or batch.status not in {"Observado", "Rechazado"}:
+                continue
+            payload = json_dict(batch.payload_json)
+            params = {
+                "company_id": company.id, "period": batch.period, "authority": batch.authority,
+                "employee_id": payload.get("employee_scope_id"), "source_type": payload.get("source_type"),
+                **{key: payload.get(key) for key in ("payment_code", "other_category", "name_order", "rei_category")},
+            }
+            salary_retry_urls[batch.id] = "/app/compliance/salary-import?" + urlencode({
+                key: value for key, value in params.items() if value
+            })
+        context.update(
+            batches=batches, batch_receipts=batch_receipts, selected_batch_id=batch_id,
+            salary_retry_urls=salary_retry_urls,
+            pager=pager, status_filter=status, status_options=tuple(INTEGRATION_BATCH_STATUS_TRANSITIONS),
+            integration_batch_transitions=INTEGRATION_BATCH_STATUS_TRANSITIONS,
+        )
+    return render(request, "compliance.html", db, user, **context)
 
 
 @app.post("/app/compliance/company-profile")
@@ -10167,7 +10242,7 @@ def update_company_compliance_profile(
         profile.reop_last_verified_at = datetime.now(UTC)
     write_audit(db, user, "actualizar", "perfil_cumplimiento_empresa", str(company.id))
     db.commit()
-    return RedirectResponse(f"/app/compliance?company_id={company.id}&saved=company", status_code=303)
+    return RedirectResponse(f"/app/compliance?company_id={company.id}&tab=profiles&saved=company", status_code=303)
 
 
 @app.post("/app/compliance/branch-profile")
@@ -10207,7 +10282,7 @@ def update_branch_compliance_profile(
     profile.reop_status = reop_status if reop_status in {"Pendiente", "Verificado", "Observado"} else "Pendiente"
     write_audit(db, user, "actualizar", "perfil_cumplimiento_sucursal", str(branch.id), branch.name)
     db.commit()
-    return RedirectResponse(f"/app/compliance?company_id={company.id}&saved=branch", status_code=303)
+    return RedirectResponse(f"/app/compliance?company_id={company.id}&tab=profiles&saved=branch", status_code=303)
 
 
 @app.post("/app/compliance/employee-profile")
@@ -10263,7 +10338,7 @@ def update_employee_compliance_profile(
     employee.updated_by = user.email
     write_audit(db, user, "actualizar", "perfil_cumplimiento_funcionario", str(employee.id))
     db.commit()
-    return RedirectResponse(f"/app/compliance?company_id={company.id}&saved=employee", status_code=303)
+    return RedirectResponse(f"/app/compliance?company_id={company.id}&tab=profiles&saved=employee", status_code=303)
 
 
 @app.post("/app/compliance/events")
@@ -10272,7 +10347,7 @@ def add_compliance_event(
     employee_id: Annotated[str, Form()] = "",
     authority: Annotated[str, Form()] = "REOP",
     event_type: Annotated[str, Form()] = "Entrada",
-    event_date: Annotated[date, Form()] = date.today(),
+    event_date: Annotated[date | None, Form()] = None,
     due_date: Annotated[str, Form()] = "",
     detail: Annotated[str, Form()] = "",
     notes: Annotated[str, Form()] = "",
@@ -10280,6 +10355,7 @@ def add_compliance_event(
     db: Session = Depends(get_db),
 ):
     company = company_allowed(db, user, company_id)
+    event_date = event_date or current_paraguay_date()
     parsed_employee_id = optional_int(employee_id, field="funcionario")
     selected_employee = None
     if parsed_employee_id:
@@ -10311,7 +10387,37 @@ def add_compliance_event(
     db.flush()
     write_audit(db, user, "crear", "comunicacion_oficial", str(event.id), f"{event.authority} · {event.event_type}")
     db.commit()
-    return RedirectResponse(f"/app/compliance?company_id={company.id}&created=1", status_code=303)
+    return RedirectResponse(f"/app/compliance?company_id={company.id}&authority={event.authority}&event_id={event.id}&created=1", status_code=303)
+
+
+@app.post("/app/compliance/events/{event_id}/details")
+def edit_compliance_event(
+    event_id: int,
+    due_date: Annotated[str, Form()] = "",
+    detail: Annotated[str, Form()] = "",
+    notes: Annotated[str, Form()] = "",
+    user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
+    db: Session = Depends(get_db),
+):
+    event = db.get(ComplianceEvent, event_id, with_for_update=True)
+    if not event or event.company_id not in company_ids_for_user(db, user):
+        raise HTTPException(404)
+    if event.status != "Borrador" or event.batch_id:
+        raise HTTPException(409, "La comunicación debe estar en borrador para corregir sus datos.")
+    parsed_due = _parse_optional_form_date(due_date, "fecha límite")
+    if parsed_due and parsed_due < event.event_date:
+        raise HTTPException(400, "La fecha límite no puede ser anterior a la fecha del evento.")
+    event.due_date = parsed_due
+    payload = json_dict(event.payload_json)
+    payload["detail"] = clean_text(detail, max_length=4000)
+    payload["notes"] = clean_text(notes, max_length=2000)
+    event.payload_json = json.dumps(payload, ensure_ascii=False)
+    write_audit(db, user, "actualizar", "comunicacion_oficial", str(event.id))
+    db.commit()
+    return RedirectResponse(
+        f"/app/compliance?company_id={event.company_id}&authority={event.authority}&event_id={event.id}&saved=event",
+        status_code=303,
+    )
 
 
 @app.post("/app/compliance/events/{event_id}/status")
@@ -10322,11 +10428,10 @@ def update_compliance_event_status(
     user: User = Depends(require_roles("administrador", "contador")),
     db: Session = Depends(get_db),
 ):
-    event = db.get(ComplianceEvent, event_id)
+    event = db.get(ComplianceEvent, event_id, with_for_update=True)
     if not event or event.company_id not in company_ids_for_user(db, user):
         raise HTTPException(404)
-    allowed = {"Borrador", "Validado", "Exportado", "Presentado", "Aceptado", "Observado", "Rechazado", "Anulado"}
-    if status_value not in allowed:
+    if status_value not in COMPLIANCE_STATUS_TRANSITIONS:
         raise HTTPException(400, "Estado inválido.")
     if event.batch_id:
         raise HTTPException(409, "Esta comunicación pertenece a un lote. Actualizá su presentación y comprobante desde «Lotes y comprobantes».")
@@ -10340,21 +10445,32 @@ def update_compliance_event_status(
     if status_value in {"Presentado", "Aceptado", "Observado", "Rechazado"} and not reference_value:
         raise HTTPException(400, "Registrá la referencia del portal o el comprobante en el lote antes de actualizar el resultado.")
     previous_status = event.status
+    previous_reference = event.external_reference
     event.status = status_value
     event.external_reference = reference_value
+    if status_value == "Borrador" and previous_status != "Borrador":
+        event.external_reference = ""
+        event.submitted_at = None
+        event.approved_by = ""
     if status_value == "Validado":
         event.approved_by = user.email
     if status_value == "Presentado" and previous_status != "Presentado":
         event.submitted_at = datetime.now(UTC)
     if status_value == "Aceptado" and previous_status != "Aceptado":
         event.approved_by = user.email
-    write_audit(db, user, "cambiar_estado", "comunicacion_oficial", str(event.id), status_value)
+    audit_detail = f"{previous_status} → {status_value}"
+    if previous_reference or event.external_reference:
+        audit_detail += f" · Ref. {event.external_reference or previous_reference}"
+    write_audit(db, user, "cambiar_estado", "comunicacion_oficial", str(event.id), audit_detail)
     db.commit()
-    return RedirectResponse(f"/app/compliance?company_id={event.company_id}&status_updated=1", status_code=303)
+    return RedirectResponse(
+        f"/app/compliance?company_id={event.company_id}&authority={event.authority}&event_id={event.id}&status_updated=1",
+        status_code=303,
+    )
 
 
 @app.get("/app/compliance/export/events.xlsx")
-def export_compliance_events(
+def show_compliance_export(
     company_id: int,
     authority: str,
     user: User = Depends(require_roles("administrador", "contador")),
@@ -10362,11 +10478,25 @@ def export_compliance_events(
 ):
     company = company_allowed(db, user, company_id)
     authority = authority.upper()
-    if authority not in {"REI", "REOP"}:
+    if authority not in OFFICIAL_PORTALS:
         raise HTTPException(400, "Sistema inválido.")
-    validation_errors = validate_company_for_authority(db, company, authority)
-    if validation_errors:
-        return RedirectResponse(f"/app/compliance?company_id={company.id}&validation_block={authority}", status_code=303)
+    return RedirectResponse(
+        f"/app/compliance?company_id={company.id}&authority={authority}&status=Validado#exportar-comunicaciones",
+        status_code=303,
+    )
+
+
+@app.post("/app/compliance/export/events.xlsx")
+def export_compliance_events(
+    company_id: Annotated[int, Form()],
+    authority: Annotated[str, Form()],
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    company = company_allowed(db, user, company_id)
+    authority = authority.upper()
+    if authority not in OFFICIAL_PORTALS:
+        raise HTTPException(400, "Sistema inválido.")
     events = list(
         db.scalars(
             select(ComplianceEvent)
@@ -10374,34 +10504,39 @@ def export_compliance_events(
                 ComplianceEvent.company_id == company.id,
                 ComplianceEvent.authority == authority,
                 ComplianceEvent.status == "Validado",
+                ComplianceEvent.batch_id.is_(None),
             )
-            .order_by(ComplianceEvent.event_date, ComplianceEvent.id)
+            .order_by(ComplianceEvent.id)
+            .with_for_update()
         )
     )
     if not events:
         return RedirectResponse(f"/app/compliance?company_id={company.id}&empty_export=1", status_code=303)
-    content = build_event_workbook(db, company, authority, events)
+    try:
+        content = build_event_workbook(db, company, authority, events, validate=True)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
     batch = register_batch(
         db,
         company=company,
         authority=authority,
         batch_type="Comunicaciones",
-        period=date.today().isoformat(),
+        period=current_paraguay_date().isoformat(),
         content=content,
         created_by=user.email,
         events=events,
     )
-    key = f"integrations/{company.id}/{batch.file_name}"
+    batch.file_name = f"{authority.lower()}_comunicaciones_{batch.period}_lote-{batch.id}.xlsx"
+    key = f"integrations/{company.id}/communications/{batch.file_name}"
     storage.put(key, content, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     batch.storage_key = key
     # The configured local backend is not a durable file store on Render free.
     batch.file_bytes = content if settings.storage_backend == "local" else None
     write_audit(db, user, "exportar", "lote_integracion", str(batch.id), f"{authority} · {len(events)} registros")
     db.commit()
-    return StreamingResponse(
-        io.BytesIO(content),
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="{batch.file_name}"'},
+    return RedirectResponse(
+        f"/app/compliance?company_id={company.id}&tab=batches&batch_id={batch.id}&created_batch=1",
+        status_code=303,
     )
 
 
@@ -10521,6 +10656,7 @@ def salary_import_page(
     return render(
         request, "salary_import.html", db, user, companies=companies,
         selected_company=company, period=period, authority=authority,
+        official_portal=OFFICIAL_PORTALS[authority], official_source=OFFICIAL_SOURCES[authority],
         payment_code=payment_code, other_category=other_category,
         rei_category=rei_category, name_order=name_order, preview=preview,
         item_count=len(rows), errors=errors,
@@ -10716,6 +10852,7 @@ def salary_import_export(
         "payment_code": payment_code if authority == "REOP" else None,
         "other_category": other_category if authority == "REOP" else None,
         "name_order": name_order if authority == "REI" else None,
+        "rei_category": rei_category if authority == "REI" else None,
         "status_note": "Exportación local para revisión; no presentación oficial.",
     }, ensure_ascii=False)
     key = f"integrations/{company.id}/salary-import/batch-{batch.id}.{extension}"
@@ -10730,44 +10867,56 @@ def salary_import_export(
     return Response(
         content=content, media_type=media,
         headers={"Content-Disposition": f'attachment; filename="{file_name}"',
-                 "Cache-Control": "no-store"},
+                 "Cache-Control": "no-store", "X-Integration-Batch-Id": str(batch.id)},
     )
 
 
 @app.get("/app/compliance/export/reop-annual.xlsx")
-def export_reop_annual(
+def show_reop_annual_export(
     company_id: int,
-    year: int = date.today().year,
+    year: int | None = None,
     user: User = Depends(require_roles("administrador", "contador")),
     db: Session = Depends(get_db),
 ):
     company = company_allowed(db, user, company_id)
-    validation_errors = validate_company_for_authority(db, company, "REOP")
-    if validation_errors:
-        return RedirectResponse(f"/app/compliance?company_id={company.id}&validation_block=REOP", status_code=303)
-    year = max(2000, min(year, date.today().year + 1))
+    suffix = f"&year={year}" if year is not None else ""
+    return RedirectResponse(
+        f"/app/compliance?company_id={company.id}&tab=controls{suffix}#resumen-anual",
+        status_code=303,
+    )
+
+
+@app.post("/app/compliance/export/reop-annual.xlsx")
+def export_reop_annual(
+    company_id: Annotated[int, Form()],
+    year: Annotated[int, Form()],
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    company = company_allowed(db, user, company_id)
+    if not 2000 <= year <= current_paraguay_date().year:
+        raise HTTPException(400, "Seleccioná un ejercicio válido.")
     content = build_reop_annual_workbook(db, company, year)
     batch = register_batch(
         db,
         company=company,
         authority="REOP",
-        batch_type="Planillas anuales",
+        batch_type="Resumen anual interno",
         period=str(year),
         content=content,
         created_by=user.email,
     )
-    batch.file_name = f"reop_planillas_{company.ruc}_{year}.xlsx".replace("/", "-")
-    key = f"integrations/{company.id}/{batch.file_name}"
+    batch.file_name = f"resumen_laboral_{year}_lote-{batch.id}.xlsx"
+    key = f"integrations/{company.id}/annual/{batch.file_name}"
     storage.put(key, content, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     batch.storage_key = key
     # The configured local backend is not a durable file store on Render free.
     batch.file_bytes = content if settings.storage_backend == "local" else None
-    write_audit(db, user, "exportar", "planillas_reop", str(batch.id), str(year))
+    write_audit(db, user, "exportar", "resumen_laboral_anual", str(batch.id), str(year))
     db.commit()
-    return StreamingResponse(
-        io.BytesIO(content),
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="{batch.file_name}"'},
+    return RedirectResponse(
+        f"/app/compliance?company_id={company.id}&tab=batches&batch_id={batch.id}&created_batch=1",
+        status_code=303,
     )
 
 
@@ -10790,12 +10939,15 @@ def download_integration_batch(
         if not batch.storage_key or root not in candidate.parents or not candidate.is_file():
             raise HTTPException(404, "El archivo del lote no está disponible.")
         content = candidate.read_bytes()
+    if batch.file_sha256 and hashlib.sha256(content).hexdigest() != batch.file_sha256:
+        raise HTTPException(409, "El archivo almacenado difiere de la huella registrada para este lote.")
     write_audit(db, user, "descargar", "lote_integracion", str(batch.id), batch.file_name)
     db.commit()
     return StreamingResponse(
         io.BytesIO(content),
         media_type=("text/plain; charset=windows-1252" if batch.file_name.lower().endswith(".txt") else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
-        headers={"Content-Disposition": f'attachment; filename="{batch.file_name}"'},
+        headers={"Content-Disposition": f'attachment; filename="{safe_filename(batch.file_name)}"',
+                 "Cache-Control": "no-store"},
     )
 
 
@@ -10805,15 +10957,18 @@ async def upload_integration_receipt(
     status_value: Annotated[str, Form(alias="status")] = "Presentado",
     external_reference: Annotated[str, Form()] = "",
     result_detail: Annotated[str, Form()] = "",
+    return_to_center: Annotated[str, Form()] = "",
     receipt: UploadFile | None = File(None),
     user: User = Depends(require_roles("administrador", "contador")),
     db: Session = Depends(get_db),
 ):
-    batch = db.get(IntegrationBatch, batch_id)
+    batch = db.get(IntegrationBatch, batch_id, with_for_update=True)
     if not batch or batch.company_id not in company_ids_for_user(db, user):
         raise HTTPException(404)
     if status_value not in {"Presentado", "Aceptado", "Observado", "Rechazado"}:
         raise HTTPException(400, "Estado inválido.")
+    if batch.batch_type == "Resumen anual interno":
+        raise HTTPException(409, "El resumen anual interno se archiva en Digit Laboral. Los libros oficiales se confirman en REOP.")
     if status_value not in INTEGRATION_BATCH_STATUS_TRANSITIONS.get(batch.status, set()):
         raise HTTPException(409, f"No se puede cambiar el lote de {batch.status} a {status_value}.")
     reference_value = clean_text(external_reference, max_length=160) or batch.external_reference
@@ -10837,9 +10992,16 @@ async def upload_integration_receipt(
         signature, extension = signatures[content_type]
         if not content.startswith(signature):
             raise HTTPException(415, "El contenido no corresponde al tipo de comprobante declarado.")
-    if not reference_value and content is None:
+    linked_events = list(db.scalars(
+        select(ComplianceEvent).where(ComplianceEvent.batch_id == batch.id, ComplianceEvent.company_id == batch.company_id)
+        .order_by(ComplianceEvent.id).with_for_update()
+    ))
+    has_receipt = bool(
+        batch.receipt_storage_key or batch.receipt_bytes is not None or
+        any(event.receipt_storage_key for event in linked_events)
+    )
+    if not reference_value and content is None and not has_receipt:
         raise HTTPException(400, "Registrá la referencia del portal o adjuntá el comprobante.")
-    linked_events = list(db.scalars(select(ComplianceEvent).where(ComplianceEvent.batch_id == batch.id)))
     for event in linked_events:
         if not can_transition_compliance_status(event.status, status_value):
             raise HTTPException(409, f"La comunicación #{event.id} no admite el cambio de estado solicitado.")
@@ -10847,16 +11009,13 @@ async def upload_integration_receipt(
     receipt_key = ""
     if content is not None:
         receipt_key = f"integrations/{batch.company_id}/receipts/batch-{batch.id}.{extension}"
-        # Store first; only remove previous formats after the new upload succeeds.
+        if has_receipt:
+            receipt_key = f"integrations/{batch.company_id}/receipts/batch-{batch.id}-{hashlib.sha256(content).hexdigest()}.{extension}"
         storage.put(receipt_key, content, content_type)
         batch.receipt_storage_key = receipt_key
         batch.receipt_bytes = content if settings.storage_backend == "local" else None
         batch.receipt_content_type = content_type
         batch.receipt_file_name = safe_filename(receipt.filename or f"comprobante-lote-{batch.id}.{extension}")
-        for old_extension in ("pdf", "png", "jpg"):
-            old_key = f"integrations/{batch.company_id}/receipts/batch-{batch.id}.{old_extension}"
-            if old_key != receipt_key and storage.exists(old_key):
-                storage.delete(old_key)
 
     previous_batch_status = batch.status
     now = datetime.now(UTC)
@@ -10864,7 +11023,7 @@ async def upload_integration_receipt(
     batch.external_reference = reference_value
     clean_result_detail = clean_text(result_detail, max_length=3000)
     if status_value in {"Observado", "Rechazado"}:
-        batch.error_message = clean_result_detail or "El resultado de REOP requiere revisión; registrá el detalle y corregí el siguiente intento."
+        batch.error_message = clean_result_detail or batch.error_message or f"Revisá el resultado en {batch.authority} antes de preparar un nuevo intento."
     elif status_value in {"Presentado", "Aceptado"}:
         batch.error_message = ""
     if status_value == "Presentado" and previous_batch_status != "Presentado":
@@ -10886,12 +11045,46 @@ async def upload_integration_receipt(
         audit_detail += f" · {clean_result_detail[:500]}"
     write_audit(db, user, "registrar", "comprobante_integracion", str(batch.id), audit_detail)
     db.commit()
-    if batch.calculation_record_id:
+    if batch.calculation_record_id and return_to_center != "si":
         return RedirectResponse(
             f"/app/reports/liquidaciones-salarios/{batch.calculation_record_id}?reop_batch={batch.id}&receipt=1",
             status_code=303,
         )
-    return RedirectResponse(f"/app/compliance?company_id={batch.company_id}&receipt=1", status_code=303)
+    return RedirectResponse(
+        f"/app/compliance?company_id={batch.company_id}&tab=batches&batch_id={batch.id}&receipt=1",
+        status_code=303,
+    )
+
+
+@app.post("/app/compliance/events/{event_id}/retry")
+def retry_compliance_event(
+    event_id: int,
+    batch_id: Annotated[int, Form()],
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    batch = db.get(IntegrationBatch, batch_id, with_for_update=True)
+    if not batch or batch.company_id not in company_ids_for_user(db, user):
+        raise HTTPException(404)
+    event = db.get(ComplianceEvent, event_id, with_for_update=True)
+    if not event or event.company_id != batch.company_id or event.batch_id != batch.id:
+        raise HTTPException(404)
+    if batch.status not in {"Observado", "Rechazado"} or event.status != batch.status:
+        raise HTTPException(409, "Solo se puede corregir una comunicación de un lote observado o rechazado.")
+    if event.receipt_storage_key and not batch.receipt_storage_key:
+        batch.receipt_storage_key = event.receipt_storage_key
+    event.batch_id = None
+    event.status = "Borrador"
+    event.external_reference = ""
+    event.receipt_storage_key = ""
+    event.submitted_at = None
+    event.approved_by = ""
+    write_audit(db, user, "reabrir", "comunicacion_oficial", str(event.id), f"Lote anterior #{batch.id} · {batch.status}")
+    db.commit()
+    return RedirectResponse(
+        f"/app/compliance?company_id={event.company_id}&authority={event.authority}&event_id={event.id}&reopened=1",
+        status_code=303,
+    )
 
 
 @app.get("/app/compliance/batches/{batch_id}/receipt")

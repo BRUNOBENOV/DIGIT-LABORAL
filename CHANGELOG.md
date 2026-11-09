@@ -1,3 +1,10 @@
+## 2.7.8 — Cumplimiento REOP y REI
+
+- Organiza comunicaciones, vencimientos, perfiles, archivos y comprobantes por empresa y organismo. Agrega filtros por estado y accesos a los portales oficiales.
+- Separa la planilla salarial del Excel de apoyo y del resumen anual interno. El resumen utiliza nóminas cerradas y deja vacíos los datos de asistencia que no se registraron.
+- Vincula la descarga salarial al lote, registra el resultado comunicado por el organismo y permite corregir comunicaciones observadas o rechazadas conservando sus lotes anteriores.
+- Verifica la huella de los archivos al descargarlos y solicita una acción autenticada para crear lotes. La presentación se realiza desde el portal oficial.
+
 ## 2.6.80 — Eliminación definitiva de funcionarios
 
 - Agrega la acción de borrado físico desde el listado y el expediente para administradores y contadores, con identificación del legajo, resumen de datos de ficha, motivo y frase de confirmación.
