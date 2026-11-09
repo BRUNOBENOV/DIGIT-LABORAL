@@ -93,9 +93,9 @@
               {% endif %}
             {% endif %}
           {% else %}
-            <a href="{{ row.url }}">Ver registro</a>
-            {% if row.label == 'Salario · MOV' and user.role in ['administrador', 'contador'] %}
-              <a href="{{ row.reconciliation_url }}" style="font-weight:700">{{ 'Ver conciliación' if row.status == 'Conciliado' else 'Ver validación' if row.status == 'Validado como antecedente' else 'Verificar vínculo' }}</a>
+            <a href="{{ row.url }}">Ver</a>
+            {% if row.label == 'Salario' and row.status == 'Aprobado' and row.employee %}
+              <a href="/app/compliance/salary-import?company_id={{ row.company.id }}&amp;period={{ row.period }}&amp;source_type=approved&amp;employee_id={{ row.employee.id }}">Exportar REOP / REI</a>
             {% endif %}
           {% endif %}
           </div>
