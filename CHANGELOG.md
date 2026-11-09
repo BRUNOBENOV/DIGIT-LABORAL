@@ -1,3 +1,8 @@
+## 2.7.10 — Carga asistida de salarios en REOP
+
+- Permite preparar la planilla salarial revisada y adjuntarla desde una extensión de Chrome en el formulario de REOP. Valida que el lote conserve los datos de la vista previa y corresponda a una sola patronal.
+- Conserva el Excel y su huella en el lote. La extensión mantiene una copia temporal, pide verificar la patronal y deja la confirmación en el portal oficial.
+
 ## 2.7.9 — Movimientos REI por lotes
 
 - Prepara CSV de entradas y salidas validadas según el modelo de la patronal, con asignación de columnas y vista previa antes de la descarga.

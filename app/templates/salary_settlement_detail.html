@@ -185,10 +185,13 @@
   <section class="salary-slip-reop-panel" aria-labelledby="salary-slip-reop-title">
     <header class="salary-slip-reop-head">
       <div><span class="eyebrow" style="font-size:.64rem;font-weight:900;letter-spacing:.13em;color:#557096">MTESS · REOP</span><h2 id="salary-slip-reop-title">Presentación oficial de la liquidación</h2><p>Preparación, control de envío y archivo del comprobante oficial vinculado a este cálculo.</p></div>
-      <span class="salary-slip-reop-badge">Conexión automática no habilitada</span>
+      <span class="salary-slip-reop-badge">Importación por Excel</span>
     </header>
     <div class="salary-slip-reop-body">
-      <p class="salary-slip-reop-note"><strong>Importante:</strong> la documentación pública consultada permite comunicar salarios de forma individual o mediante planillas Excel, y generar los recibos electrónicos dentro de REOP. No encontramos una especificación pública autorizada de API para transmisión directa desde aplicaciones de terceros. DIGIT-LABORAL no enviará credenciales al portal ni marcará una liquidación como aceptada sin una respuesta oficial. El archivo de apoyo no es una plantilla de importación del MTESS.</p>
+      <p class="salary-slip-reop-note">Para cargar salarios, prepará la planilla de importación y confirmá el resultado en REOP. Los intentos de esta sección guardan un archivo de apoyo interno y el comprobante que registres.</p>
+      {% if reop_can_manage and item.status in ['Aprobado','Validado'] and item.employee_id and item.reference_period %}
+      <a class="btn primary" href="/app/compliance/salary-import?company_id={{ item.company_id }}&amp;employee_id={{ item.employee_id }}&amp;period={{ item.reference_period }}&amp;authority=REOP&amp;source_type=approved">Preparar planilla salarial para REOP</a>
+      {% endif %}
       <nav class="salary-slip-reop-links" aria-label="Fuentes oficiales REOP">
         <a href="{{ reop_communications_url }}" target="_blank" rel="noopener noreferrer">Instrucciones oficiales de comunicaciones REOP ↗</a>
         <a href="{{ reop_forms_url }}" target="_blank" rel="noopener noreferrer">Modelos y estructura de planillas MTESS ↗</a>

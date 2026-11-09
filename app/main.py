@@ -10540,6 +10540,17 @@ def export_compliance_events(
     )
 
 
+@app.get("/app/compliance/reop-assistant.zip")
+def download_reop_assistant(user: User = Depends(require_roles("administrador", "contador"))):
+    from .reop_assistant import build_reop_assistant_zip
+
+    return Response(
+        content=build_reop_assistant_zip(), media_type="application/zip",
+        headers={"Content-Disposition": 'attachment; filename="digit-laboral-reop.zip"',
+                 "Cache-Control": "no-store"},
+    )
+
+
 @app.get("/app/compliance/salary-import", response_class=HTMLResponse)
 def salary_import_page(
     request: Request,
@@ -10561,6 +10572,7 @@ def salary_import_page(
         salary_source_summary, choose_salary_source, approved_salary_records,
         salary_excluded_records, approved_employee_choices, salary_export_employee_eligible,
     )
+    from .reop_assistant import REOP_ASSISTANT_ID, reop_assistant_patronal, reop_assistant_review
 
     ids = company_ids_for_user(db, user)
     companies = seed_choices(
@@ -10642,6 +10654,8 @@ def salary_import_page(
     else:
         preview_headers = ["N.º patronal", "Cédula", "Apellidos", "Nombres", "Categoría", "Jornadas", "Base IPS"]
         preview_rows = [[item[0], item[2], item[3], item[4], item[5], item[6], item[7]] for item in rows[:20]]
+    assistant_id = REOP_ASSISTANT_ID if authority == "REOP" and user.role in {"administrador", "contador"} else ""
+    assistant_patronal = reop_assistant_patronal(rows) if assistant_id and not errors else ""
     from .vacation_salary_link import vacation_links_for_period
     vacation_links = (
         vacation_links_for_period(
@@ -10666,6 +10680,8 @@ def salary_import_page(
         employee_id=employee_id, selected_employee=selected_employee,
         excluded_salary=excluded_salary, approved_choices=approved_choices,
         preview_headers=preview_headers, preview_rows=preview_rows,
+        reop_assistant_id=assistant_id, reop_assistant_patronal=assistant_patronal,
+        reop_assistant_review=reop_assistant_review(rows, excluded_salary, effective_source) if assistant_patronal else "",
         vacation_links=vacation_links,
     )
 
@@ -10785,17 +10801,22 @@ def salary_import_export(
     employee_id: Annotated[int | None, Form()] = None,
     confirmed: Annotated[str, Form()] = "",
     accept_partial: Annotated[str, Form()] = "",
+    delivery: Annotated[str, Form()] = "download",
+    reop_review: Annotated[str, Form()] = "",
     user: User = Depends(require_roles("administrador", "contador")),
     db: Session = Depends(get_db),
 ):
-    """Descarga auditada; nunca realiza envío directo a REOP o REI."""
+    """Entrega un archivo auditado para descargar o adjuntar desde Chrome."""
     from .official_salary_import import (
         MIME_REI, MIME_REOP, SalaryImportError, build_rei_txt,
         build_reop_xlsx, prepare_import,
     )
+    from .reop_assistant import REOP_ASSISTANT_MAX_BYTES, reop_assistant_patronal, reop_assistant_review
 
+    if delivery not in {"download", "reop-browser"} or (delivery == "reop-browser" and authority != "REOP"):
+        raise HTTPException(422, "Modo de entrega no válido para este organismo.")
     if confirmed != "si":
-        raise HTTPException(400, "Confirmá la revisión antes de descargar.")
+        raise HTTPException(400, "Confirmá la revisión antes de generar la planilla.")
     company = company_allowed(db, user, company_id)
     if employee_id is not None:
         chosen = db.get(Employee, employee_id)
@@ -10831,7 +10852,16 @@ def salary_import_export(
         )
     if authority == "REI" and name_order not in {"apellido_primero", "nombre_primero"}:
         raise HTTPException(409, "Se requiere confirmar el orden de nombres del REI.")
+    patronal = ""
+    if delivery == "reop-browser":
+        patronal = reop_assistant_patronal(rows)
+        if not patronal:
+            raise HTTPException(409, "La carga con Chrome requiere una sola patronal por lote.")
+        if reop_review != reop_assistant_review(rows, exclusions, effective_source):
+            raise HTTPException(409, "Los datos pueden haber cambiado. Volvé a pulsar «Verificar archivo» y revisá la planilla.")
     content = build_reop_xlsx(rows) if authority == "REOP" else build_rei_txt(rows)
+    if patronal and len(content) > REOP_ASSISTANT_MAX_BYTES:
+        raise HTTPException(413, "La planilla supera los 5 MB del asistente. Usá «Descargar Excel REOP».")
     media = MIME_REOP if authority == "REOP" else MIME_REI
     extension = "xlsx" if authority == "REOP" else "txt"
     safe_ruc = re.sub(r"[^A-Za-z0-9_-]+", "-", company.ruc or str(company.id))
@@ -10849,6 +10879,7 @@ def salary_import_export(
         "excluded_calculation_ids": [item["calculation_id"] for item in exclusions],
         "partial_export_confirmed": bool(exclusions),
         "format": "REOP-32-col-2025" if authority == "REOP" else "REI-txt-referencia-2016",
+        "delivery": delivery,
         "payment_code": payment_code if authority == "REOP" else None,
         "other_category": other_category if authority == "REOP" else None,
         "name_order": name_order if authority == "REI" else None,
@@ -10864,10 +10895,13 @@ def salary_import_export(
         f"{authority} · {period} · {len(rows)} empleados · SHA-256 {batch.file_sha256}",
     )
     db.commit()
+    headers = {"Content-Disposition": f'attachment; filename="{file_name}"',
+               "Cache-Control": "no-store", "X-Integration-Batch-Id": str(batch.id)}
+    if patronal:
+        headers.update({"X-REOP-Patronal": patronal, "X-REOP-Period": period,
+                        "X-REOP-Rows": str(len(rows)), "X-REOP-SHA256": batch.file_sha256})
     return Response(
-        content=content, media_type=media,
-        headers={"Content-Disposition": f'attachment; filename="{file_name}"',
-                 "Cache-Control": "no-store", "X-Integration-Batch-Id": str(batch.id)},
+        content=content, media_type=media, headers=headers,
     )
 
 
