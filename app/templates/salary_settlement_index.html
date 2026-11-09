@@ -41,18 +41,14 @@
 @media print{.salary-reports-hero,.salary-report-filters,.salary-report-pagination,.salary-report-help,.workspace-sidebar,.modern-topbar{display:none!important}.salary-report-table-shell{border:none}.salary-report-scroll{overflow:visible}.salary-report-table{min-width:0;font-size:8pt}.salary-report-table th,.salary-report-table td{padding:5px;color:#000!important}}
 </style>
 <section class="salary-reports-hero">
-  <div><span class="eyebrow">INFORMES · REMUNERACIONES</span><h1>Liquidaciones y recibos de salario</h1><p>Consultá las liquidaciones mensuales guardadas en DIGIT LABORAL, incluidas las incorporadas desde el sistema anterior. Este informe muestra registros y recibos; la comunicación oficial al MTESS se prepara desde REOP.</p></div>
+  <div><span class="eyebrow">INFORMES · REMUNERACIONES</span><h1>Liquidación de Salarios</h1><p>Consultá juntos los registros salariales de DIGIT LABORAL, incluidos los antecedentes ya incorporados al historial. Los recibos y PDF se emiten únicamente desde liquidaciones operativas que cuentan con sus datos completos.</p></div>
   <div class="salary-reports-count"><b>{{ total }}</b><span>registros encontrados</span></div>
 </section>
 {% if request.query_params.get('deleted') %}<div class="salary-report-notice" role="status"><strong>Carga eliminada:</strong> ya no figura entre los salarios operativos. Podés consultarla desde el filtro «Eliminado»; su trazabilidad permanece en auditoría.</div>{% endif %}
 {% if request.query_params.get('imported') is not none %}<div class="salary-report-notice" role="status"><strong>Movimientos históricos incorporados:</strong> {{ request.query_params.get('imported') }}. Omitidos por existir: {{ request.query_params.get('existing', '0') }}. Sin vínculo: {{ request.query_params.get('rejected', '0') }}. Conflictos: {{ request.query_params.get('conflicts', '0') }}. Los antecedentes están disponibles en esta misma lista.</div>{% endif %}
-<div class="salary-report-notice"><strong>Este módulo consulta y emite recibos internos.</strong> La planilla que se carga en REOP → Comunicaciones → Liquidación Salario se prepara en «Liquidación de salario · REOP». Los PDF de recibos se generan solamente cuando el registro tiene los datos necesarios y no equivalen al comprobante de presentación oficial.</div>
-<div style="display:flex;justify-content:flex-end;gap:10px;margin:9px 0 15px;flex-wrap:wrap">
-  <a class="btn primary" href="/app/compliance/salary-import?authority=REOP">Preparar Liquidación Salario · REOP</a>
-  <a class="btn outline" href="/app/compliance/salary-import?authority=REI">Declaración salarial · REI</a>
-  <details style="position:relative;min-width:185px"><summary class="btn outline" style="cursor:pointer;list-style:none">Auditoría e importaciones</summary>
-    <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px;padding:11px;border:1px solid #d7e2ef;border-radius:9px;background:#fff">
-  <a class="btn outline" href="/app/liquidaciones/salarios/importar-reop">Importar datos desde Excel REOP</a>
+<div class="salary-report-notice"><strong>Recibo de liquidación salarial con formato inspirado en MTESS.</strong> Se presentan los importes guardados por Cálculo sin volver a calcularlos. El PDF contiene Original y Duplicado con numeración DIGIT-LABORAL, sin QR. Es un documento interno, no un formulario oficial del MTESS ni constancia de pago.</div>
+<div style="display:flex;justify-content:flex-end;gap:10px;margin:9px 0 15px">
+  <a class="btn primary" href="/app/liquidaciones/salarios/importar-reop">Importar Excel REOP</a>
   <a class="btn outline" href="/app/import/historical-review">Auditar MOV / LIQ</a>
   {% if user.role in ['administrador','contador'] %}<a class="btn primary" href="/app/mov-conciliation">Conciliar MOV</a>{% endif %}
   {% if user.role in ['administrador','contador'] %}
@@ -67,8 +63,6 @@
     </form>
   </details>
   {% endif %}
-    </div>
-  </details>
   <a class="btn ghost" href="/app/reports/liquidaciones-salarios{{ '?' ~ history_toggle_query if history_toggle_query else '' }}">{{ 'Ocultar versiones anteriores' if show_superseded else 'Ver versiones anteriores' }}</a>
 </div>
 <form method="get" action="/app/reports/liquidaciones-salarios" id="salaryReportFilters" data-paginated-filters class="salary-report-filters">
@@ -140,7 +134,7 @@
           {% endfor %}
         </div>
       </details>
-      <span class="salary-report-sub"><a href="/app/compliance/salary-import?company_id={{ item.company.id }}&amp;period={{ item.reference_period }}&amp;employee_id={{ item.employee.id }}">Exportar REOP / REI</a></span>
+      <span class="salary-report-sub"><a href="/app/compliance/salary-import?company_id={{ item.company.id }}&amp;period={{ item.reference_period }}&amp;source_type=approved&amp;employee_id={{ item.employee.id }}">Exportar REOP / REI</a></span>
       <span class="salary-report-sub"><a href="/app/employee-history?company_id={{ item.employee.company_id }}&amp;employee_id={{ item.employee.id }}">Ver expediente</a></span>
     {% endif %}
   </td>
