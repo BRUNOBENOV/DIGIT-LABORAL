@@ -14,10 +14,10 @@ from types import SimpleNamespace
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .models import CalculationRecord, Employee, IntegrationBatch, Payroll, PayrollLine, SalaryImportDetail
+from .models import CalculationRecord, Employee, EmployeeEvent, IntegrationBatch, Payroll, PayrollLine, SalaryImportDetail
 
 
-from .salary_data import (SALARY_TYPES, APPROVED, select_salary_versions, calculation_fingerprint, merge_attendance)
+from .salary_data import (SALARY_TYPES, APPROVED, PENDING, select_salary_versions, calculation_fingerprint, merge_attendance)
 
 
 def salary_export_employee_eligible(employee: Employee, authority: str) -> bool:
@@ -85,15 +85,39 @@ def salary_source_summary(db: Session, company_id: int, period: str, employee_id
     for item in records:
         if item.employee_id is not None:
             newest.setdefault(item.employee_id, item)
+
+    # Imported MOV is part of the same salary history, not a separate workflow.
+    # It is selected only when this employee/month has no operative approval;
+    # an annulled operational record is never resurrected from older evidence.
+    mov_ids: set[int] = set()
+    if hasattr(db, "execute") and re.fullmatch(r"20\\d{2}-(0[1-9]|1[0-2])", period or ""):
+        from .legacy_salary_mov_import import EVENT_TYPE as MOV_EVENT_TYPE
+        for (worker,) in db.execute(
+            select(Employee).join(EmployeeEvent, EmployeeEvent.employee_id == Employee.id).where(
+                Employee.company_id == company_id,
+                EmployeeEvent.event_type == MOV_EVENT_TYPE,
+                EmployeeEvent.effective_date == date.fromisoformat(period + "-01"),
+                *([Employee.id == employee_id] if employee_id is not None else []),
+            ).distinct()
+        ):
+            if salary_export_employee_eligible(worker, authority):
+                mov_ids.add(worker.id)
+    native_approved = {eid for eid, item in latest.items() if item.status in APPROVED}
+    finalized = {eid for eid, item in latest.items() if item.status not in PENDING}
+    mov_fallback = mov_ids - finalized
+    eligible_ids = native_approved | mov_fallback
     return {
         "closed_payroll": bool(payroll and payroll.status == "Cerrada" and payroll.closed_at),
         "payroll_status": payroll.status if payroll else "No existe",
-        "approved": sum(x.status in APPROVED for x in latest.values()),
-        "pending": sum(x.status not in APPROVED for x in latest.values()),
+        "approved": len(eligible_ids),
+        "approved_native": len(native_approved),
+        "approved_mov": len(mov_fallback),
+        "pending": sum(eid not in eligible_ids and item.status not in APPROVED
+                       for eid, item in latest.items()),
         "drafts_in_progress": sum(newest[eid].id != item.id for eid, item in latest.items()),
-        "total": len(latest),
+        "total": len(set(latest) | mov_ids),
         "without_employee": sum(x.employee_id is None and x.status in APPROVED for x in records),
-        "approved_employee_ids": [eid for eid, item in latest.items() if item.status in APPROVED],
+        "approved_employee_ids": sorted(eligible_ids),
     }
 
 
@@ -101,6 +125,9 @@ def choose_salary_source(db: Session, company_id: int, period: str, requested: s
                          *, authority: str = "REOP") -> str:
     if requested not in {"auto", "payroll", "approved", "mov"}:
         raise ValueError("Seleccioná un origen de salarios válido.")
+    if requested == "mov":
+        # Compatibility for old bookmarks; no special source is required.
+        return "approved"
     if requested != "auto":
         return requested
     summary = salary_source_summary(db, company_id, period, employee_id=employee_id, authority=authority)
