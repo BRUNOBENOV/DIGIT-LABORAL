@@ -133,7 +133,10 @@ def mov_salary_records(
             issue.append("moneda original distinta de guaraníes; no se convierte automáticamente")
 
         gross = _whole(raw.get("SALARI"), "salario bruto SALARI", issue, required=True)
-        net_original = _whole(raw.get("SALARI1"), "SALARI1", issue, required=False)
+        # SALARI1 is an independent historical DOS amount, not proof of a
+        # net salary. The MTESS salary real / salary payable columns can both
+        # hold the gross salary: never subtract IPS to validate SALARI1.
+        secondary_salary = _whole(raw.get("SALARI1"), "SALARI1", issue, required=False)
         discount_ips = _whole(raw.get("DESIPS"), "aporte DESIPS", issue, required=True)
         discount_other = _whole(raw.get("DESOTR"), "otros descuentos DESOTR", issue)
         base_current = _whole(raw.get("SALACT"), "salario SALACT", issue)
@@ -148,8 +151,8 @@ def mov_salary_records(
             expected_net = gross - discount_ips - discount_other
             if expected_net < 0:
                 issue.append("los descuentos superan la remuneración original")
-            if net_original not in (None, 0) and net_original != expected_net:
-                issue.append("SALARI1 no coincide con SALARI menos descuentos; revisar significado de los campos")
+            # Keep SALARI1 for documentary comparison; do not reinterpret it
+            # as cash actually received or as net pay.
         # Only infer an IPS base when the ORIGINAL current salary and SALARI
         # coincide and the explicitly recorded DESIPS is exactly 9% of it.
         # Otherwise require an independently documented base.
@@ -171,7 +174,11 @@ def mov_salary_records(
         if days is not None and not 0 <= days <= 31:
             issue.append("días trabajados fuera del rango permitido")
         from_raw_hours = raw.get("HORASX")
-        h = supplement.hours_worked if supplement and supplement.hours_worked is not None else from_raw_hours
+        # In DOS, HORASX frequently contains a clock time (e.g. 11:54:58)
+        # rather than a duration. A clock time is NEVER working hours.
+        is_clock_time = isinstance(from_raw_hours, str) and ":" in from_raw_hours
+        h = (supplement.hours_worked if supplement and supplement.hours_worked is not None
+             else None if is_clock_time else from_raw_hours)
         try:
             hours = Decimal(str(h))
             if not hours.is_finite() or hours <= 0 or hours > 744:
@@ -179,17 +186,26 @@ def mov_salary_records(
         except (InvalidOperation, ValueError, TypeError):
             hours = Decimal(0)
             if authority == "REOP":
-                issue.append("faltan horas ordinarias efectivamente trabajadas HORASX (completá con respaldo)")
+                issue.append(
+                    "faltan horas ordinarias efectivamente trabajadas: "
+                    "HORASX registra una hora de reloj, no horas trabajadas; "
+                    "completá las horas con respaldo"
+                    if is_clock_time else
+                    "faltan horas ordinarias efectivamente trabajadas (completá con respaldo)"
+                )
         raw_basis = str(employee.payment_frequency or "").casefold()
         basis = supplement.pay_basis if supplement and supplement.pay_basis else (
             "monthly" if "mensual" in raw_basis else "daily" if "jornal" in raw_basis or "diari" in raw_basis else "")
-        if basis not in {"monthly", "daily"}:
-            issue.append("confirmá si el salario histórico era mensualizado o jornalero")
         days_paid = supplement.days_paid if supplement and supplement.days_paid is not None else None
         if days_paid is None and raw.get("DIATRA1") not in (None, ""):
             days_paid = _days(raw["DIATRA1"], "días remunerados DIATRA1", issue, maximum=31)
         if basis == "monthly" and days_paid is None:
-            issue.append("faltan días remunerados históricos DIATRA1 para el mensualizado")
+            issue.append("faltan días remunerados DIATRA1 para el mensualizado")
+        # If both possible regimes yield exactly the same declared days, the
+        # unknown historic modality does not alter these REOP/REI fields.
+        # When they differ, explicit documentary classification is needed.
+        if basis not in {"monthly", "daily"} and (days is None or days_paid is None or days_paid != days):
+            issue.append("confirmá si el salario histórico era mensualizado o jornalero: las jornadas declaradas difieren")
         if days_paid is not None and not 0 <= days_paid <= 31:
             issue.append("días remunerados fuera de rango")
         try:
@@ -232,7 +248,7 @@ def mov_salary_records(
             gross=gross, total_discounts=discount_ips + discount_other, net=expected_net,
         )
         detail = SimpleNamespace(
-            days_worked=days, days_reop=days_paid if basis == "monthly" else days,
+            days_worked=days, days_reop=days_paid if basis == "monthly" and days_paid is not None else days,
             days_rei=days_paid if days_paid is not None else days,
             hours_worked=hours, period_start=dstart, period_end=dend,
             payment_method={"1": "Efectivo", "2": "Cheque", "3": "Banco",
