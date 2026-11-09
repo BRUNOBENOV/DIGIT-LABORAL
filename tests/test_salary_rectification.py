@@ -9,11 +9,11 @@ from app.models import AuditLog, CalculationRecord
 from tests.test_labor_suite import salary, token, web_case
 
 
-def _save_salary(client, company, employee, *, salary_value="3500000", **extras):
+def _save_salary(client, company, employee, *, salary_value="3500000", month="2026-10", **extras):
     csrf = token(client, f"/app/liquidaciones?tipo=salary&company_id={company.id}&employee_id={employee.id}")
     data = salary(
         company_id=str(company.id), employee_id=str(employee.id), csrf_token=csrf,
-        month="2026-10", salary=salary_value, days_paid="30",
+        month=month, salary=salary_value, days_paid="30",
         days_worked="22", hours_worked="176",
         period_start="2026-10-01", period_end="2026-10-31", **extras,
     )
