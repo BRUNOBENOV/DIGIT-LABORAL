@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Conciliación histórica MOV y LIQ | DIGIT LABORAL{% endblock %}
+{% block page_name %}Auditoría de importaciones{% endblock %}
+{% block content %}
+<style>
+.legacy-review-hero{padding:22px 26px;border-radius:16px;background:#102c57;color:#fff;margin-bottom:17px}
+.legacy-review-hero h1{margin:6px 0 7px;color:#fff;font-size:1.7rem}
+.legacy-review-hero p{margin:0;max-width:850px;color:#d9e6fa;font-size:.9rem}
+.legacy-review-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.legacy-review-card{background:#fff;border:1px solid #dce6f0;border-radius:14px;padding:19px}
+.legacy-review-card h2{font-size:1.06rem;margin:0 0 6px;color:#17345d}
+.legacy-review-meta{color:#637593;font-size:.8rem;margin-bottom:16px}
+.legacy-review-metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.legacy-review-metric{padding:12px;background:#f4f8fd;border-radius:9px}
+.legacy-review-metric b{display:block;font-size:1.2rem;color:#19385d}
+.legacy-review-metric span{font-size:.75rem;color:#536680}
+.legacy-review-warning{margin-top:14px;padding:13px;background:#fff9ed;border-left:4px solid #b88329;border-radius:7px;font-size:.84rem;color:#6b4e20}
+.legacy-review-card a{color:#2258a0;font-weight:750}
+.legacy-review-footer{margin-top:16px;padding:17px;border-radius:12px;border:1px solid #dce6f0;background:#fff;color:#425875;line-height:1.6}
+@media(max-width:760px){.legacy-review-grid{grid-template-columns:1fr}}
+</style>
+<div class="legacy-review-hero"><div class="eyebrow">MANTENIMIENTOS · CONCILIACIÓN DE ORIGEN</div><h1>Auditoría de importaciones históricas</h1><p>Verificá los resultados de los últimos lotes MOV y LIQ registrados en tu estudio. Las importaciones anteriores se preservan como antecedentes y no equivalen a salarios pagados o liquidaciones aprobadas.</p></div>
+<div class="legacy-review-grid">
+{% for item in summaries %}
+  <section class="legacy-review-card">
+    <h2>{{ item.title }}</h2>
+    {% if item.date %}
+      <div class="legacy-review-meta">Última operación registrada: {{ item.date.strftime('%d/%m/%Y %H:%M') }} · resultado del lote, no del histórico completo</div>
+      <div class="legacy-review-metrics">
+        <div class="legacy-review-metric"><b>{{ item.imported if item.imported is not none else '—' }}</b><span>Antecedentes incorporados</span></div>
+        <div class="legacy-review-metric"><b>{{ item.already if item.already is not none else '—' }}</b><span>Ya incorporados</span></div>
+        <div class="legacy-review-metric"><b>{{ item.rejected if item.rejected is not none else '—' }}</b><span>Rechazados / sin vinculación única</span></div>
+        <div class="legacy-review-metric"><b>{{ item.conflicts if item.conflicts is not none else '—' }}</b><span>Conflictos de origen</span></div>
+        <div class="legacy-review-metric"><b>{{ item.warnings if item.warnings is not none else '—' }}</b><span>Filas con advertencias de origen</span></div>
+      </div>
+      <div class="legacy-review-warning">Los rechazados y conflictos no fueron incorporados. Las advertencias pueden corresponder a registros incorporados o excluidos y requieren revisión individual antes de utilizar sus importes para decisiones contables o jurídicas.</div>
+    {% else %}
+      <p class="legacy-review-meta">No se encontró una auditoría de importación de este tipo en el estudio actual.</p>
+    {% endif %}
+    <p><a href="{{ '/app/import/legacy-movements' if item.source == 'mov' else '/app/import/legacy-liquidations' }}">Reanalizar archivo original {{ item.source|upper }}</a></p>
+  </section>
+{% endfor %}
+</div>
+<div class="legacy-review-footer">
+  <strong>Alcance de la conciliación.</strong> El importador solo vincula empresas y legajos con coincidencia única. No completa, corrige ni inventa claves históricas ambiguas. Los originales rechazados no se conservan después de eliminar el archivo temporal; para obtener un listado individual y resolver esos casos hace falta reanalizar la planilla original. Las operaciones se auditan en cada estudio, con su referencia de origen, y nunca deben convertir antecedentes LIQ en pagos comprobados.
+</div>
+{% endblock %}
