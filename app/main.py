@@ -10610,6 +10610,11 @@ def salary_import_page(
             worker for worker in db.scalars(payroll_choice_query)
             if salary_export_employee_eligible(worker, authority)
         ]
+    elif company and effective_source == "mov":
+        from .historical_mov_salary_export import mov_employee_choices
+        approved_choices = mov_employee_choices(
+            db, company.id, period, authority=authority
+        )
     else:
         approved_choices = approved_employee_choices(
             db, company.id, period, authority=authority
@@ -10628,6 +10633,13 @@ def salary_import_page(
             row["employee_code"] = worker.employee_code if worker else None
             row["employee_name"] = worker.full_name if worker else "Registro no disponible"
     diagnostics = []
+    mov_diagnostics = []
+    if preview and effective_source == "mov":
+        from .historical_mov_salary_export import mov_salary_records
+        _mov_rows, _mov_errors, mov_diagnostics = mov_salary_records(
+            db, company, period, authority=authority, employee_id=employee_id,
+            payment_code=payment_code if authority == "REOP" else "",
+        )
     if preview and effective_source == "approved":
         _source_rows, _source_errors, diagnostics = approved_salary_records(
             db, company, period, authority=authority, employee_id=employee_id,
@@ -10674,9 +10686,10 @@ def salary_import_page(
         payment_code=payment_code, other_category=other_category,
         rei_category=rei_category, name_order=name_order, preview=preview,
         item_count=len(rows), errors=errors,
-        evaluated_count=(source_summary["total"] if effective_source == "approved" and source_summary else len(rows)),
+        evaluated_count=(source_summary["total"] if effective_source == "approved" and source_summary
+                         else len(mov_diagnostics) if effective_source == "mov" else len(rows)),
         source_type=source_type, effective_source=effective_source,
-        source_summary=source_summary, diagnostics=diagnostics,
+        source_summary=source_summary, diagnostics=diagnostics, mov_diagnostics=mov_diagnostics,
         employee_id=employee_id, selected_employee=selected_employee,
         excluded_salary=excluded_salary, approved_choices=approved_choices,
         preview_headers=preview_headers, preview_rows=preview_rows,
