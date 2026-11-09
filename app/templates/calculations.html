@@ -1,6 +1,8 @@
 {% extends "base.html" %}
 {% block title %}{{ calculation_module.title if calculation_module else "Módulo Cálculo" }} | Digit Laboral{% endblock %}
 {% block content %}
+{% if request.query_params.get('deleted') %}<div class="alert success" role="status">Carga eliminada de los cálculos vigentes. Se conserva en auditoría.</div>{% endif %}
+<style>.dl-calculation-delete[open] form{display:grid;gap:8px;padding:10px;min-width:190px;background:#fff;border:1px solid #dce5f1;border-radius:8px}.dl-calculation-delete textarea{max-width:260px;width:100%;display:block}</style>
 {% if active_calculation_type == "notice" %}<link rel="stylesheet" href="{{ url_for('static', path='notice-auto.css') }}?v={{ app_version }}">{% endif %}
 <div class="page-header calculations-header">
   <div><span class="eyebrow">{% if calculation_module %}{{ calculation_module.eyebrow }}{% else %}MÓDULO DE CÁLCULO{% endif %}</span><h1>{% if calculation_module %}{{ calculation_module.title }}{% else %}Cálculo laboral{% endif %}</h1><p>{% if calculation_module %}{{ calculation_module.description }}{% else %}Seleccioná uno de los 11 submódulos laborales. Cada área conserva sus registros, validaciones y trazabilidad.{% endif %}</p></div>
@@ -75,9 +77,20 @@
                 <select name="status" onchange="this.form.submit()">
                   <option {{ 'selected' if item.status == 'Revisar' }}>Revisar</option>
                   <option {{ 'selected' if item.status == 'Aprobado' }}>Aprobado</option>
-                  <option {{ 'selected' if item.status == 'Anulado' }}>Anulado</option>
+
                 </select>
               </form>
+              {% if item.status != 'Anulado' %}
+              <details class="dl-calculation-delete">
+                <summary class="link-danger" style="cursor:pointer">Eliminar</summary>
+                <form method="post" action="/app/calculations/{{ item.id }}/delete" onsubmit="return confirm('¿Eliminar esta carga del historial operativo? Se conservará el registro de auditoría.')">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                  <input type="hidden" name="return_to" value="calculations">
+                  <label>Motivo de eliminación <textarea name="reason" rows="2" minlength="8" maxlength="500" required placeholder="Explicá el motivo"></textarea></label>
+                  <button class="btn outline" type="submit">Confirmar eliminación</button>
+                </form>
+              </details>
+              {% endif %}
             {% endif %}
           {% else %}
             <a href="{{ row.url }}">Ver registro</a>
