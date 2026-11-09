@@ -627,6 +627,29 @@ class EmployeeEvent(Base):
 
 
     
+
+class HistoricalMovExportDetail(Base):
+    """Documented REOP/REI supplements, independent of the immutable MOV source."""
+    __tablename__ = "historical_mov_export_details"
+    __table_args__ = (UniqueConstraint("event_id", name="uq_mov_export_detail_event"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    studio_id: Mapped[int] = mapped_column(ForeignKey("studios.id"), index=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), index=True)
+    event_id: Mapped[int] = mapped_column(ForeignKey("employee_events.id"), index=True)
+    source_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    days_worked: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    days_paid: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    hours_worked: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 2), nullable=True)
+    pay_basis: Mapped[Optional[str]] = mapped_column(String(12), nullable=True)
+    ips_base: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    notes: Mapped[str] = mapped_column(Text, default="")
+    updated_by: Mapped[str] = mapped_column(String(180), default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+
+
+
 class HistoricalMovReconciliation(Base):
     """Professional review of MOV evidence; never creates a payslip or payment."""
     __tablename__ = "historical_mov_reconciliations"
