@@ -53,6 +53,7 @@ def test_submitted_salary_cannot_be_deleted_without_resolving_external_link(web_
     assert _save_salary(client, company, employee).status_code == 303
     item = _saved(db, employee)[0]
     db.add(IntegrationBatch(
+        studio_id=company.studio_id,
         company_id=company.id, calculation_record_id=item.id,
         authority="REOP", batch_type="salario", period="2026-10",
         status="Presentado", external_reference="TEST-EXTERNAL-REFERENCE",
