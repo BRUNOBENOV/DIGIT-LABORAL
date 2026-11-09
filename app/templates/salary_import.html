@@ -182,37 +182,10 @@
     La vista previa se actualizó; ninguna declaración fue enviada.
   </div>
   {% endif %}
-  {% if effective_source == 'approved' and source_summary and source_summary.pending and user.role in ['administrador', 'contador'] %}
-  <section class="import-salary-card" aria-label="Aprobación de cálculos pendientes">
-    <h2>Revisar y aprobar cálculos elegibles ({{ source_summary.pending }})</h2>
-    <p class="import-salary-info">
-      Se verifican uno por uno los cálculos salariales operativos de esta empresa y período:
-      importes guardados, IPS, conceptos, asistencia y horas. Solo se aprueban los que
-      superen las validaciones. Los registros históricos MOV/LIQ conservan su origen y no
-      se convierten automáticamente en salarios declarables. Nada se envía a REOP o REI.
-    </p>
-    <form method="post" action="/app/compliance/salary-import/approve-pending"
-          class="import-salary-form" onsubmit="return confirm('¿Validar y aprobar solo los cálculos completos de esta empresa y período? Los incompletos permanecerán pendientes.')">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <input type="hidden" name="company_id" value="{{ selected_company.id }}">
-      <input type="hidden" name="period" value="{{ period }}">
-      <input type="hidden" name="authority" value="{{ authority }}">
-      <input type="hidden" name="payment_code" value="{{ payment_code }}">
-      {% if authority == 'REOP' and not payment_code %}
-      <p class="import-salary-info">Primero seleccioná la forma de pago real y pulsá «Verificar archivo».</p>
-      {% endif %}
-      <label class="import-salary-confirm"><input type="checkbox" name="confirmed" value="si" required>
-        Revisé los respaldos salariales y autorizo la aprobación únicamente de registros que superen los controles.
-      </label>
-      <div class="import-salary-actions">
-        <button class="btn primary" type="submit" {% if authority == 'REOP' and not payment_code %}disabled{% endif %}>Validar y aprobar elegibles</button>
-      </div>
-    </form>
-  </section>
-  {% endif %}
   <section class="import-salary-card">
-    <h2>2. {{ item_count }} trabajador(es) para {{ authority }}{% if errors %} · {{ errors|length }} dato(s) pendiente(s){% else %} · Listo para descargar{% endif %}</h2>
-    <p class="import-salary-info">{{ selected_company.legal_name }} · {{ period }}{% if excluded_salary %} · {{ excluded_salary|length }} sin aprobación no se incluirán{% endif %}</p>
+    <h2>2. Revisión de {{ 'Liquidación de salario REOP' if authority == 'REOP' else 'Declaración de salarios REI' }}</h2>
+    <p class="import-salary-info"><strong>{{ source_summary.approved if source_summary else item_count }} liquidaciones identificadas</strong> · <strong>{{ item_count }} fila(s) preparada(s)</strong>{% if errors %} · <strong>{{ errors|length }} observación(es) por corregir</strong>{% else %} · Datos listos para descargar{% endif %}. No se genera una planilla mientras existan errores de validación.</p>
+    <p class="import-salary-info">{{ selected_company.legal_name }} · {{ period }}{% if excluded_salary %} · {{ excluded_salary|length }} cálculo(s) operativo(s) pendientes{% endif %}</p>
     {% if authority == 'REOP' and vacation_links %}
     <section class="import-salary-card" aria-label="Conciliación de vacaciones" style="margin:12px 0;background:#f7faff">
       <h3>Vacaciones vinculadas al período ({{ vacation_links|length }})</h3>
@@ -246,24 +219,18 @@
     {% endif %}
     {% if excluded_salary %}
     <details style="margin:12px 0;font-size:.8rem;color:#425776">
-      <summary style="cursor:pointer">{{ excluded_salary|length }} sin aprobación · ver excluidos (no bloquean esta exportación parcial)</summary>
+      <summary style="cursor:pointer">{{ excluded_salary|length }} cálculo(s) pendiente(s) · revisar en Cálculo</summary>
       <ul>{% for excluded in excluded_salary[:30] %}
         <li>{% if excluded.employee_code is not none %}Legajo {{ excluded.employee_code }}{% else %}Funcionario ID {{ excluded.employee_id }}{% endif %} · {{ excluded.employee_name }} · cálculo #{{ excluded.calculation_id }}: <strong>{{ excluded.status }}</strong>
           · <a href="/app/reports/liquidaciones-salarios/{{ excluded.calculation_id }}">Ver cálculo</a>
-          {% if user.role in ['administrador','contador'] and excluded.status not in ['Anulado','Aprobado','Validado'] %}
-          <form method="post" action="/app/calculations/{{ excluded.calculation_id }}/status" style="display:inline" onsubmit="return confirm('¿Aprobar este cálculo salarial para su uso operativo? El sistema volverá a validar los datos antes de aceptar.')">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <input type="hidden" name="status" value="Aprobado">
-            <button type="submit" class="btn ghost" style="padding:3px 8px;font-size:.75rem">Revisado · Aprobar</button>
-          </form>
-          {% endif %}
+
         </li>
       {% endfor %}</ul>
     </details>
     {% endif %}
     {% if effective_source == 'approved' and mov_diagnostics %}
     <section class="import-salary-card" aria-label="Datos históricos MOV" style="margin:12px 0;background:#f7faff">
-      <h3>Revisar datos faltantes ({{ mov_diagnostics|length }} trabajadores del historial)</h3>
+      <h3>Datos complementarios de liquidaciones guardadas ({{ mov_diagnostics|length }})</h3>
       <p class="import-salary-info">La exportación utiliza las liquidaciones aprobadas que ya están guardadas. Solo completá datos respaldados por planillas o documentos; no se recalculan importes ni se crea una liquidación duplicada.</p>
       {% for mov in mov_diagnostics %}
       <details style="padding:12px;border:1px solid #d9e4f2;border-radius:9px;background:#fff;margin:10px 0" {{ 'open' if request.query_params.get('mov_details_saved') == (mov.id|string) }}>
@@ -387,11 +354,11 @@
     {% endif %}
     {% if errors %}
     <div class="import-salary-errors">
-      <h3>{{ errors|length }} dato(s) que impiden descargar</h3>
+      <h3>{{ errors|length }} observación(es) antes de preparar el archivo</h3>
       <ul>{% for error in errors[:100] %}<li>{{ error }}</li>{% endfor %}</ul>
       {% if errors|length > 100 %}<p>Se muestran las primeras 100 observaciones.</p>{% endif %}
     </div>
-    <p class="import-salary-info">Corregí solo estos datos y pulsá «Verificar archivo».</p>
+    <p class="import-salary-info">Corregí los datos identificados y volvé a verificar la {{ 'liquidación' if authority == 'REOP' else 'declaración' }}.</p>
     {% else %}
     <div class="import-salary-ok">La validación técnica local finalizó sin observaciones. El archivo todavía requiere revisión humana y aceptación del organismo.</div>
     <form method="post" action="/app/compliance/salary-import/export" class="import-salary-form" data-download-form data-download-format="{{ 'xlsx' if authority == 'REOP' else 'txt' }}"{% if reop_assistant_patronal %} data-reop-assistant-id="{{ reop_assistant_id }}"{% endif %}>
@@ -431,7 +398,7 @@
   </section>
   {% endif %}
   <section class="import-salary-card">
-    <h2>Presentación y comprobante</h2>
+    <h2>3. Presentación y comprobante oficial</h2>
     <p class="import-salary-info">
       {% if authority == 'REOP' %}Importá el Excel en REOP → Comunicaciones → Liquidación Salario. Revisá el resultado y pulsá «Confirmar Planilla» cuando esté correcto.
       {% else %}Verificá el TXT con tu cuenta e importalo en REI → Declaración de Salarios → Importar Salarios.{% endif %}
