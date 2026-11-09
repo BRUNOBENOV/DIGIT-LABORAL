@@ -246,7 +246,11 @@
     <span class="dl-trace-count">{{ labor_history.total }} registros</span>
   </summary>
   <div class="dl-trace-body">
+    {% if request.query_params.get('deleted') %}<p class="dl-alert" role="status">Carga eliminada del historial operativo. El registro original permanece protegido para auditoría.</p>{% endif %}
     <div class="dl-trace-intro">{% if kind == "settlement" %}Las liquidaciones guardadas y los registros LIQ del sistema anterior comparten esta consulta. Los antecedentes LIQ se identifican como sin conciliar; no sustituyen un cálculo aprobado ni acreditan pagos.{% else %}Se muestra una sola versión vigente de cada cálculo salarial rectificado. El original deja de aparecer después de aprobar la rectificación y sigue disponible para auditoría. Los borradores no reemplazan cálculos aprobados.{% endif %}</div>
+    <div class="dl-trace-versions">
+      <a class="dl-trace-action" href="/app/liquidaciones?{{ labor_deleted_toggle_query }}#labor-history">{{ 'Ocultar eliminados' if show_deleted_calculations else 'Historial de eliminaciones' }}</a>
+    </div>
     {% if labor_history.superseded_count %}
     <div class="dl-trace-versions">
       <a class="dl-trace-action" href="/app/liquidaciones?{{ labor_toggle_query }}#labor-history">
@@ -280,6 +284,19 @@
             {% if row.record.source == 'Centro laboral' and user.role in ['administrador','contador','auxiliar'] and row.record.calculation_type == 'suite_salary' and row.status != 'Anulado' and not row.superseded %}
               <a href="/app/liquidaciones/{{ row.id }}/rectificar" class="dl-trace-action dl-trace-correct">Rectificar</a>
             {% endif %}
+            {% if user.role in ['administrador','contador'] and row.status != 'Anulado' and not row.superseded %}
+              <details class="dl-trace-delete">
+                <summary class="dl-trace-action dl-trace-danger">Eliminar</summary>
+                <form method="post" action="/app/calculations/{{ row.id }}/delete" onsubmit="return confirm('¿Eliminar esta carga del historial operativo? Se conservará una copia para auditoría.')">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                  <input type="hidden" name="return_to" value="trace">
+                  <label>Motivo de eliminación
+                    <textarea name="reason" required minlength="8" maxlength="500" rows="2" placeholder="Ej.: carga duplicada o datos incorrectos"></textarea>
+                  </label>
+                  <button class="dl-trace-action dl-trace-danger" type="submit">Confirmar eliminación</button>
+                </form>
+              </details>
+            {% endif %}
           {% elif row.url %}<a href="{{ row.url }}" class="dl-trace-action">Ver</a>
           {% else %}—{% endif %}
           </div></td>
@@ -299,6 +316,14 @@
   </div>
 </details>
 {% endif %}
+<style>
+.dl-trace-delete{position:relative;display:inline-block}.dl-trace-delete>summary{list-style:none;cursor:pointer}
+.dl-trace-delete>summary::-webkit-details-marker{display:none}
+.dl-trace-delete[open] form{display:grid;gap:8px;min-width:230px;padding:12px;margin-top:6px;background:#fff;border:1px solid #d6dfed;border-radius:10px;box-shadow:0 8px 24px #102d5020}
+.dl-trace-delete label{font-size:.75rem;font-weight:700;display:grid;gap:5px;color:#243b60}
+.dl-trace-delete textarea{min-width:200px;width:100%;padding:8px;border:1px solid #cbd8e8;border-radius:6px;font:inherit}
+.dl-trace-danger{color:#a52632!important}
+</style>
 </div>
 {% if private and employee and kind in ['salary', 'settlement'] %}
 <script type="application/json" id="salary-history-data">{{ salary_history_data|tojson }}</script>
