@@ -618,6 +618,42 @@ async def save_calculation(request: Request,
                            db: Session = Depends(core.get_db)):
     data = await form_values(request)
     scoped = private_context(db, user, data)
+    # First check a cross-month correction's target. This must happen before
+    # calculating attendance, which may otherwise pick an unrelated approved
+    # salary in that month and raise an unhelpful validation error.
+    if data.get("kind") == "salary" and data.get("rectifies_record_id"):
+        try:
+            origin_id = int(data["rectifies_record_id"])
+        except (ValueError, TypeError):
+            raise HTTPException(422, "La liquidación original seleccionada no es válida.") from None
+        origin = db.get(CalculationRecord, origin_id)
+        if (
+            not origin or not scoped.get("company") or not scoped.get("employee")
+            or origin.company_id != scoped["company"].id
+            or origin.employee_id != scoped["employee"].id
+            or origin.calculation_type != "suite_salary"
+            or origin.source != SOURCE
+            or origin.status in {"Anulado", "Rectificado"}
+        ):
+            raise HTTPException(409, "El cálculo de origen no corresponde al funcionario o ya fue sustituido.")
+        target_month = str(data.get("month") or "")
+        if re.fullmatch(r"20\d{2}-(0[1-9]|1[0-2])", target_month) and target_month != origin.reference_period:
+            duplicate = db.scalar(select(CalculationRecord.id).where(
+                CalculationRecord.company_id == origin.company_id,
+                CalculationRecord.employee_id == origin.employee_id,
+                CalculationRecord.reference_period == target_month,
+                CalculationRecord.calculation_type.in_(SALARY_TYPES),
+                CalculationRecord.status.in_(("Aprobado", "Validado")),
+            ).limit(1))
+            if duplicate is not None:
+                return page(
+                    request, "salary", data,
+                    error=CalculationError(
+                        "Ya existe una liquidación aprobada en el mes de destino. "
+                        "Rectificá esa liquidación o elegí otro mes.", "month",
+                    ),
+                    db=db, user=user, copied_from=origin.id,
+                )
     linked_settlement = None
     linked_exit = None
     if data.get("employee_exit_id"):
