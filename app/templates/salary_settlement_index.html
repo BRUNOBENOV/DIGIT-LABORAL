@@ -31,6 +31,11 @@
 .salary-report-pagination nav{display:flex;gap:6px}.salary-report-pagination a,.salary-report-pagination span{display:inline-flex;padding:7px 10px;border:1px solid #d8e2f0;border-radius:8px;color:#244a83;background:#fff;text-decoration:none;font-weight:750}
 .salary-report-pagination .disabled{color:#a8b2c2;background:#f7f9fc}.salary-report-pagination .current{background:#05256d;color:#fff;border-color:#05256d}
 .salary-report-help{margin:12px 2px;color:#6e7c91;font-size:.72rem}
+.salary-delete-control{display:inline-block;margin-top:6px;vertical-align:top}
+.salary-delete-control>summary{cursor:pointer;color:#aa2934;font-size:.75rem;font-weight:800}
+.salary-delete-control form{display:grid;gap:6px;min-width:210px;margin-top:6px;padding:10px;border:1px solid #e0d7d7;border-radius:8px;background:#fff}
+.salary-delete-control textarea{width:100%;padding:7px;border:1px solid #c9d7e8;border-radius:6px}
+.salary-delete-control button{padding:7px;border-radius:6px;border:0;background:#952a37;color:#fff;cursor:pointer}
 @media(max-width:1050px){.salary-report-filters{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:650px){.salary-reports-hero{flex-direction:column;padding:20px}.salary-reports-count{display:flex;align-items:center;gap:8px;padding:9px 12px}.salary-reports-count b{font-size:1.2rem}.salary-report-filters{grid-template-columns:1fr 1fr}.salary-report-filters label:first-child{grid-column:1/-1}}
 @media print{.salary-reports-hero,.salary-report-filters,.salary-report-pagination,.salary-report-help,.workspace-sidebar,.modern-topbar{display:none!important}.salary-report-table-shell{border:none}.salary-report-scroll{overflow:visible}.salary-report-table{min-width:0;font-size:8pt}.salary-report-table th,.salary-report-table td{padding:5px;color:#000!important}}
@@ -39,6 +44,7 @@
   <div><span class="eyebrow">INFORMES · REMUNERACIONES</span><h1>Liquidación de Salarios</h1><p>Consultá en una misma lista las liquidaciones guardadas en DIGIT LABORAL y los movimientos históricos vinculados desde el sistema anterior. Los recibos y PDF solo corresponden a liquidaciones emitidas en DIGIT LABORAL.</p></div>
   <div class="salary-reports-count"><b>{{ total }}</b><span>registros encontrados</span></div>
 </section>
+{% if request.query_params.get('deleted') %}<div class="salary-report-notice" role="status"><strong>Carga eliminada:</strong> ya no figura entre los salarios operativos. Podés consultarla desde el filtro «Eliminado»; su trazabilidad permanece en auditoría.</div>{% endif %}
 {% if request.query_params.get('imported') is not none %}<div class="salary-report-notice" role="status"><strong>Movimientos históricos incorporados:</strong> {{ request.query_params.get('imported') }}. Omitidos por existir: {{ request.query_params.get('existing', '0') }}. Sin vínculo: {{ request.query_params.get('rejected', '0') }}. Conflictos: {{ request.query_params.get('conflicts', '0') }}. Los antecedentes están disponibles en esta misma lista.</div>{% endif %}
 <div class="salary-report-notice"><strong>Recibo de liquidación salarial con formato inspirado en MTESS.</strong> Se presentan los importes guardados por Cálculo sin volver a calcularlos. El PDF contiene Original y Duplicado con numeración DIGIT-LABORAL, sin QR. Es un documento interno, no un formulario oficial del MTESS ni constancia de pago.</div>
 <div style="display:flex;justify-content:flex-end;gap:10px;margin:9px 0 15px">
@@ -64,7 +70,7 @@
   <label>Empresa<select name="company_id" data-searchable-entity="company" data-entity-scope="all"><option value="">Todas las autorizadas</option>{% for company in companies|entity_choices %}<option value="{{ company.id }}" {{ 'selected' if selected_company == company.id }}>{{ company.legacy_code or (company.company_code if company.company_code is not none else 'Sin código') }} - {{ company.legal_name }}</option>{% endfor %}</select></label>
   <label>Funcionario<select name="employee_id" data-searchable-entity="employee" data-entity-scope="all"><option value="">Todos</option>{% for employee in employees|entity_choices %}<option value="{{ employee.id }}" {{ 'selected' if selected_employee == employee.id }} data-company="{{ employee.company_id }}">{{ employee.employee_code if employee.employee_code is not none else 'Sin legajo' }} - {{ employee.full_name }}</option>{% endfor %}</select></label>
   <label>Período<input type="month" name="period" value="{{ filters.period }}"></label>
-  <label>Estado<select name="status"><option value="">Todos</option>{% for value in ['Borrador','Revisar','Aprobado','Anulado','Sin conciliar'] %}<option value="{{ value }}" {{ 'selected' if filters.status == value }}>{{ value }}</option>{% endfor %}</select></label>
+  <label>Estado<select name="status"><option value="">Vigentes e históricos</option>{% for value in ['Borrador','Revisar','Aprobado','Sin conciliar','Anulado'] %}<option value="{{ value }}" {{ 'selected' if filters.status == value }}>{{ 'Eliminado' if value == 'Anulado' else value }}</option>{% endfor %}</select></label>
   <label>Origen<select name="source"><option value="all" {{ 'selected' if filters.source == 'all' }}>Todos los registros</option><option value="current" {{ 'selected' if filters.source == 'current' }}>DIGIT LABORAL</option><option value="historical" {{ 'selected' if filters.source == 'historical' }}>Sistema anterior</option></select></label>
   <label>Ordenar por<select name="sort" id="salaryReportSort" data-sort-control data-sort-server="true" data-sort-direction="{{ filters.direction|default('asc') }}">{% for key,label in [('period','Período'),('date','Fecha'),('company','Empresa'),('employee','Funcionario'),('amount','Importe'),('status','Estado')] %}<option value="{{ key }}" {{ 'selected' if filters.sort|default('period') == key }}>{{ label }}</option>{% endfor %}</select></label>
   <button class="btn primary" type="submit">Aplicar filtros</button>
@@ -87,7 +93,7 @@
   <td>{{ item.company.legal_name }}<span class="salary-report-sub">RUC {{ item.company.ruc }}</span></td>
   <td><span class="salary-report-name">{{ item.employee.full_name }}</span><span class="salary-report-sub">{{ item.employee.position or 'Cargo no registrado' }} · CI {{ item.employee.document_number }}</span></td>
   <td>{{ item.reference_period or 'Sin período' }}</td>
-  <td><span class="salary-report-state">{{ item.status }}</span>
+  <td><span class="salary-report-state">{{ 'Eliminado' if item.status == 'Anulado' else item.status }}</span>
     {% if item.origin == 'historical' %}<span class="salary-report-sub">Origen: sistema anterior</span>{% endif %}
   </td>
   <td class="salary-report-money">
@@ -99,7 +105,21 @@
   <td>
     {% if item.origin == 'current' %}
       <a href="/app/reports/liquidaciones-salarios/{{ item.id }}">Ver recibo</a>
-      <span class="salary-report-sub"><a href="/app/reports/liquidaciones-salarios/{{ item.id }}/pdf" title="{{ 'Copia histórica anulada' if item.status == 'Anulado' else 'Original y duplicado, PDF' }}">{{ 'Copia anulada PDF' if item.status == 'Anulado' else 'PDF · 2 copias' }}</a></span>
+      <span class="salary-report-sub"><a href="/app/reports/liquidaciones-salarios/{{ item.id }}/pdf" title="{{ 'Copia histórica sin vigencia' if item.status == 'Anulado' else 'Original y duplicado, PDF' }}">{{ 'Copia histórica PDF' if item.status == 'Anulado' else 'PDF · 2 copias' }}</a></span>
+      {% if user.role in ['administrador','contador'] and item.status != 'Anulado' %}
+      {% if item.record.calculation_type == 'suite_salary' and item.record.source == 'Centro laboral' %}
+      <span class="salary-report-sub"><a href="/app/liquidaciones/{{ item.id }}/rectificar">Rectificar</a></span>
+      {% endif %}
+      <details class="salary-delete-control">
+        <summary>Eliminar</summary>
+        <form method="post" action="/app/calculations/{{ item.id }}/delete" onsubmit="return confirm('¿Eliminar la carga de los informes operativos? Se conserva para auditoría.')">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="return_to" value="report">
+          <label>Motivo (obligatorio)<textarea name="reason" rows="2" minlength="8" maxlength="500" required placeholder="Ej.: duplicado o carga incorrecta"></textarea></label>
+          <button type="submit">Confirmar eliminación</button>
+        </form>
+      </details>
+      {% endif %}
     {% else %}
       <details>
         <summary style="color:#174b9b;cursor:pointer;font-weight:700">Ver movimiento</summary>
