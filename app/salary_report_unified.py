@@ -59,7 +59,12 @@ def salary_report_unified(
     if not status:
         live_conditions.append(CalculationRecord.status != "Anulado")
     if status:
-        if status in {"Incorporado", "Sin conciliar", "Conciliado", "Validado como antecedente"}:
+        # Aprobado covers live approved salaries and previously imported MOV.
+        # Historical approval is a display/integration status only: it does not
+        # create a CalculationRecord, receipt, payroll or evidence of payment.
+        if status == "Aprobado":
+            live_conditions.append(CalculationRecord.status == "Aprobado")
+        elif status in {"Incorporado", "Sin conciliar", "Conciliado", "Validado como antecedente"}:
             live_conditions.append(literal(False))
             if status in {"Incorporado", "Sin conciliar"}:
                 archive_conditions.append(or_(
@@ -114,7 +119,7 @@ def salary_report_unified(
         func.lower(Company.legal_name).label(common[4]),
         func.lower(Employee.full_name).label(common[5]),
         EmployeeEvent.amount.label(common[6]),
-        func.coalesce(HistoricalMovReconciliation.status, literal("Incorporado")).label(common[7]),
+        literal("Aprobado").label(common[7]),
     ).join(Employee, Employee.id == EmployeeEvent.employee_id).join(
         Company, Company.id == Employee.company_id
     ).outerjoin(
@@ -183,7 +188,7 @@ def salary_report_unified(
                 company=record.employee.company, employee=record.employee,
                 reference_period=source_data.get("period") or record.effective_date.strftime("%Y-%m"),
                 created_at=record.effective_date, amount=record.amount,
-                status=review.status if review else "Sin conciliar",
+                status="Aprobado",
                 reconciliation=review, raw_values=source_data.get("values") or {},
                 source_row=source_data.get("source_row"),
                 source_filename=source_data.get("filename"), warnings=source_data.get("warnings") or [],
