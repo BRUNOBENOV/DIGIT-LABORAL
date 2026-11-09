@@ -50,7 +50,7 @@ def test_reports_catalog_lists_every_requested_submodule():
         assert page.text.count("Liquidación de Salarios") == 1
         assert "INFORME DEDICADO" not in page.text
         assert 'href="/app/reports/liquidacion-salario"' in page.text
-        assert 'href="/app/reports/liquidaciones-salarios"' not in page.text
+        assert 'href="/app/reports/liquidaciones-salarios"' in page.text
 
 
 def test_all_report_data_endpoints_return_paginated_schema():
