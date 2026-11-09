@@ -10712,7 +10712,7 @@ def approve_pending_salary_import(
         raise HTTPException(422, "Confirmá la revisión documental antes de aprobar salarios.")
     if authority not in {"REOP", "REI"}:
         raise HTTPException(422, "Organismo de exportación inválido.")
-    if not re.fullmatch(r"(19|20)\\d{2}-(0[1-9]|1[0-2])", period or ""):
+    if not re.fullmatch(r"(19|20)\d{2}-(0[1-9]|1[0-2])", period or ""):
         raise HTTPException(422, "Seleccioná un período válido AAAA-MM.")
     if authority == "REOP" and payment_code not in {"1", "2", "3", "4"}:
         raise HTTPException(422, "Seleccioná una forma de pago real para verificar REOP.")
