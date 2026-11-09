@@ -72,6 +72,7 @@ def mov_salary_records(
     db: Session, company, period: str, *, authority: str = "REOP",
     employee_id: int | None = None, payment_code: str = "",
     exclude_employee_ids: set[int] | None = None, allow_empty: bool = False,
+    show_ineligible: bool = False,
 ):
     """Return (line, employee, detail) for source-verified MOV entries.
 
@@ -107,8 +108,22 @@ def mov_salary_records(
     month_start = date.fromisoformat(period + "-01")
     month_end = date(month_start.year, month_start.month, monthrange(month_start.year, month_start.month)[1])
     for event, employee in entries:
-        # Do not export IPS No (nor inactive employees to the REI).
+        # Do not export IPS No (nor inactive employees to the REI), but make
+        # omitted employees visible in the review screen, never silently hide.
         if not salary_export_employee_eligible(employee, authority):
+            if show_ineligible:
+                diagnostics.append({
+                    "id": event.id, "employee_id": employee.id, "employee": employee.full_name,
+                    "period": period, "origin": "Historial salarial",
+                    "source_row": None, "source_hash": "",
+                    "warnings": [
+                        "La ficha del funcionario indica IPS No; comprobá su inscripción y corregí "
+                        "Mantenimientos → Funcionarios antes de exportar."
+                        if not employee.ips_contributor else
+                        "REI requiere funcionario activo; verificá su estado en el período."
+                    ], "ineligible": True, "source_for_export": False,
+                    "raw": {}, "supplement": {}, "has_supplement": False,
+                })
             continue
         info = event_data(event.detail) or {}
         raw = info.get("values") or {}
@@ -222,6 +237,7 @@ def mov_salary_records(
         diagnostics.append({
             "id": event.id, "employee_id": employee.id, "employee": employee.full_name,
             "period": period, "origin": info.get("filename") or "MOV",
+            "ineligible": False, "source_for_export": not bool(issue),
             "source_row": info.get("source_row"),
             "warnings": issue, "source_hash": info.get("source_hash") or "",
             "has_supplement": bool(supplement),
