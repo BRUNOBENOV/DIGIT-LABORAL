@@ -19,6 +19,7 @@
 .dl .dl-trace-table tbody tr:last-child td{border-bottom:0}
 .dl .dl-trace-person strong{font-size:11px;font-weight:750;color:#142e52;display:block}
 .dl .dl-trace-person small,.dl .dl-trace-detail{display:block;margin-top:4px;color:#64758a;font-size:10px;max-width:285px;line-height:1.5}
+.dl .dl-trace-person .dl-trace-ci{color:#234572;font-weight:750;white-space:nowrap}
 .dl .dl-trace-date{white-space:nowrap;color:#57677b}
 .dl .dl-trace-amount{white-space:nowrap;font-weight:800;color:#142a55}
 .dl .dl-trace-status{display:inline-block;white-space:nowrap;font-size:10px;font-weight:750;padding:5px 9px;border-radius:20px;border:1px solid #e1e6ee;background:#f2f5fa;color:#475c78}

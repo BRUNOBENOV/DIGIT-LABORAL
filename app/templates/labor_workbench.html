@@ -264,10 +264,12 @@
         <thead><tr><th>Registrado</th><th>Funcionario y concepto</th><th>Período</th><th>Importe</th><th>Estado</th><th>Acciones</th></tr></thead>
         <tbody>
         {% for row in labor_history.rows %}
+        {% set document_number = (row.employee.document_number or '')|trim if row.employee else '' %}
         <tr>
           <td class="dl-trace-date">{{ row.date|fecha }}</td>
           <td class="dl-trace-person"><strong>{{ row.employee.full_name if row.employee else 'Sin funcionario' }}</strong>
-            <small>{{ titles.get(row.record.calculation_type|replace('suite_',''), row.label) if row.origin == 'current' else row.label }}
+            <small>{% if document_number %}<span class="dl-trace-ci">C.I. {{ document_number }}</span> · {% endif %}
+            {{ titles.get(row.record.calculation_type|replace('suite_',''), row.label) if row.origin == 'current' else row.label }}
             {% if row.rectifies is defined and row.rectifies %} · Rectifica #{{ row.rectifies }}{% endif %}</small>
           </td>
           <td>{{ row.period }}{% if row.origin == 'imported' and row.detail and row.label != 'Salario' %}<small class="dl-trace-detail">{{ row.detail }}</small>{% endif %}</td>
