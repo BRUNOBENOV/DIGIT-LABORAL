@@ -76,6 +76,25 @@
     return !accept || /xlsx|spreadsheetml|excel|octet-stream|\*\//.test(accept);
   }
 
+  function currentImporterFiles(doc) {
+    if (location.pathname !== "/liquidacion_salario_list.php" || !doc.body) return [];
+    const files = new Set();
+    const titles = doc.body.querySelectorAll('h1,h2,h3,h4,h5,h6,[role="heading"],div,p,span,strong');
+    for (const title of titles) {
+      if (normalized(title.textContent) !== "revisa tu planilla antes de importar" || !visible(title)) continue;
+      // Use the closest panel containing the title and the importer steps, even without a dialog role.
+      for (let panel = title.parentElement; panel && panel !== doc.body; panel = panel.parentElement) {
+        const text = normalized(panel.innerText);
+        if (!text.includes("seleccionar archivo") || !/\bprevalidar\b/.test(text)) continue;
+        for (const input of panel.querySelectorAll('input[type="file"]')) {
+          if (visible(input) && eligible(input)) files.add(input);
+        }
+        break;
+      }
+    }
+    return [...files];
+  }
+
   async function message(type, payload = {}) {
     const result = await chrome.runtime.sendMessage({type, ...payload});
     if (!result?.ok) throw new Error(result?.message || "El asistente dejó de estar disponible.");
@@ -130,7 +149,7 @@
     if (!officialDocument(doc) || !target.closest) return;
     const dialog = target.closest(dialogs);
     if (eligible(target) && (
-      (event.isTrusted && isImportDialog(dialog)) ||
+      (event.isTrusted && (isImportDialog(dialog) || currentImporterFiles(doc).includes(target))) ||
       (pickerDocument === doc && Date.now() < pickerUntil)
     )) {
       event.preventDefault();
@@ -160,7 +179,8 @@
     }
     const documents = docs();
     const importDialogs = documents.flatMap(doc => [...doc.querySelectorAll(dialogs)].filter(isImportDialog));
-    const inputs = [...new Set(importDialogs.flatMap(node => [...node.querySelectorAll('input[type="file"]')].filter(eligible)))];
+    const dialogFiles = importDialogs.flatMap(node => [...node.querySelectorAll('input[type="file"]')].filter(eligible));
+    const inputs = [...new Set([...dialogFiles, ...documents.flatMap(currentImporterFiles)])];
     if (inputs.length === 1) {
       void transfer(inputs[0], patronal);
       return;
@@ -171,7 +191,7 @@
     }
     armedDocs = documents;
     for (const doc of armedDocs) doc.addEventListener("click", capturePicker, true);
-    status.textContent = "Pulsá Importar Planilla en REOP. Si aparece un aviso de importación, continuá en ese aviso.";
+    status.textContent = "Abrí «Importar Planilla» en REOP. Cuando veas el selector de Excel, pulsá «Adjuntar planilla» de nuevo.";
     armTimer = setTimeout(() => {
       disarm();
       status.textContent = "No se detectó un selector de Excel. Podés volver a pulsar Adjuntar planilla.";
