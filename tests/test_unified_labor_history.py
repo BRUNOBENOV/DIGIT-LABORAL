@@ -250,6 +250,7 @@ def test_final_settlement_uses_one_traceability_list_without_source_banners(web_
     assert "Cálculos guardados" in text
     assert "Preaviso" in text
     assert "Sin conciliar" in text
+    assert traceability.select_one(".dl-trace-ci").get_text(strip=True) == f"C.I. {employee.document_number}"
     assert traceability.select_one('a[href^="/app/legacy-notices/"]') is not None
     assert "Historial de preavisos DOS" not in response.text
     assert "Vacaciones históricas del sistema anterior" not in response.text

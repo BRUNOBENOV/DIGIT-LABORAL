@@ -137,6 +137,7 @@ def test_liquidation_history_hides_old_version_but_can_show_it_for_audit(web_cas
     soup = BeautifulSoup(response.text, "html.parser")
     trace = soup.select_one("#labor-history")
     assert trace
+    assert trace.select_one(".dl-trace-ci").get_text(strip=True) == f"C.I. {employee.document_number}"
     assert not trace.select_one(f'a[href="/app/reports/liquidaciones-salarios/{original.id}"]')
     assert trace.select_one(f'a[href="/app/reports/liquidaciones-salarios/{new.id}"]')
     assert "Ver versiones anteriores (1)" in trace.get_text(" ", strip=True)

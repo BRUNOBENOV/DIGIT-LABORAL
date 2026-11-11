@@ -1,3 +1,7 @@
+## 2.7.13 — Cédulas en Trazabilidad de cálculos
+
+- Muestra la cédula registrada en el legajo debajo del nombre, junto al concepto, para identificar al funcionario desde el historial.
+
 ## 2.7.12 — Asistente para el importador actual de REOP
 
 - La extensión 1.0.2 reconoce el selector de Excel en «Revisá tu planilla antes de importar». Permite adjuntar el lote en el formulario abierto para revisarlo en REOP.
