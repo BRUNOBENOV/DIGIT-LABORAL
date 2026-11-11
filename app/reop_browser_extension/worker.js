@@ -5,8 +5,10 @@ const REOP = "https://regobpat.mtess.gov.py";
 const PATH = "/app/compliance/salary-import";
 const EXPIRES = "digit-reop-expiry";
 const STATE = "digit-reop-pending";
+const TRACKING = "digit-reop-tracking";
 const MAX_BYTES = 5 * 1024 * 1024;
 const TTL = 10 * 60 * 1000;
+const TRACKING_TTL = 30 * 60 * 1000;
 const PROTOCOL = 1;
 
 let pendingOperation = Promise.resolve();
@@ -31,6 +33,30 @@ async function readPending() {
   if (!pending || pending.expiresAt > Date.now()) return pending;
   await clearPending();
   return null;
+}
+
+async function readTracking() {
+  const entries = (await chrome.storage.session.get(TRACKING))[TRACKING] || {};
+  const now = Date.now();
+  return Object.fromEntries(Object.entries(entries).filter(([, entry]) => entry.expiresAt > now));
+}
+
+function sameSource(entry, sender) {
+  return entry?.sourceTab === sender.tab.id && entry.sourceDocument === sender.documentId;
+}
+
+function portalProgress(message, rows) {
+  const {phase, valid, errors, imported} = message;
+  if (phase === "attached" || phase === "validation-requested") return {phase, rows};
+  if (!["processing", "corrections", "prevalidated", "imported"].includes(phase) ||
+      ![valid, errors, imported].every(count => Number.isSafeInteger(count) && count >= 0 && count <= rows) ||
+      valid + errors > rows || imported > valid ||
+      (phase === "corrections" && errors === 0) ||
+      (phase === "prevalidated" && (valid !== rows || errors !== 0 || imported !== 0)) ||
+      (phase === "imported" && (valid !== rows || errors !== 0 || imported !== rows))) {
+    throw new Error("El estado observado en REOP no coincide con el lote.");
+  }
+  return {phase, rows, valid, errors, imported};
 }
 
 function reply(operation) {
@@ -72,13 +98,19 @@ chrome.runtime.onMessageExternal.addListener(reply(async (message, sender) => {
     throw new Error("Abrí la vista previa de Salarios de Digit Laboral.");
   }
   const existing = await readPending();
-  if (message.type === "ping") return {protocol: PROTOCOL, busy: Boolean(existing), separateWindows: true};
+  if (message.type === "ping") return {protocol: PROTOCOL, busy: Boolean(existing), separateWindows: true, tracking: true};
+  if (message.type === "status") {
+    const entries = await readTracking();
+    const track = Object.values(entries).find(entry => entry.batchId === message.batchId && sameSource(entry, sender));
+    const waiting = existing?.batchId === message.batchId && sameSource(existing, sender);
+    return {active: Boolean(track || waiting), progress: track?.progress || null};
+  }
   if (message.type !== "stage" || message.protocol !== PROTOCOL) {
     throw new Error("Actualizá la extensión de Digit Laboral.");
   }
   if (existing) throw new Error("Ya hay un lote pendiente. Adjuntalo o descartalo desde el asistente en REOP.");
   const pending = await prepareWorkbook(message);
-  await chrome.storage.session.set({[STATE]: {...pending, sourceTab: sender.tab.id}});
+  await chrome.storage.session.set({[STATE]: {...pending, sourceTab: sender.tab.id, sourceDocument: sender.documentId}});
   await chrome.alarms.create(EXPIRES, {when: pending.expiresAt});
   await chrome.action.setBadgeText({text: "1"});
   return {batchId: pending.batchId};
@@ -108,7 +140,27 @@ chrome.runtime.onMessage.addListener(reply(async (message, sender) => {
   if (parseUrl(sender.url)?.origin !== REOP || sender.frameId !== 0 || !Number.isInteger(sender.tab?.id) || sender.tab.incognito) {
     throw new Error("Abrí el asistente desde la pestaña oficial de REOP.");
   }
+  if (message.type === "progress") {
+    const entries = await readTracking();
+    const entry = entries[sender.tab.id];
+    if (!entry || entry.targetDocument !== sender.documentId || entry.batchId !== message.batchId) {
+      throw new Error("El seguimiento de este lote terminó.");
+    }
+    const progress = portalProgress(message, entry.rows);
+    if (entry.progress?.phase !== "imported") {
+      entry.progress = progress;
+      await chrome.storage.session.set({[TRACKING]: entries});
+    }
+    return {};
+  }
   const pending = await readPending();
+  if (message.type === "info" && pending?.targetTab !== sender.tab.id) {
+    const entry = (await readTracking())[sender.tab.id];
+    if (entry && entry.targetDocument === sender.documentId) {
+      const {batchId, period, patronal, rows, filename, progress, expiresAt} = entry;
+      return {batchId, period, patronal, rows, filename, progress, expiresAt, tracking: true};
+    }
+  }
   if (!pending) throw new Error("En Digit Laboral, marcá la confirmación y pulsá «Preparar carga en REOP». Después volvé a abrir el asistente.");
   if (pending.targetTab !== sender.tab.id) throw new Error("Volvé a abrir el asistente en esta pestaña de REOP.");
   if (message.type === "info") {
@@ -123,21 +175,35 @@ chrome.runtime.onMessage.addListener(reply(async (message, sender) => {
   if (message.type !== "take" || String(message.patronal).trim() !== pending.patronal) {
     throw new Error("El número patronal que confirmaste no coincide con la planilla.");
   }
+  const {batchId, period, patronal, rows, sourceTab, sourceDocument} = pending;
+  const filename = pending.filename.replace(/\.xlsx$/, `_lote-${batchId}.xlsx`);
+  const expiresAt = Date.now() + TRACKING_TTL;
+  const entries = await readTracking();
+  entries[sender.tab.id] = {
+    batchId, period, patronal, rows: Number(rows), filename, sourceTab, sourceDocument,
+    targetDocument: sender.documentId, expiresAt, progress: null,
+  };
+  await chrome.storage.session.set({[TRACKING]: entries});
   await clearPending();
-  return {base64: pending.base64, filename: pending.filename};
+  return {base64: pending.base64, filename, expiresAt};
 }));
 
 chrome.alarms.onAlarm.addListener(alarm => {
   if (alarm.name === EXPIRES) serialize(readPending).catch(() => {});
 });
 
-function clearForSource(tabId) {
+function clearForTab(tabId) {
   serialize(async () => {
     const pending = await readPending();
     if (pending?.sourceTab === tabId) await clearPending();
+    const entries = await readTracking();
+    const remaining = Object.entries(entries).filter(([target, entry]) => Number(target) !== tabId && entry.sourceTab !== tabId);
+    if (remaining.length !== Object.keys(entries).length) {
+      await chrome.storage.session.set({[TRACKING]: Object.fromEntries(remaining)});
+    }
   }).catch(() => {});
 }
-chrome.tabs.onRemoved.addListener(clearForSource);
+chrome.tabs.onRemoved.addListener(clearForTab);
 chrome.tabs.onUpdated.addListener((tabId, change) => {
-  if (change.status === "loading") clearForSource(tabId);
+  if (change.status === "loading") clearForTab(tabId);
 });
