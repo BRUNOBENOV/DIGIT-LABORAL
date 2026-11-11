@@ -1,3 +1,7 @@
+## 2.7.12 — Asistente para el importador actual de REOP
+
+- La extensión 1.0.2 reconoce el selector de Excel en «Revisá tu planilla antes de importar». Permite adjuntar el lote en el formulario abierto para revisarlo en REOP.
+
 ## 2.7.11 — Asistente REOP en ventanas separadas
 
 - La extensión 1.0.1 permite adjuntar una planilla desde otra ventana del mismo perfil de Chrome. El adjunto sigue vinculado a la pestaña oficial abierta por el operador y exige verificar la patronal.
