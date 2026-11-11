@@ -72,30 +72,30 @@ chrome.runtime.onMessageExternal.addListener(reply(async (message, sender) => {
     throw new Error("Abrí la vista previa de Salarios de Digit Laboral.");
   }
   const existing = await readPending();
-  if (message.type === "ping") return {protocol: PROTOCOL, busy: Boolean(existing)};
+  if (message.type === "ping") return {protocol: PROTOCOL, busy: Boolean(existing), separateWindows: true};
   if (message.type !== "stage" || message.protocol !== PROTOCOL) {
     throw new Error("Actualizá la extensión de Digit Laboral.");
   }
   if (existing) throw new Error("Ya hay un lote pendiente. Adjuntalo o descartalo desde el asistente en REOP.");
   const pending = await prepareWorkbook(message);
-  await chrome.storage.session.set({[STATE]: {...pending, sourceTab: sender.tab.id, windowId: sender.tab.windowId}});
+  await chrome.storage.session.set({[STATE]: {...pending, sourceTab: sender.tab.id}});
   await chrome.alarms.create(EXPIRES, {when: pending.expiresAt});
   await chrome.action.setBadgeText({text: "1"});
   return {batchId: pending.batchId};
 }));
 
 function openPortal(tab) {
-  if (!Number.isInteger(tab.id) || parseUrl(tab.url)?.origin !== REOP) {
+  if (!Number.isInteger(tab.id) || tab.incognito || parseUrl(tab.url)?.origin !== REOP) {
     if (Number.isInteger(tab.id)) {
       chrome.action.setBadgeText({tabId: tab.id, text: "REOP"}).catch(() => {});
       chrome.action.setTitle({tabId: tab.id, title: "Abrí REOP para usar la planilla preparada"}).catch(() => {});
     }
     return;
   }
-  // Grant a single REOP tab access to this pending batch. Payload is kept in the worker.
+  // Grant access to the REOP tab the operator opens, within this Chrome profile.
   return serialize(async () => {
     const pending = await readPending();
-    if (pending && pending.windowId === tab.windowId) {
+    if (pending) {
       await chrome.storage.session.set({[STATE]: {...pending, targetTab: tab.id}});
     }
   }).then(() => chrome.scripting.executeScript({
@@ -105,13 +105,12 @@ function openPortal(tab) {
 chrome.action.onClicked.addListener(openPortal);
 
 chrome.runtime.onMessage.addListener(reply(async (message, sender) => {
-  if (parseUrl(sender.url)?.origin !== REOP || sender.frameId !== 0 || !Number.isInteger(sender.tab?.id)) {
+  if (parseUrl(sender.url)?.origin !== REOP || sender.frameId !== 0 || !Number.isInteger(sender.tab?.id) || sender.tab.incognito) {
     throw new Error("Abrí el asistente desde la pestaña oficial de REOP.");
   }
   const pending = await readPending();
-  if (!pending || pending.targetTab !== sender.tab.id || pending.windowId !== sender.tab.windowId) {
-    throw new Error("No hay una planilla preparada para esta ventana de REOP.");
-  }
+  if (!pending) throw new Error("En Digit Laboral, marcá la confirmación y pulsá «Preparar carga en REOP». Después volvé a abrir el asistente.");
+  if (pending.targetTab !== sender.tab.id) throw new Error("Volvé a abrir el asistente en esta pestaña de REOP.");
   if (message.type === "info") {
     const {batchId, period, patronal, rows, expiresAt} = pending;
     return {batchId, period, patronal, rows, expiresAt};

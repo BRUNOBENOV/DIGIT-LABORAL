@@ -51,29 +51,34 @@ function extension() {
   };
 }
 
-test('la planilla solo sale hacia una pestaña REOP activada y con la patronal correcta', async () => {
+test('la planilla sale a la pestaña REOP activada, incluso en otra ventana, con la patronal correcta', async () => {
   const bridge = extension();
+  const secondWindow = {...portal, tab: {id: 6, windowId: 2}};
   assert.equal((await bridge.external(stage, {...source, frameId: 1})).ok, false);
   assert.equal((await bridge.external(stage, {...source, url: source.url.replace('https:', 'http:')})).ok, false);
   assert.equal((await bridge.external({...stage, sha256: '0'.repeat(64)})).ok, false);
   assert.equal((await bridge.external(stage)).ok, true);
+  assert.equal((await bridge.external({type: 'ping'})).separateWindows, true);
   assert.equal((await bridge.external(stage)).ok, false);
   assert.equal((await bridge.internal({type: 'info'})).ok, false);
   await bridge.click({...portal, url: 'https://regobpat.mtess.gov.py.example.test/salary'});
+  await bridge.click({...portal, tab: {...portal.tab, incognito: true}});
   assert.deepEqual(bridge.injected, []);
-  await bridge.click({...portal, tab: {id: 6, windowId: 2}});
-  assert.equal((await bridge.internal({type: 'info'}, {...portal, tab: {id: 6, windowId: 2}})).ok, false);
   await bridge.click();
-  const info = await bridge.internal({type: 'info'});
+  assert.equal((await bridge.internal({type: 'info'})).ok, true);
+  assert.equal((await bridge.internal({type: 'info'}, secondWindow)).ok, false);
+  await bridge.click(secondWindow);
+  const info = await bridge.internal({type: 'info'}, secondWindow);
   assert.equal(info.patronal, '000123');
   assert.equal(info.base64, undefined);
   const take = {type: 'take', batchId: stage.batchId, patronal: stage.patronal};
-  assert.equal((await bridge.internal({...take, patronal: '123'})).ok, false);
-  assert.equal((await bridge.internal(take, {...portal, tab: {id: 8, windowId: 1}})).ok, false);
-  const results = await Promise.all([bridge.internal(take), bridge.internal(take)]);
+  assert.equal((await bridge.internal({...take, patronal: '123'}, secondWindow)).ok, false);
+  assert.equal((await bridge.internal(take)).ok, false);
+  const results = await Promise.all([bridge.internal(take, secondWindow), bridge.internal(take, secondWindow)]);
   assert.equal(results.filter(result => result.ok).length, 1);
   assert.equal(results.find(result => result.ok).base64, stage.base64);
   assert.equal((await bridge.external({type: 'ping'})).busy, false);
+  assert.match((await bridge.internal({type: 'info'}, secondWindow)).message, /Preparar carga en REOP/);
 });
 
 test('la copia temporal se descarta por vencimiento o al salir de la vista previa', async () => {

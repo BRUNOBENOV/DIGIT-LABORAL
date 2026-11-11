@@ -1,3 +1,8 @@
+## 2.7.11 — Asistente REOP en ventanas separadas
+
+- La extensión 1.0.1 permite adjuntar una planilla desde otra ventana del mismo perfil de Chrome. El adjunto sigue vinculado a la pestaña oficial abierta por el operador y exige verificar la patronal.
+- Alinea la casilla de confirmación con su texto y muestra el acceso al lote después de generar el archivo.
+
 ## 2.7.10 — Carga asistida de salarios en REOP
 
 - Permite preparar la planilla salarial revisada y adjuntarla desde una extensión de Chrome en el formulario de REOP. Valida que el lote conserve los datos de la vista previa y corresponda a una sola patronal.
