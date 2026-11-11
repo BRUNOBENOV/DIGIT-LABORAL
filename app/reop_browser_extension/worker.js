@@ -98,7 +98,9 @@ chrome.runtime.onMessageExternal.addListener(reply(async (message, sender) => {
     throw new Error("Abrí la vista previa de Salarios de Digit Laboral.");
   }
   const existing = await readPending();
-  if (message.type === "ping") return {protocol: PROTOCOL, busy: Boolean(existing), separateWindows: true, tracking: true};
+  if (message.type === "ping") {
+    return {protocol: PROTOCOL, busy: Boolean(existing), separateWindows: true, tracking: true, directPrevalidation: true};
+  }
   if (message.type === "status") {
     const entries = await readTracking();
     const track = Object.values(entries).find(entry => entry.batchId === message.batchId && sameSource(entry, sender));
@@ -173,7 +175,7 @@ chrome.runtime.onMessage.addListener(reply(async (message, sender) => {
     return {};
   }
   if (message.type !== "take" || String(message.patronal).trim() !== pending.patronal) {
-    throw new Error("El número patronal que confirmaste no coincide con la planilla.");
+    throw new Error("La patronal abierta en REOP no coincide con la planilla.");
   }
   const {batchId, period, patronal, rows, sourceTab, sourceDocument} = pending;
   const filename = pending.filename.replace(/\.xlsx$/, `_lote-${batchId}.xlsx`);

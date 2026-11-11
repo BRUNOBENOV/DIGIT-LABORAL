@@ -2,6 +2,7 @@
   "use strict";
 
   const REOP = "https://regobpat.mtess.gov.py";
+  const SALARY_PATH = "/liquidacion_salario_list.php";
   if (location.origin !== REOP || window.top !== window) return;
   globalThis.digitReopClose?.();
 
@@ -15,10 +16,9 @@
       header { display: flex; justify-content: space-between; align-items: start; gap: 12px; }
       h2 { margin: 0; font: 700 17px/1.35 system-ui, sans-serif; }
       p { margin: 8px 0; }
-      label { display: grid; gap: 5px; margin: 12px 0; font-weight: 650; }
-      input, button { box-sizing: border-box; border: 1px solid #a6b7cb; border-radius: 7px; padding: 8px 10px; font: inherit; }
-      button { color: #172945; background: #f3f7fc; cursor: pointer; }
-      button[type=submit] { color: #fff; background: #123e80; border-color: #123e80; font-weight: 700; }
+      button, a { box-sizing: border-box; border: 1px solid #a6b7cb; border-radius: 7px; padding: 8px 10px; font: inherit; color: #172945; background: #f3f7fc; cursor: pointer; }
+      a { display: inline-block; text-decoration: none; }
+      #attach { color: #fff; background: #123e80; border-color: #123e80; font-weight: 700; }
       button:disabled { opacity: .55; cursor: default; }
       .actions { display: flex; gap: 8px; flex-wrap: wrap; }
       [hidden] { display: none !important; }
@@ -27,33 +27,27 @@
       <header><h2>Digit Laboral · Asistente REOP</h2><button type="button" id="close" aria-label="Cerrar asistente">×</button></header>
       <p id="summary" hidden></p>
       <p id="status" role="status" aria-live="polite">Buscando la planilla preparada…</p>
-      <form hidden>
-        <label>N.º patronal abierto en REOP
-          <input name="patronal" type="text" inputmode="numeric" pattern="[0-9]{1,20}" maxlength="20" required>
-        </label>
-        <div class="actions">
-          <button type="submit">Adjuntar planilla</button>
-          <button type="submit" id="prevalidate" hidden>Adjuntar y prevalidar</button>
-          <button type="button" id="discard">Descartar</button>
-        </div>
-      </form>
+      <a id="salary" href="${REOP}${SALARY_PATH}" hidden>Abrir Liquidación Salario</a>
+      <div class="actions" hidden>
+        <button type="button" id="attach">Adjuntar y prevalidar</button>
+        <button type="button" id="attach-only" hidden>Solo adjuntar</button>
+        <button type="button" id="discard">Descartar</button>
+      </div>
     </section>`;
   document.documentElement.append(host);
 
   const status = shadow.querySelector("#status");
   const summary = shadow.querySelector("#summary");
-  const form = shadow.querySelector("form");
-  const attach = shadow.querySelector("button[type=submit]");
-  const prevalidate = shadow.querySelector("#prevalidate");
+  const actions = shadow.querySelector(".actions");
+  const attach = shadow.querySelector("#attach");
+  const attachOnly = shadow.querySelector("#attach-only");
   const discard = shadow.querySelector("#discard");
-  const employer = form.elements.patronal;
   let pending;
   let armedDocs = [];
   let armTimer;
   let pickerUntil = 0;
   let pickerDocument;
   let busy = false;
-  let detected = "";
   let tracking;
   let lastProgress = "";
   let observer;
@@ -64,6 +58,8 @@
   const visible = node => node && node.getClientRects().length > 0 &&
     !node.closest('[hidden], [aria-hidden="true"]') && node.ownerDocument.defaultView.getComputedStyle(node).visibility === "visible";
   const dialogs = '[role="dialog"], dialog[open], .modal.show, .modal.in, .swal2-popup, .sweet-alert.visible';
+  const controls = 'a, button, [role="button"], input[type="button"], input[type="submit"]';
+  const controlName = control => normalized(control.innerText || control.value || control.getAttribute("aria-label"));
   const isImportDialog = node => visible(node) && /\b(importar planilla|planilla de recibo salarial)\b/.test(normalized(node.innerText));
   const isSalaryScreen = doc => /\bliquidacion(?:es)? (?:de )?salarios?\b/.test(normalized(doc.body?.innerText));
   const login = doc => /\/login(?:\.php)?\/?$/i.test(doc.location.pathname) ||
@@ -87,7 +83,7 @@
   }
 
   function currentImporters(doc) {
-    if (location.pathname !== "/liquidacion_salario_list.php" || !doc.body) return [];
+    if (location.pathname !== SALARY_PATH || !doc.body) return [];
     const panels = new Set();
     const titles = doc.body.querySelectorAll('h1,h2,h3,h4,h5,h6,[role="heading"],div,p,span,strong');
     for (const title of titles) {
@@ -107,10 +103,71 @@
     return [...panel.querySelectorAll('input[type="file"]')].filter(input => visible(input) && eligible(input));
   }
 
-  function importerPatronal(panel) {
-    const values = new Set([...normalized(panel?.innerText).matchAll(/\bpatronal\s+(\d{1,20})\s*[·•|–-]\s*prevalidacion\b/g)]
-      .map(match => match[1]));
-    return values.size === 1 ? [...values][0] : "";
+  function portalPatronales(panels) {
+    const values = new Set();
+    if (!officialDocument(document)) return values;
+    // Read the account control, never a patronal number in the salary list.
+    const account = /^usuario\b.*\bcon (?:n(?:ro|umero)\.?|n\.?[°º])\s+patronal\s*:?\s*(\d{1,20})\s*[▾▼⌄▿]?$/;
+    for (const control of document.querySelectorAll(controls + ', [data-toggle="dropdown"], [data-bs-toggle="dropdown"]')) {
+      if (!account.test(normalized(control.textContent || control.getAttribute("aria-label"))) || !visible(control)) continue;
+      const match = controlName(control).match(account);
+      if (match) values.add(match[1]);
+    }
+    for (const panel of panels) {
+      for (const match of normalized(panel.innerText).matchAll(/\bpatronal\s*:?\s+(\d{1,20})\s*[·•|–—-]\s*prevalidacion\b/g)) {
+        values.add(match[1]);
+      }
+    }
+    return values;
+  }
+
+  function samePortalAction(control) {
+    const action = control.getAttribute("formaction") || control.form?.action;
+    const href = control.getAttribute("href");
+    const base = control.ownerDocument.location.href;
+    const inert = !href || /^javascript:\s*void\(0\);?$/i.test(href);
+    try {
+      return (!action || new URL(action, base).origin === REOP) && (inert || new URL(href, base).origin === REOP);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function importerTrigger() {
+    if (location.pathname !== SALARY_PATH || !officialDocument(document)) return null;
+    const matches = [...document.querySelectorAll(controls)].filter(control =>
+      controlName(control) === "importar planilla" && visible(control) && !control.closest(dialogs) &&
+      !control.matches(':disabled,[aria-disabled="true"]') && samePortalAction(control));
+    return matches.length === 1 ? matches[0] : null;
+  }
+
+  function hasActiveJob(panel) {
+    return normalized(panel.innerText).includes("ya existe una carga activa para esta patronal") ||
+      [...panel.querySelectorAll(controls)].some(control =>
+        controlName(control) === "confirmar importacion" && visible(control));
+  }
+
+  function portalState() {
+    const documents = docs();
+    const panels = documents.flatMap(currentImporters);
+    const panel = panels.length === 1 ? panels[0] : null;
+    const numbers = portalPatronales(panels);
+    const legacy = panel ? [] : documents.flatMap(doc => [...doc.querySelectorAll(dialogs)].filter(isImportDialog));
+    const inputs = panel ? importerFiles(panel) : [...new Set(legacy.flatMap(dialog =>
+      [...dialog.querySelectorAll('input[type="file"]')].filter(eligible)))];
+    return {
+      documents, panel, legacy, inputs,
+      patronal: numbers.size === 1 ? [...numbers][0] : "",
+      ambiguous: panels.length > 1 || numbers.size > 1,
+    };
+  }
+
+  function patronalIssue(state) {
+    if (state.ambiguous) return "REOP muestra patronales distintas o más de un importador. Revisá cuál corresponde al lote.";
+    if (state.patronal && state.patronal !== pending.patronal) {
+      return `REOP muestra la patronal ${state.patronal}. Abrí la patronal ${pending.patronal} del lote.`;
+    }
+    return "";
   }
 
   function visibleText(container) {
@@ -159,11 +216,6 @@
     return result;
   }
 
-  function visibleImporter() {
-    const panels = docs().flatMap(currentImporters);
-    return panels.length === 1 ? panels[0] : null;
-  }
-
   function showProgress(progress) {
     const labels = {
       attached: "Excel adjuntado. Continuá la revisión en REOP.",
@@ -186,27 +238,43 @@
   }
 
   function updateView() {
-    if (!tracking && (busy || form.hidden)) return;
-    const panel = visibleImporter();
-    const actual = importerPatronal(panel);
+    if (!host.isConnected || (!tracking && (busy || actions.hidden))) return;
+    const state = portalState();
+    const issue = patronalIssue(state);
     if (tracking) {
-      if (!panel || actual !== pending.patronal) return;
-      const result = importerResult(panel, tracking);
+      if (!state.panel || issue || state.patronal !== pending.patronal) return;
+      const result = importerResult(state.panel, tracking);
       if (result) reportProgress(result);
       return;
     }
-    if (actual !== detected) {
-      if (actual || employer.value === detected) employer.value = actual;
-      employer.readOnly = Boolean(actual);
-      detected = actual;
-      status.textContent = actual
-        ? (actual === pending.patronal
-          ? "La patronal abierta en REOP coincide con el lote."
-          : `REOP muestra la patronal ${actual}. Abrí la patronal ${pending.patronal} del lote.`)
-        : "Compará la patronal del lote con la que está abierta en REOP.";
+    attach.disabled = true;
+    attachOnly.hidden = true;
+    attach.textContent = state.legacy.length ? "Adjuntar planilla" : "Adjuntar y prevalidar";
+    if (issue) {
+      disarm();
+      status.textContent = issue;
+      return;
     }
-    attach.disabled = Boolean(actual && actual !== pending.patronal);
-    prevalidate.hidden = !actual || actual !== pending.patronal || importerFiles(panel).length !== 1;
+    if (state.panel && hasActiveJob(state.panel)) {
+      status.textContent = "REOP ya tiene una carga activa. Continuá con ese trabajo en el importador o revisá su historial.";
+      return;
+    }
+    const opened = state.panel || state.legacy.length;
+    const checked = state.patronal === pending.patronal;
+    if (!opened) {
+      attach.disabled = !importerTrigger();
+      status.textContent = attach.disabled ? "Abrí «Importar Planilla» en REOP para continuar."
+        : checked ? `Patronal ${state.patronal} verificada. El asistente abrirá el importador.`
+        : "El asistente verificará la patronal al abrir el importador.";
+    } else if (!checked) {
+      status.textContent = `Elegí la patronal ${pending.patronal} en REOP y volvé a abrir el importador para verificarla.`;
+    } else if (state.inputs.length > 1 || (state.panel && !state.inputs.length)) {
+      status.textContent = "Abrí el importador con el selector de Excel vacío.";
+    } else {
+      attach.disabled = false;
+      attachOnly.hidden = !state.panel;
+      if (!armedDocs.length) status.textContent = `Patronal ${state.patronal} verificada en REOP.`;
+    }
   }
 
   function stopObservation() {
@@ -240,16 +308,20 @@
       const selected = input.files?.[0];
       const sameFile = input.files?.length === 1 && selected.name === file.name &&
         selected.size === file.size && selected.lastModified === file.lastModified;
-      if (!host.isConnected || host.hidden || !visible(panel) || !panel.contains(input) || !visible(input) ||
-          !officialDocument(input.ownerDocument) || importerPatronal(panel) !== pending.patronal || !sameFile) return false;
-      if (importerResult(panel, tracking)) return true;
-      const controls = [...panel.querySelectorAll('button,input[type="button"],input[type="submit"]')].filter(control =>
+      const state = portalState();
+      if (!host.isConnected || host.hidden || state.panel !== panel || !panel.contains(input) || !visible(input) ||
+          state.ambiguous || state.patronal !== pending.patronal || !sameFile) return false;
+      const result = importerResult(panel, tracking);
+      if (result) {
+        reportProgress(result);
+        return true;
+      }
+      if (hasActiveJob(panel)) return false;
+      const buttons = [...panel.querySelectorAll('button,input[type="button"],input[type="submit"]')].filter(control =>
         visible(control) && !control.matches(':disabled,[aria-disabled="true"]') &&
-        normalized(control.innerText || control.value || control.getAttribute("aria-label")) === "cargar y prevalidar");
-      if (controls.length === 1) {
-        const control = controls[0];
-        const action = control.getAttribute("formaction") || control.form?.action;
-        if (action && new URL(action, control.ownerDocument.location.href).origin !== REOP) return false;
+        controlName(control) === "cargar y prevalidar" && samePortalAction(control));
+      if (buttons.length === 1) {
+        const control = buttons[0];
         control.click();
         reportProgress({phase: "validation-requested"});
         return true;
@@ -276,22 +348,27 @@
     else globalThis.digitReopClose();
   });
 
-  async function transfer(input, patronal, runPrevalidation = false) {
-    if (busy || !eligible(input)) return;
-    const panel = currentImporters(input.ownerDocument).find(candidate => candidate.contains(input));
-    const actual = importerPatronal(panel);
-    if ((actual && actual !== pending.patronal) || (runPrevalidation && actual !== pending.patronal)) {
-      status.textContent = "Verificá que la patronal abierta en REOP sea la del lote.";
-      return;
-    }
-    busy = true;
+  function canTransfer(state, input, panel) {
+    return !state.ambiguous && state.patronal === pending.patronal && state.panel === panel && eligible(input) &&
+      (panel ? state.inputs.length === 1 && state.inputs[0] === input && !hasActiveJob(panel)
+        : state.legacy.length > 0 && state.documents.includes(input.ownerDocument));
+  }
+
+  function setBusy(value) {
+    busy = value;
+    attach.disabled = value;
+    attachOnly.disabled = value;
+    discard.disabled = value;
+  }
+
+  async function transfer(input, state, runPrevalidation = false) {
+    const {panel, patronal} = state;
+    if (busy || !canTransfer(state, input, panel)) return;
+    setBusy(true);
     disarm();
-    attach.disabled = true;
-    prevalidate.disabled = true;
-    discard.disabled = true;
     try {
       const workbook = await message("take", {batchId: pending.batchId, patronal});
-      if (!host.isConnected || !eligible(input) || (panel && (!visible(input) || !panel.contains(input) || importerPatronal(panel) !== actual))) {
+      if (!host.isConnected || !canTransfer(portalState(), input, panel)) {
         throw new Error("El formulario cambió. Prepará el lote otra vez en Digit Laboral.");
       }
       const bytes = Uint8Array.from(atob(workbook.base64), char => char.charCodeAt(0));
@@ -303,20 +380,19 @@
       input.files = selected.files;
       if (input.files?.[0]?.size !== bytes.length) throw new Error("El formulario de REOP no recibió el archivo.");
       input.dispatchEvent(new Event("change", {bubbles: true}));
-      form.hidden = true;
+      actions.hidden = true;
       tracking = {filename: workbook.filename, rows: pending.rows};
       reportProgress({phase: "attached"});
       watchPage(workbook.expiresAt);
       if (runPrevalidation && !(await requestPrevalidation(panel, input, file))) {
-        status.textContent = "Excel adjuntado. Pulsá «Cargar y prevalidar» en REOP para continuar.";
+        status.textContent = hasActiveJob(panel)
+          ? "REOP ya tiene una carga activa. Continuá con ese trabajo en el importador."
+          : "Excel adjuntado. Revisá el importador de REOP para continuar.";
       }
     } catch (error) {
       status.textContent = error.message;
-      attach.disabled = false;
-      prevalidate.disabled = false;
-      discard.disabled = false;
     } finally {
-      busy = false;
+      setBusy(false);
     }
   }
 
@@ -329,9 +405,11 @@
       (event.isTrusted && (isImportDialog(dialog) || currentImporters(doc).some(panel => visible(target) && panel.contains(target)))) ||
       (pickerDocument === doc && Date.now() < pickerUntil)
     )) {
+      const state = portalState();
+      if (!canTransfer(state, target, state.panel)) return;
       event.preventDefault();
       event.stopImmediatePropagation();
-      void transfer(target, employer.value.trim());
+      void transfer(target, state);
       return;
     }
     if (!event.isTrusted) return;
@@ -345,59 +423,64 @@
     }
   }
 
-  form.addEventListener("submit", event => {
-    event.preventDefault();
+  async function start(event, runPrevalidation) {
     if (!event.isTrusted || busy) return;
     disarm();
-    const documents = docs();
-    const importers = documents.flatMap(currentImporters);
-    const actual = importerPatronal(importers.length === 1 ? importers[0] : null);
-    const patronal = actual || employer.value.trim();
-    if (patronal !== pending.patronal) {
-      status.textContent = "El número patronal no coincide con el lote. Verificá la patronal que abriste.";
+    if (Date.now() >= pending.expiresAt) {
+      status.textContent = "El lote venció. Pulsá «Preparar carga en REOP» en Digit Laboral.";
       return;
     }
-    const importerInputs = importers.flatMap(importerFiles);
-    if (event.submitter === prevalidate) {
-      if (!actual || importerInputs.length !== 1) {
-        status.textContent = "Abrí el importador de la patronal del lote para adjuntar y prevalidar.";
-        return;
+    let state = portalState();
+    if (patronalIssue(state)) {
+      updateView();
+      return;
+    }
+    const trigger = !state.panel && !state.legacy.length ? importerTrigger() : null;
+    if (trigger) {
+      setBusy(true);
+      status.textContent = "Abriendo el importador de REOP…";
+      try {
+        trigger.click();
+        for (let attempt = 0; attempt < 40 && host.isConnected; attempt++) {
+          state = portalState();
+          if (patronalIssue(state) || (state.panel && hasActiveJob(state.panel)) ||
+              (state.patronal && (state.inputs.length || state.legacy.length))) break;
+          await new Promise(resolve => setTimeout(resolve, 125));
+        }
+      } finally {
+        setBusy(false);
       }
-      void transfer(importerInputs[0], patronal, true);
+      if (!host.isConnected) return;
+      state = portalState();
+    }
+    const [input] = state.inputs;
+    if (state.inputs.length === 1 && canTransfer(state, input, state.panel)) {
+      await transfer(input, state, runPrevalidation && Boolean(state.panel));
       return;
     }
-    const importDialogs = documents.flatMap(doc => [...doc.querySelectorAll(dialogs)].filter(isImportDialog));
-    const dialogFiles = importDialogs.flatMap(node => [...node.querySelectorAll('input[type="file"]')].filter(eligible));
-    const inputs = [...new Set([...dialogFiles, ...importerInputs])];
-    if (inputs.length === 1) {
-      void transfer(inputs[0], patronal);
+    updateView();
+    if (patronalIssue(state) || state.panel || state.patronal !== pending.patronal) return;
+    if (!state.legacy.length || state.inputs.length) {
+      if (trigger && !state.legacy.length) status.textContent = "Abrí «Importar Planilla» en REOP para continuar.";
       return;
     }
-    if (!documents.some(isSalaryScreen) && !importDialogs.length) {
-      status.textContent = "Abrí Comunicaciones → Liquidación Salario y pulsá Adjuntar planilla otra vez.";
-      return;
-    }
-    armedDocs = documents;
+    armedDocs = state.documents;
     for (const doc of armedDocs) doc.addEventListener("click", capturePicker, true);
-    status.textContent = "Abrí «Importar Planilla» en REOP. Cuando veas el selector de Excel, pulsá «Adjuntar planilla» de nuevo.";
+    status.textContent = "Pulsá el selector de Excel del aviso de REOP.";
     armTimer = setTimeout(() => {
       disarm();
       status.textContent = "No se detectó un selector de Excel. Podés volver a pulsar Adjuntar planilla.";
     }, 60_000);
-  });
-  employer.addEventListener("input", () => {
-    if (armedDocs.length) {
-      disarm();
-      status.textContent = "Volvé a confirmar el número patronal para adjuntar.";
-    }
-  });
+  }
+  attach.addEventListener("click", event => void start(event, true));
+  attachOnly.addEventListener("click", event => void start(event, false));
 
   discard.addEventListener("click", async event => {
     if (!event.isTrusted || busy) return;
     disarm();
     try {
       await message("discard", {batchId: pending.batchId});
-      form.hidden = true;
+      actions.hidden = true;
       summary.hidden = true;
       stopObservation();
       status.textContent = "Planilla descartada de esta sesión de Chrome.";
@@ -410,9 +493,14 @@
     status.textContent = "Ingresá a tu cuenta en REOP. Después abrí el asistente en Liquidación Salario.";
     return;
   }
+  if (location.pathname !== SALARY_PATH) {
+    status.textContent = "Abrí Liquidación Salario y pulsá la extensión para cargar el lote.";
+    shadow.querySelector("#salary").hidden = false;
+    return;
+  }
   message("info").then(result => {
     pending = result;
-    summary.textContent = `Lote #${result.batchId} · período ${result.period} · patronal ${result.patronal} · ${result.rows} registros.`;
+    summary.textContent = `Lote #${result.batchId} · período ${result.period} · patronal ${result.patronal} · ${result.rows} ${Number(result.rows) === 1 ? "registro" : "registros"}.`;
     summary.hidden = false;
     if (result.tracking) {
       tracking = {filename: result.filename, rows: result.rows};
@@ -420,8 +508,7 @@
       else status.textContent = "Revisá el estado del lote en el importador de REOP.";
       if (result.progress?.phase === "imported") return;
     } else {
-      form.hidden = false;
-      status.textContent = "Compará la patronal del lote con la que está abierta en REOP.";
+      actions.hidden = false;
     }
     watchPage(result.expiresAt);
   }).catch(error => { status.textContent = error.message; });
