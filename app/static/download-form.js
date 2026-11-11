@@ -33,6 +33,19 @@
     });
   }
 
+  function progressText(batchId, progress) {
+    const {phase, rows, valid, errors, imported} = progress;
+    const messages = {
+      attached: 'Excel adjuntado en REOP. Continuá en el importador.',
+      'validation-requested': 'Prevalidación solicitada. Esperá el resultado en REOP.',
+      processing: `REOP muestra ${valid} sin errores y ${errors} con errores. Revisá el estado en el portal.`,
+      corrections: `REOP solicita correcciones. ${valid} sin errores y ${errors} con errores. Revisá el detalle en el portal.`,
+      prevalidated: `REOP prevalidó ${valid} de ${rows} filas sin errores. Revisá el resultado e importá en el portal.`,
+      imported: `REOP importó ${imported} de ${rows} filas. Revisá y confirmá las comunicaciones en el portal.`,
+    };
+    return `Lote #${batchId} · ${messages[phase]}`;
+  }
+
   document.querySelectorAll('form[data-download-form]').forEach(form => {
     const buttons = [...form.querySelectorAll('button[type="submit"]')];
     const assistantId = form.dataset.reopAssistantId;
@@ -43,6 +56,8 @@
     if (!buttons.length || !status) return;
     if (bridgeButton && assistantId) bridgeButton.hidden = false;
     let busy = false;
+    let followToken = 0;
+    let followTimer;
     const notify = (text, state) => {
       status.hidden = false;
       status.textContent = text;
@@ -55,10 +70,44 @@
       if (utf8) { try { value = decodeURIComponent(utf8[1]); } catch (_) { /* Use plain filename. */ } }
       return value.replace(/[\\/\x00-\x1f\x7f]/g, '-').trim().slice(0, 180) || fallback;
     };
+    function stopFollowing() {
+      followToken++;
+      window.clearTimeout(followTimer);
+    }
+    function follow(batchId) {
+      const token = followToken;
+      let previous = '';
+      async function check() {
+        try {
+          const state = await extensionMessage(assistantId, {type: 'status', batchId});
+          if (token !== followToken) return;
+          if (!state.active) {
+            notify(`Terminó el seguimiento del lote #${batchId}. Consultá el estado en REOP.`, 'loading');
+            return;
+          }
+          const progress = state.progress;
+          if (progress) {
+            const fingerprint = JSON.stringify(progress);
+            if (fingerprint !== previous) {
+              previous = fingerprint;
+              const style = progress.phase === 'corrections' ? 'error'
+                : ['prevalidated', 'imported'].includes(progress.phase) ? 'success' : 'loading';
+              notify(progressText(batchId, progress), style);
+            }
+            if (progress.phase === 'imported') return;
+          }
+          followTimer = window.setTimeout(check, 3000);
+        } catch (_) {
+          if (token === followToken) notify(`Se interrumpió el seguimiento del lote #${batchId}. Consultá el resultado en REOP.`, 'loading');
+        }
+      }
+      followTimer = window.setTimeout(check, 3000);
+    }
     form.addEventListener('submit', async event => {
       if (event.defaultPrevented) return;
       event.preventDefault();
       if (busy || !form.reportValidity()) return;
+      stopFollowing();
       const button = event.submitter || buttons[0];
       const bridge = Boolean(assistantId && bridgeButton && button === bridgeButton);
       busy = true;
@@ -73,11 +122,13 @@
       const timer = window.setTimeout(() => controller.abort(), 30000);
       let objectUrl;
       let separateWindows = false;
+      let tracking = false;
       try {
         if (bridge) {
           const state = await extensionMessage(assistantId, {type: 'ping'});
           if (state.protocol !== protocol) throw new Error(unavailable);
           separateWindows = state.separateWindows === true;
+          tracking = state.tracking === true;
           if (state.busy) {
             if (portalLink) portalLink.hidden = false;
             throw new Error('Ya hay un lote pendiente. Adjuntalo o descartalo desde el asistente en REOP.');
@@ -131,6 +182,7 @@
           if (portalLink) portalLink.hidden = false;
           const reopWindow = separateWindows ? 'en este perfil de Chrome' : 'en esta misma ventana de Chrome';
           notify(`Lote #${batchId} preparado por 10 minutos. Dejá esta pestaña abierta. En REOP, ${reopWindow}, abrí Liquidación Salario y pulsá la extensión de Digit Laboral.`, 'success');
+          if (tracking) follow(batchId);
         } else {
           objectUrl = URL.createObjectURL(blob);
           const link = document.createElement('a');

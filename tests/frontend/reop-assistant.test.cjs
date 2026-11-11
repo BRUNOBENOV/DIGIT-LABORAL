@@ -9,9 +9,9 @@ const vm = require('node:vm');
 const worker = readFileSync(join(__dirname, '../../app/reop_browser_extension/worker.js'), 'utf8');
 const source = {
   url: 'https://digit-laboral-app.onrender.com/app/compliance/salary-import?period=2026-10',
-  frameId: 0, tab: {id: 4, windowId: 1},
+  frameId: 0, documentId: 'source-doc', tab: {id: 4, windowId: 1},
 };
-const portal = {url: 'https://regobpat.mtess.gov.py/salary', frameId: 0, tab: {id: 5, windowId: 1}};
+const portal = {url: 'https://regobpat.mtess.gov.py/salary', frameId: 0, documentId: 'portal-doc', tab: {id: 5, windowId: 1}};
 const bytes = Buffer.from('PK\x03\x04 synthetic workbook');
 const stage = {
   type: 'stage', protocol: 1, batchId: '7', period: '2026-10', patronal: '000123', rows: '2',
@@ -77,8 +77,36 @@ test('la planilla sale a la pestaña REOP activada, incluso en otra ventana, con
   const results = await Promise.all([bridge.internal(take, secondWindow), bridge.internal(take, secondWindow)]);
   assert.equal(results.filter(result => result.ok).length, 1);
   assert.equal(results.find(result => result.ok).base64, stage.base64);
+  assert.equal(results.find(result => result.ok).filename, 'reop_salarios_800000-0_2026-10_lote-7.xlsx');
   assert.equal((await bridge.external({type: 'ping'})).busy, false);
-  assert.match((await bridge.internal({type: 'info'}, secondWindow)).message, /Preparar carga en REOP/);
+  const resumed = await bridge.internal({type: 'info'}, secondWindow);
+  assert.equal(resumed.tracking, true);
+  assert.equal(resumed.base64, undefined);
+});
+
+test('el resultado observado queda vinculado al lote y a los documentos de origen y destino', async () => {
+  const bridge = extension();
+  const poll = {type: 'status', batchId: stage.batchId};
+  const report = {type: 'progress', batchId: stage.batchId};
+  assert.equal((await bridge.external(stage)).ok, true);
+  assert.equal((await bridge.external(poll)).active, true);
+  await bridge.click();
+  assert.equal((await bridge.internal({type: 'take', batchId: stage.batchId, patronal: stage.patronal})).ok, true);
+  assert.equal((await bridge.internal({...report, phase: 'attached'}, {...portal, documentId: 'other-doc'})).ok, false);
+  assert.equal((await bridge.internal({...report, phase: 'attached'})).ok, true);
+  assert.equal((await bridge.external({...poll, batchId: '9'})).active, false);
+  assert.equal((await bridge.external(poll, {...source, documentId: 'other-doc'})).active, false);
+  assert.equal((await bridge.external(poll, {...source, tab: {id: 20, windowId: 1}})).active, false);
+  assert.equal((await bridge.internal({...report, phase: 'imported', valid: 2, errors: 0, imported: 3})).ok, false);
+  assert.equal((await bridge.internal({...report, phase: 'corrections', valid: 1, errors: 1, imported: 0, detail: 'dato no transferible'})).ok, true);
+  const observed = (await bridge.external(poll)).progress;
+  assert.equal(observed.errors, 1);
+  assert.equal(observed.detail, undefined);
+  assert.equal((await bridge.internal({...report, phase: 'imported', valid: 2, errors: 0, imported: 2})).ok, true);
+  await bridge.internal({...report, phase: 'attached'});
+  assert.equal((await bridge.external(poll)).progress.phase, 'imported');
+  bridge.navigate(portal.tab.id);
+  assert.equal((await bridge.external(poll)).active, false);
 });
 
 test('la copia temporal se descarta por vencimiento o al salir de la vista previa', async () => {

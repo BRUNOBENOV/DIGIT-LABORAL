@@ -1,3 +1,8 @@
+## 2.7.14 — Prevalidación y seguimiento en REOP
+
+- El asistente 1.1.0 detecta la patronal del importador y ofrece adjuntar y solicitar la prevalidación en una sola acción.
+- Vincula cada archivo con su lote y muestra el resultado observado en REOP mientras las pestañas estén abiertas. La revisión, importación y confirmación se realizan en el portal.
+
 ## 2.7.13 — Cédulas en Trazabilidad de cálculos
 
 - Muestra la cédula registrada en el legajo debajo del nombre, junto al concepto, para identificar al funcionario desde el historial.
