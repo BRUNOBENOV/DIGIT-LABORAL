@@ -3,9 +3,11 @@
 const APP = "https://digit-laboral-app.onrender.com";
 const REOP = "https://regobpat.mtess.gov.py";
 const PATH = "/app/compliance/salary-import";
+const SALARY_PATH = "/liquidacion_salario_list.php";
 const EXPIRES = "digit-reop-expiry";
 const STATE = "digit-reop-pending";
 const TRACKING = "digit-reop-tracking";
+const PORTAL_TAB = "digit-reop-tab";
 const MAX_BYTES = 5 * 1024 * 1024;
 const TTL = 10 * 60 * 1000;
 const TRACKING_TTL = 30 * 60 * 1000;
@@ -20,6 +22,25 @@ function serialize(operation) {
 
 function parseUrl(value) {
   try { return new URL(value); } catch (_) { return null; }
+}
+
+function isSalaryPage(url) {
+  const parsed = parseUrl(url);
+  return parsed?.origin === REOP && parsed.pathname === SALARY_PATH;
+}
+
+async function readPortalTab(tabId) {
+  if (!Number.isInteger(tabId)) return null;
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    return !tab.incognito && parseUrl(tab.url)?.origin === REOP ? tab : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function injectPortal(tabId) {
+  return chrome.scripting.executeScript({target: {tabId}, files: ["portal.js"]});
 }
 
 async function clearPending() {
@@ -99,23 +120,53 @@ chrome.runtime.onMessageExternal.addListener(reply(async (message, sender) => {
   }
   const existing = await readPending();
   if (message.type === "ping") {
-    return {protocol: PROTOCOL, busy: Boolean(existing), separateWindows: true, tracking: true, directPrevalidation: true};
+    return {protocol: PROTOCOL, busy: Boolean(existing), separateWindows: true, tracking: true, directPrevalidation: true, startFromDigit: true};
   }
-  if (message.type === "status") {
+  if (message.type === "status" || message.type === "open-portal") {
     const entries = await readTracking();
-    const track = Object.values(entries).find(entry => entry.batchId === message.batchId && sameSource(entry, sender));
+    const track = Object.entries(entries).find(([, entry]) => entry.batchId === message.batchId && sameSource(entry, sender));
     const waiting = existing?.batchId === message.batchId && sameSource(existing, sender);
-    return {active: Boolean(track || waiting), progress: track?.progress || null};
+    if (message.type === "status") {
+      return {active: Boolean(track || waiting), progress: track?.[1].progress || null, review: waiting ? existing.review : null};
+    }
+    if (!track && !waiting) throw new Error("Abrí REOP para revisar el lote.");
+    const tabId = track ? Number(track[0]) : existing.targetTab ?? (await chrome.storage.session.get(PORTAL_TAB))[PORTAL_TAB];
+    const tab = await readPortalTab(tabId);
+    if (tab) {
+      await chrome.tabs.update(tab.id, {active: true});
+      await chrome.windows.update(tab.windowId, {focused: true});
+    } else {
+      await chrome.tabs.create({url: REOP + SALARY_PATH});
+    }
+    return {};
   }
   if (message.type !== "stage" || message.protocol !== PROTOCOL) {
     throw new Error("Actualizá la extensión de Digit Laboral.");
   }
   if (existing) throw new Error("Ya hay un lote pendiente. Adjuntalo o descartalo desde el asistente en REOP.");
-  const pending = await prepareWorkbook(message);
-  await chrome.storage.session.set({[STATE]: {...pending, sourceTab: sender.tab.id, sourceDocument: sender.documentId}});
+  const pending = {
+    ...await prepareWorkbook(message),
+    sourceTab: sender.tab.id,
+    sourceDocument: sender.documentId,
+    autoPrevalidate: message.prevalidate === true,
+  };
+  const tab = pending.autoPrevalidate ? await readPortalTab((await chrome.storage.session.get(PORTAL_TAB))[PORTAL_TAB]) : null;
+  if (tab && isSalaryPage(tab.url) && tab.status !== "loading" && !tab.discarded && !tab.frozen) {
+    pending.targetTab = tab.id;
+  }
+  await chrome.storage.session.set({[STATE]: pending});
   await chrome.alarms.create(EXPIRES, {when: pending.expiresAt});
   await chrome.action.setBadgeText({text: "1"});
-  return {batchId: pending.batchId};
+  if (pending.targetTab !== undefined) {
+    try {
+      await injectPortal(pending.targetTab);
+      return {batchId: pending.batchId, autoStarted: true};
+    } catch (_) {
+      delete pending.targetTab;
+      await chrome.storage.session.set({[STATE]: pending});
+    }
+  }
+  return {batchId: pending.batchId, autoStarted: false};
 }));
 
 function openPortal(tab) {
@@ -126,20 +177,21 @@ function openPortal(tab) {
     }
     return;
   }
-  // Grant access to the REOP tab the operator opens, within this Chrome profile.
+  // Remember only the salary tab the operator activates through the toolbar.
   return serialize(async () => {
+    if (!isSalaryPage(tab.url)) return;
     const pending = await readPending();
+    await chrome.storage.session.set({[PORTAL_TAB]: tab.id});
     if (pending) {
-      await chrome.storage.session.set({[STATE]: {...pending, targetTab: tab.id}});
+      const {targetDocument, ...unbound} = pending;
+      await chrome.storage.session.set({[STATE]: {...unbound, targetTab: tab.id}});
     }
-  }).then(() => chrome.scripting.executeScript({
-    target: {tabId: tab.id}, files: ["portal.js"],
-  })).catch(() => chrome.action.setBadgeText({tabId: tab.id, text: "!"}).catch(() => {}));
+  }).then(() => injectPortal(tab.id)).catch(() => chrome.action.setBadgeText({tabId: tab.id, text: "!"}).catch(() => {}));
 }
 chrome.action.onClicked.addListener(openPortal);
 
 chrome.runtime.onMessage.addListener(reply(async (message, sender) => {
-  if (parseUrl(sender.url)?.origin !== REOP || sender.frameId !== 0 || !Number.isInteger(sender.tab?.id) || sender.tab.incognito) {
+  if (!isSalaryPage(sender.url) || sender.frameId !== 0 || !Number.isInteger(sender.tab?.id) || sender.tab.incognito) {
     throw new Error("Abrí el asistente desde la pestaña oficial de REOP.");
   }
   if (message.type === "progress") {
@@ -163,13 +215,26 @@ chrome.runtime.onMessage.addListener(reply(async (message, sender) => {
       return {batchId, period, patronal, rows, filename, progress, expiresAt, tracking: true};
     }
   }
-  if (!pending) throw new Error("En Digit Laboral, marcá la confirmación y pulsá «Preparar carga en REOP». Después volvé a abrir el asistente.");
+  if (!pending && message.type === "info" && (await chrome.storage.session.get(PORTAL_TAB))[PORTAL_TAB] === sender.tab.id) {
+    return {ready: true};
+  }
+  if (!pending) throw new Error("Prepará un lote en Digit Laboral y abrí el asistente en REOP.");
   if (pending.targetTab !== sender.tab.id) throw new Error("Volvé a abrir el asistente en esta pestaña de REOP.");
   if (message.type === "info") {
-    const {batchId, period, patronal, rows, expiresAt} = pending;
-    return {batchId, period, patronal, rows, expiresAt};
+    const {batchId, period, patronal, rows, expiresAt, autoPrevalidate} = pending;
+    await chrome.storage.session.set({[STATE]: {...pending, targetDocument: sender.documentId, autoPrevalidate: false}});
+    return {batchId, period, patronal, rows, expiresAt, autoPrevalidate};
   }
-  if (message.batchId !== pending.batchId) throw new Error("El lote cambió. Abrí el asistente otra vez.");
+  if (message.batchId !== pending.batchId || pending.targetDocument !== sender.documentId) {
+    throw new Error("El lote cambió. Abrí el asistente otra vez.");
+  }
+  if (message.type === "review-needed") {
+    if (!["patronal", "active-job", "importer", "login"].includes(message.reason)) {
+      throw new Error("No se pudo interpretar el estado del asistente.");
+    }
+    await chrome.storage.session.set({[STATE]: {...pending, review: message.reason}});
+    return {};
+  }
   if (message.type === "discard") {
     await clearPending();
     return {};
@@ -194,18 +259,26 @@ chrome.alarms.onAlarm.addListener(alarm => {
   if (alarm.name === EXPIRES) serialize(readPending).catch(() => {});
 });
 
-function clearForTab(tabId) {
+function clearForTab(tabId, removed = false) {
   serialize(async () => {
     const pending = await readPending();
-    if (pending?.sourceTab === tabId) await clearPending();
+    if (pending?.sourceTab === tabId) {
+      await clearPending();
+    } else if (pending?.targetTab === tabId) {
+      const {targetTab, targetDocument, ...unbound} = pending;
+      await chrome.storage.session.set({[STATE]: {...unbound, review: "portal"}});
+    }
     const entries = await readTracking();
     const remaining = Object.entries(entries).filter(([target, entry]) => Number(target) !== tabId && entry.sourceTab !== tabId);
     if (remaining.length !== Object.keys(entries).length) {
       await chrome.storage.session.set({[TRACKING]: Object.fromEntries(remaining)});
     }
+    if (removed && (await chrome.storage.session.get(PORTAL_TAB))[PORTAL_TAB] === tabId) {
+      await chrome.storage.session.remove(PORTAL_TAB);
+    }
   }).catch(() => {});
 }
-chrome.tabs.onRemoved.addListener(clearForTab);
+chrome.tabs.onRemoved.addListener(tabId => clearForTab(tabId, true));
 chrome.tabs.onUpdated.addListener((tabId, change) => {
   if (change.status === "loading") clearForTab(tabId);
 });

@@ -11,7 +11,10 @@ const source = {
   url: 'https://digit-laboral-app.onrender.com/app/compliance/salary-import?period=2026-10',
   frameId: 0, documentId: 'source-doc', tab: {id: 4, windowId: 1},
 };
-const portal = {url: 'https://regobpat.mtess.gov.py/salary', frameId: 0, documentId: 'portal-doc', tab: {id: 5, windowId: 1}};
+const portal = {
+  url: 'https://regobpat.mtess.gov.py/liquidacion_salario_list.php',
+  frameId: 0, documentId: 'portal-doc', tab: {id: 5, windowId: 2},
+};
 const bytes = Buffer.from('PK\x03\x04 synthetic workbook');
 const stage = {
   type: 'stage', protocol: 1, batchId: '7', period: '2026-10', patronal: '000123', rows: '2',
@@ -24,6 +27,8 @@ function extension() {
   const event = name => ({addListener: handler => { listeners[name] = handler; }});
   const data = {};
   const injected = [];
+  const openTabs = new Map();
+  const tabActions = [];
   let time = 0;
   const chrome = {
     storage: {session: {
@@ -35,7 +40,16 @@ function extension() {
     runtime: {onMessageExternal: event('external'), onMessage: event('internal')},
     action: {onClicked: event('click'), setBadgeText: async () => {}, setTitle: async () => {}},
     scripting: {executeScript: async ({target}) => { injected.push(target.tabId); }},
-    tabs: {onRemoved: event('removed'), onUpdated: event('updated')},
+    tabs: {
+      get: async id => {
+        if (!openTabs.has(id)) throw new Error('Tab closed');
+        return openTabs.get(id);
+      },
+      update: async (id, update) => { tabActions.push(['update', id, update.active]); },
+      create: async ({url}) => { tabActions.push(['open', url]); },
+      onRemoved: event('removed'), onUpdated: event('updated'),
+    },
+    windows: {update: async (id, update) => { tabActions.push(['focus', id, update.focused]); }},
   };
   vm.runInNewContext(worker, {chrome, URL, atob, crypto: webcrypto, Date: {now: () => time}});
   const send = (eventName, message, sender) => new Promise(resolve => {
@@ -44,10 +58,16 @@ function extension() {
   return {
     external: (message, sender = source) => send('external', message, sender),
     internal: (message, sender = portal) => send('internal', message, sender),
-    click: (sender = portal) => listeners.click({...sender.tab, url: sender.url}),
+    click: (sender = portal) => {
+      const tab = {...sender.tab, url: sender.url};
+      openTabs.set(tab.id, tab);
+      return listeners.click(tab);
+    },
+    revoke: id => { openTabs.get(id).url = undefined; },
     navigate: tabId => listeners.updated(tabId, {status: 'loading'}),
     expire: () => { time += 10 * 60 * 1000; listeners.alarm({name: 'digit-reop-expiry'}); },
     injected,
+    tabActions,
   };
 }
 
@@ -93,6 +113,7 @@ test('el resultado observado queda vinculado al lote y a los documentos de orige
   assert.equal((await bridge.external(stage)).ok, true);
   assert.equal((await bridge.external(poll)).active, true);
   await bridge.click();
+  assert.equal((await bridge.internal({type: 'info'})).ok, true);
   assert.equal((await bridge.internal({type: 'take', batchId: stage.batchId, patronal: stage.patronal})).ok, true);
   assert.equal((await bridge.internal({...report, phase: 'attached'}, {...portal, documentId: 'other-doc'})).ok, false);
   assert.equal((await bridge.internal({...report, phase: 'attached'})).ok, true);
@@ -119,4 +140,40 @@ test('la copia temporal se descarta por vencimiento o al salir de la vista previ
   assert.equal((await bridge.external(stage)).ok, true);
   bridge.navigate(source.tab.id);
   assert.equal((await bridge.external({type: 'ping'})).busy, false);
+});
+
+test('prevalida desde Digit Laboral en la pestaña elegida y entrega el lote a un solo documento', async () => {
+  const bridge = extension();
+  const batch = {batchId: stage.batchId};
+  const open = {type: 'open-portal', ...batch};
+  await bridge.click();
+  assert.equal((await bridge.internal({type: 'info'})).ready, true);
+  assert.equal((await bridge.external({...stage, prevalidate: true})).autoStarted, true);
+  assert.deepEqual(bridge.injected, [portal.tab.id, portal.tab.id]);
+  assert.equal((await bridge.internal({type: 'info'}, {...portal, url: new URL('/login.php', portal.url).href})).ok, false);
+  assert.equal((await bridge.internal({type: 'info'})).autoPrevalidate, true);
+  assert.equal((await bridge.internal({type: 'info'})).autoPrevalidate, false);
+  const take = {type: 'take', ...batch, patronal: stage.patronal};
+  assert.equal((await bridge.internal(take, {...portal, documentId: 'new-doc'})).ok, false);
+  assert.equal((await bridge.internal({type: 'review-needed', ...batch, reason: 'active-job'})).ok, true);
+  assert.equal((await bridge.external({type: 'status', ...batch})).review, 'active-job');
+  assert.equal((await bridge.external(open, {...source, documentId: 'other-doc'})).ok, false);
+  assert.equal((await bridge.internal(take)).ok, true);
+  assert.equal((await bridge.external(open)).ok, true);
+  assert.deepEqual(bridge.tabActions, [['update', portal.tab.id, true], ['focus', portal.tab.windowId, true]]);
+});
+
+test('conserva el lote si Chrome revocó el acceso y arranca al pulsar el ícono en REOP', async () => {
+  const bridge = extension();
+  await bridge.click();
+  bridge.revoke(portal.tab.id);
+  assert.equal((await bridge.external({...stage, prevalidate: true})).autoStarted, false);
+  assert.deepEqual(bridge.injected, [portal.tab.id]);
+  assert.equal((await bridge.internal({type: 'info'})).ok, false);
+  assert.equal((await bridge.external({type: 'open-portal', batchId: stage.batchId})).ok, true);
+  assert.deepEqual(bridge.tabActions, [['open', portal.url]]);
+  await bridge.click();
+  assert.equal((await bridge.internal({type: 'info'})).autoPrevalidate, true);
+  bridge.navigate(portal.tab.id);
+  assert.equal((await bridge.external({type: 'status', batchId: stage.batchId})).review, 'portal');
 });

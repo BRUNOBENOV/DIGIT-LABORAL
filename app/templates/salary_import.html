@@ -43,8 +43,8 @@
     <summary>Cargar en REOP con el asistente de Chrome</summary>
     <p class="import-salary-info">Instalación por única vez en Chrome de escritorio. Descargá y descomprimí el ZIP, abrí <code>chrome://extensions</code>, activá «Modo de desarrollador» y elegí «Cargar descomprimida». Seleccioná la carpeta <code>digit-laboral-reop</code>.</p>
     <a class="btn ghost" href="/app/compliance/reop-assistant.zip">Descargar asistente REOP</a>
-    <p class="import-salary-info">Si ya instalaste el asistente, reemplazá los archivos de su carpeta por los del ZIP y pulsá «Volver a cargar» en <code>chrome://extensions</code>. La versión 1.2.0 lee la patronal que muestra REOP y abre el importador desde el asistente.</p>
-    <p class="import-salary-info">Verificá la planilla, marcá la confirmación y pulsá «Preparar carga en REOP». Abrí «Liquidación Salario», pulsá la extensión y elegí «Adjuntar y prevalidar». Revisá los resultados, importá y confirmá las comunicaciones en REOP.</p>
+    <p class="import-salary-info">Si ya instalaste el asistente, reemplazá los archivos de su carpeta por los del ZIP y pulsá «Volver a cargar» en <code>chrome://extensions</code>.</p>
+    <p class="import-salary-info">Con la versión 1.3.0, abrí «Liquidación Salario» en REOP y pulsá el ícono de la extensión una vez para habilitar esa pestaña. En Digit Laboral, verificá la planilla, marcá la confirmación y pulsá «Preparar y prevalidar en REOP». Dejá ambas pestañas abiertas para ver el resultado. Revisá, importá y confirmá las comunicaciones en REOP.</p>
   </details>
   {% endif %}
   <p class="import-salary-info"><strong>Criterios de días:</strong> REOP mensualizados = días remunerados del mes (incluidos descansos legales pagados); REOP jornaleros = jornadas efectivamente trabajadas. REI utiliza los días remunerados guardados y su propia base imponible IPS. Las horas ordinarias REOP siempre deben corresponder a asistencia real, no a un divisor de salario.</p>
@@ -330,8 +330,8 @@
       <div class="import-salary-actions">
         <button class="btn {{ 'ghost' if reop_assistant_patronal else 'primary' }}" type="submit">Descargar {{ 'Excel REOP (.xlsx)' if authority == 'REOP' else 'TXT REI (.txt)' }}</button>
         {% if reop_assistant_patronal %}
-        <button class="btn primary" type="submit" data-reop-browser hidden>Preparar carga en REOP</button>
-        <a class="btn ghost" href="{{ official_portal }}liquidacion_salario_list.php" data-reop-open target="_blank" rel="noopener noreferrer" hidden>Abrir Liquidación Salario en REOP ↗</a>
+        <button class="btn primary" type="submit" data-reop-browser hidden>Preparar y prevalidar en REOP</button>
+        <a class="btn ghost" href="{{ official_portal }}liquidacion_salario_list.php" data-reop-open target="_blank" rel="noopener noreferrer" hidden>Abrir REOP ↗</a>
         {% endif %}
       </div>
       {% if reop_assistant_id and not reop_assistant_patronal %}<p class="import-salary-info">La carga con Chrome requiere una sola patronal por lote.</p>{% endif %}

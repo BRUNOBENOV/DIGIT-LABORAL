@@ -389,8 +389,10 @@
           ? "REOP ya tiene una carga activa. Continuá con ese trabajo en el importador."
           : "Excel adjuntado. Revisá el importador de REOP para continuar.";
       }
+      return true;
     } catch (error) {
       status.textContent = error.message;
+      return false;
     } finally {
       setBusy(false);
     }
@@ -423,17 +425,17 @@
     }
   }
 
-  async function start(event, runPrevalidation) {
-    if (!event.isTrusted || busy) return;
+  async function start(runPrevalidation) {
+    if (busy) return;
     disarm();
     if (Date.now() >= pending.expiresAt) {
-      status.textContent = "El lote venció. Pulsá «Preparar carga en REOP» en Digit Laboral.";
+      status.textContent = "El lote venció. Volvé a prepararlo en Digit Laboral.";
       return;
     }
     let state = portalState();
     if (patronalIssue(state)) {
       updateView();
-      return;
+      return "patronal";
     }
     const trigger = !state.panel && !state.legacy.length ? importerTrigger() : null;
     if (trigger) {
@@ -455,14 +457,16 @@
     }
     const [input] = state.inputs;
     if (state.inputs.length === 1 && canTransfer(state, input, state.panel)) {
-      await transfer(input, state, runPrevalidation && Boolean(state.panel));
-      return;
+      return (await transfer(input, state, runPrevalidation && Boolean(state.panel))) ? undefined : "importer";
     }
     updateView();
-    if (patronalIssue(state) || state.panel || state.patronal !== pending.patronal) return;
+    if (patronalIssue(state) || ((state.panel || state.legacy.length) && state.patronal !== pending.patronal)) {
+      return "patronal";
+    }
+    if (state.panel) return hasActiveJob(state.panel) ? "active-job" : "importer";
     if (!state.legacy.length || state.inputs.length) {
       if (trigger && !state.legacy.length) status.textContent = "Abrí «Importar Planilla» en REOP para continuar.";
-      return;
+      return "importer";
     }
     armedDocs = state.documents;
     for (const doc of armedDocs) doc.addEventListener("click", capturePicker, true);
@@ -471,9 +475,10 @@
       disarm();
       status.textContent = "No se detectó un selector de Excel. Podés volver a pulsar Adjuntar planilla.";
     }, 60_000);
+    return "importer";
   }
-  attach.addEventListener("click", event => void start(event, true));
-  attachOnly.addEventListener("click", event => void start(event, false));
+  attach.addEventListener("click", event => { if (event.isTrusted) void start(true); });
+  attachOnly.addEventListener("click", event => { if (event.isTrusted) void start(false); });
 
   discard.addEventListener("click", async event => {
     if (!event.isTrusted || busy) return;
@@ -489,16 +494,24 @@
     }
   });
 
-  if (login(document)) {
-    status.textContent = "Ingresá a tu cuenta en REOP. Después abrí el asistente en Liquidación Salario.";
-    return;
-  }
+  const signIn = "Ingresá a tu cuenta en REOP. Después abrí el asistente en Liquidación Salario.";
   if (location.pathname !== SALARY_PATH) {
-    status.textContent = "Abrí Liquidación Salario y pulsá la extensión para cargar el lote.";
-    shadow.querySelector("#salary").hidden = false;
+    const needsLogin = login(document);
+    status.textContent = needsLogin ? signIn : "Abrí Liquidación Salario y pulsá la extensión para cargar el lote.";
+    shadow.querySelector("#salary").hidden = needsLogin;
     return;
   }
-  message("info").then(result => {
+  message("info").then(async result => {
+    if (!host.isConnected) return;
+    if (login(document)) {
+      status.textContent = signIn;
+      if (result.autoPrevalidate) await message("review-needed", {batchId: result.batchId, reason: "login"});
+      return;
+    }
+    if (result.ready) {
+      status.textContent = "Pestaña habilitada. Prepará y prevalidá la planilla desde Digit Laboral.";
+      return;
+    }
     pending = result;
     summary.textContent = `Lote #${result.batchId} · período ${result.period} · patronal ${result.patronal} · ${result.rows} ${Number(result.rows) === 1 ? "registro" : "registros"}.`;
     summary.hidden = false;
@@ -511,5 +524,9 @@
       actions.hidden = false;
     }
     watchPage(result.expiresAt);
+    if (result.autoPrevalidate) {
+      const reason = await start(true);
+      if (reason) await message("review-needed", {batchId: result.batchId, reason}).catch(() => {});
+    }
   }).catch(error => { status.textContent = error.message; });
 })();
