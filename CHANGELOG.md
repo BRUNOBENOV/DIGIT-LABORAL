@@ -1,3 +1,8 @@
+## 2.7.15 — Asistente REOP sin reingreso de la patronal
+
+- El asistente 1.2.0 lee la patronal de la cabecera de REOP o del importador y la coteja con el lote al adjuntar.
+- Abre el importador y solicita la prevalidación desde una sola acción. Si REOP muestra una carga activa, guía al operador al trabajo que ya está abierto.
+
 ## 2.7.14 — Prevalidación y seguimiento en REOP
 
 - El asistente 1.1.0 detecta la patronal del importador y ofrece adjuntar y solicitar la prevalidación en una sola acción.

@@ -58,7 +58,9 @@ test('la planilla sale a la pestaña REOP activada, incluso en otra ventana, con
   assert.equal((await bridge.external(stage, {...source, url: source.url.replace('https:', 'http:')})).ok, false);
   assert.equal((await bridge.external({...stage, sha256: '0'.repeat(64)})).ok, false);
   assert.equal((await bridge.external(stage)).ok, true);
-  assert.equal((await bridge.external({type: 'ping'})).separateWindows, true);
+  const capabilities = await bridge.external({type: 'ping'});
+  assert.equal(capabilities.separateWindows, true);
+  assert.equal(capabilities.directPrevalidation, true);
   assert.equal((await bridge.external(stage)).ok, false);
   assert.equal((await bridge.internal({type: 'info'})).ok, false);
   await bridge.click({...portal, url: 'https://regobpat.mtess.gov.py.example.test/salary'});

@@ -123,12 +123,14 @@
       let objectUrl;
       let separateWindows = false;
       let tracking = false;
+      let directPrevalidation = false;
       try {
         if (bridge) {
           const state = await extensionMessage(assistantId, {type: 'ping'});
           if (state.protocol !== protocol) throw new Error(unavailable);
           separateWindows = state.separateWindows === true;
           tracking = state.tracking === true;
+          directPrevalidation = state.directPrevalidation === true;
           if (state.busy) {
             if (portalLink) portalLink.hidden = false;
             throw new Error('Ya hay un lote pendiente. Adjuntalo o descartalo desde el asistente en REOP.');
@@ -181,7 +183,10 @@
           });
           if (portalLink) portalLink.hidden = false;
           const reopWindow = separateWindows ? 'en este perfil de Chrome' : 'en esta misma ventana de Chrome';
-          notify(`Lote #${batchId} preparado por 10 minutos. Dejá esta pestaña abierta. En REOP, ${reopWindow}, abrí Liquidación Salario y pulsá la extensión de Digit Laboral.`, 'success');
+          const instructions = directPrevalidation
+            ? 'Elegí «Adjuntar y prevalidar» en el asistente.'
+            : 'Actualizá el asistente desde esta página para prevalidar sin escribir la patronal.';
+          notify(`Lote #${batchId} preparado por 10 minutos. Dejá esta pestaña abierta. En REOP, ${reopWindow}, abrí Liquidación Salario y pulsá la extensión. ${instructions}`, 'success');
           if (tracking) follow(batchId);
         } else {
           objectUrl = URL.createObjectURL(blob);
