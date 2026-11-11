@@ -4,6 +4,13 @@
   const types = {xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', txt: 'text/plain'};
   const unavailable = 'Instalá o actualizá el asistente de Chrome desde «Cargar en REOP con el asistente de Chrome».';
   const protocol = 1;
+  const reviewMessages = {
+    patronal: 'Revisá la patronal abierta en REOP. El lote sigue preparado.',
+    'active-job': 'REOP muestra una carga activa. Abrí el trabajo en el portal para continuar.',
+    importer: 'Abrí el importador de REOP y seguí el aviso del asistente.',
+    login: 'Ingresá a REOP y volvé a abrir el asistente en Liquidación Salario.',
+    portal: 'Abrí Liquidación Salario y pulsá el ícono del asistente.',
+  };
 
   function extensionMessage(id, message) {
     return new Promise((resolve, reject) => {
@@ -58,6 +65,7 @@
     let busy = false;
     let followToken = 0;
     let followTimer;
+    let linkedBatch;
     const notify = (text, state) => {
       status.hidden = false;
       status.textContent = text;
@@ -74,6 +82,16 @@
       followToken++;
       window.clearTimeout(followTimer);
     }
+    portalLink?.addEventListener('click', async event => {
+      if (!linkedBatch || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+      event.preventDefault();
+      try {
+        await extensionMessage(assistantId, {type: 'open-portal', batchId: linkedBatch});
+      } catch (_) {
+        linkedBatch = undefined;
+        notify('Volvé a pulsar «Abrir REOP» para abrir el portal.', 'loading');
+      }
+    });
     function follow(batchId) {
       const token = followToken;
       let previous = '';
@@ -95,6 +113,9 @@
               notify(progressText(batchId, progress), style);
             }
             if (progress.phase === 'imported') return;
+          } else if (Object.hasOwn(reviewMessages, state.review) && state.review !== previous) {
+            previous = state.review;
+            notify(`Lote #${batchId} · ${reviewMessages[state.review]}`, 'loading');
           }
           followTimer = window.setTimeout(check, 3000);
         } catch (_) {
@@ -124,6 +145,7 @@
       let separateWindows = false;
       let tracking = false;
       let directPrevalidation = false;
+      let startFromDigit = false;
       try {
         if (bridge) {
           const state = await extensionMessage(assistantId, {type: 'ping'});
@@ -131,6 +153,7 @@
           separateWindows = state.separateWindows === true;
           tracking = state.tracking === true;
           directPrevalidation = state.directPrevalidation === true;
+          startFromDigit = state.startFromDigit === true;
           if (state.busy) {
             if (portalLink) portalLink.hidden = false;
             throw new Error('Ya hay un lote pendiente. Adjuntalo o descartalo desde el asistente en REOP.');
@@ -176,17 +199,24 @@
           if (format !== 'xlsx' || blob.size > 5 * 1024 * 1024 || !/^\d+$/.test(batchId || '')) {
             throw new Error('El archivo generado no es apto para el asistente de Chrome. Revisá el lote.');
           }
-          await extensionMessage(assistantId, {
-            type: 'stage', protocol, batchId, filename: fileName, base64: await encodeFile(blob),
+          const staged = await extensionMessage(assistantId, {
+            type: 'stage', protocol, batchId, prevalidate: startFromDigit, filename: fileName, base64: await encodeFile(blob),
             period: response.headers.get('X-REOP-Period'), patronal: response.headers.get('X-REOP-Patronal'),
             rows: response.headers.get('X-REOP-Rows'), sha256: response.headers.get('X-REOP-SHA256'),
           });
           if (portalLink) portalLink.hidden = false;
-          const reopWindow = separateWindows ? 'en este perfil de Chrome' : 'en esta misma ventana de Chrome';
-          const instructions = directPrevalidation
-            ? 'Elegí «Adjuntar y prevalidar» en el asistente.'
-            : 'Actualizá el asistente desde esta página para prevalidar sin escribir la patronal.';
-          notify(`Lote #${batchId} preparado por 10 minutos. Dejá esta pestaña abierta. En REOP, ${reopWindow}, abrí Liquidación Salario y pulsá la extensión. ${instructions}`, 'success');
+          linkedBatch = startFromDigit ? batchId : undefined;
+          if (staged.autoStarted) {
+            notify(`Lote #${batchId} · Abriendo el importador en tu pestaña de REOP…`, 'loading');
+          } else if (startFromDigit) {
+            notify(`Lote #${batchId} preparado por 10 minutos. En Liquidación Salario, pulsá el ícono del asistente para prevalidar.`, 'success');
+          } else {
+            const reopWindow = separateWindows ? 'en este perfil de Chrome' : 'en esta misma ventana de Chrome';
+            const instructions = directPrevalidation
+              ? 'Elegí «Adjuntar y prevalidar» en el asistente.'
+              : 'Actualizá la extensión desde esta página para prevalidar.';
+            notify(`Lote #${batchId} preparado por 10 minutos. Dejá esta pestaña abierta. En REOP, ${reopWindow}, abrí Liquidación Salario y pulsá la extensión. ${instructions}`, 'success');
+          }
           if (tracking) follow(batchId);
         } else {
           objectUrl = URL.createObjectURL(blob);

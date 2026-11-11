@@ -1,3 +1,8 @@
+## 2.7.16 — Prevalidación REOP desde Digit Laboral
+
+- El asistente 1.3.0 reutiliza la pestaña de Liquidación Salario habilitada por el operador para abrir el importador, verificar la patronal y prevalidar el lote desde Digit Laboral.
+- Muestra en Digit Laboral cuándo el flujo necesita intervención y permite volver a la pestaña REOP del lote.
+
 ## 2.7.15 — Asistente REOP sin reingreso de la patronal
 
 - El asistente 1.2.0 lee la patronal de la cabecera de REOP o del importador y la coteja con el lote al adjuntar.
