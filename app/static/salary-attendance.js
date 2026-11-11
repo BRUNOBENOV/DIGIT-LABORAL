@@ -14,7 +14,7 @@
     const startText = String(field('period_start')?.value || '');
     const endText = String(field('period_end')?.value || '');
     const parse = value => {
-      if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(value)) return null;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
       const day = new Date(value + 'T00:00:00Z');
       return Number.isFinite(day.getTime()) && day.toISOString().slice(0, 10) === value ? day : null;
     };
