@@ -72,10 +72,12 @@
       const controller = new AbortController();
       const timer = window.setTimeout(() => controller.abort(), 30000);
       let objectUrl;
+      let separateWindows = false;
       try {
         if (bridge) {
           const state = await extensionMessage(assistantId, {type: 'ping'});
           if (state.protocol !== protocol) throw new Error(unavailable);
+          separateWindows = state.separateWindows === true;
           if (state.busy) {
             if (portalLink) portalLink.hidden = false;
             throw new Error('Ya hay un lote pendiente. Adjuntalo o descartalo desde el asistente en REOP.');
@@ -127,7 +129,8 @@
             rows: response.headers.get('X-REOP-Rows'), sha256: response.headers.get('X-REOP-SHA256'),
           });
           if (portalLink) portalLink.hidden = false;
-          notify(`Lote #${batchId} preparado por 10 minutos. Dejá esta pestaña abierta. Abrí Liquidación Salario en REOP y pulsá la extensión de Digit Laboral.`, 'success');
+          const reopWindow = separateWindows ? 'en este perfil de Chrome' : 'en esta misma ventana de Chrome';
+          notify(`Lote #${batchId} preparado por 10 minutos. Dejá esta pestaña abierta. En REOP, ${reopWindow}, abrí Liquidación Salario y pulsá la extensión de Digit Laboral.`, 'success');
         } else {
           objectUrl = URL.createObjectURL(blob);
           const link = document.createElement('a');
