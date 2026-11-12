@@ -176,6 +176,7 @@
             {% for item in events %}
             {% set overdue_row = item.due_date and item.due_date < today and item.status in pending_statuses %}
             {% set data = event_data[item.id] %}
+            {% set permission = data.get('reop_permission') if can_prepare else none %}
             {% set previous_batch = last_batch_ids.get(item.id) %}
             <tr id="comunicacion-{{ item.id }}" class="{{ 'overdue-row' if overdue_row }}">
               <td><span class="authority-badge {{ item.authority|lower }}">{{ item.authority }}</span> <strong>{{ item.event_type }}</strong><small class="table-sub">#{{ item.id }} · Evento {{ item.event_date|fecha }}</small></td>
@@ -197,14 +198,25 @@
                 {% endif %}
                 {% else %}
                 {% if previous_batch %}<a class="table-save" href="{{ center }}&tab=batches&batch_id={{ previous_batch }}#lote-{{ previous_batch }}">Lote anterior #{{ previous_batch }}</a>{% endif %}
-                {% if (can_prepare and item.status == 'Borrador') or (can_manage and item.status not in ['Aceptado', 'Anulado']) or data.get('detail') or data.get('notes') %}
+                {% if permission or (can_prepare and item.status == 'Borrador') or (can_manage and item.status not in ['Aceptado', 'Anulado']) or data.get('detail') or data.get('notes') %}
                 <details class="compliance-row-actions" {{ 'open' if selected_event_id == item.id }}>
                   <summary>Ver y gestionar <span class="sr-only">{{ item.event_type }} #{{ item.id }}</span></summary>
+                  {% if permission %}
+                  <div class="compliance-fields">
+                    <p><strong>{{ permission.subtype }}</strong> · <a href="/app/calculation-operations?tipo=discipline&amp;company_id={{ item.company_id }}&amp;employee_id={{ item.employee_id }}&amp;edit={{ permission.operation_id }}#operation-form">Ver novedad de origen</a></p>
+                    {% if permission_issues.get(item.id) %}<p class="alert warning">{{ permission_issues[item.id] }}</p>{% endif %}
+                    <label>Cédula<input value="{{ item.employee.document_number if item.employee else '' }}" readonly onfocus="this.select()"></label>
+                    <label>Desde<input value="{{ item.event_date|fecha }}" readonly onfocus="this.select()"></label>
+                    <label>Hasta<input value="{{ permission.end_date.split('-')|reverse|join('/') }}" readonly onfocus="this.select()"></label>
+                    {% if permission.hours is not none %}<label>Horas registradas<input value="{{ permission.hours }}" readonly onfocus="this.select()"></label>{% endif %}
+                    <a class="btn ghost" href="{{ reop_permissions_portal }}" target="_blank" rel="noopener noreferrer">Abrir Permisos en REOP ↗</a>
+                  </div>
+                  {% endif %}
                   {% if can_prepare and item.status == 'Borrador' %}
                   <form method="post" action="/app/compliance/events/{{ item.id }}/details" class="compliance-fields">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <label>Fecha límite prevista<input type="date" name="due_date" value="{{ item.due_date.isoformat() if item.due_date else '' }}" min="{{ item.event_date.isoformat() }}"></label>
-                    <label>Datos complementarios<textarea name="detail" rows="2" maxlength="4000">{{ data.get('detail') or '' }}</textarea></label>
+                    <label>{{ 'Motivo u observación para REOP' if permission else 'Datos complementarios' }}<textarea name="detail" rows="2" maxlength="4000">{{ data.get('detail') or '' }}</textarea></label>
                     <label>Notas internas<textarea name="notes" rows="2" maxlength="2000">{{ data.get('notes') or item.notes or '' }}</textarea></label>
                     <button class="btn ghost" type="submit">Guardar datos</button>
                   </form>

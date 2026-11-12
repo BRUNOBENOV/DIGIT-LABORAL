@@ -22,6 +22,7 @@ from .models import (
     EmployeeComplianceProfile,
     IntegrationBatch,
     IntegrationBatchItem,
+    LaborOperation,
     Payroll,
     PayrollComplianceDetail,
     PayrollLine,
@@ -35,6 +36,7 @@ OFFICIAL_PORTALS = {
     "REI": "https://servicios.ips.gov.py/newrei/rei/",
     "REOP": "https://regobpat.mtess.gov.py/",
 }
+REOP_PERMISSIONS_PORTAL = OFFICIAL_PORTALS["REOP"] + "permisos_obreros_list.php"
 
 REOP_EVENT_TYPES = {
     "Entrada", "Salida", "Permiso", "Vacaciones", "Amonestación", "Ausencia",
@@ -68,6 +70,44 @@ INTEGRATION_BATCH_STATUS_TRANSITIONS: dict[str, set[str]] = {
 
 def can_transition_compliance_status(current: str, target: str) -> bool:
     return target in COMPLIANCE_STATUS_TRANSITIONS.get(current, {current})
+
+
+def reop_permission_data(operation: LaborOperation) -> dict | None:
+    if (operation.operation_type != "discipline" or operation.status != "Aprobado"
+            or not operation.end_date or operation.end_date < operation.effective_date):
+        return None
+    try:
+        payload = json.loads(operation.payload_json or "{}")
+    except (TypeError, ValueError):
+        return None
+    subtype = payload.get("subtype") if isinstance(payload, dict) else None
+    if subtype not in ("Permiso", "Reposo", "Licencia"):
+        return None
+    return {
+        "operation_id": operation.id,
+        "subtype": subtype,
+        "end_date": operation.end_date.isoformat(),
+        "hours": format(operation.quantity, "f") if operation.quantity is not None else None,
+    }
+
+
+def reop_permission_source_issue(db: Session, event: ComplianceEvent) -> str:
+    if (event.authority != "REOP" or event.event_type != "Permiso"
+            or not (event.source_key or "").endswith(":reop-permission")):
+        return ""
+    try:
+        payload = json.loads(event.payload_json or "{}")
+    except (TypeError, ValueError):
+        payload = {}
+    permission = payload.get("reop_permission") if isinstance(payload, dict) else None
+    operation_id = permission.get("operation_id") if isinstance(permission, dict) else None
+    operation = db.get(LaborOperation, operation_id) if isinstance(operation_id, int) else None
+    if (not operation or event.source_key != f"labor-operation:{operation.id}:reop-permission"
+            or operation.company_id != event.company_id or operation.employee_id != event.employee_id
+            or operation.effective_date != event.event_date or reop_permission_data(operation) != permission):
+        return f"Comunicación #{event.id}. La novedad cambió o dejó de estar aprobada. Revisá el registro de origen."
+    return ""
+
 
 def _sheet_style(sheet) -> None:  # noqa: ANN001
     fill = PatternFill("solid", fgColor="173B86")
@@ -250,6 +290,10 @@ def build_event_workbook(
     branch_map, branch_profiles = _branch_context(db, company.id)
     errors = ["Falta el RUC de la empresa."] if not (company.ruc or "").strip() else []
     for event in events:
+        if validate:
+            issue = reop_permission_source_issue(db, event)
+            if issue:
+                errors.append(issue)
         employee = employee_map.get(event.employee_id) if event.employee_id else None
         branch_id = event.branch_id or (employee.branch_id if employee else None)
         branch = branch_map.get(branch_id) if branch_id else None
