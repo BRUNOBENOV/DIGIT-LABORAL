@@ -41,11 +41,18 @@
   }
 
   function progressText(batchId, progress) {
-    const {phase, rows, valid, errors, imported} = progress;
+    const {phase, step, jobsAhead, rows, valid, errors, imported} = progress;
+    const queued = jobsAhead === 1 ? ' Hay 1 trabajo por delante.' : jobsAhead > 1 ? ` Hay ${jobsAhead} trabajos por delante.` : '';
+    const steps = {
+      'validation-queued': 'Prevalidación en cola en REOP.' + queued,
+      validating: `REOP está prevalidando. ${valid + errors} de ${rows} filas revisadas.`,
+      'import-queued': 'Importación en cola en REOP.' + queued,
+      importing: `REOP está importando. ${imported} de ${rows} filas importadas.`,
+    };
     const messages = {
       attached: 'Excel adjuntado en REOP. Continuá en el importador.',
       'validation-requested': 'Prevalidación solicitada. Esperá el resultado en REOP.',
-      processing: `REOP muestra ${valid} sin errores y ${errors} con errores. Revisá el estado en el portal.`,
+      processing: steps[step] || 'REOP está procesando el lote.',
       corrections: `REOP solicita correcciones. ${valid} sin errores y ${errors} con errores. Revisá el detalle en el portal.`,
       prevalidated: `REOP prevalidó ${valid} de ${rows} filas sin errores. Revisá el resultado e importá en el portal.`,
       imported: `REOP importó ${imported} de ${rows} filas. Revisá y confirmá las comunicaciones en el portal.`,
@@ -58,6 +65,8 @@
     const assistantId = form.dataset.reopAssistantId;
     const bridgeButton = form.querySelector('[data-reop-browser]');
     const portalLink = form.querySelector('[data-reop-open]');
+    const downloadButton = form.querySelector('[data-download-file]');
+    const existingFile = form.querySelector('[data-reop-file]');
     const status = form.querySelector('[data-download-status]');
     const batchLink = form.querySelector('[data-download-batch]');
     if (!buttons.length || !status) return;
@@ -66,6 +75,7 @@
     let followToken = 0;
     let followTimer;
     let linkedBatch;
+    let reopActive = false;
     const notify = (text, state) => {
       status.hidden = false;
       status.textContent = text;
@@ -78,9 +88,23 @@
       if (utf8) { try { value = decodeURIComponent(utf8[1]); } catch (_) { /* Use plain filename. */ } }
       return value.replace(/[\\/\x00-\x1f\x7f]/g, '-').trim().slice(0, 180) || fallback;
     };
+    function showReopAction(active, readyToImport = false) {
+      if (!bridgeButton || !portalLink || !downloadButton || !existingFile) return;
+      reopActive = Boolean(active && linkedBatch);
+      bridgeButton.hidden = reopActive;
+      downloadButton.hidden = reopActive;
+      existingFile.hidden = !reopActive;
+      if (reopActive) existingFile.href = `/app/compliance/batches/${linkedBatch}/download`;
+      portalLink.classList.toggle('primary', reopActive);
+      portalLink.classList.toggle('ghost', !reopActive);
+      portalLink.textContent = reopActive
+        ? (readyToImport ? 'Revisar para importar ↗' : 'Ver estado en REOP ↗')
+        : 'Abrir REOP ↗';
+    }
     function stopFollowing() {
       followToken++;
       window.clearTimeout(followTimer);
+      showReopAction(false);
     }
     portalLink?.addEventListener('click', async event => {
       if (!linkedBatch || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
@@ -89,6 +113,7 @@
         await extensionMessage(assistantId, {type: 'open-portal', batchId: linkedBatch});
       } catch (_) {
         linkedBatch = undefined;
+        showReopAction(false);
         notify('Volvé a pulsar «Abrir REOP» para abrir el portal.', 'loading');
       }
     });
@@ -100,6 +125,7 @@
           const state = await extensionMessage(assistantId, {type: 'status', batchId});
           if (token !== followToken) return;
           if (!state.active) {
+            showReopAction(false);
             notify(`Terminó el seguimiento del lote #${batchId}. Consultá el estado en REOP.`, 'loading');
             return;
           }
@@ -108,6 +134,7 @@
             const fingerprint = JSON.stringify(progress);
             if (fingerprint !== previous) {
               previous = fingerprint;
+              showReopAction(!['corrections', 'imported'].includes(progress.phase), progress.phase === 'prevalidated');
               const style = progress.phase === 'corrections' ? 'error'
                 : ['prevalidated', 'imported'].includes(progress.phase) ? 'success' : 'loading';
               notify(progressText(batchId, progress), style);
@@ -119,7 +146,10 @@
           }
           followTimer = window.setTimeout(check, 3000);
         } catch (_) {
-          if (token === followToken) notify(`Se interrumpió el seguimiento del lote #${batchId}. Consultá el resultado en REOP.`, 'loading');
+          if (token === followToken) {
+            showReopAction(false);
+            notify(`Se interrumpió el seguimiento del lote #${batchId}. Consultá el resultado en REOP.`, 'loading');
+          }
         }
       }
       followTimer = window.setTimeout(check, 3000);
@@ -127,10 +157,15 @@
     form.addEventListener('submit', async event => {
       if (event.defaultPrevented) return;
       event.preventDefault();
-      if (busy || !form.reportValidity()) return;
-      stopFollowing();
+      if (busy) return;
       const button = event.submitter || buttons[0];
       const bridge = Boolean(assistantId && bridgeButton && button === bridgeButton);
+      if (reopActive) {
+        (bridge ? portalLink : existingFile).click();
+        return;
+      }
+      if (!form.reportValidity()) return;
+      stopFollowing();
       busy = true;
       const original = button.textContent;
       const previousDisabled = buttons.map(submitter => submitter.disabled);
@@ -206,6 +241,7 @@
           });
           if (portalLink) portalLink.hidden = false;
           linkedBatch = startFromDigit ? batchId : undefined;
+          showReopAction(true);
           if (staged.autoStarted) {
             notify(`Lote #${batchId} · Abriendo el importador en tu pestaña de REOP…`, 'loading');
           } else if (startFromDigit) {

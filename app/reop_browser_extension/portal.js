@@ -142,9 +142,11 @@
   }
 
   function hasActiveJob(panel) {
-    return normalized(panel.innerText).includes("ya existe una carga activa para esta patronal") ||
-      [...panel.querySelectorAll(controls)].some(control =>
-        controlName(control) === "confirmar importacion" && visible(control));
+    if (normalized(panel.innerText).includes("ya existe una carga activa para esta patronal") ||
+        [...panel.querySelectorAll(controls)].some(control =>
+          controlName(control) === "confirmar importacion" && visible(control))) return true;
+    const current = importerResult(panel);
+    return current?.phase === "prevalidated" || Boolean(current?.step);
   }
 
   function portalState() {
@@ -179,11 +181,18 @@
     return normalized(parts.join(" "));
   }
 
+  function jobsAhead(panel) {
+    const matches = normalized(panel.innerText).matchAll(/\bhay (\d{1,6}) trabajos? anterior(?:es)? en la cola\b/g);
+    const counts = new Set(Array.from(matches, match => Number(match[1])));
+    return counts.size === 1 ? [...counts][0] : undefined;
+  }
+
   function importerResult(panel, batch) {
-    const filename = batch.filename.toLowerCase();
+    const expected = batch?.filename.toLowerCase();
     const titles = panel.querySelectorAll('div,span,strong,p,h2,h3,h4');
     for (const title of titles) {
-      if (title.textContent.trim().toLowerCase() !== filename || !visible(title)) continue;
+      const filename = title.textContent.trim().toLowerCase();
+      if ((expected ? filename !== expected : !/^[a-z0-9][a-z0-9_.-]*\.xlsx?$/.test(filename)) || !visible(title)) continue;
       for (let card = title.parentElement; card && card !== panel; card = card.parentElement) {
         if (!normalized(card.innerText).includes("filas del archivo")) continue;
         const text = visibleText(card);
@@ -198,13 +207,27 @@
           return count ? Number(count.replace(/[.,]/g, "")) : NaN;
         });
         const [rows, valid, errors, imported] = values;
-        if (rows !== Number(batch.rows) || !values.every(Number.isSafeInteger) || valid + errors > rows || imported > valid) continue;
-        const completed = /\bprevalidacion (?:terminada|completa|finalizada|exitosa)\b|\blist[ao] para importar\b/.test(text);
-        let phase = "processing";
-        if (imported === rows && /\bimportacion completa\b/.test(text)) phase = "imported";
-        else if (errors > 0 && (completed || /\brequiere correcciones\b/.test(text))) phase = "corrections";
-        else if (valid === rows && imported === 0 && completed) phase = "prevalidated";
-        return {phase, valid, errors, imported};
+        if (!rows || (batch && rows !== Number(batch.rows)) || !values.every(Number.isSafeInteger) ||
+            valid + errors > rows || imported > valid) continue;
+        const counts = {rows, valid, errors, imported};
+        const completed = /\bprevalidacion (?:terminada|completa|finalizada|exitosa)\b|\blist[ao] para (?:importar|confirmar)\b/.test(text);
+        if (imported === rows && /\bimportacion completa\b/.test(text)) return {phase: "imported", ...counts};
+        if (errors > 0 && (completed || /\brequiere correcciones\b/.test(text))) return {phase: "corrections", ...counts};
+        if (imported === 0 && /\ben cola para importar\b/.test(text)) {
+          return {phase: "processing", step: "import-queued", jobsAhead: jobsAhead(panel), ...counts};
+        }
+        if (imported > 0 || /\bimportando\b|\bimportacion en curso\b/.test(text)) {
+          return {phase: "processing", step: "importing", ...counts};
+        }
+        if (valid === rows && completed) return {phase: "prevalidated", ...counts};
+        if (valid + errors === 0 && /\ben cola para validar\b|\besperando prevalidacion\b/.test(text)) {
+          return {phase: "processing", step: "validation-queued", jobsAhead: jobsAhead(panel), ...counts};
+        }
+        if ((valid + errors > 0 && valid + errors < rows) ||
+            /\bprevalidando\b|\bprevalidacion en curso\b|\bvalidando planilla\b/.test(text)) {
+          return {phase: "processing", step: "validating", ...counts};
+        }
+        return {phase: "processing", ...counts};
       }
     }
     return null;
@@ -217,10 +240,18 @@
   }
 
   function showProgress(progress) {
+    const {step, jobsAhead, rows, valid, errors, imported} = progress;
+    const queued = jobsAhead === 1 ? " Hay 1 trabajo por delante." : jobsAhead > 1 ? ` Hay ${jobsAhead} trabajos por delante.` : "";
+    const steps = {
+      "validation-queued": "Prevalidación en cola." + queued,
+      validating: `Prevalidación en curso. ${valid + errors} de ${rows} filas revisadas.`,
+      "import-queued": "Importación en cola." + queued,
+      importing: `Importación en curso. ${imported} de ${rows} filas importadas.`,
+    };
     const labels = {
       attached: "Excel adjuntado. Continuá la revisión en REOP.",
       "validation-requested": "Prevalidación solicitada. Revisá el resultado en REOP.",
-      processing: `REOP muestra ${progress.valid} sin errores y ${progress.errors} con errores. Revisá el estado en el importador.`,
+      processing: steps[step] || "REOP está procesando el lote.",
       corrections: `REOP informa ${progress.errors} fila(s) con errores. Revisá las correcciones en el importador.`,
       prevalidated: "Prevalidación completa. Revisá las filas y decidí si las importás en REOP.",
       imported: `REOP importó ${progress.imported} fila(s). Revisá y confirmá las comunicaciones en el portal.`,

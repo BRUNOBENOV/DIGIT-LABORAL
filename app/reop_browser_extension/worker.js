@@ -77,7 +77,17 @@ function portalProgress(message, rows) {
       (phase === "imported" && (valid !== rows || errors !== 0 || imported !== rows))) {
     throw new Error("El estado observado en REOP no coincide con el lote.");
   }
-  return {phase, rows, valid, errors, imported};
+  const progress = {phase, rows, valid, errors, imported};
+  const {step, jobsAhead} = message;
+  if (phase !== "processing" || !["validation-queued", "validating", "import-queued", "importing"].includes(step)) return progress;
+  if ((step === "validation-queued" && valid + errors !== 0) || (step === "import-queued" && imported !== 0)) {
+    throw new Error("El estado de la cola de REOP no coincide con las filas del lote.");
+  }
+  progress.step = step;
+  if (step.endsWith("-queued") && Number.isSafeInteger(jobsAhead) && jobsAhead >= 0 && jobsAhead <= 999999) {
+    progress.jobsAhead = jobsAhead;
+  }
+  return progress;
 }
 
 function reply(operation) {

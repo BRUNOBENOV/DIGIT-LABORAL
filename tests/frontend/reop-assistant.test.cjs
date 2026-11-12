@@ -142,6 +142,29 @@ test('la copia temporal se descarta por vencimiento o al salir de la vista previ
   assert.equal((await bridge.external({type: 'ping'})).busy, false);
 });
 
+test('publica la cola del lote y descarta detalles o conteos que no corresponden a esa etapa', async () => {
+  const bridge = extension();
+  const batch = {batchId: stage.batchId};
+  const poll = {type: 'status', ...batch};
+  const report = {type: 'progress', phase: 'processing', valid: 0, errors: 0, imported: 0, ...batch};
+  assert.equal((await bridge.external(stage)).ok, true);
+  await bridge.click();
+  assert.equal((await bridge.internal({type: 'info'})).ok, true);
+  assert.equal((await bridge.internal({type: 'take', patronal: stage.patronal, ...batch})).ok, true);
+  assert.equal((await bridge.internal({...report, step: 'validation-queued', jobsAhead: 3, valid: 1})).ok, false);
+  assert.equal((await bridge.internal({...report, step: 'validation-queued', jobsAhead: 3, detail: 'texto ajeno'})).ok, true);
+  const queued = (await bridge.external(poll)).progress;
+  assert.equal(queued.step, 'validation-queued');
+  assert.equal(queued.jobsAhead, 3);
+  assert.equal(queued.detail, undefined);
+  assert.equal((await bridge.internal({...report, step: 'validation-queued', jobsAhead: -1})).ok, true);
+  assert.equal((await bridge.external(poll)).progress.jobsAhead, undefined);
+  assert.equal((await bridge.internal({...report, step: 'validating', valid: 1, jobsAhead: 3})).ok, true);
+  assert.equal((await bridge.external(poll)).progress.jobsAhead, undefined);
+  assert.equal((await bridge.internal({...report, step: 'import-queued', valid: 2, jobsAhead: 1})).ok, true);
+  assert.equal((await bridge.external(poll)).progress.step, 'import-queued');
+});
+
 test('prevalida desde Digit Laboral en la pestaña elegida y entrega el lote a un solo documento', async () => {
   const bridge = extension();
   const batch = {batchId: stage.batchId};

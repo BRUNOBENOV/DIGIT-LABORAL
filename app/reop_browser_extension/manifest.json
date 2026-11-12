@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Digit Laboral · Asistente REOP",
   "description": "Adjunta liquidaciones revisadas al formulario de importación de REOP.",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "minimum_chrome_version": "120",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAlz1isG2pkKuLhYEf8ubXkMeKwO0pLOV8XdmxJ46PyFIn6h1WjfwY+ci0RT4dqY6B7ikIJT4EZcKubu/tIJFAF8sWmopxGzFsl7KqCMPA9h3RVsB1Z30t/Owcem+V485pvBge2TY7g8uauewsMdK1EhKphtbNxkN8d2QunesjY7b1Euv7lkvOWBFXqdGq9FJh0rTN/UlYuOqp6uUwhT7jrt8NnRfV3WvB2ROcMH3CvrIrFYm3AS4PCySVi/Krx95q6NmSbRnahPkyJd8ecYvaWF0e8tuHav+o6DrLZX6QXDxFwKUVnG0/khLfaEJ+NimbIH2uCMhmTSW4R1QyPJYDhwIDAQAB",
   "permissions": [
