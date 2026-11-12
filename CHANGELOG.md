@@ -1,3 +1,8 @@
+## 2.7.18 — Permisos vinculados a REOP
+
+- Prepara una comunicación REOP desde un permiso, reposo o licencia aprobado. Conserva el vínculo con la novedad y reutiliza el borrador para actualizar los datos de origen.
+- Muestra cédula, fechas y horas registradas, con acceso directo a Permisos en REOP. La referencia del portal se guarda en la comunicación.
+
 ## 2.7.17 — Estado de la cola de REOP
 
 - El asistente 1.4.0 muestra si el lote está en cola para prevalidar o importar y los trabajos por delante que informa REOP.

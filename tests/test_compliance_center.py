@@ -1,4 +1,6 @@
-from datetime import UTC, datetime, timedelta
+import json
+from dataclasses import replace
+from datetime import UTC, date, datetime, timedelta
 from io import BytesIO
 from urllib.parse import parse_qs, urlsplit
 
@@ -7,13 +9,74 @@ from openpyxl import load_workbook
 from sqlalchemy import select
 
 from app import main as core
-from app.models import ComplianceEvent, IntegrationBatch, IntegrationBatchItem, Payroll, PayrollLine
+from app.models import ComplianceEvent, IntegrationBatch, IntegrationBatchItem, LaborOperation, Payroll, PayrollLine
 from app.period_coverage import current_paraguay_date
 from app.storage_service import LocalStorage
 from tests.test_labor_suite import token, web_case
 
 
 CENTER = "/app/compliance"
+
+
+def test_approved_permission_links_to_one_reop_draft_and_keeps_the_portal_reference(web_case, monkeypatch):
+    client, db, _, company, employee, other = web_case
+    monkeypatch.setattr(core, "settings", replace(core.settings, compliance_dual_approval=False))
+    operation = LaborOperation(
+        company_id=company.id, employee_id=employee.id, operation_type="discipline",
+        title="Novedad de prueba", effective_date=date(2026, 10, 29), end_date=date(2026, 11, 7),
+        quantity=2, status="Registrado", notes="Nota interna de prueba",
+        payload_json=json.dumps({"subtype": "Reposo", "reason": "Motivo interno de prueba", "pay_treatment": "ips"}),
+    )
+    foreign = LaborOperation(
+        company_id=other.company_id, employee_id=other.id, operation_type="discipline",
+        title="Permiso de otro estudio", effective_date=operation.effective_date, end_date=operation.end_date,
+        status="Aprobado", payload_json=json.dumps({"subtype": "Permiso"}),
+    )
+    db.add_all([operation, foreign])
+    db.commit()
+    csrf = {"csrf_token": token(client)}
+    path = f"/app/calculation-operations/{operation.id}/reop-permission"
+    assert client.post(path, data=csrf).status_code == 409
+    assert client.post(f"/app/calculation-operations/{foreign.id}/reop-permission", data=csrf).status_code == 404
+    operation.status = "Aprobado"
+    db.commit()
+    operations = BeautifulSoup(client.get(
+        "/app/calculation-operations", params={"tipo": "discipline", "company_id": company.id},
+    ).text, "html.parser")
+    assert "Preparar permiso REOP" in operations.select_one(f'form[action="{path}"]').get_text()
+
+    prepared = client.post(path, data=csrf, follow_redirects=False)
+    assert prepared.status_code == 303
+    location = prepared.headers["location"]
+    assert client.post(path, data=csrf, follow_redirects=False).headers["location"] == location
+    event = db.scalar(select(ComplianceEvent).where(ComplianceEvent.employee_id == employee.id, ComplianceEvent.event_type == "Permiso"))
+    assert (event.authority, event.status, event.event_date) == ("REOP", "Borrador", operation.effective_date)
+    assert json.loads(event.payload_json) == {"reop_permission": {
+        "operation_id": operation.id, "subtype": "Reposo", "end_date": "2026-11-07", "hours": "2.00",
+    }}
+    page = BeautifulSoup(client.get(location).text, "html.parser")
+    row = page.select_one(f"#comunicacion-{event.id}")
+    assert row.select_one(f'a[href="{core.REOP_PERMISSIONS_PORTAL}"]')
+    assert row.select_one(f'input[readonly][value="{employee.document_number}"]')
+    assert row.select_one('input[readonly][value="07/11/2026"]')
+
+    status_url = f"{CENTER}/events/{event.id}/status"
+    operation.end_date = date(2026, 11, 8)
+    db.commit()
+    assert client.post(status_url, data={**csrf, "status": "Validado"}).status_code == 409
+    assert client.post(path, data=csrf, follow_redirects=False).headers["location"] == location
+    assert client.post(status_url, data={**csrf, "status": "Validado"}, follow_redirects=False).status_code == 303
+    saved = client.post(status_url, data={
+        **csrf, "status": "Presentado", "external_reference": "PERMISO-QA",
+    }, follow_redirects=False)
+    assert saved.status_code == 303
+    operation.end_date = date(2026, 11, 9)
+    db.commit()
+    assert client.post(path, data=csrf, follow_redirects=False).headers["location"] == location
+    db.refresh(event)
+    assert event.external_reference == "PERMISO-QA" and event.status == "Presentado"
+    assert json.loads(event.payload_json)["reop_permission"]["end_date"] == "2026-11-08"
+    assert len(list(db.scalars(select(ComplianceEvent).where(ComplianceEvent.source_key == event.source_key)))) == 1
 
 
 def test_filters_count_all_communications_and_isolate_company(web_case):

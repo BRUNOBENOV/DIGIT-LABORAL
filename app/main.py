@@ -193,6 +193,7 @@ from .compliance_service import (
     PENDING_COMPLIANCE_STATUSES,
     REI_EVENT_TYPES,
     REOP_EVENT_TYPES,
+    REOP_PERMISSIONS_PORTAL,
     build_event_workbook,
     build_reop_annual_workbook,
     can_transition_compliance_status,
@@ -200,6 +201,8 @@ from .compliance_service import (
     create_compliance_event,
     ensure_compliance_event,
     register_batch,
+    reop_permission_data,
+    reop_permission_source_issue,
 )
 from .security_service import (
     build_totp_qr_svg,
@@ -9269,8 +9272,8 @@ def create_aguinaldo(
 
 
 # Supplementary calculation operations: time entries, advances, employee actions and telegram drafts.
-def _visible_labor_operation(db: Session, user: User, operation_id: int) -> LaborOperation:
-    item = db.get(LaborOperation, operation_id)
+def _visible_labor_operation(db: Session, user: User, operation_id: int, *, for_update: bool = False) -> LaborOperation:
+    item = db.get(LaborOperation, operation_id, with_for_update=for_update)
     if not item or item.company_id not in company_ids_for_user(db, user):
         raise HTTPException(404, "Registro no encontrado.")
     return item
@@ -9417,6 +9420,7 @@ def calculation_operations_page(
         selected_company=selected_company, selected_employee=selected_employee,
         selected_type=tipo, type_label=OPERATION_LABELS[tipo], status_options=OPERATION_STATUSES[tipo],
         editing=editing, editing_payload=editing_payload, search_term=term,
+        reop_permission_ids={item.id for item in items if reop_permission_data(item)} if tipo == "discipline" else set(),
         today=current_paraguay_date(), format_gs=format_gs,
     )
 
@@ -9507,6 +9511,53 @@ def delete_calculation_operation(
     write_audit(db, user, "anular", "operacion_laboral", str(item.id), item.title)
     db.commit()
     return RedirectResponse(f"/app/calculation-operations?tipo={quote(item.operation_type)}&company_id={item.company_id}&employee_id={item.employee_id}&deleted=1", status_code=303)
+
+
+@app.post("/app/calculation-operations/{operation_id}/reop-permission")
+def prepare_reop_permission(
+    operation_id: int,
+    user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
+    db: Session = Depends(get_db),
+):
+    operation = _visible_labor_operation(db, user, operation_id, for_update=True)
+    permission = reop_permission_data(operation)
+    if not permission:
+        raise HTTPException(409, "Prepará la comunicación desde un permiso, reposo o licencia aprobado con fechas completas.")
+    employee = operation.employee
+    if not employee or employee.company_id != operation.company_id:
+        raise HTTPException(409, "Revisá el funcionario de la novedad.")
+    source_key = f"labor-operation:{operation.id}:reop-permission"
+    event = db.scalar(select(ComplianceEvent).where(
+        ComplianceEvent.company_id == operation.company_id,
+        ComplianceEvent.authority == "REOP",
+        ComplianceEvent.source_key == source_key,
+    ).with_for_update())
+    if event is None:
+        event = create_compliance_event(
+            db, company_id=operation.company_id, employee_id=employee.id, branch_id=employee.branch_id,
+            authority="REOP", event_type="Permiso", event_date=operation.effective_date, due_date=None,
+            payload={"reop_permission": permission}, created_by=user.email, source_key=source_key,
+        )
+        db.flush()
+        write_audit(db, user, "crear", "comunicacion_oficial", str(event.id), f"REOP · Permiso · Novedad #{operation.id}")
+    elif event.status == "Borrador" and not event.batch_id:
+        payload = json_dict(event.payload_json)
+        if (event.employee_id, event.branch_id, event.event_date, payload.get("reop_permission")) != (
+            employee.id, employee.branch_id, operation.effective_date, permission,
+        ):
+            event.employee_id = employee.id
+            event.branch_id = employee.branch_id
+            event.event_date = operation.effective_date
+            if event.due_date and event.due_date < event.event_date:
+                event.due_date = None
+            payload["reop_permission"] = permission
+            event.payload_json = json.dumps(payload, ensure_ascii=False)
+            write_audit(db, user, "actualizar", "comunicacion_oficial", str(event.id), f"REOP · Novedad #{operation.id}")
+    db.commit()
+    return RedirectResponse(
+        f"/app/compliance?company_id={operation.company_id}&authority=REOP&event_id={event.id}#comunicacion-{event.id}",
+        status_code=303,
+    )
 
 
 @app.get("/app/calculation-operations/export.csv")
@@ -10156,6 +10207,11 @@ def compliance_page(
             .limit(pager.page_size).offset(pager.offset)
         ))
         event_ids = [event.id for event in events]
+        event_data = {event.id: json_dict(event.payload_json) for event in events}
+        permission_issues = {
+            event.id: reop_permission_source_issue(db, event)
+            for event in events if event.status in {"Borrador", "Validado"}
+        }
         last_batch_ids = dict(db.execute(
             select(IntegrationBatchItem.compliance_event_id, func.max(IntegrationBatchItem.batch_id))
             .join(IntegrationBatch, IntegrationBatch.id == IntegrationBatchItem.batch_id)
@@ -10166,7 +10222,8 @@ def compliance_page(
             Employee.company_id == company.id, Employee.status == "Activo",
         ).order_by(Employee.full_name, Employee.id), Employee)
         context.update(
-            events=events, event_data={event.id: json_dict(event.payload_json) for event in events},
+            events=events, event_data=event_data, reop_permissions_portal=REOP_PERMISSIONS_PORTAL,
+            permission_issues=permission_issues,
             pager=pager, status_filter=status, status_options=status_options, employee_options=employee_options,
             rei_event_types=sorted(REI_EVENT_TYPES), reop_event_types=sorted(REOP_EVENT_TYPES),
             compliance_status_transitions=COMPLIANCE_STATUS_TRANSITIONS,
@@ -10487,6 +10544,10 @@ def update_compliance_event_status(
         raise HTTPException(409, f"No se puede cambiar una comunicación de {event.status} a {status_value}.")
     if status_value == "Validado" and settings.compliance_dual_approval and event.created_by == user.email:
         raise HTTPException(409, "La validación debe realizarla un segundo usuario autorizado.")
+    if status_value == "Validado":
+        issue = reop_permission_source_issue(db, event)
+        if issue:
+            raise HTTPException(409, issue)
     reference_value = clean_text(external_reference, max_length=160) or event.external_reference
     if status_value in {"Presentado", "Aceptado", "Observado", "Rechazado"} and not reference_value:
         raise HTTPException(400, "Registrá la referencia del portal o el comprobante en el lote antes de actualizar el resultado.")
