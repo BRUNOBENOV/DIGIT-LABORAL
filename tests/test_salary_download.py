@@ -115,6 +115,7 @@ def test_preview_has_recoverable_download_and_versioned_shared_scripts(download_
     form = html.select_one("form[data-download-form]")
     assert form["data-download-format"] == "xlsx"
     assert form.select_one("[data-download-status]")["aria-live"] == "polite"
+    assert form.select_one("[data-reop-file]").has_attr("hidden")
     for file in ("v20.js", "experience.js", "download-form.js"):
         script = html.select_one(f'script[src*="/{file}"]')
         assert script and "?v=" in script["src"]
@@ -154,6 +155,9 @@ def test_reop_assistant_uses_same_reviewed_workbook_and_audited_batch(download_c
     batch = db.get(IntegrationBatch, int(response.headers["X-Integration-Batch-Id"]))
     assert response.headers["X-REOP-SHA256"] == batch.file_sha256 == hashlib.sha256(response.content).hexdigest()
     assert json.loads(batch.payload_json)["delivery"] == "reop-browser" and batch.status == "Generado"
+    saved = client.get(f"/app/compliance/batches/{batch.id}/download")
+    assert saved.status_code == 200 and saved.content == response.content
+    assert db.scalar(select(func.count(IntegrationBatch.id))) == 1
 
 
 def test_reop_assistant_rejects_changed_patronal_or_other_authority_without_creating_batch(download_case):

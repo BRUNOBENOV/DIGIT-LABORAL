@@ -1,3 +1,8 @@
+## 2.7.17 — Estado de la cola de REOP
+
+- El asistente 1.4.0 muestra si el lote está en cola para prevalidar o importar y los trabajos por delante que informa REOP.
+- Durante el seguimiento, la acción principal abre el lote en REOP y la descarga reutiliza el Excel guardado. Al terminar la prevalidación, la acción indica que está listo para revisar e importar.
+
 ## 2.7.16 — Prevalidación REOP desde Digit Laboral
 
 - El asistente 1.3.0 reutiliza la pestaña de Liquidación Salario habilitada por el operador para abrir el importador, verificar la patronal y prevalidar el lote desde Digit Laboral.
