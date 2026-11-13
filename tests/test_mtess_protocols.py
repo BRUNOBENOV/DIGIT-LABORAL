@@ -121,12 +121,43 @@ def test_mtess_protocol_for_eleven_and_requires_rit_selection(web_case):
         GeneratedCertificate.document_type == PROTOCOL,
     ).one()
     assert "Reglamento Interno de Trabajo" in item.body
-    assert "NO acredita homologación" in item.body
+    assert "ANEXO II" in item.body
+    assert "MODELO ORIENTATIVO DE PROTOCOLO" in item.body
+    assert "I. EJE DE PREVENCIÓN" in item.body
+    assert "II. EJE DE IDENTIFICACIÓN Y DETECCIÓN DE CASOS" in item.body
+    assert "III. EJE DE ATENCIÓN, MEDIDAS DE RESGUARDO Y MEDIDAS CORRECTIVAS" in item.body
+    assert "IV. EJE DE SEGUIMIENTO Y EVALUACIÓN DEL PROTOCOLO" in item.body
+    assert "7. Flujograma orientativo del procedimiento interno de denuncias." in item.body
+    assert "Seguridad y vigilancia" in item.body
+    assert "¿Se siente seguro en el trabajo?" in item.body
+    assert "Unidad de prevención" in item.body
+    assert "Empresa sintética" in item.body
+    assert "RUC: 80000001-0" in item.body
+    assert "Secretaria General" not in item.body
+    assert "Página 35 de 36" not in item.body
+    assert "Resolución MTESS N° XX" not in item.body
     pdf = client.get(f"/app/certificates/mtess/{item.id}/download.pdf")
     assert pdf.status_code == 200
     pdf_text = "\n".join(p.extract_text() or "" for p in PdfReader(io.BytesIO(pdf.content)).pages)
     assert "Generado por Digit Laboral" not in pdf_text
     assert "BORRADOR - REVISAR ANTES DE FIRMAR" not in pdf_text
+    assert "ANEXO II" in pdf_text
+    assert "I. EJE DE PREVENCIÓN" in pdf_text
+    assert "IV. EJE DE SEGUIMIENTO" in pdf_text
+    assert "Seguridad y vigilancia" in pdf_text
+    assert len(PdfReader(io.BytesIO(pdf.content)).pages) >= 6
+    docx = client.get(f"/app/certificates/mtess/{item.id}/download.docx")
+    assert docx.status_code == 200
+    parsed = Document(io.BytesIO(docx.content))
+    assert len(parsed.tables) == 1
+    assert len(parsed.tables[0].rows) == 4
+    assert len(parsed.inline_shapes) == 0
+    doc_text = "\n".join(p.text for p in parsed.paragraphs)
+    assert "IV. EJE DE SEGUIMIENTO" in doc_text
+    assert "Generado por Digit Laboral" not in doc_text
+    preview = client.get(f"/app/certificates/mtess?company_id={company.id}")
+    assert "Vista previa fiel del Anexo II" in preview.text
+    assert "Seguridad y vigilancia" in preview.text
 
 
 def test_mtess_cross_tenant_and_role_access(web_case):
@@ -212,3 +243,31 @@ def test_mtess_declared_company_logo_is_rendered_without_default_branding(web_ca
     assert "Digit Laboral" not in "\n".join(p.text for p in doc.paragraphs)
     pdf_resp = client.get(f"/app/certificates/mtess/{record.id}/download.pdf")
     assert pdf_resp.status_code == 200 and pdf_resp.content.startswith(b"%PDF")
+
+
+def test_official_annex_two_transcription_is_complete_and_versioned():
+    from app.mtess_annex_ii import source_pages, build_annex_ii_body, QUESTIONNAIRE, EJE_TITLES
+    from datetime import date
+    original = source_pages()
+    assert sorted(original) == list(range(22, 36))
+    assert all(original[page].strip() for page in original)
+    result = build_annex_ii_body(
+        company_name="Industria de Prueba SA", ruc="80001234-5",
+        legal_representative="Representante válido", city="Ciudad del Este",
+        issued_on=date(2026, 11, 13), responsible="Responsable interno",
+        channel="denuncias@example.invalid", hours="08 a 17",
+        rit_status="homologado",
+    )
+    assert all(eje in result for eje in EJE_TITLES)
+    assert "7. Flujograma orientativo" in result
+    assert "[[CUESTIONARIO_ANEXO_II]]" in result
+    assert "[[FIN_CUESTIONARIO_ANEXO_II]]" in result
+    assert "POLÍTICA DE TOLERANCIA CERO FRENTE" in result
+    assert len(QUESTIONNAIRE) == 4
+    assert sum(len(questions) for _, questions in QUESTIONNAIRE) == 15
+    assert "Industri" in result
+    assert "[Nombre de la empresa]" not in result
+    assert "RESOLUCIÓN MTESS Nº 195/2026" not in result
+    assert "Página 35 de 36" not in result
+    assert "MARTA" not in result
+    assert "Secretaria General" not in result
