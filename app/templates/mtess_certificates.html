@@ -23,6 +23,16 @@
 .mtess-annex-preview p{font-family:'Times New Roman',Times,serif;text-align:justify;margin:0 0 18px;line-height:1.3}
 .mtess-annex-preview .mtess-annex-signature{text-align:left;margin:0}
 .mtess-annex-preview img{display:block;object-fit:contain;max-width:160px;max-height:64px;margin:0 0 12px}
+.mtess-annex-two .mtess-protocol-heading{font-weight:700;margin:12px 0 6px;text-align:left}
+.mtess-annex-two .mtess-protocol-axis,.mtess-annex-two .mtess-protocol-cover,.mtess-annex-two .mtess-protocol-annex,.mtess-annex-two .mtess-protocol-policy{text-align:center;font-weight:700}
+.mtess-annex-two .mtess-protocol-axis{margin:20px 0 12px}
+.mtess-annex-two .mtess-protocol-bullet{margin-bottom:7px;padding-left:14px;text-indent:-10px;text-align:justify}
+.mtess-annex-two table{border-collapse:collapse;width:100%;font-family:'Times New Roman',Times,serif;font-size:.87rem;margin:10px 0 18px}
+.mtess-annex-two td{border:1px solid #bbb;vertical-align:middle;padding:7px}
+.mtess-annex-two td:first-child{width:30%;font-weight:700}
+.mtess-annex-two td ul{margin:0;padding-left:20px}
+.mtess-annex-two td li{margin:0 0 5px}
+
 @media(max-width:550px){.mtess-annex-preview{padding:16px}}
 .mtess-history{width:100%;border-collapse:collapse;font-size:.87rem}
 .mtess-history th,.mtess-history td{text-align:left;vertical-align:top;padding:10px;border-bottom:1px solid #e4eaf3}
@@ -105,7 +115,7 @@
    <div class="mtess-tags"><span class="mtess-tag">Documento N.º {{ latest.id }}</span>
     <span class="mtess-tag">Versión {{ latestmeta.get('document_version', 1) }}</span>
     <span class="mtess-tag">{{ latest.status }}</span></div>
-   <p class="mtess-help">Generado: {{ latest.issue_date|fecha }}. {% if latest.document_type == 'mtess_declaracion_tolerancia_cero' %}Declaración conforme al texto orientativo del Anexo III, con nombre, lugar y fecha autocompletados.{% else %}Protocolo editable basado en los lineamientos del Anexo II; revisar su integridad antes de la aprobación.{% endif %}</p>
+   <p class="mtess-help">Generado: {{ latest.issue_date|fecha }}. {% if latest.document_type == 'mtess_declaracion_tolerancia_cero' %}Declaración conforme al texto orientativo del Anexo III, con nombre, lugar y fecha autocompletados.{% else %}Reproducción íntegra del modelo orientativo del Anexo II, con sus cuatro ejes, cuestionario y pasos de investigación. Revisar los datos organizativos y la vigencia normativa antes de firmarlo.{% endif %}</p>
    {% if latest.document_type == 'mtess_declaracion_tolerancia_cero' %}
    <div class="mtess-preview mtess-annex-preview" aria-label="Vista previa fiel del Anexo III">
       {% if preview_logo_src %}<img src="{{ preview_logo_src }}" alt="Logo de {{ latest.company_name_snapshot }}">{% endif %}
@@ -117,8 +127,21 @@
       <p class="mtess-annex-signature">[Firma]</p>
    </div>
    {% else %}
-   <div class="mtess-preview" aria-label="Vista previa del documento">
-     {% if preview_logo_src %}<img src="{{ preview_logo_src }}" style="max-width:160px;max-height:64px;object-fit:contain;display:block;margin:0 0 12px" alt="Logo de {{ latest.company_name_snapshot }}">{% endif %}{{ latest.body }}
+   <div class="mtess-preview mtess-annex-preview mtess-annex-two" aria-label="Vista previa fiel del Anexo II">
+      {% if preview_logo_src %}<img src="{{ preview_logo_src }}" alt="Logo de {{ latest.company_name_snapshot }}">{% endif %}
+      {% for block in protocol_preview_blocks %}
+        {% if block.kind == 'questionnaire' %}
+          <table aria-label="Cuestionario orientativo sobre violencia y acoso laboral">
+           <tbody>
+            {% for group in protocol_questionnaire %}
+             <tr><td>{{ group[0] }}</td><td><ul>{% for question in group[1] %}<li>{{ question }}</li>{% endfor %}</ul></td></tr>
+            {% endfor %}
+           </tbody>
+          </table>
+        {% else %}
+          <p class="mtess-protocol-{{ block.kind }}">{{ block.text }}</p>
+        {% endif %}
+      {% endfor %}
    </div>
    {% endif %}
    <div class="mtess-actions">
