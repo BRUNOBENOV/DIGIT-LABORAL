@@ -28,7 +28,11 @@ def test_postgres_notice_migration_fresh_upgrade_and_read_only_rls():
 
     def verify():
         with engine.connect() as connection:
-            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0026_mov_export_detail"
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0027_aguinaldo_optional_total"
+            assert connection.scalar(text("""
+                SELECT is_nullable FROM information_schema.columns
+                WHERE table_schema='public' AND table_name='aguinaldos' AND column_name='total_remunerations'
+            """)) == "YES"
             assert connection.scalar(text("SELECT count(*) FROM notice_rule_sets")) == 1
             assert list(connection.execute(text("SELECT max_service_months,notice_days FROM notice_rule_bands ORDER BY position"))) == [(12,30),(60,45),(120,60),(None,90)]
             assert connection.scalar(text("SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relname IN ('notice_rule_sets','notice_rule_bands') AND c.relrowsecurity")) == 2
@@ -38,6 +42,7 @@ def test_postgres_notice_migration_fresh_upgrade_and_read_only_rls():
     with engine.begin() as connection:
         connection.execute(text("DROP TABLE notice_rule_bands"))
         connection.execute(text("DROP TABLE notice_rule_sets"))
+        connection.execute(text("ALTER TABLE aguinaldos ALTER COLUMN total_remunerations SET NOT NULL"))
         connection.execute(text("UPDATE alembic_version SET version_num='0020_salary_import_details'"))
     startup()  # Existing installation: reconcile + real Alembic upgrade.
     verify()
