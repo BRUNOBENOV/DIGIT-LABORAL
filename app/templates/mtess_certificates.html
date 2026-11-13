@@ -37,6 +37,7 @@
 {% if request.query_params.get('created') %}<div class="alert success">Versión generada y guardada en el historial de esta empresa.</div>{% endif %}
 {% if request.query_params.get('already') %}<div class="alert">Ya existe una versión idéntica. No se generó un duplicado.</div>{% endif %}
 {% if request.query_params.get('evidence') %}<div class="alert success">Se registró la referencia de evidencia. No implica validación o aprobación del MTESS.</div>{% endif %}
+{% if regime_changed %}<div class="alert">La cantidad de trabajadores cambió de régimen. El documento histórico se conserva, pero necesitás generar el modelo que corresponde al plantel actual.</div>{% endif %}
 <section class="mtess-panel">
   <form method="get" action="/app/certificates/mtess" style="display:flex;align-items:end;gap:12px;flex-wrap:wrap">
    <label style="flex:1;min-width:250px;margin:0">Empresa
