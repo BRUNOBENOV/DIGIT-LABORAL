@@ -21,6 +21,7 @@ from .document_export import (
     export_data_from_certificate, safe_download_name,
 )
 from .models import Company, Employee, GeneratedCertificate
+from .mtess_annex_ii import build_annex_ii_body
 from .mtess_document_export import (
     ANEXO_III_HEADING, DECLARATION_TYPE, annex_three_paragraphs,
     annex_three_location, build_annex_three_body,
@@ -79,96 +80,15 @@ def build_protocol(
     company: Company, *, responsible: str, channel: str, hours: str,
     rit_status: str,
 ) -> str:
-    """Modelo operativo basado en los mínimos del Anexo I y el orientativo Anexo II."""
-    integration = (
-        "Este documento se prepara para integrar el Reglamento Interno de Trabajo "
-        "como capítulo, sección o anexo. Su generación NO acredita homologación."
-        if rit_status in {"homologado", "no_homologado"}
-        else "Este protocolo constituye un instrumento independiente de gestión interna "
-        "en ausencia de Reglamento Interno de Trabajo."
-    )
-    sections = [
-        ("1. IDENTIFICACIÓN Y VIGENCIA",
-         "\n".join(_company_text(company)) + "\n" + integration),
-        ("2. OBJETO Y ÁMBITO DE APLICACIÓN",
-         "Prevenir, detectar, atender, investigar y corregir hechos de discriminación, "
-         "violencia y acoso en el espacio de trabajo. Es aplicable a las relaciones "
-         "y situaciones laborales comprendidas en la Resolución MTESS N.º 195/2026 "
-         "y su modificatoria N.º 564/2026."),
-        ("3. POLÍTICA DE TOLERANCIA CERO",
-         f"{company.legal_name} prohíbe la discriminación, violencia y acoso laboral "
-         "en todas sus manifestaciones. No se permitirán represalias contra personas "
-         "denunciantes de buena fe, testigos o quienes colaboren con la investigación. "
-         "El incumplimiento podrá determinar medidas correctivas y sanciones "
-         "proporcionales conforme al Código del Trabajo y al RIT vigente, cuando exista."),
-        ("4. PRINCIPIOS RECTORES",
-         "Confidencialidad, protección, no revictimización, imparcialidad, celeridad, "
-         "debido proceso y colaboración. Todas las partes podrán ser oídas y "
-         "ofrecer antecedentes; se protegerán sus datos personales."),
-        ("5. CONDUCTAS PROHIBIDAS",
-         "Entre otras: amenazas, hostigamiento, humillaciones, violencia física, "
-         "maltrato psicológico, acoso sexual, discriminación y represalias. "
-         "Las conductas se evaluarán según las definiciones y alcances normativos."),
-        ("6. INSTANCIA RESPONSABLE",
-         f"Persona/instancia designada: {responsible}. "
-         "Será responsable de difundir este instrumento, recibir denuncias, "
-         "coordinar la prevención, adoptar medidas de protección y conducir "
-         "o gestionar la investigación con independencia e imparcialidad."),
-        ("7. CANALES DE DENUNCIA",
-         f"Canal interno: {channel}. Horario: {hours or 'Horario habitual de la empresa'}. "
-         "La denuncia podrá presentarse verbalmente o por escrito, presencialmente "
-         "o por medios electrónicos. Para hechos imputados al empleador, máxima "
-         "autoridad o representantes, la denuncia deberá dirigirse directamente al MTESS."),
-        ("8. DIFUSIÓN Y EXHIBICIÓN",
-         "El protocolo estará disponible en formato físico y/o digital en lugares "
-         "visibles o medios habituales. Al contratar y periódicamente se informará "
-         "de su contenido. Se exhibirán los canales internos y externos de denuncia, "
-         "con nombres, contactos y horarios."),
-        ("9. PREVENCIÓN Y CAPACITACIÓN",
-         "Se realizarán actividades periódicas de formación sobre conductas prohibidas, "
-         "derechos y responsabilidades, denuncia y prevención. Las personas "
-         "responsables de recibir e investigar denuncias tendrán formación específica."),
-        ("10. RECEPCIÓN DE DENUNCIAS",
-         "Se recibirá la identificación de las personas involucradas, una descripción "
-         "de hechos y fechas aproximadas y los elementos disponibles. Una denuncia "
-         "verbal se documentará mediante acta y se entregará copia a la persona denunciante."),
-        ("11. MEDIDAS DE RESGUARDO",
-         "La empresa adoptará de inmediato medidas adecuadas y proporcionales "
-         "para evitar la continuidad del daño y prevenir represalias, sin "
-         "perjudicar injustificadamente a las partes involucradas."),
-        ("12. INVESTIGACIÓN INTERNA",
-         "La investigación se iniciará dentro de los tres días hábiles de recibida "
-         "la denuncia. Se informará al MTESS del inicio y de las medidas de resguardo "
-         "en los términos y canales establecidos en la normativa vigente. "
-         "Se recogerán declaraciones y documentos con confidencialidad, "
-         "contradicción, imparcialidad y un expediente de acceso restringido. "
-         "Se respetarán los plazos máximos y las reglas de prórroga vigentes."),
-        ("13. RESULTADOS Y MEDIDAS CORRECTIVAS",
-         "La investigación concluirá con un informe fundado y medidas apropiadas "
-         "según los hechos acreditados. Se informará la conclusión al MTESS "
-         "dentro del plazo normativo aplicable y se comunicarán las decisiones "
-         "a las partes con respeto a la confidencialidad."),
-        ("14. PROTECCIÓN Y SEGUIMIENTO",
-         "La empresa evaluará la eficacia de las medidas, atenderá eventuales "
-         "represalias y revisará periódicamente el protocolo. El cese del vínculo "
-         "laboral no extingue por sí solo las obligaciones de investigación."),
-        ("15. SITUACIONES CON INTERVENCIÓN DE TERCEROS",
-         "Se identificarán y mitigarán los riesgos de violencia de clientes, "
-         "usuarios, proveedores y otras personas ajenas a la relación laboral "
-         "cuando afecten el espacio de trabajo."),
-        ("16. NORMATIVA Y CONTROL DOCUMENTAL",
-         "Resoluciones MTESS N.º 195/2026 y N.º 564/2026; Código del Trabajo. "
-         "Modelo interno adaptable basado en el Anexo II orientativo oficial. "
-         "Requiere revisión y aprobación por el empleador antes de su adopción."),
-    ]
-    return "\n\n".join(
-        ["PROTOCOLO DE PREVENCIÓN, ATENCIÓN E INVESTIGACIÓN DE LA DISCRIMINACIÓN, "
-         "VIOLENCIA Y ACOSO EN EL ESPACIO DE TRABAJO"]
-        + [f"{heading}\n{text}" for heading, text in sections]
-        + [f"{company.city or 'Paraguay'}, {date.today().strftime('%d/%m/%Y')}",
-           "____________________________________________\n"
-           f"{company.legal_representative or company.owner_name or 'Empleador / representante autorizado'}\n"
-           "Firma del empleador o representante autorizado"]
+    """Anexo II orientativo íntegro, con campos autocompletados y mismo orden."""
+    return build_annex_ii_body(
+        company_name=company.legal_name,
+        ruc=company.ruc,
+        legal_representative=company.legal_representative or company.owner_name,
+        city=company.city or "Paraguay",
+        issued_on=date.today(),
+        responsible=responsible, channel=channel, hours=hours,
+        rit_status=rit_status,
     )
 
 
