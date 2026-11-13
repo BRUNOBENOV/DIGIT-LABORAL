@@ -329,7 +329,7 @@ class Aguinaldo(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id"), index=True)
     year: Mapped[int] = mapped_column(Integer)
-    total_remunerations: Mapped[int] = mapped_column(Integer, default=0)
+    total_remunerations: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     calculated_amount: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[str] = mapped_column(String(30), default="Borrador")
     notes: Mapped[str] = mapped_column(Text, default="")

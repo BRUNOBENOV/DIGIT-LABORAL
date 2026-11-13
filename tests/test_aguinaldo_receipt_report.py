@@ -11,6 +11,36 @@ from tests.test_labor_suite import token, web_case
 ROOT = "/app/reports/liquidaciones-aguinaldo"
 
 
+def test_saved_aguinaldo_without_remunerations_uses_the_regular_history_and_receipt(web_case):
+    client, db, _, company, employee, _ = web_case
+    record = Aguinaldo(employee_id=employee.id, year=2024, total_remunerations=None,
+                       calculated_amount=1420313, status="Borrador")
+    db.add_all([record] + [
+        Aguinaldo(employee_id=employee.id, year=year, total_remunerations=36000000,
+                  calculated_amount=3000000, status="Borrador")
+        for year in range(1991, 2024)
+    ])
+    db.commit()
+    first = client.get("/app/aguinaldo", params={"company_id": company.id, "page_size": 25})
+    second = client.get("/app/aguinaldo", params={"company_id": company.id, "page_size": 25, "page": 2})
+    assert first.status_code == 200 and second.status_code == 200
+    assert 'data-total="34"' in first.text
+    receipt = f"{ROOT}/registro/{record.id}"
+    receipt_link = f'href="{receipt}"'
+    assert receipt_link in first.text and receipt_link not in second.text
+    year = client.get("/app/aguinaldo", params={"company_id": company.id, "year": 2024})
+    assert 'data-total="1"' in year.text and receipt_link in year.text
+    assert "No informadas" in year.text and "1.420.313" in year.text
+    detail = client.get(receipt)
+    assert detail.status_code == 200 and "No informadas" in detail.text and "1.420.313" in detail.text
+    assert client.get(receipt + "/pdf").content.startswith(b"%PDF")
+    update = client.patch(f"/api/aguinaldos/{record.id}", json={"notes": "Revisión"},
+                          headers={"X-CSRF-Token": token(client)})
+    assert update.status_code == 200, update.text
+    assert update.json()["total_remunerations"] is None
+    assert update.json()["calculated_amount"] == 1420313
+
+
 def create_records(db, company, employee, other):
     annual = Aguinaldo(employee_id=employee.id, year=2026, total_remunerations=36000000,
                        calculated_amount=3000000, status="Aprobado", notes="Registro sintético")

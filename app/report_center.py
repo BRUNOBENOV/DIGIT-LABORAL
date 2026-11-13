@@ -504,7 +504,8 @@ def _row(spec: ReportSpec, value: Any) -> dict[str, Any]:
         return dict(zip(report_columns(spec), [payroll.period, company.legal_name, employee.full_name, detail.family_allowance if detail else 0, detail.days_worked if detail else "", _date(payroll.closed_at), payroll.status]))
     if dataset == "aguinaldo":
         item, employee, company = value
-        return dict(zip(report_columns(spec), [item.year, company.legal_name, employee.full_name, item.total_remunerations, item.calculated_amount, item.status, _date(item.created_at)]))
+        total = item.total_remunerations if item.total_remunerations is not None else ""
+        return dict(zip(report_columns(spec), [item.year, company.legal_name, employee.full_name, total, item.calculated_amount, item.status, _date(item.created_at)]))
     if dataset == "vacation":
         item, employee, company = value
         pending = max(0, int(item.entitled_days or 0) - int(item.used_days or 0))
