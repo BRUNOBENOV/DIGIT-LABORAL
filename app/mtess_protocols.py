@@ -6,6 +6,7 @@ Las plantillas son modelos adaptables, NO resoluciones de homologación.
 """
 from __future__ import annotations
 
+import base64
 import io
 from datetime import date, datetime, UTC
 from urllib.parse import quote
@@ -16,10 +17,15 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .document_export import (
-    ExportData, build_docx_bytes, build_pdf_bytes, decode_metadata,
-    encode_metadata, export_data_from_certificate, safe_download_name,
+    ExportData, decode_metadata, encode_metadata,
+    export_data_from_certificate, safe_download_name,
 )
 from .models import Company, Employee, GeneratedCertificate
+from .mtess_document_export import (
+    ANEXO_III_HEADING, DECLARATION_TYPE, annex_three_paragraphs,
+    annex_three_location, build_annex_three_body,
+    build_mtess_pdf_bytes, build_mtess_docx_bytes,
+)
 
 DECLARATION = "mtess_declaracion_tolerancia_cero"
 PROTOCOL = "mtess_protocolo_acoso_laboral"
@@ -59,38 +65,14 @@ def _company_text(company: Company) -> list[str]:
 
 
 def build_declaration(company: Company, *, responsible: str, channel: str, hours: str) -> str:
-    """Declaración propia basada en el Anexo III; no se presenta como transcripción literal."""
-    return "\n\n".join([
-        "DECLARACIÓN DE TOLERANCIA CERO FRENTE A LA DISCRIMINACIÓN, "
-        "LA VIOLENCIA Y EL ACOSO EN EL ESPACIO DE TRABAJO",
-        "\n".join(_company_text(company)),
-        f"{company.legal_name} declara su compromiso de mantener un espacio de trabajo "
-        "seguro, digno y respetuoso, libre de discriminación, violencia y acoso.",
-        "La empresa establece una política de tolerancia cero respecto de toda "
-        "conducta de violencia física, psicológica o sexual, hostigamiento, "
-        "humillación, amenaza o discriminación, cualquiera sea la posición "
-        "jerárquica de las personas involucradas.",
-        "Esta política se extiende a empleadores, representantes, trabajadores "
-        "y demás personas relacionadas con las actividades laborales, "
-        "sin perjuicio del ámbito de aplicación establecido por la normativa.",
-        "Se facilitarán canales accesibles para informar y denunciar hechos, "
-        "con confidencialidad, imparcialidad, protección de las personas "
-        "involucradas, prohibición de represalias y respeto al debido proceso.",
-        "Las denuncias se atenderán e investigarán conforme al Capítulo IV "
-        "de la Resolución MTESS N.º 195/2026 y sus modificaciones. "
-        "Cuando la denuncia sea contra el empleador o sus representantes, "
-        "corresponde recurrir directamente al MTESS.",
-        f"Responsable de recepción y orientación: {responsible}.\n"
-        f"Canal de contacto: {channel}.\nHorario de atención: {hours or 'Horario habitual de la empresa'}.",
-        "La presente declaración se comunicará a todo el personal, se adjuntará "
-        "a los contratos de trabajo y se exhibirá en un lugar visible.",
-        "Fundamento: Resolución MTESS N.º 195/2026, Anexo I, numeral 11.b, "
-        "Anexo III, y modificaciones introducidas por la Resolución N.º 564/2026.",
-        f"{company.city or 'Paraguay'}, {date.today().strftime('%d/%m/%Y')}",
-        "____________________________________________\n"
-        f"{company.legal_representative or company.owner_name or 'Empleador / representante autorizado'}\n"
-        "Firma del empleador o representante autorizado",
-    ])
+    """Reproducción fiel del modelo orientativo Anexo III: solo campos variables.
+
+    Responsable, canal y horario se conservan en el expediente y cartel; no se
+    insertan en el Anexo III porque el documento oficial no los contiene.
+    """
+    return build_annex_three_body(
+        company.legal_name, company.city or "Paraguay", date.today()
+    )
 
 
 def build_protocol(
@@ -242,14 +224,16 @@ def _export_document(item: GeneratedCertificate, *, kind: str = "main",
         return export_data_from_certificate(item)
     body = build_receipt(item, worker) if kind == "receipt" and worker else build_channel_notice(item)
     label = ("Constancia de recepción" if kind == "receipt" else "Cartel de canales de denuncia")
+    logo = export_data_from_certificate(item).logo_bytes
     return ExportData(
-        document_type=DECLARATION if kind == "notice" else "mtess_constancia_recepcion",
+        document_type="mtess_cartel_denuncias" if kind == "notice" else "mtess_constancia_recepcion",
         title=label, city=item.city, issue_date=date.today(),
         company_name=item.company_name_snapshot, company_ruc=item.company.ruc,
         company_address=item.company.address,
         legal_representative=item.company.legal_representative or item.company.owner_name,
         employee_name=worker.full_name if worker else "",
         employee_document=worker.document_number if worker else "",
+        logo_bytes=logo,
         body=body, status="Borrador",
     )
 
@@ -291,6 +275,23 @@ def register_mtess_routes(app, *, render, require_roles, company_allowed,
         latest = next((h for h in histories if h.document_type == required_type), None)
         config = (decode_metadata(latest.observations) if latest
                   else decode_metadata(histories[0].observations) if histories else {})
+        preview_logo_src = ""
+        if latest:
+            prepared_logo = export_data_from_certificate(latest).logo_bytes
+            if prepared_logo:
+                # Solo imágenes reales: sin gráfico de reserva, inicial ni
+                # contenedor vacío. No embebemos tipos no rasterizados.
+                mime = (
+                    "image/png" if prepared_logo.startswith(b"\x89PNG")
+                    else "image/jpeg" if prepared_logo.startswith(b"\xff\xd8")
+                    else "image/webp" if prepared_logo.startswith(b"RIFF")
+                    else ""
+                )
+                if mime:
+                    preview_logo_src = (
+                        f"data:{mime};base64," +
+                        base64.b64encode(prepared_logo).decode("ascii")
+                    )
         return render(
             request, "mtess_certificates.html", db, user,
             companies=companies, company=selected, workers=workers,
@@ -299,6 +300,11 @@ def register_mtess_routes(app, *, render, require_roles, company_allowed,
             latest=latest, histories=histories,
             configs=config, labels=LABELS, deadline=DEADLINE,
             source_url=SOURCE_URL,
+            annex_heading=ANEXO_III_HEADING, preview_logo_src=preview_logo_src,
+            annex_paragraphs=annex_three_paragraphs(latest.company_name_snapshot)
+                if latest and latest.document_type == DECLARATION else [],
+            annex_location=annex_three_location(latest.city, latest.issue_date)
+                if latest and latest.document_type == DECLARATION else "",
         )
 
     @app.post("/app/certificates/mtess/generate")
@@ -415,7 +421,7 @@ def register_mtess_routes(app, *, render, require_roles, company_allowed,
             if not worker or worker.company_id != item.company_id or not is_active_employee(worker):
                 raise HTTPException(404, "Funcionario activo no encontrado en la empresa.")
         data = _export_document(item, kind=kind, worker=worker)
-        payload = build_pdf_bytes(data) if extension == "pdf" else build_docx_bytes(data)
+        payload = build_mtess_pdf_bytes(data) if extension == "pdf" else build_mtess_docx_bytes(data)
         name = safe_download_name(data.title, worker.full_name if worker else item.company_name_snapshot,
                                   extension)
         write_audit(db, user, "descargar", "documento_mtess", str(item.id),
