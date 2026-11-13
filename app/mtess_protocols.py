@@ -285,13 +285,17 @@ def register_mtess_routes(app, *, render, require_roles, company_allowed,
                 GeneratedCertificate.document_type.in_(TYPES),
             ).order_by(GeneratedCertificate.created_at.desc(), GeneratedCertificate.id.desc()).limit(30)
         )) if selected else []
-        latest = histories[0] if histories else None
-        config = decode_metadata(latest.observations) if latest else {}
+        required_type = applicable_type(len(workers)) if selected else ""
+        # Si el plantel cruza el umbral de 10/11, no mostrar como vigente
+        # una declaración anterior en lugar del protocolo ahora requerido.
+        latest = next((h for h in histories if h.document_type == required_type), None)
+        config = (decode_metadata(latest.observations) if latest
+                  else decode_metadata(histories[0].observations) if histories else {})
         return render(
             request, "mtess_certificates.html", db, user,
             companies=companies, company=selected, workers=workers,
             active_count=len(workers),
-            applicable=applicable_type(len(workers)) if selected else "",
+            applicable=required_type, regime_changed=bool(histories and not latest),
             latest=latest, histories=histories,
             configs=config, labels=LABELS, deadline=DEADLINE,
             source_url=SOURCE_URL,
