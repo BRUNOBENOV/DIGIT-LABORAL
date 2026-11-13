@@ -21,7 +21,7 @@ from .document_export import (
     export_data_from_certificate, safe_download_name,
 )
 from .models import Company, Employee, GeneratedCertificate
-from .mtess_annex_ii import build_annex_ii_body
+from .mtess_annex_ii import build_annex_ii_body, protocol_blocks, QUESTIONNAIRE
 from .mtess_document_export import (
     ANEXO_III_HEADING, DECLARATION_TYPE, annex_three_paragraphs,
     annex_three_location, build_annex_three_body,
@@ -225,6 +225,9 @@ def register_mtess_routes(app, *, render, require_roles, company_allowed,
                 if latest and latest.document_type == DECLARATION else [],
             annex_location=annex_three_location(latest.city, latest.issue_date)
                 if latest and latest.document_type == DECLARATION else "",
+            protocol_preview_blocks=protocol_blocks(latest.body)
+                if latest and latest.document_type == PROTOCOL else [],
+            protocol_questionnaire=QUESTIONNAIRE,
         )
 
     @app.post("/app/certificates/mtess/generate")
