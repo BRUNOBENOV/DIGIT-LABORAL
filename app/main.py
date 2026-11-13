@@ -9174,6 +9174,8 @@ def aguinaldo_page(
     company_id: OptionalQueryId = None,
     employee_id: OptionalQueryId = None,
     year: OptionalQueryId = None,
+    page: int = 1,
+    page_size: int = 50,
     user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ):
@@ -9188,8 +9190,17 @@ def aguinaldo_page(
         aguinaldo_query = aguinaldo_query.where(Employee.company_id == selected_company_id)
     if selected_employee_id:
         aguinaldo_query = aguinaldo_query.where(Aguinaldo.employee_id == selected_employee_id)
+    if year is not None and 1900 <= year <= 2100:
+        aguinaldo_query = aguinaldo_query.where(Aguinaldo.year == year)
     employees = seed_choices(db, employee_query.order_by(Employee.full_name), Employee, request=request)
-    items = list(db.scalars(aguinaldo_query.order_by(Aguinaldo.year.desc(), Aguinaldo.created_at.desc())))
+    pager = Pagination(
+        "/app/aguinaldo", db.scalar(select(func.count()).select_from(aguinaldo_query.subquery())) or 0,
+        page, normalize_page_size(page_size, default=50),
+        {"company_id": selected_company_id, "employee_id": selected_employee_id, "year": year},
+    )
+    items = list(db.scalars(aguinaldo_query.options(selectinload(Aguinaldo.employee).selectinload(Employee.company))
+        .order_by(Aguinaldo.year.desc(), Aguinaldo.created_at.desc(), Aguinaldo.id.desc())
+        .limit(pager.page_size).offset(pager.offset)))
     suggested_total = None
     suggestion_note = ""
     today = current_paraguay_date()
@@ -9226,7 +9237,7 @@ def aguinaldo_page(
     companies = seed_choices(db, select(Company).where(Company.id.in_(company_ids)).order_by(Company.legal_name), Company, request=request) if company_ids else []
     filter_employees = seed_choices(db, select(Employee).where(Employee.company_id.in_(company_ids)).order_by(Employee.full_name), Employee, request=request) if company_ids else []
     return render(request, "aguinaldo.html", db, user, employees=employees, filter_employees=filter_employees,
-                  companies=companies, items=items, selected_company_id=selected_company_id,
+                  companies=companies, items=items, pager=pager, selected_company_id=selected_company_id,
                   selected_employee_id=selected_employee_id, selected_employee=selected_employee,
                   suggested_total=suggested_total, suggested_amount=suggested_amount,
                   salary_reference=salary_reference, period_from=period_from,
@@ -12165,7 +12176,9 @@ async def api_update_aguinaldo(
     if not isinstance(payload, dict):
         raise HTTPException(422, "El cuerpo debe ser un objeto JSON.")
     year = _api_int(payload.get("year", item.year), "year", minimum=1900, maximum=2100)
-    total = _api_int(payload.get("total_remunerations", item.total_remunerations), "total_remunerations", maximum=2147483647)
+    total = item.total_remunerations
+    if "total_remunerations" in payload:
+        total = _api_int(payload["total_remunerations"], "total_remunerations", maximum=2147483647)
     status_value = str(payload.get("status", item.status)).strip()
     if status_value not in AGUINALDO_API_STATUSES:
         raise HTTPException(422, "El estado del aguinaldo no es válido.")
@@ -12178,7 +12191,8 @@ async def api_update_aguinaldo(
     if duplicate:
         raise HTTPException(409, "Ya existe un cálculo de aguinaldo para ese funcionario y año.")
     item.year, item.total_remunerations = year, total
-    item.calculated_amount = round_gs(total / 12)
+    if total is not None:
+        item.calculated_amount = round_gs(total / 12)
     item.status, item.notes = status_value, notes
     write_audit(db, user, "actualizar_api", "aguinaldo", str(item.id), f"{item.employee.full_name} · {status_value}")
     db.commit()

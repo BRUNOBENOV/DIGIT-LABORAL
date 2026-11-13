@@ -1,3 +1,8 @@
+## 2.7.19 — Aguinaldos guardados y consulta por ejercicio
+
+- Admite guardar el importe de un aguinaldo cuando el total anual de remuneraciones no está informado. Los informes muestran el importe registrado.
+- Pagina el historial de aguinaldos y aplica el filtro de ejercicio al listado.
+
 ## 2.7.18 — Permisos vinculados a REOP
 
 - Prepara una comunicación REOP desde un permiso, reposo o licencia aprobado. Conserva el vínculo con la novedad y reutiliza el borrador para actualizar los datos de origen.

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "components/pagination.html" import render_pagination %}
 {% block title %}Aguinaldo | DIGIT-LABORAL{% endblock %}
 {% block page_name %}Aguinaldo{% endblock %}
 {% block content %}
@@ -61,7 +62,7 @@
   {% if request.query_params.get('duplicate') %}<p class="agu-alert" role="alert">Ya existe un cálculo para ese trabajador y ejercicio. Consultá su historial antes de guardar otra versión.</p>{% endif %}
   <section class="agu-panel" aria-labelledby="agu-context-title">
     <h2 id="agu-context-title">Seleccionar empresa, funcionario y ejercicio</h2>
-    <form method="get" action="/app/aguinaldo" class="agu-context" data-module-selection>
+    <form method="get" action="/app/aguinaldo" id="aguinaldoFilters" class="agu-context" data-module-selection>
       <label>Empresa
         <select name="company_id" data-module-company data-searchable-entity="company" data-entity-scope="all">
           <option value="">Todas las empresas</option>
@@ -149,7 +150,7 @@
   <section class="agu-panel" aria-labelledby="agu-records-title">
     <h2 id="agu-records-title">Historial de aguinaldos guardados</h2>
     <div class="agu-table-wrap">
-      <table>
+      <table id="aguinaldoHistory" data-server-paginated>
         <thead><tr><th>Funcionario</th><th>Empresa</th><th>Ejercicio</th><th>Remuneraciones informadas</th><th>Aguinaldo calculado</th><th>Estado</th><th>Observaciones</th><th>Recibo</th></tr></thead>
         <tbody>
           {% for item in items %}
@@ -157,7 +158,7 @@
             <td><strong>{{ item.employee.full_name }}</strong></td>
             <td>{{ item.employee.company.legal_name }}</td>
             <td>{{ item.year }}</td>
-            <td class="num">Gs. {{ item.total_remunerations|gs }}</td>
+            <td class="num">{{ ('Gs. ' ~ (item.total_remunerations|gs)) if item.total_remunerations is not none else 'No informadas' }}</td>
             <td class="num"><strong>Gs. {{ item.calculated_amount|gs }}</strong></td>
             <td><span class="status-pill {{ item.status|lower }}">{{ item.status }}</span></td>
             <td>{{ item.notes or '—' }}</td>
@@ -167,6 +168,7 @@
         </tbody>
       </table>
     </div>
+    {{ render_pagination(pager, 'aguinaldoFilters', 'aguinaldoHistory', 'aguinaldos') }}
   </section>
   <div class="modal" id="aguinaldoModal" aria-hidden="true">
     <div class="modal-backdrop" data-modal-close></div>
