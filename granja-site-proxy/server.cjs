@@ -115,3 +115,23 @@ http.createServer(async (req, res) => {
     console.error('Original website check failed: ' + error.message);
   }
 })();
+
+// Confirm the public address can serve the unchanged source through this service.
+setTimeout(async () => {
+  try {
+    const reply = await fetch('https://granja-la-estancia.onrender.com/', { signal: AbortSignal.timeout(30000) });
+    const page = await reply.text();
+    const s = page.toLowerCase();
+    const start = s.indexOf('<title>');
+    const finish = s.indexOf('</title>');
+    console.log('New public address check: ' + JSON.stringify({
+      status: reply.status,
+      contentType: reply.headers.get('content-type'),
+      length: page.length,
+      title: start >= 0 && finish > start ? page.slice(start + 7, finish).slice(0, 150) : '(sin titulo)',
+      html: s.includes('<html')
+    }));
+  } catch (error) {
+    console.error('New public address check failed: ' + error.message);
+  }
+}, 5000).unref();
