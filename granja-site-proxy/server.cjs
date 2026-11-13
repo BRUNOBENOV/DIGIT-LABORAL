@@ -21,7 +21,7 @@ const copiedRequestHeaders = [
 function copyCookies(upstream, res, publicHost) {
   if (typeof upstream.headers.getSetCookie !== 'function') return;
   const cookieHeaders = upstream.headers.getSetCookie().map(cookie => (
-    cookie.replace(/;\\s*Domain=[^;]*/gi, '') 
+    cookie.split('; Domain=')[0] 
   ));
   if (cookieHeaders.length) res.setHeader('set-cookie', cookieHeaders);
 }
@@ -66,7 +66,7 @@ http.createServer(async (req, res) => {
       return;
     }
     const type = (upstream.headers.get('content-type') || '').toLowerCase();
-    const needsUrlReplacement = /text\\/|javascript|application\\/json|application\\/xml|image\\/svg\\+xml/.test(type);
+    const needsUrlReplacement = type.includes('text/') || type.includes('javascript') || type.includes('json') || type.includes('xml') || type.includes('svg');
     if (needsUrlReplacement) {
       const text = await upstream.text();
       const modified = text.split(ORIGIN).join(publicOrigin);
