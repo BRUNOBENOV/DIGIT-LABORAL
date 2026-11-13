@@ -123,3 +123,22 @@ def test_mtess_does_not_mark_generated_document_as_homologated(web_case):
     assert good.status_code == 303
     db.expire_all()
     assert item.status == "Firmado"
+
+
+def test_mtess_change_from_ten_to_eleven_keeps_old_version_but_warns(web_case):
+    client, db, _, company, _, _ = web_case
+    csrf = token(client, f"/app/certificates/mtess?company_id={company.id}")
+    response = client.post("/app/certificates/mtess/generate",
+                           data={"csrf_token": csrf, "company_id": company.id,
+                                 "responsible": "Responsable", "channel": "canal@example.invalid",
+                                 "rit_status": "sin"}, follow_redirects=False)
+    assert response.status_code == 303
+    for n in range(10):
+        db.add(Employee(company_id=company.id, full_name=f"Otro trabajador {n}",
+                        document_number=f"8011{n}", status="Activo"))
+    db.commit()
+    page = client.get("/app/certificates/mtess", params={"company_id": company.id})
+    assert page.status_code == 200
+    assert "cambió de régimen" in page.text
+    assert "11 o más" in page.text
+    assert "generá el documento correspondiente" in page.text
