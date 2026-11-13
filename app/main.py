@@ -6301,6 +6301,7 @@ def certificates_page(
         db.scalars(
             select(GeneratedCertificate)
             .where(GeneratedCertificate.company_id.in_(company_ids))
+            .where(~GeneratedCertificate.document_type.like("mtess_%"))
             .order_by(GeneratedCertificate.created_at.desc())
             .limit(30)
         )
@@ -12255,4 +12256,14 @@ register_liq_routes(
     app, import_dir=IMPORT_DIR, render=render, get_db=get_db,
     require_roles=require_roles, company_ids_for_user=company_ids_for_user,
     write_audit=write_audit,
+)
+
+
+# Certificados > Protocolos y Declaraciones MTESS (modelo y trazabilidad independiente).
+from .mtess_protocols import register_mtess_routes
+register_mtess_routes(
+    app, render=render, require_roles=require_roles,
+    company_allowed=company_allowed,
+    company_ids_for_user=company_ids_for_user,
+    get_db=get_db, write_audit=write_audit,
 )

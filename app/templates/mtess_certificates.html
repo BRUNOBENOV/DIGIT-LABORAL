@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+{% block title %}Protocolos y Declaraciones MTESS | Digit Laboral{% endblock %}
+{% block content %}
+<style>
+.mtess-intro{display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px}
+.mtess-grid{display:grid;grid-template-columns:minmax(270px,.9fr) minmax(360px,1.1fr);gap:16px;margin-top:16px}
+.mtess-panel{background:#fff;border:1px solid #dbe3f0;border-radius:14px;padding:18px;min-width:0}
+.mtess-panel h2{margin:0 0 12px;font-size:1.12rem;color:#102954}
+.mtess-panel p{line-height:1.55}
+.mtess-panel label{display:grid;gap:6px;margin:12px 0;font-weight:700;font-size:.85rem;color:#30415d}
+.mtess-panel input,.mtess-panel select{padding:10px;border:1px solid #cbd5e1;border-radius:8px;width:100%;max-width:100%;background:#fff;font:inherit}
+.mtess-panel .mtess-label{font-size:.73rem;letter-spacing:.08em;text-transform:uppercase;color:#61718b}
+.mtess-stat{font-size:1.8rem;color:#123c83;font-weight:850;line-height:1.1}
+.mtess-tags{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
+.mtess-tag{background:#edf3ff;color:#193d7b;padding:6px 10px;border-radius:99px;font-weight:700;font-size:.77rem}
+.mtess-tag.warning{background:#fff6e4;color:#875b13}
+.mtess-actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:14px}
+.mtess-help{color:#596980;font-size:.82rem}
+.mtess-preview{white-space:pre-wrap;font-family:Georgia,'Times New Roman',serif;font-size:.9rem;line-height:1.68;border:1px solid #dbe3f0;border-radius:8px;background:#fcfdff;padding:20px;max-height:650px;overflow:auto}
+.mtess-history{width:100%;border-collapse:collapse;font-size:.87rem}
+.mtess-history th,.mtess-history td{text-align:left;vertical-align:top;padding:10px;border-bottom:1px solid #e4eaf3}
+.mtess-history th{color:#56657c;font-size:.75rem}
+.mtess-employee-list{max-height:270px;overflow:auto}
+.mtess-worker{padding:8px 0;display:flex;align-items:center;justify-content:space-between;gap:10px;border-bottom:1px solid #eef2f8}
+.mtess-worker span{font-size:.85rem}
+@media(max-width:850px){.mtess-grid{grid-template-columns:minmax(0,1fr)}}
+</style>
+<div class="page-header mtess-intro">
+ <div><span class="eyebrow">CERTIFICADOS · CUMPLIMIENTO NORMATIVO</span>
+  <h1>Protocolos y Declaraciones MTESS</h1>
+  <p>Resoluciones 195/2026 y 564/2026 · Documentación por empresa, versiones, Word/PDF y registro de difusión.</p>
+ </div>
+ <div class="header-actions"><a class="btn ghost" href="/app/certificates">Documentos laborales</a>
+ <a class="btn ghost" href="{{ source_url }}" target="_blank" rel="noopener noreferrer">Resolución oficial</a></div>
+</div>
+<div class="legal-warning"><b>Documento interno, no homologación:</b> generar un modelo no equivale a firmarlo, difundirlo o presentarlo ante el MTESS. Revisá jurídicamente el texto antes de utilizarlo. Para empresas con RIT, la integración y eventual homologación deben tramitarse por los canales oficiales.</div>
+{% if request.query_params.get('created') %}<div class="alert success">Versión generada y guardada en el historial de esta empresa.</div>{% endif %}
+{% if request.query_params.get('already') %}<div class="alert">Ya existe una versión idéntica. No se generó un duplicado.</div>{% endif %}
+{% if request.query_params.get('evidence') %}<div class="alert success">Se registró la referencia de evidencia. No implica validación o aprobación del MTESS.</div>{% endif %}
+{% if regime_changed %}<div class="alert">La cantidad de trabajadores cambió de régimen. El documento histórico se conserva, pero necesitás generar el modelo que corresponde al plantel actual.</div>{% endif %}
+<section class="mtess-panel">
+  <form method="get" action="/app/certificates/mtess" style="display:flex;align-items:end;gap:12px;flex-wrap:wrap">
+   <label style="flex:1;min-width:250px;margin:0">Empresa
+    <select name="company_id" required data-searchable-entity="company" data-entity-scope="all">
+     {% for item in companies %}<option value="{{ item.id }}" {% if company and company.id==item.id %}selected{% endif %}>{{ item.company_code or '—' }} · {{ item.legal_name }} · {{ item.ruc }}</option>{% endfor %}
+    </select>
+   </label>
+   <button class="btn primary" type="submit">Consultar empresa</button>
+  </form>
+</section>
+{% if company %}
+<div class="mtess-grid">
+ <section class="mtess-panel">
+  <span class="mtess-label">Trabajadores activos vinculados</span>
+  <div class="mtess-stat">{{ active_count }}</div>
+  <div class="mtess-tags">
+   {% if active_count <= 10 %}<span class="mtess-tag">Hasta 10 · Anexo III</span>
+   {% else %}<span class="mtess-tag">11 o más · Protocolo Anexo II</span>{% endif %}
+   <span class="mtess-tag warning">Adecuación: {{ deadline|fecha }}</span>
+  </div>
+  <h2>Documento que corresponde</h2>
+  <p><b>{{ labels[applicable] }}</b></p>
+  {% if active_count <= 10 %}
+  <p class="mtess-help">Declaración escrita para adjuntar a los contratos, difundir al personal y exhibir en un lugar visible. Se aplican directamente las reglas de investigación del Capítulo IV cuando exista una denuncia.</p>
+  {% else %}
+  <p class="mtess-help">El protocolo debe estar disponible para el personal y deben exhibirse los canales de denuncia. Si existe Reglamento Interno, integrar el protocolo como capítulo, sección o anexo.</p>
+  {% endif %}
+  <p class="mtess-help"><b>Criterio:</b> trabajadores con estado Activo/Activa y sin fecha de egreso. No se filtran por IPS. Revisá posibles legajos históricos o pendientes antes de firmar.</p>
+  <form method="post" action="/app/certificates/mtess/generate">
+   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+   <input type="hidden" name="company_id" value="{{ company.id }}">
+   <label>Responsable de recepción y orientación
+    <input name="responsible" maxlength="160" required value="{{ configs.get('responsible', '') or (company.responsible_name if company.responsible_name != 'Sin asignar' else '') or company.legal_representative or company.owner_name }}" placeholder="Nombre de persona o instancia responsable">
+   </label>
+   <label>Canal interno de denuncias
+    <input name="channel" maxlength="240" required value="{{ configs.get('channel', '') or company.email or company.phone }}" placeholder="Correo o teléfono para denuncias">
+   </label>
+   <label>Horario de atención
+    <input name="hours" maxlength="120" value="{{ configs.get('hours', '') }}" placeholder="Lunes a viernes, 08:00 a 17:00">
+   </label>
+   {% if active_count > 10 %}
+   <label>Reglamento Interno de Trabajo
+    <select name="rit_status" required>
+     <option value="unknown" {% if not configs.get('rit_status') or configs.get('rit_status')=='unknown' %}selected{% endif %}>Seleccionar situación...</option>
+     <option value="sin" {% if configs.get('rit_status')=='sin' %}selected{% endif %}>No tiene RIT — protocolo independiente</option>
+     <option value="homologado" {% if configs.get('rit_status')=='homologado' %}selected{% endif %}>Tiene RIT homologado — preparar anexo de modificación</option>
+     <option value="no_homologado" {% if configs.get('rit_status')=='no_homologado' %}selected{% endif %}>Tiene RIT sin homologar — preparar integración</option>
+    </select>
+   </label>
+   {% else %}<input type="hidden" name="rit_status" value="sin">{% endif %}
+   <button class="btn primary" type="submit">Generar {{ 'declaración' if active_count<=10 else 'protocolo' }}</button>
+  </form>
+ </section>
+ <section class="mtess-panel">
+  <h2>Vista previa y descargas</h2>
+  {% if latest %}
+   {% set latestmeta = configs %}
+   <div class="mtess-tags"><span class="mtess-tag">Documento N.º {{ latest.id }}</span>
+    <span class="mtess-tag">Versión {{ latestmeta.get('document_version', 1) }}</span>
+    <span class="mtess-tag">{{ latest.status }}</span></div>
+   <p class="mtess-help">Generado: {{ latest.issue_date|fecha }}. El texto es una plantilla editable basada en los lineamientos oficiales; no es una reproducción íntegra del Anexo II.</p>
+   <div class="mtess-preview" aria-label="Vista previa del documento">{{ latest.body }}</div>
+   <div class="mtess-actions">
+    <a class="btn primary" href="/app/certificates/mtess/{{ latest.id }}/download.pdf">Descargar PDF</a>
+    <a class="btn ghost" href="/app/certificates/mtess/{{ latest.id }}/download.docx">Descargar Word</a>
+    <a class="btn ghost" href="/app/certificates/mtess/{{ latest.id }}/download.pdf?kind=notice">Cartel de denuncias</a>
+   </div>
+  {% else %}
+   <p>Seleccioná la empresa y generá el documento correspondiente. Aparecerá aquí una previsualización y las descargas en Word y PDF.</p>
+  {% endif %}
+ </section>
+</div>
+{% if latest %}
+<div class="mtess-grid">
+ <section class="mtess-panel">
+  <h2>Registro de firma y difusión</h2>
+  <p class="mtess-help">Registrá la referencia de una constancia verificable (por ejemplo, ubicación en archivo documental o número de expediente). La carga manual no certifica la existencia de la firma.</p>
+  <form method="post" action="/app/certificates/mtess/{{ latest.id }}/evidence">
+   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+   <label>Etapa acreditada
+    <select name="stage"><option value="Firmado">Documento firmado</option><option value="Difundido">Difusión al personal documentada</option></select>
+   </label>
+   <label>Fecha de la evidencia <input type="date" name="evidence_date" required max="{{ today.isoformat() }}" value="{{ today.isoformat() }}"></label>
+   <label>Referencia de evidencia <input name="evidence_reference" maxlength="500" required placeholder="Ej. Archivo documental, acta N.º 12, fecha y ubicación"></label>
+   <button class="btn primary" type="submit">Registrar referencia</button>
+  </form>
+  {% if configs.get('evidence_history') %}
+  <h3>Movimientos registrados</h3>
+  <table class="mtess-history"><tbody>
+   {% for evidence in configs.get('evidence_history', [])|reverse %}
+    <tr><td>{{ evidence.stage }}</td><td>{{ evidence.date }}<br><small>{{ evidence.reference }}</small></td></tr>
+   {% endfor %}
+  </tbody></table>{% endif %}
+ </section>
+ <section class="mtess-panel">
+  <h2>Constancias por funcionario</h2>
+  <p class="mtess-help">Las constancias se generan con datos ya existentes. Cada trabajador debe firmarlas realmente; un archivo descargado no constituye prueba de recepción.</p>
+  <div class="mtess-employee-list">
+   {% for worker in workers[:80] %}
+    <div class="mtess-worker">
+     <span><b>{{ worker.full_name }}</b><br><small>C.I. {{ worker.document_number }} · Legajo {{ worker.employee_code or '—' }}</small></span>
+     <a class="btn ghost" href="/app/certificates/mtess/{{ latest.id }}/download.pdf?kind=receipt&amp;employee_id={{ worker.id }}" aria-label="Constancia PDF {{ worker.full_name }}">Constancia PDF</a>
+    </div>
+   {% endfor %}
+  </div>
+  {% if active_count>80 %}<p class="mtess-help">Se muestran los primeros 80 trabajadores por orden alfabético. Para otros funcionarios, se ampliará el filtro individual.</p>{% endif %}
+ </section>
+</div>
+{% endif %}
+<section class="mtess-panel" style="margin-top:16px">
+ <h2>Historial de versiones de {{ company.legal_name }}</h2>
+ {% if histories %}
+ <div style="overflow-x:auto"><table class="mtess-history">
+  <thead><tr><th>N.º</th><th>Documento</th><th>Emisión</th><th>Estado interno</th><th>Descargas</th></tr></thead>
+  <tbody>{% for doc in histories %}<tr>
+   <td>{{ doc.id }}</td><td>{{ doc.title }}</td>
+   <td>{{ doc.issue_date|fecha }}</td><td>{{ doc.status }}</td>
+   <td><a href="/app/certificates/mtess/{{ doc.id }}/download.pdf">PDF</a> · <a href="/app/certificates/mtess/{{ doc.id }}/download.docx">Word</a></td>
+  </tr>{% endfor %}</tbody>
+ </table></div>
+ {% else %}<p class="mtess-help">Esta empresa todavía no tiene documentos MTESS generados en DIGIT LABORAL.</p>{% endif %}
+</section>
+{% else %}
+<section class="mtess-panel" style="margin-top:16px"><p>No hay empresas disponibles para tu usuario.</p></section>
+{% endif %}
+{% endblock %}
