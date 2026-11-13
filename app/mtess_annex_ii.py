@@ -203,7 +203,9 @@ def _paragraphize(source: str) -> str:
             output.append(" ".join(buffer).strip())
             buffer = []
     for rawline in source.splitlines():
-        line = rawline.strip()
+        # El PDF usa espacios de alineación ("III.   EJE..."). No son
+        # contenido: normalizarlos preserva el título sin alterar palabras.
+        line = re.sub(r"\s+", " ", rawline.strip())
         if not line:
             flush()
             continue
