@@ -13,15 +13,17 @@ from typing import Any
 
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.enum.table import WD_TABLE_ALIGNMENT, WD_CELL_VERTICAL_ALIGNMENT
 from docx.shared import Cm, Pt
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
-from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer
+from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle, KeepTogether
 
 from .document_export import ExportData, format_date_long_es
+from .mtess_annex_ii import QUESTIONNAIRE, protocol_blocks
 
 DECLARATION_TYPE = "mtess_declaracion_tolerancia_cero"
 PROTOCOL_TYPE = "mtess_protocolo_acoso_laboral"
@@ -111,6 +113,8 @@ def _docx_logo(doc: Document, logo_bytes: bytes | None) -> None:
 
 def build_mtess_docx_bytes(data: ExportData) -> bytes:
     """PDF y Word MTESS sin branding supletorio, pie ni leyenda de borrador."""
+    if data.document_type == PROTOCOL_TYPE:
+        return build_annex_two_docx_bytes(data)
     doc = Document()
     section = doc.sections[0]
     section.page_width, section.page_height = Cm(21), Cm(29.7)
@@ -178,6 +182,8 @@ def _pdf_logo(story: list, logo_bytes: bytes | None) -> None:
 
 
 def build_mtess_pdf_bytes(data: ExportData) -> bytes:
+    if data.document_type == PROTOCOL_TYPE:
+        return build_annex_two_pdf_bytes(data)
     stream = io.BytesIO()
     document = SimpleDocTemplate(
         stream, pagesize=A4, topMargin=17*mm, bottomMargin=18*mm,
@@ -223,3 +229,159 @@ def build_mtess_pdf_bytes(data: ExportData) -> bytes:
     # Sin onFirstPage/onLaterPages: no pie de página, páginas numeradas ni borrador.
     document.build(story)
     return stream.getvalue()
+
+
+
+def _docx_questionnaire(doc: Document) -> None:
+    """Tabla original de cuatro categorías y quince preguntas."""
+    table = doc.add_table(rows=0, cols=2)
+    table.style = "Table Grid"
+    table.alignment = WD_TABLE_ALIGNMENT.CENTER
+    table.autofit = False
+    table.columns[0].width = Cm(4.8)
+    table.columns[1].width = Cm(11.7)
+    for category, questions in QUESTIONNAIRE:
+        cells = table.add_row().cells
+        cells[0].width = Cm(4.8)
+        cells[1].width = Cm(11.7)
+        cells[0].vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+        cells[1].vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+        label = cells[0].paragraphs[0]
+        label.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        run = label.add_run(category)
+        run.bold = True
+        run.font.name = "Times New Roman"
+        run.font.size = Pt(9.4)
+        for i, question in enumerate(questions):
+            paragraph = cells[1].paragraphs[0] if i == 0 else cells[1].add_paragraph()
+            paragraph.paragraph_format.space_after = Pt(3)
+            paragraph.paragraph_format.left_indent = Cm(.2)
+            paragraph.add_run("• " + question).font.size = Pt(9.2)
+
+
+def build_annex_two_docx_bytes(data: ExportData) -> bytes:
+    """Protocolo completo, orden oficial, con tablas y campos de empresa."""
+    doc = Document()
+    section = doc.sections[0]
+    section.page_width, section.page_height = Cm(21), Cm(29.7)
+    section.top_margin, section.bottom_margin = Cm(1.9), Cm(1.7)
+    section.left_margin, section.right_margin = Cm(2.15), Cm(2.15)
+    normal = doc.styles["Normal"]
+    normal.font.name = "Times New Roman"
+    normal.font.size = Pt(11)
+    normal.paragraph_format.space_after = Pt(9)
+    normal.paragraph_format.line_spacing = 1.12
+    _docx_logo(doc, data.logo_bytes)
+    for item in protocol_blocks(data.body):
+        kind, content = item["kind"], item["text"]
+        if kind == "questionnaire":
+            _docx_questionnaire(doc)
+            continue
+        paragraph = doc.add_paragraph()
+        paragraph.alignment = (
+            WD_ALIGN_PARAGRAPH.CENTER
+            if kind in {"annex", "cover", "axis", "policy"}
+            else WD_ALIGN_PARAGRAPH.LEFT if kind == "bullet"
+            else WD_ALIGN_PARAGRAPH.JUSTIFY
+        )
+        if kind in {"annex", "cover", "axis", "policy", "heading"}:
+            paragraph.paragraph_format.space_before = Pt(10 if kind in {"axis", "policy"} else 3)
+            paragraph.paragraph_format.keep_with_next = True
+        if kind == "bullet":
+            paragraph.paragraph_format.left_indent = Cm(.35)
+            paragraph.paragraph_format.first_line_indent = Cm(-.15)
+            paragraph.paragraph_format.space_after = Pt(4)
+        for i, line in enumerate(content.splitlines()):
+            if i:
+                paragraph.add_run().add_break()
+            run = paragraph.add_run(line)
+            run.font.name = "Times New Roman"
+            run.font.size = Pt(11)
+            run.bold = kind in {"annex", "cover", "axis", "policy", "heading"}
+    stream = io.BytesIO()
+    doc.save(stream)
+    return stream.getvalue()
+
+
+def _pdf_questionnaire() -> Table:
+    """Tabla visual equivalente a la del Anexo II (páginas 31-32)."""
+    category_style = ParagraphStyle(
+        "AnexoIIQCategory", fontName="Times-Bold", fontSize=9.5,
+        leading=12, textColor=colors.black, spaceAfter=0,
+    )
+    question_style = ParagraphStyle(
+        "AnexoIIQuestion", fontName="Times-Roman", fontSize=9.2,
+        leading=11.6, textColor=colors.black, spaceAfter=4,
+    )
+    rows = []
+    for category, questions in QUESTIONNAIRE:
+        rows.append([
+            Paragraph(escape(category), category_style),
+            [Paragraph("&#8226; " + escape(question), question_style) for question in questions],
+        ])
+    tab = Table(rows, colWidths=[43*mm, 124*mm], hAlign="CENTER", repeatRows=0)
+    tab.setStyle(TableStyle([
+        ("GRID", (0, 0), (-1, -1), .35, colors.HexColor("#aaaaaa")),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 5),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+        ("TOPPADDING", (0, 0), (-1, -1), 7),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+    ]))
+    return tab
+
+
+def build_annex_two_pdf_bytes(data: ExportData) -> bytes:
+    """A4 sin marca de agua, página, membrete ficticio ni pie automático."""
+    buffer = io.BytesIO()
+    document = SimpleDocTemplate(
+        buffer, pagesize=A4, rightMargin=21*mm, leftMargin=21*mm,
+        topMargin=17*mm, bottomMargin=18*mm,
+        title=data.title, author=data.company_name,
+    )
+    styles = {
+        "paragraph": ParagraphStyle(
+            "AnexoIIParagraph", fontName="Times-Roman", fontSize=10.9,
+            leading=14.1, alignment=TA_JUSTIFY, spaceAfter=9,
+            textColor=colors.black,
+        ),
+        "annex": ParagraphStyle(
+            "AnexoIICoverNumber", fontName="Times-Bold", fontSize=12,
+            leading=16, alignment=TA_CENTER, spaceAfter=12, textColor=colors.black,
+        ),
+        "cover": ParagraphStyle(
+            "AnexoIICover", fontName="Times-Bold", fontSize=11.5,
+            leading=14, alignment=TA_CENTER, spaceAfter=10, textColor=colors.black,
+        ),
+        "axis": ParagraphStyle(
+            "AnexoIIAxis", fontName="Times-Bold", fontSize=11.3,
+            leading=15, alignment=TA_CENTER, spaceBefore=12, spaceAfter=12,
+            textColor=colors.black, keepWithNext=True,
+        ),
+        "policy": ParagraphStyle(
+            "AnexoIIPolicy", fontName="Times-Bold", fontSize=11,
+            leading=14, alignment=TA_CENTER, spaceBefore=9, spaceAfter=11,
+            textColor=colors.black, keepWithNext=True,
+        ),
+        "heading": ParagraphStyle(
+            "AnexoIIHeading", fontName="Times-Bold", fontSize=11,
+            leading=14, alignment=TA_LEFT, spaceBefore=7, spaceAfter=4,
+            textColor=colors.black, keepWithNext=True,
+        ),
+        "bullet": ParagraphStyle(
+            "AnexoIIBullet", fontName="Times-Roman", fontSize=10.8,
+            leading=14, alignment=TA_JUSTIFY, leftIndent=9, firstLineIndent=-7,
+            spaceAfter=5, textColor=colors.black,
+        ),
+    }
+    story = []
+    _pdf_logo(story, data.logo_bytes)
+    for item in protocol_blocks(data.body):
+        kind, content = item["kind"], item["text"]
+        if kind == "questionnaire":
+            story.append(_pdf_questionnaire())
+        else:
+            markup = "<br/>".join(escape(line) for line in content.splitlines())
+            story.append(Paragraph(markup, styles.get(kind, styles["paragraph"])))
+    document.build(story)
+    return buffer.getvalue()
