@@ -59,6 +59,7 @@ QUESTIONNAIRE = (
     )),
 )
 QUESTIONNAIRE_TOKEN = "[[CUESTIONARIO_ANEXO_II]]"
+QUESTIONNAIRE_END = "[[FIN_CUESTIONARIO_ANEXO_II]]"
 
 
 def source_pages() -> dict[int, str]:
@@ -179,9 +180,13 @@ def _clean_questionnaire(body: str) -> str:
         raise ValueError("No se halló el final del cuestionario")
     start_index = marker.start()
     end_index = marker.start() + end.start()
+    full_questions = "\n".join(
+        "\n".join((category, *("• " + question for question in questions)))
+        for category, questions in QUESTIONNAIRE
+    )
     return (
         body[:start_index]
-        + f"\n\n{title}\n{QUESTIONNAIRE_TOKEN}\n"
+        + f"\n\n{title}\n\n{QUESTIONNAIRE_TOKEN}\n{full_questions}\n{QUESTIONNAIRE_END}\n\n"
         + "Fuente: Violencia y acoso en el trabajo: Guía práctica para las empresas – OIT 2022.\n"
         + "Estas herramientas deberán aplicarse siempre de forma anónima y confidencial, y sus resultados se analizarán en forma agregada, sin intentar identificar personas específicas.\n\n"
         + body[end_index:]
@@ -208,10 +213,10 @@ def _paragraphize(source: str) -> str:
             r"POLÍTICA DE TOLERANCIA CERO)", line
         ))
         bullet = line.startswith(("•", "– ", "- "))
-        if is_title or bullet or line == QUESTIONNAIRE_TOKEN:
+        if is_title or bullet or line in {QUESTIONNAIRE_TOKEN, QUESTIONNAIRE_END}:
             flush()
             buffer.append(line)
-            if is_title or line == QUESTIONNAIRE_TOKEN:
+            if is_title or line in {QUESTIONNAIRE_TOKEN, QUESTIONNAIRE_END}:
                 flush()
             continue
         buffer.append(line)
@@ -244,3 +249,42 @@ def build_annex_ii_body(
     if "ANEXO II" not in result or "7. Flujograma orientativo" not in result:
         raise ValueError("La reproducción del Anexo II está incompleta")
     return result
+
+
+def protocol_blocks(body: str) -> list[dict[str, str]]:
+    """Divide el snapshot del protocolo para vista previa, Word y PDF.
+
+    El cuestionario se conserva íntegro en el registro, pero se dibuja como
+    tabla de dos columnas de la misma forma que en la fuente.
+    """
+    blocks: list[dict[str, str]] = []
+    in_table = False
+    for part in body.strip().split("\n\n"):
+        part = part.strip()
+        if not part:
+            continue
+        if part == QUESTIONNAIRE_TOKEN:
+            in_table = True
+            blocks.append({"kind": "questionnaire", "text": ""})
+            continue
+        if part == QUESTIONNAIRE_END:
+            in_table = False
+            continue
+        if in_table:
+            continue
+        if part == "ANEXO II":
+            kind = "annex"
+        elif part.startswith(("MODELO ORIENTATIVO", "PROTOCOLO DE PREVENCIÓN")):
+            kind = "cover"
+        elif re.match(r"^(?:I|II|III|IV)\.\s+EJE", part):
+            kind = "axis"
+        elif part.startswith("POLÍTICA DE TOLERANCIA CERO"):
+            kind = "policy"
+        elif re.match(r"^\d+\.\s+[A-ZÁÉÍÓÚ]", part):
+            kind = "heading"
+        elif part.startswith("•"):
+            kind = "bullet"
+        else:
+            kind = "paragraph"
+        blocks.append({"kind": kind, "text": part})
+    return blocks
