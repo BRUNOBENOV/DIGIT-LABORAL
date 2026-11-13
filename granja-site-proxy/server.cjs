@@ -94,3 +94,24 @@ http.createServer(async (req, res) => {
 }).listen(PORT, '0.0.0.0', () => {
   console.log('Granja La Estancia public relay listening on ' + PORT);
 });
+
+// One-time non-invasive check of the existing public website at start-up.
+(async () => {
+  try {
+    const reply = await fetch(ORIGIN, { signal: AbortSignal.timeout(20000) });
+    const page = await reply.text();
+    const s = page.toLowerCase();
+    const start = s.indexOf('<title>');
+    const finish = s.indexOf('</title>');
+    const title = start >= 0 && finish > start ? page.slice(start + 7, finish).slice(0, 150) : '(sin titulo)';
+    console.log('Original website check: ' + JSON.stringify({
+      status: reply.status,
+      contentType: reply.headers.get('content-type'),
+      length: page.length,
+      title,
+      html: s.includes('<html')
+    }));
+  } catch (error) {
+    console.error('Original website check failed: ' + error.message);
+  }
+})();
