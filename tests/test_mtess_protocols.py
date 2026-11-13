@@ -2,6 +2,14 @@
 from __future__ import annotations
 
 from datetime import date
+import io
+
+from docx import Document
+from pypdf import PdfReader
+from PIL import Image
+
+from app.document_export import decode_metadata
+from app.models import CompanyBranding
 
 import pytest
 
@@ -40,11 +48,40 @@ def test_mtess_declaration_generation_and_downloads(web_case):
     ).one()
     assert record.status == "Borrador"
     assert "Empresa sintética" in record.body
-    assert "denuncias@example.invalid" in record.body
+    assert "denuncias@example.invalid" not in record.body
+    assert decode_metadata(record.observations)["channel"] == "denuncias@example.invalid"
+    assert "MODELO ORIENTATIVO DE DECLARACIÓN DE TOLERANCIA CERO" in record.body
+    assert "no admitirá represalias" in record.body
+    assert "MUNDO DEL TRABAJO" in record.body
+    assert "RUC:" not in record.body
     pdf = client.get(f"/app/certificates/mtess/{record.id}/download.pdf")
     assert pdf.status_code == 200 and pdf.content.startswith(b"%PDF")
     docx = client.get(f"/app/certificates/mtess/{record.id}/download.docx")
     assert docx.status_code == 200 and docx.content[:2] == b"PK"
+    parsed = Document(io.BytesIO(docx.content))
+    text = "\n".join(p.text for p in parsed.paragraphs)
+    assert "ANEXO III" in text
+    assert "MUNDO DEL TRABAJO" in text
+    assert "declara expresamente su política de tolerancia cero" in text
+    assert any(run.bold for p in parsed.paragraphs for run in p.runs)
+    assert len(parsed.inline_shapes) == 0  # Sin logo no hay gráfico de reserva.
+    assert len(parsed.tables) == 0
+    assert not any(word in text for word in (
+        "BORRADOR - REVISAR ANTES DE FIRMAR",
+        "Generado por Digit Laboral", "DOCUMENTO LABORAL",
+    ))
+    pdf_reader = PdfReader(io.BytesIO(pdf.content))
+    pdf_text = "\n".join(p.extract_text() or "" for p in pdf_reader.pages)
+    assert "ANEXO III" in pdf_text
+    assert "MUNDO DEL TRABAJO" in pdf_text
+    assert "Empresa sintética" in pdf_text
+    assert "BORRADOR" not in pdf_text
+    assert "Generado por Digit Laboral" not in pdf_text
+    assert "DOCUMENTO LABORAL" not in pdf_text
+    assert "Página 1" not in pdf_text
+    preview = client.get("/app/certificates/mtess", params={"company_id": company.id})
+    assert "Vista previa fiel del Anexo III" in preview.text
+    assert "data:image/" not in preview.text
     receipt = client.get(
         f"/app/certificates/mtess/{record.id}/download.pdf",
         params={"kind": "receipt", "employee_id": employee.id},
@@ -85,6 +122,11 @@ def test_mtess_protocol_for_eleven_and_requires_rit_selection(web_case):
     ).one()
     assert "Reglamento Interno de Trabajo" in item.body
     assert "NO acredita homologación" in item.body
+    pdf = client.get(f"/app/certificates/mtess/{item.id}/download.pdf")
+    assert pdf.status_code == 200
+    pdf_text = "\n".join(p.extract_text() or "" for p in PdfReader(io.BytesIO(pdf.content)).pages)
+    assert "Generado por Digit Laboral" not in pdf_text
+    assert "BORRADOR - REVISAR ANTES DE FIRMAR" not in pdf_text
 
 
 def test_mtess_cross_tenant_and_role_access(web_case):
@@ -142,3 +184,31 @@ def test_mtess_change_from_ten_to_eleven_keeps_old_version_but_warns(web_case):
     assert "cambió de régimen" in page.text
     assert "11 o más" in page.text
     assert "generá el documento correspondiente" in page.text
+
+
+def test_mtess_declared_company_logo_is_rendered_without_default_branding(web_case):
+    client, db, _, company, _, _ = web_case
+    image = Image.new("RGB", (150, 45), "white")
+    stream = io.BytesIO()
+    image.save(stream, format="PNG")
+    db.add(CompanyBranding(company_id=company.id,
+                           logo_bytes=stream.getvalue(), logo_content_type="image/png"))
+    db.commit()
+    csrf = token(client, f"/app/certificates/mtess?company_id={company.id}")
+    result = client.post("/app/certificates/mtess/generate",
+                         data={"csrf_token": csrf, "company_id": company.id,
+                               "responsible": "Responsable", "channel": "canal@example.invalid",
+                               "rit_status": "sin"}, follow_redirects=False)
+    assert result.status_code == 303
+    db.expire_all()
+    record = db.query(GeneratedCertificate).filter_by(
+        company_id=company.id, document_type=DECLARATION,
+    ).one()
+    preview = client.get("/app/certificates/mtess", params={"company_id": company.id})
+    assert 'data:image/png;base64,' in preview.text
+    docx_resp = client.get(f"/app/certificates/mtess/{record.id}/download.docx")
+    doc = Document(io.BytesIO(docx_resp.content))
+    assert len(doc.inline_shapes) == 1
+    assert "Digit Laboral" not in "\n".join(p.text for p in doc.paragraphs)
+    pdf_resp = client.get(f"/app/certificates/mtess/{record.id}/download.pdf")
+    assert pdf_resp.status_code == 200 and pdf_resp.content.startswith(b"%PDF")

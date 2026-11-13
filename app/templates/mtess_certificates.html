@@ -16,7 +16,14 @@
 .mtess-tag.warning{background:#fff6e4;color:#875b13}
 .mtess-actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:14px}
 .mtess-help{color:#596980;font-size:.82rem}
-.mtess-preview{white-space:pre-wrap;font-family:Georgia,'Times New Roman',serif;font-size:.9rem;line-height:1.68;border:1px solid #dbe3f0;border-radius:8px;background:#fcfdff;padding:20px;max-height:650px;overflow:auto}
+.mtess-preview{white-space:pre-wrap;font-family:'Times New Roman',Times,serif;font-size:.9rem;line-height:1.68;border:1px solid #dbe3f0;border-radius:8px;background:#fff;padding:20px;max-height:650px;overflow:auto}
+.mtess-annex-preview{white-space:normal;color:#000;background:#fff;font-size:1rem;line-height:1.3;padding:26px 32px}
+.mtess-annex-preview h3{font-family:'Times New Roman',Times,serif;font-size:1rem;font-weight:700;text-align:center;line-height:1.2;margin:0;padding:0}
+.mtess-annex-preview h3:last-of-type{margin-bottom:24px}
+.mtess-annex-preview p{font-family:'Times New Roman',Times,serif;text-align:justify;margin:0 0 18px;line-height:1.3}
+.mtess-annex-preview .mtess-annex-signature{text-align:left;margin:0}
+.mtess-annex-preview img{display:block;object-fit:contain;max-width:160px;max-height:64px;margin:0 0 12px}
+@media(max-width:550px){.mtess-annex-preview{padding:16px}}
 .mtess-history{width:100%;border-collapse:collapse;font-size:.87rem}
 .mtess-history th,.mtess-history td{text-align:left;vertical-align:top;padding:10px;border-bottom:1px solid #e4eaf3}
 .mtess-history th{color:#56657c;font-size:.75rem}
@@ -98,8 +105,22 @@
    <div class="mtess-tags"><span class="mtess-tag">Documento N.º {{ latest.id }}</span>
     <span class="mtess-tag">Versión {{ latestmeta.get('document_version', 1) }}</span>
     <span class="mtess-tag">{{ latest.status }}</span></div>
-   <p class="mtess-help">Generado: {{ latest.issue_date|fecha }}. El texto es una plantilla editable basada en los lineamientos oficiales; no es una reproducción íntegra del Anexo II.</p>
-   <div class="mtess-preview" aria-label="Vista previa del documento">{{ latest.body }}</div>
+   <p class="mtess-help">Generado: {{ latest.issue_date|fecha }}. {% if latest.document_type == 'mtess_declaracion_tolerancia_cero' %}Declaración conforme al texto orientativo del Anexo III, con nombre, lugar y fecha autocompletados.{% else %}Protocolo editable basado en los lineamientos del Anexo II; revisar su integridad antes de la aprobación.{% endif %}</p>
+   {% if latest.document_type == 'mtess_declaracion_tolerancia_cero' %}
+   <div class="mtess-preview mtess-annex-preview" aria-label="Vista previa fiel del Anexo III">
+      {% if preview_logo_src %}<img src="{{ preview_logo_src }}" alt="Logo de {{ latest.company_name_snapshot }}">{% endif %}
+      {% for line in annex_heading %}<h3>{{ line }}</h3>{% endfor %}
+      {% for segments in annex_paragraphs %}
+      <p>{% for segment in segments %}{% if segment.bold %}<strong>{{ segment.text }}</strong>{% else %}{{ segment.text }}{% endif %}{% endfor %}</p>
+      {% endfor %}
+      <p class="mtess-annex-signature">{{ annex_location }}</p>
+      <p class="mtess-annex-signature">[Firma]</p>
+   </div>
+   {% else %}
+   <div class="mtess-preview" aria-label="Vista previa del documento">
+     {% if preview_logo_src %}<img src="{{ preview_logo_src }}" style="max-width:160px;max-height:64px;object-fit:contain;display:block;margin:0 0 12px" alt="Logo de {{ latest.company_name_snapshot }}">{% endif %}{{ latest.body }}
+   </div>
+   {% endif %}
    <div class="mtess-actions">
     <a class="btn primary" href="/app/certificates/mtess/{{ latest.id }}/download.pdf">Descargar PDF</a>
     <a class="btn ghost" href="/app/certificates/mtess/{{ latest.id }}/download.docx">Descargar Word</a>
