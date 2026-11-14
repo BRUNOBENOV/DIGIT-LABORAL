@@ -7,7 +7,7 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from .labor_wage_rules import minimum_wage_for_period
 from .settlement_presets import settlement_defaults
 
-VERSION = "2026.11.2"
+VERSION = "2026.11.14"
 SOURCE = "Centro laboral"
 TITLES = {"salary": "Liquidación de salario", "settlement": "Liquidación de haberes",
           "aguinaldo": "Aguinaldo", "vacation": "Vacaciones", "hours": "Horas y recargos"}
