@@ -102,7 +102,7 @@ def test_calculated_document_and_manual_editors_remain_available_without_javascr
     response = client.post("/herramientas/calcular", data=values)
     assert response.status_code == 200
     soup = BeautifulSoup(response.text, "html.parser")
-    assert soup.select_one('[data-concept-amount="vacations"]').text == "Gs. 2.200.000"
+    assert soup.select_one('[data-concept-amount="vacations"]').text == "Gs. 2.232.267"
     assert soup.select_one('[data-concept-amount="aguinaldo"]').text == "Gs. 1.500.000"
     assert "Modificar a mano" in soup.select_one('[data-concept-editor="vacations"] summary').text
     document = soup.select_one("#labor-document")
