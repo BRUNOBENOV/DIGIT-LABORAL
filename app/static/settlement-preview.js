@@ -3,7 +3,8 @@
   const form = document.getElementById("labor-form");
   if (!form) return;
   const projectionFields = ["start_date", "end_date", "reason", "indefinite", "trial_completed",
-    "protected", "average_salary", "notice_served", "severance_regime"];
+    "protected", "average_salary", "pay_basis", "indemnity_daily_base",
+    "indemnity_daily_evidence", "notice_served", "severance_regime"];
   const legalFields = ["stability_basis","stability_evidence","stability_confirmed","judicial_confirmed","judicial_date","judicial_reference","judicial_document_id"];
   const confirmationFields = new Set([...projectionFields, "stability_basis", "stability_evidence"]);
   const money = value => "Gs. " + new Intl.NumberFormat("es-PY").format(value);
@@ -55,8 +56,8 @@
         stability_double_pending: "Estabilidad detectada por antigüedad. Se incluye el escenario doble en el subtotal parcial; documentá su procedencia antes de aprobar."
       };
       status.textContent = messages[projection.status] || "Revisá el régimen antes de calcular.";
-      if (projection.multiplier && !(Number(projection.average) > 0)) {
-        status.textContent += " Ingresá el promedio salarial para obtener los importes.";
+      if (projection.multiplier && !(Number(projection.daily_base?.replace(/\./g,"").replace(",",".")) > 0)) {
+        status.textContent += " Verificá la base indemnizatoria correspondiente a la modalidad.";
       }
     };
     const clearProjection = () => {
@@ -100,7 +101,8 @@
         projection = data;
         sourceValues = submitted;
         ["units", "days", "notice_due", "notice_payable"].forEach(key => write(key, data[key] ?? "Pendiente"));
-        write("daily_base", Number(data.average) > 0 ? "Gs. " + data.daily_base : "Pendiente");
+        write("daily_base", data.daily_base && Number(data.daily_base.replace(/\./g,"").replace(",",".")) > 0
+          ? "Gs. " + data.daily_base : "Pendiente");
         ["severance", "notice"].forEach(key => write(key, data[key] == null ? "Pendiente" : money(data[key])));
         updateStatus();
         emitProjection();
