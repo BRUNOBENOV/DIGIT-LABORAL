@@ -130,3 +130,12 @@ def test_standalone_vacation_double_payment_requires_proof():
     assert error.value.field == "vacation_double_evidence"
     base["vacation_double_evidence"] = "Período adquirido 2025 y vencimiento del plazo legal verificado."
     assert item(calculate(base), "Remuneración de vacaciones") == 2_435_200
+
+
+def test_unknown_historical_payment_frequency_cannot_silently_default_to_monthly():
+    with pytest.raises(CalculationError) as error:
+        calculate(settlement_data(pay_basis=""))
+    assert error.value.field == "pay_basis"
+    with pytest.raises(CalculationError) as error:
+        settlement_projection(settlement_data(pay_basis=""))
+    assert error.value.field == "pay_basis"
