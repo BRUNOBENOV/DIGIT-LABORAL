@@ -23,7 +23,7 @@ from .document_export import (
 from .models import Company, Employee, GeneratedCertificate
 from .mtess_annex_ii import build_annex_ii_body, protocol_blocks, QUESTIONNAIRE
 from .mtess_document_export import (
-    ANEXO_III_HEADING, DECLARATION_TYPE, annex_three_paragraphs,
+    ANEXO_III_HEADING, ANEXO_III_SIGNATURE_LABEL, DECLARATION_TYPE, annex_three_paragraphs,
     annex_three_location, build_annex_three_body,
     build_mtess_pdf_bytes, build_mtess_docx_bytes,
 )
@@ -240,6 +240,7 @@ def register_mtess_routes(app, *, render, require_roles, company_allowed,
                 if latest and latest.document_type == DECLARATION else [],
             annex_location=annex_three_location(latest.city, latest.issue_date)
                 if latest and latest.document_type == DECLARATION else "",
+            annex_signature_label=ANEXO_III_SIGNATURE_LABEL,
             protocol_preview_blocks=_protocol_preview_blocks(latest.body)
                 if latest and latest.document_type == PROTOCOL else [],
             protocol_questionnaire=QUESTIONNAIRE,

@@ -1,3 +1,7 @@
+## 2.7.21 — Espacio de firma de la declaración MTESS
+
+- Presenta una línea para firma manuscrita debajo del lugar y la fecha del Anexo III en la vista previa, el PDF y Word.
+
 ## 2.7.20 — Vista previa de Protocolos y Declaraciones MTESS
 
 - Amplía la hoja de lectura de los anexos II y III y facilita el acceso a las descargas y al registro de firma y difusión.

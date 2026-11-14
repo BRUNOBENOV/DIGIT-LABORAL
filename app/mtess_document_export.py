@@ -14,7 +14,9 @@ from typing import Any
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_TABLE_ALIGNMENT, WD_CELL_VERTICAL_ALIGNMENT
-from docx.shared import Cm, Pt
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
+from docx.shared import Cm, Mm, Pt
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT
 from reportlab.lib.pagesizes import A4
@@ -36,6 +38,9 @@ ANEXO_III_HEADING = (
     "FRENTE A LA DISCRIMINACIÓN, LA VIOLENCIA Y EL ACOSO EN EL",
     "MUNDO DEL TRABAJO",
 )
+ANEXO_III_SIGNATURE_LABEL = "Firma"
+_SIGNATURE_WIDTH_MM = 65
+_SIGNATURE_SPACE_MM = 12
 
 # Cada párrafo se representa como fragmentos [texto, negrita].
 # Esto permite mantener exactamente las mismas negritas en la vista previa,
@@ -111,6 +116,31 @@ def _docx_logo(doc: Document, logo_bytes: bytes | None) -> None:
     paragraph.paragraph_format.space_after = Pt(4)
 
 
+def _docx_annex_three_signature(doc: Document, location: str) -> None:
+    place_and_date = doc.add_paragraph(location)
+    place_and_date.paragraph_format.space_after = Pt(0)
+    place_and_date.paragraph_format.keep_with_next = True
+
+    signature = doc.add_paragraph()
+    borders = OxmlElement("w:pBdr")
+    top = OxmlElement("w:top")
+    top.set(qn("w:val"), "single")
+    top.set(qn("w:sz"), "4")
+    top.set(qn("w:space"), "3")
+    top.set(qn("w:color"), "000000")
+    borders.append(top)
+    signature._p.get_or_add_pPr().append(borders)
+
+    section = doc.sections[-1]
+    signature.paragraph_format.right_indent = (
+        section.page_width - section.left_margin - section.right_margin - Mm(_SIGNATURE_WIDTH_MM)
+    )
+    signature.paragraph_format.space_before = Mm(_SIGNATURE_SPACE_MM)
+    signature.paragraph_format.space_after = Pt(0)
+    signature.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    signature.add_run(ANEXO_III_SIGNATURE_LABEL).font.size = Pt(10)
+
+
 def build_mtess_docx_bytes(data: ExportData) -> bytes:
     """PDF y Word MTESS sin branding supletorio, pie ni leyenda de borrador."""
     if data.document_type == PROTOCOL_TYPE:
@@ -145,10 +175,7 @@ def build_mtess_docx_bytes(data: ExportData) -> bytes:
             for segment in segments:
                 r = p.add_run(segment["text"])
                 r.bold = segment["bold"]
-        sign = doc.add_paragraph(annex_three_location(data.city, data.issue_date))
-        sign.alignment = WD_ALIGN_PARAGRAPH.LEFT
-        sign.paragraph_format.space_after = Pt(0)
-        doc.add_paragraph("[Firma]")
+        _docx_annex_three_signature(doc, annex_three_location(data.city, data.issue_date))
     else:
         paragraphs = data.body.strip().split("\n\n")
         for index, block in enumerate(paragraphs):
@@ -199,9 +226,6 @@ def build_mtess_pdf_bytes(data: ExportData) -> bytes:
         "MtessAnexoTitle", parent=main, fontName="Times-Bold", fontSize=11.5,
         leading=13.6, alignment=TA_CENTER, spaceAfter=0,
     )
-    signature = ParagraphStyle(
-        "MtessSignature", parent=main, alignment=TA_LEFT, spaceAfter=0,
-    )
     story = []
     _pdf_logo(story, data.logo_bytes)
     if data.document_type == DECLARATION_TYPE:
@@ -214,9 +238,24 @@ def build_mtess_pdf_bytes(data: ExportData) -> bytes:
                 for segment in segments
             )
             story.append(Paragraph(markup, main))
-        story.append(Spacer(1, 1 * mm))
-        story.append(Paragraph(escape(annex_three_location(data.city, data.issue_date)), signature))
-        story.append(Paragraph("[Firma]", signature))
+        location = ParagraphStyle("MtessLocation", parent=main, alignment=TA_LEFT, spaceAfter=0)
+        signature = ParagraphStyle("MtessSignature", parent=location, alignment=TA_CENTER, fontSize=10)
+        signature_line = Table(
+            [[Paragraph(ANEXO_III_SIGNATURE_LABEL, signature)]],
+            colWidths=[_SIGNATURE_WIDTH_MM * mm],
+            hAlign="LEFT",
+            style=[
+                ("LINEABOVE", (0, 0), (0, 0), 0.5, colors.black),
+                ("TOPPADDING", (0, 0), (0, 0), 3),
+                ("BOTTOMPADDING", (0, 0), (0, 0), 0),
+            ],
+        )
+        story.append(KeepTogether([
+            Spacer(1, 1 * mm),
+            Paragraph(escape(annex_three_location(data.city, data.issue_date)), location),
+            Spacer(1, _SIGNATURE_SPACE_MM * mm),
+            signature_line,
+        ]))
     else:
         for index, block in enumerate(data.body.strip().split("\n\n")):
             markup = "<br/>".join(escape(line) for line in block.split("\n"))
