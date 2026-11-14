@@ -207,15 +207,19 @@ def calculate(data, *, judicial_evidence_verified=False):
         # En jornalero, el jornal pactado es suficiente para liquidar:
         # la referencia mensual (jornal × 26) sirve solo para otros
         # controles del motor, NO se suma ni se utiliza como sueldo fijo.
-        daily_basis = kind in {"salary", "vacation"} and str(data.get("pay_basis") or "monthly") == "daily"
+        daily_basis = kind in {"salary", "settlement", "vacation"} and str(data.get("pay_basis") or "monthly") == "daily"
         explicit_jornal = str(data.get("daily_rate") or "").strip()
         reference_monthly = str(data.get("salary") or "").strip()
-        if daily_basis and explicit_jornal and reference_monthly in {"", "0", "0.0", "0.00"}:
+        if daily_basis and explicit_jornal:
+            # El jornal contractual, no un supuesto sueldo mensual, determina las
+            # jornadas pendientes y el valor vacacional en el egreso.
             salary = positive(data, "daily_rate", "jornal pactado") * Decimal("26")
+        elif daily_basis and kind == "settlement":
+            raise CalculationError("Ingresá el jornal real pactado para la liquidación final.", "daily_rate")
         else:
             salary = positive(data, "salary", "salario mensual")
     if kind in {"salary", "settlement"}:
-        pay_basis = str(data.get("pay_basis") or "monthly") if kind == "salary" else "monthly"
+        pay_basis = str(data.get("pay_basis") or "monthly")
         if pay_basis not in {"monthly", "daily"}:
             raise CalculationError("Elegí una modalidad salarial válida.", "pay_basis")
         max_days = "31" if pay_basis == "daily" else "30"
@@ -228,7 +232,7 @@ def calculate(data, *, judicial_evidence_verified=False):
             add("Jornales del período", daily_rate * days,
                 f"Gs. {daily_rate:.4f} × {days} jornadas",
                 "Jornal pactado o referencia mensual / 26; confirmar asistencia y contrato")
-            fact("Modalidad salarial", "Jornalero · divisor 26")
+            fact("Modalidad salarial", "Jornalero · jornal real por jornada; 26 es solo referencia mensual")
             fact("Jornal diario aplicado", f"Gs. {daily_rate:.4f}")
             if days > 26:
                 result["warnings"].append(
@@ -238,6 +242,8 @@ def calculate(data, *, judicial_evidence_verified=False):
             add("Salario del período", salary / 30 * days, f"Gs. {gs(salary)} / 30 × {days} días", "Base mensual")
             fact("Modalidad salarial", "Mensualizado · divisor 30")
         fact("Días remunerados", days)
+        if kind == "settlement" and pay_basis == "daily" and days > 26:
+            result["warnings"].append("Revisá los jornales pendientes superiores a 26; conciliá asistencia y pagos anteriores.")
         if kind == "salary":
             period = str(data.get("month", ""))
             try:
@@ -465,6 +471,7 @@ def calculate(data, *, judicial_evidence_verified=False):
 
     if kind == "settlement":
         start, end = read_date(data, "start_date"), read_date(data, "end_date")
+        settlement_daily = str(data.get("pay_basis") or "monthly") == "daily"
         if end < start:
             raise CalculationError("El egreso no puede ser anterior al ingreso.", "end_date")
         years = completed_years(start, end)
