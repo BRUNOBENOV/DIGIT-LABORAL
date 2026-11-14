@@ -781,6 +781,11 @@ def calculate(data, *, judicial_evidence_verified=False):
     if kind == "vacation":
         minimum = positive(data, "legal_minimum", "mínimo legal aplicable al período y actividad")
         days = number(data, "vacation_quantity", "días reconocidos", required=True, maximum="365", decimals=2)
+        if checked(data, "vacation_double") and len(clean(data.get("vacation_double_evidence"), 300)) < 12:
+            raise CalculationError(
+                "El pago doble de vacaciones requiere constancia del plazo de goce vencido y respaldo legal (art. 223).",
+                "vacation_double_evidence",
+            )
         factor = 2 if checked(data, "vacation_double") else 1
         vacation_basis = str(data.get("pay_basis") or "monthly")
         if vacation_basis not in {"monthly", "daily"}:
