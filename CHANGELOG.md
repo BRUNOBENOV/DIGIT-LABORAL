@@ -1,3 +1,8 @@
+## 2.7.22 — Salarios guardados en la liquidación final
+
+- Completa las remuneraciones del año al elegir el funcionario y la fecha de egreso. Usa una fuente por mes e identifica las liquidaciones aprobadas, nóminas cerradas e importes del historial que requieren revisión.
+- Muestra el aguinaldo provisional y los períodos sin respaldo suficiente, sin duplicar recibos ni prorratear un mes completo para un egreso parcial.
+
 ## 2.7.21 — Espacio de firma de la declaración MTESS
 
 - Presenta una línea para firma manuscrita debajo del lugar y la fecha del Anexo III en la vista previa, el PDF y Word.

@@ -3,13 +3,16 @@ from datetime import UTC, date, datetime
 import io
 import json
 
+from bs4 import BeautifulSoup
 from pypdf import PdfReader
 import pytest
 from sqlalchemy import select
 
 from app import main as core
-from app.models import CalculationRecord, EmployeeComplianceProfile, EmployeeExit, Payroll, PayrollComplianceDetail, PayrollLine
+from app.legacy_salary_mov_import import _record as parse_mov_row, make_mov_event
+from app.models import CalculationRecord, EmployeeComplianceProfile, EmployeeExit, Payroll, PayrollComplianceDetail, PayrollLine, SalaryImportDetail
 from app.payroll_annual import NO_HISTORY, propose_annual_remuneration
+from app.salary_data import calculation_fingerprint
 from tests.test_labor_suite import token, web_case
 from tests.test_settlement_legal_cases import settlement_data
 
@@ -48,9 +51,37 @@ def selected(case):
     client, _db, _box, company, employee, *_ = case
     source = proposal(case).json()
     return settlement_data(company_id=str(company.id), employee_id=str(employee.id), reason="resignation",
-        start_date=employee.admission_date.isoformat(), end_date="2025-03-31", annual_origin="payroll",
+        start_date=employee.admission_date.isoformat(), end_date="2025-03-31", annual_origin=source["origin"],
         annual_payroll_fingerprint=source["fingerprint"], annual_remuneration=str(source["annual_remuneration"]),
         csrf_token=token(client))
+
+
+def saved_salary(company, employee, period, *, base, status="Aprobado", extra=(), deductions=(), dates=None):
+    earnings = [{"label": "Salario del período", "amount": base}, *extra]
+    gross = sum(row["amount"] for row in earnings)
+    discounts = sum(row["amount"] for row in deductions)
+    inputs = {"kind": "salary", "month": period}
+    if dates:
+        inputs.update(zip(("period_start", "period_end"), dates))
+    return CalculationRecord(
+        company_id=company.id, employee_id=employee.id, calculation_type="suite_salary",
+        reference_period=period, input_json=json.dumps(inputs), status=status, source="Centro laboral",
+        result_json=json.dumps(dict(kind="salary", period=period, gross=gross, discounts=discounts,
+                                   net=gross - discounts, earnings=earnings, deductions=list(deductions))),
+        amount=gross - discounts,
+    )
+
+
+def saved_history(company, employee, month, gross, *, row_number=2):
+    year, month_number = map(int, month.split("-"))
+    company.legacy_code = "101"
+    source = parse_mov_row({
+        "CODEMP": "101", "CODTRA": "3", "MESDEX": month.replace("-", ""),
+        "PAGDEL": "1", "PAGALX": str(monthrange(year, month_number)[1]),
+        "SALARI": gross, "SALARI1": gross, "SALACT": "3200000",
+        "DESIPS": "270000", "DESOTR": "300000", "COMREM": "14000", "MONEDA": "Gs.",
+    }, row_number)
+    return make_mov_event(source, employee.id, "movimientos.xlsx", "synthetic@example.invalid")
 
 
 def test_calendar_year_sum_uses_earnings_not_net_and_does_not_duplicate_detail(annual_case):
@@ -160,12 +191,129 @@ def test_private_page_prefills_and_locks_from_closed_payrolls(annual_case):
     db.add(record); db.commit()
     response = client.get("/app/liquidaciones", params=dict(tipo="settlement",company_id=company.id,employee_id=employee.id,exit_id=record.id))
     assert response.status_code == 200
-    from bs4 import BeautifulSoup
     soup = BeautifulSoup(response.text, "html.parser")
     annual = soup.select_one('[name="annual_remuneration"]')
     assert annual["value"] == "9900000" and annual.has_attr("readonly")
     assert soup.select_one('[name="annual_origin"]')["value"] == "payroll"
     assert soup.select_one('[data-annual-manual]') is not None
+
+
+def test_settlement_prefills_from_saved_salary_and_provisional_history_without_closed_payroll(web_case):
+    client, db, _box, company, employee, *_ = web_case
+    employee.admission_date = date(2024, 1, 1)
+    employee.termination_date = date(2025, 3, 14)
+    january = saved_salary(company, employee, "2025-01", base=3_000_000,
+        extra=[{"label": "Comisiones", "amount": 120_000},
+               {"label": "Bonificación familiar", "amount": 150_000},
+               {"label": "Reintegro de gastos documentados", "amount": 40_000}],
+        deductions=[{"label": "Aporte IPS del trabajador", "amount": 270_000},
+                    {"label": "Anticipos documentados", "amount": 380_000},
+                    {"label": "Ausencias", "amount": 20_000}])
+    history = saved_history(company, employee, "2025-02", "2543210.65")
+    db.add_all([
+        january, history, saved_history(company, employee, "2025-01", "2999999"),
+        saved_salary(company, employee, "2025-01", base=2_000_000, status="Borrador"),
+        saved_salary(company, employee, "2025-03", base=3_000_000,
+                     dates=("2025-03-01", "2025-03-31")),
+        saved_salary(company, employee, "2025-04", base=5_000_000),
+    ])
+    db.commit()
+    data = proposal(web_case, end_date="2025-03-14").json()
+    assert data["origin"] == "salary_records" and data["closed_count"] == 0
+    assert data["is_available"] and not data["is_complete"] and not data["can_review_history"]
+    assert data["annual_remuneration"] == 5_643_211
+    assert data["aguinaldo_accrued"] == 470_268
+    jan, feb, march = data["periods"]
+    assert jan["calculation_id"] == january.id and jan["remuneration"] == 3_100_000
+    assert feb["history_id"] == history.id and feb["recorded_remuneration"] == "2543210.65"
+    assert march["remuneration"] is None and "no coincide" in march["status"]
+    response = client.get("/app/liquidaciones", params=dict(tipo="settlement", company_id=company.id,
+                                                           employee_id=employee.id))
+    assert response.status_code == 200
+    page = BeautifulSoup(response.text, "html.parser")
+    assert page.select_one('[name="end_date"]')["value"] == "2025-03-14"
+    annual = page.select_one('[name="annual_remuneration"]')
+    assert annual["value"] == "5643211" and annual.has_attr("readonly")
+    assert page.select_one('[name="annual_origin"]')["value"] == "salary_records"
+
+
+def test_approved_salary_wins_over_history_and_open_payroll_and_draft_correction(annual_case):
+    client, db, _box, company, employee, _other, lines = annual_case
+    lines[2].payroll.status = "Borrador"
+    older = saved_salary(company, employee, "2025-02", base=1_900_000)
+    latest = saved_salary(company, employee, "2025-02", base=2_800_000)
+    closed_duplicate = saved_salary(company, employee, "2025-01", base=9_000_000)
+    db.add_all([older, latest, closed_duplicate, saved_salary(company, employee, "2025-02", base=4_000_000,
+                                                             status="Borrador"),
+                saved_history(company, employee, "2025-02", "1900000")])
+    db.commit()
+    data = proposal(annual_case).json()
+    assert data["is_complete"] and data["annual_remuneration"] == 9_400_000
+    assert data["periods"][0]["payroll_id"] == lines[1].payroll_id
+    assert data["periods"][1]["calculation_id"] == latest.id
+
+    stored = selected(annual_case)
+    latest.status = "Anulado"
+    db.commit()
+    data = proposal(annual_case).json()
+    assert not data["is_complete"] and data["periods"][1]["remuneration"] is None
+    assert "anulada" in data["periods"][1]["status"]
+    response = client.post("/app/liquidaciones/calcular", data=stored, headers={"Accept":"application/json"})
+    assert response.status_code == 422
+
+
+def test_salary_period_detail_can_cover_partial_exit_month(web_case):
+    _client, db, _box, company, employee, *_ = web_case
+    employee.admission_date = date(2025, 3, 1)
+    record = saved_salary(company, employee, "2025-03", base=1_500_000)
+    db.add(record); db.flush()
+    detail = SalaryImportDetail(company_id=company.id, calculation_record_id=record.id,
+        source_sha256="stale", period_start=date(2025, 3, 1), period_end=date(2025, 3, 15),
+        days_worked=13, hours_worked=104)
+    db.add(detail); db.commit()
+    assert not proposal(web_case, end_date="2025-03-15").json()["is_available"]
+    detail.source_sha256 = calculation_fingerprint(record)
+    db.commit()
+    data = proposal(web_case, end_date="2025-03-15").json()
+    assert data["is_complete"] and data["annual_remuneration"] == 1_500_000
+
+
+def test_history_review_requires_full_coverage_and_keeps_provenance(web_case):
+    client, db, _box, company, employee, *_ = web_case
+    employee.admission_date = date(2025, 1, 1)
+    db.add_all([saved_history(company, employee, month, "2850000")
+                for month in ("2025-01", "2025-02")])
+    db.commit()
+    data = dict(selected(web_case), annual_history_reviewed="on")
+    headers = {"X-CSRF-Token":data["csrf_token"]}
+    first = client.post("/api/calculations", json=data, headers=headers)
+    assert first.status_code == 201, first.text
+    item = db.get(CalculationRecord, first.json()["id"])
+    assert json.loads(item.result_json)["partial"]
+    assert "annual_history_reviewed" not in json.loads(item.input_json)
+    assert client.patch(f"/api/calculations/{item.id}", json={"status":"Aprobado"}, headers=headers).status_code == 409
+
+    db.add(saved_salary(company, employee, "2025-03", base=3_000_000))
+    db.commit()
+    assert proposal(web_case).json()["can_review_history"]
+    data = dict(selected(web_case), annual_history_reviewed="on")
+    reviewed = client.post("/api/calculations", json=data, headers=headers)
+    assert reviewed.status_code == 201, reviewed.text
+    item = db.get(CalculationRecord, reviewed.json()["id"])
+    result = json.loads(item.result_json)
+    assert not result["partial"] and result["annual_provenance"]["history_reviewed"]
+    core._revalidate_calculation_before_approval(item, db)
+
+
+def test_duplicate_history_period_stays_pending(web_case):
+    _client, db, _box, company, employee, *_ = web_case
+    employee.admission_date = date(2025, 1, 1)
+    db.add_all([saved_history(company, employee, "2025-01", "2800000"),
+                saved_history(company, employee, "2025-01", "2800000", row_number=3)])
+    db.commit()
+    data = proposal(web_case).json()
+    assert not data["is_available"]
+    assert data["periods"][0]["status"].startswith("Hay varios importes")
 
 
 def test_server_rechecks_amount_and_fingerprint_on_calculate_save_and_export(annual_case):
