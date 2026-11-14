@@ -167,15 +167,11 @@ def settlement_projection(data):
     days = 15 * units * multiplier if multiplier else 0 if not applicable else None
     payable = int(Decimal(due) - served)
     if multiplier and str(data.get("pay_basis") or "monthly") == "daily":
-        # Art. 92.b: el valor indemnizatorio debe fundamentarse en las
-        # remuneraciones reales de los últimos seis meses, sin dividir
-        # arbitrariamente el jornal pactado entre 26 o 30.
-        daily_base = positive(data, "indemnity_daily_base", "base diaria indemnizatoria comprobada", decimals=2)
+        # La proyección debe mostrar días aun sin evidencia; jamás presentar
+        # dinero sin una base acreditada. calculate() valida antes de emitir.
+        daily_base = number(data, "indemnity_daily_base", "base diaria indemnizatoria", decimals=2)
         if len(clean(data.get("indemnity_daily_evidence"), 300)) < 12:
-            raise CalculationError(
-                "Documentá el origen del promedio y la base indemnizatoria diaria del jornalero (mínimo 12 caracteres).",
-                "indemnity_daily_evidence",
-            )
+            daily_base = ZERO
     else:
         daily_base = average / Decimal("30")
     return dict(
@@ -626,6 +622,11 @@ def calculate(data, *, judicial_evidence_verified=False):
             severance = projection["severance"] or 0
             indemnity_daily_base = (positive(data, "indemnity_daily_base", "base diaria indemnizatoria", decimals=2)
                                     if settlement_daily else average / Decimal("30"))
+            if settlement_daily and len(clean(data.get("indemnity_daily_evidence"), 300)) < 12:
+                raise CalculationError(
+                    "Documentá las remuneraciones y el jornal indemnizatorio promedio real (art. 92).",
+                    "indemnity_daily_evidence",
+                )
             average_label = (gs(average) if average == average.to_integral_value() else
                              f"{average:,.2f}".translate(str.maketrans(",.", ".,")))
             severance_legal = ("Arts. 91, 92 y 94–99; procedencia pendiente de revisión" if double_pending else "Arts. 91, 92 y 94–99; fundamento declarado y confirmado" if double_confirmed
