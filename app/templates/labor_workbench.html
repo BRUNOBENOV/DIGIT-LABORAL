@@ -3,7 +3,7 @@
 {% from 'labor_fields.html' import input_field as shared_field %}
 {% from 'labor_fields.html' import settlement_preview %}
 {% macro input_field(field) %}
-{{ shared_field(field, values, error_field, locked=(private and ((company_id and field.name in ['employer','ruc']) or (employee_id and field.name in ['employee','ci','position']))) or (private and kind == 'salary' and values.get('attendance_source_id') and values.get('attendance_override') != 'on' and field.name in ['days_worked','hours_worked','payment_method'] and values.get(field.name) not in [None,'']) or (field.name == 'annual_remuneration' and values.get('annual_origin') == 'payroll'), compact=kind in ['salary','settlement'], suggestion_label=average_suggestion_label) }}
+{{ shared_field(field, values, error_field, locked=(private and ((company_id and field.name in ['employer','ruc']) or (employee_id and field.name in ['employee','ci','position']))) or (private and kind == 'salary' and values.get('attendance_source_id') and values.get('attendance_override') != 'on' and field.name in ['days_worked','hours_worked','payment_method'] and values.get(field.name) not in [None,'']) or (field.name == 'annual_remuneration' and values.get('annual_origin') in ['payroll','salary_records']), compact=kind in ['salary','settlement'], suggestion_label=average_suggestion_label) }}
 {% endmacro %}
 {% macro salary_preview() %}
 <fieldset class="dl-form-section dl-overtime-preview" aria-describedby="overtime-preview-note">

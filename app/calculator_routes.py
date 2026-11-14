@@ -457,6 +457,8 @@ def professional_page(request: Request, tipo: str = "settlement", company_id: Op
         )
     scoped = private_context(db, user, values)
     if employee := scoped["employee"]:
+        if tipo == "settlement" and employee.termination_date and not exit_id:
+            values["end_date"] = employee.termination_date.isoformat()
         today = datetime.now(ZoneInfo("America/Asuncion")).date()
         effective_on = today
         if tipo == "salary":
@@ -499,7 +501,7 @@ def professional_page(request: Request, tipo: str = "settlement", company_id: Op
                 annual = None  # The source panel reports the interval error without blocking the form.
             if annual and annual["is_available"]:
                 values.update(annual_remuneration=str(annual["annual_remuneration"]),
-                              annual_origin="payroll", annual_payroll_fingerprint=annual["fingerprint"])
+                              annual_origin=annual["origin"], annual_payroll_fingerprint=annual["fingerprint"])
     return page(request, tipo, values, db=db, user=user)
 
 

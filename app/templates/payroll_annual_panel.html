@@ -2,13 +2,16 @@
   <input type="hidden" name="annual_origin" value="{{ values.get('annual_origin','auto') }}">
   <input type="hidden" name="annual_payroll_fingerprint" value="{{ values.get('annual_payroll_fingerprint','') }}">
   {% if private %}<div class="dl-actions">
-    <button type="button" class="dl-button dl-outline" data-annual-load>Calcular desde nóminas</button>
-    <button type="button" class="dl-button dl-outline" data-annual-manual {% if values.get('annual_origin') != 'payroll' %}hidden{% endif %}>Desbloquear y editar</button>
+    <button type="button" class="dl-button dl-outline" data-annual-load>Actualizar desde salarios</button>
+    <button type="button" class="dl-button dl-outline" data-annual-manual {% if values.get('annual_origin') not in ['payroll','salary_records'] %}hidden{% endif %}>Desbloquear y editar</button>
   </div>
-  <p class="dl-caption" role="status" aria-live="polite" data-annual-status>Se consultan las nóminas cerradas del año de egreso.</p>
+  <p class="dl-caption" role="status" aria-live="polite" data-annual-status>Se consultan los salarios guardados hasta la fecha de egreso.</p>
+  <div class="dl-field dl-check" data-annual-review hidden>
+    <label><input type="checkbox" name="annual_history_reviewed" value="on" {% if values.get('annual_history_reviewed') in ['on','true','1',True] %}checked{% endif %}> Revisé los períodos y confirmo que los importes del historial son remuneraciones computables.</label>
+  </div>
   <details class="dl-inline-editor"><summary>Ver fuentes y cobertura anual</summary>
     <p class="dl-caption" data-annual-coverage>—</p>
-    <div class="dl-table-wrap"><table><thead><tr><th>Mes</th><th>Computable</th><th>Estado</th></tr></thead><tbody data-annual-periods></tbody></table></div>
+    <div class="dl-table-wrap"><table><thead><tr><th>Mes</th><th>Importe aplicado</th><th>Fuente y estado</th></tr></thead><tbody data-annual-periods></tbody></table></div>
     <p class="dl-caption" data-annual-methodology></p>
   </details>{% else %}<p class="dl-caption">Ingresá las remuneraciones computables del año. El aguinaldo devengado se actualiza automáticamente.</p>{% endif %}
 </div>
