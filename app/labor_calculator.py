@@ -124,6 +124,11 @@ def settlement_projection(data):
     Monthly remuneration remains on base 30; do not import DOS base-26 totals.
     """
     data = settlement_defaults(data)
+    if "pay_basis" in data and not str(data.get("pay_basis") or "").strip():
+        raise CalculationError(
+            "Seleccioná si el trabajador es mensualizado o jornalero antes de calcular.",
+            "pay_basis",
+        )
     start, end = read_date(data, "start_date"), read_date(data, "end_date")
     if end < start:
         raise CalculationError("El egreso no puede ser anterior al ingreso.", "end_date")
@@ -189,6 +194,11 @@ def calculate(data, *, judicial_evidence_verified=False):
     kind = data.get("kind", "salary")
     if kind not in TITLES:
         raise CalculationError("Elegí un tipo de cálculo válido.", "kind")
+    if kind == "settlement" and "pay_basis" in data and not str(data.get("pay_basis") or "").strip():
+        raise CalculationError(
+            "Confirmá la modalidad salarial real antes de liquidar; el legajo no la especifica.",
+            "pay_basis",
+        )
     issued = read_date(data, "issued_date")
     identity = {key: clean(data.get(key), 180) for key in
                 ("employer", "ruc", "employee", "ci", "position", "prepared_by", "payment_method", "reference")}
