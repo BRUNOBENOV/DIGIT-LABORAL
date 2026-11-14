@@ -72,6 +72,30 @@
 
 <div class="dl-form-submit {{ 'dl-quick-fallback' if quick_steps else '' }}"><button class="dl-button" type="submit" data-keep-enabled="true">{{ 'Recalcular' if result else 'Calcular liquidación' }} <span aria-hidden="true">→</span></button><span>Revisá los conceptos antes de firmar.</span></div>
 </form>
+{% if kind == 'settlement' %}
+<script>
+(() => {
+  const form = document.getElementById("labor-form");
+  if (!form) return;
+  const basis = form.elements.namedItem("pay_basis");
+  const salary = form.elements.namedItem("salary");
+  const jornal = form.elements.namedItem("daily_rate");
+  const paid = form.elements.namedItem("days_paid");
+  if (!basis || !salary || !jornal) return;
+  const refresh = () => {
+    const daily = basis.value === "daily";
+    form.querySelectorAll('[data-field="salary"]').forEach(node => { node.hidden = daily; });
+    form.querySelectorAll('[data-field="daily_rate"]').forEach(node => { node.hidden = !daily; });
+    salary.required = !daily;
+    jornal.required = daily;
+    if (paid) paid.max = daily ? "31" : "30";
+  };
+  basis.addEventListener("change", refresh);
+  refresh();
+  // Sin inferencia de jornal a partir de montos históricos de unidad desconocida.
+})();
+</script>
+{% endif %}
 {% if kind == 'salary' %}
 <script>
 (() => {
