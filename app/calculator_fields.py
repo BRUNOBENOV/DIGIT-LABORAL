@@ -212,7 +212,9 @@ GROUPS = {
         field("legal_minimum", "Mínimo legal de la actividad y período · Gs.", min="1", required=True,
               help="Consultar la escala aplicable. No se presupone que todas las actividades tengan el mismo mínimo."),
         field("vacation_quantity", "Días corridos reconocidos", max="365", step="0.01", required=True),
-        field("vacation_double", "Corresponde pago doble, según revisión del caso", "checkbox")]), IDENTITY],
+        field("vacation_double", "Corresponde pago doble, según revisión del caso", "checkbox"),
+        field("vacation_double_evidence", "Respaldo del pago doble de vacaciones", "text", maxlength="300",
+              help="Indicá el período adquirido, vencimiento del goce y constancia legal (art. 223).")]), IDENTITY],
     "hours": [group("Horas y recargos", [
         field("hour_type", "Tipo de hora", "select", "day_extra", options=[
             ("day_extra", "Extra diurna · 1,5 × hora diurna"), ("night", "Ordinaria nocturna · 1,3 × hora diurna"),
