@@ -11,6 +11,20 @@
 - MTESS, Resolución N.º 670/2026 y mínimo vigente desde 01/07/2026: https://www.mtess.gov.py/?p=36371
 - MTESS, Guía de seguridad social: https://www.mtess.gov.py/wp-content/uploads/2025/10/Guia-de-Seguridad-Social-para-trabajadores-Asalariados-del-Sector-Privado-MTESS-MODIFICADO-FINAL.pdf
 
+## Avance técnico posterior a la auditoría inicial — v2.7.23
+
+La matriz siguiente conserva los problemas detectados al comenzar la auditoría, para trazabilidad. El trabajo posterior implementó **correcciones verificables** en los siguientes puntos:
+
+- **CAL-01 / CAL-08:** cálculo salarial del jornalero en liquidación final con `daily_rate` pactado; sin aplicar automáticamente un divisor mensual al importe jornalero. La base indemnizatoria diaria de los últimos seis meses debe declararse y respaldarse individualmente.
+- **CAL-04 / CAL-11:** vacaciones causadas incluso en renuncia; proporcionales solo cuando el motivo permite asignarlas a causa imputable al empleador; compensación doble condicionada a fundamento y respaldo, en liquidación final y vacaciones individuales. Escala mínima fechada según actividad.
+- **CAL-12:** cálculo auxiliar de aguinaldo convertido de `float` a `Decimal`.
+- **UX-01 / UX-02:** eliminación del importador excepcional de la pantalla cotidiana y presentación natural de los registros como «Liquidación final».
+- **Control de fuente histórica:** si la modalidad salarial registrada es «No especificado», no se presume que el trabajador es mensualizado; el usuario debe elegir expresamente modalidad en la liquidación final, sin alterar el legajo ni fabricar un jornal.
+
+**No se ejecutó una segunda importación ni un traslado operativo de LIQ.** Los eventos incorporados continúan como antecedentes, con `origin` y `source` para auditoría, y no son constancia de pago. El origen de algunos salarios (por ejemplo, `HORIST` original no persistido como modalidad en legajos importados) necesita conciliación documental individual antes de adjudicar una modalidad.
+
+**Pendiente de certificación:** correcta recuperación de todos los salarios del último semestre, correspondencia IPS de cada nómina, conciliación real de vacaciones por período y comparación de importes con todo el histórico, en copia de producción. Los tests automatizados ejercitan casos sintéticos y no sustituyen esta conciliación.
+
 ## Hallazgos verificables
 
 | ID | Criticidad | Código | Hallazgo y criterio de aceptación |
@@ -31,7 +45,7 @@
 | UX-01 | Resuelto en esta rama | `app/templates/labor_workbench.html` | Retirar el importador excepcional de la pantalla permanente. La ruta técnica permanece disponible para uso administrativo extraordinario. |
 | UX-02 | Resuelto en esta rama | `app/unified_labor_history.py` | Suprimir sufijo `· LIQ` y etiquetas de origen en la consulta ordinaria. Conservar `origin`, `source` y el evento para auditoría. |
 
-## Casos de prueba de referencia (no ejecutados)
+## Casos de referencia (parcialmente automatizados; otros requieren contraste documental)
 
 1. Mensualizado: salario Gs. 3.044.000, 30 días, 9% IPS, sin otros haberes/descuentos: bruto 3.044.000, IPS 273.960, neto 2.770.040, aporte patronal 502.260.
 2. Mes parcial mensualizado: salario 3.044.000, 10 días: salario del período 1.014.667 según redondeo comercial.
