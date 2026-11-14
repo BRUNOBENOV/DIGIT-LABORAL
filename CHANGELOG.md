@@ -1,3 +1,8 @@
+## 2.7.20 — Vista previa de Protocolos y Declaraciones MTESS
+
+- Amplía la hoja de lectura de los anexos II y III y facilita el acceso a las descargas y al registro de firma y difusión.
+- Abre una vista paginada con el mismo PDF de descarga. El protocolo incluye accesos a sus ejes en la vista del submódulo.
+
 ## 2.7.19 — Aguinaldos guardados y consulta por ejercicio
 
 - Admite guardar el importe de un aguinaldo cuando el total anual de remuneraciones no está informado. Los informes muestran el importe registrado.

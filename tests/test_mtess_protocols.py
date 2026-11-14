@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import date
 import io
 
+from bs4 import BeautifulSoup
 from docx import Document
 from pypdf import PdfReader
 from PIL import Image
@@ -41,6 +42,7 @@ def test_mtess_declaration_generation_and_downloads(web_case):
     created = client.post("/app/certificates/mtess/generate",
                           data=submission, follow_redirects=False)
     assert created.status_code == 303, created.text
+    assert created.headers["location"].endswith("#vista-previa-mtess")
     db.expire_all()
     record = db.query(GeneratedCertificate).filter(
         GeneratedCertificate.company_id == company.id,
@@ -80,8 +82,21 @@ def test_mtess_declaration_generation_and_downloads(web_case):
     assert "DOCUMENTO LABORAL" not in pdf_text
     assert "Página 1" not in pdf_text
     preview = client.get("/app/certificates/mtess", params={"company_id": company.id})
-    assert "Vista previa fiel del Anexo III" in preview.text
-    assert "data:image/" not in preview.text
+    page = BeautifulSoup(preview.text, "html.parser")
+    paper = page.select_one('article[aria-label="Vista previa fiel del Anexo III"]')
+    assert paper.find("img") is None
+    assert paper.find("h3").get_text().startswith("ANEXO III")
+    assert "[Firma]" in paper.get_text()
+    preview_link = page.select_one('.mtess-preview-actions a[href$="/preview.pdf"]')
+    assert preview_link["href"] == f"/app/certificates/mtess/{record.id}/preview.pdf"
+    assert preview_link["target"] == "_blank"
+    inline = client.get(preview_link["href"])
+    assert inline.status_code == 200 and inline.headers["content-type"] == "application/pdf"
+    assert inline.headers["content-disposition"].startswith("inline;")
+    assert inline.headers["cache-control"] == "private, no-store"
+    assert [p.extract_text() for p in PdfReader(io.BytesIO(inline.content)).pages] == [
+        p.extract_text() for p in pdf_reader.pages
+    ]
     receipt = client.get(
         f"/app/certificates/mtess/{record.id}/download.pdf",
         params={"kind": "receipt", "employee_id": employee.id},
@@ -91,6 +106,7 @@ def test_mtess_declaration_generation_and_downloads(web_case):
     again = client.post("/app/certificates/mtess/generate",
                         data=submission, follow_redirects=False)
     assert again.status_code == 303
+    assert again.headers["location"].endswith("&already=1#vista-previa-mtess")
     db.expire_all()
     assert db.query(GeneratedCertificate).filter_by(
         company_id=company.id, document_type=DECLARATION,
@@ -156,19 +172,37 @@ def test_mtess_protocol_for_eleven_and_requires_rit_selection(web_case):
     assert "IV. EJE DE SEGUIMIENTO" in doc_text
     assert "Generado por Digit Laboral" not in doc_text
     preview = client.get(f"/app/certificates/mtess?company_id={company.id}")
-    assert "Vista previa fiel del Anexo II" in preview.text
-    assert "Seguridad y vigilancia" in preview.text
+    page = BeautifulSoup(preview.text, "html.parser")
+    paper = page.select_one('article[aria-label="Vista previa fiel del Anexo II"]')
+    assert "Seguridad y vigilancia" in paper.get_text()
+    assert any("INVESTIGACIÓN DE HECHOS DE DISCRIMINACIÓN" in p.get_text()
+               for p in paper.select(".mtess-protocol-cover"))
+    axis_links = page.select(".mtess-preview-index a")
+    assert len(axis_links) == 4
+    for link in axis_links:
+        assert paper.find("h3", id=link["href"][1:]).get_text() == link.get_text()
+    inline = client.get(f"/app/certificates/mtess/{item.id}/preview.pdf")
+    assert inline.status_code == 200
+    assert "\n".join(p.extract_text() or "" for p in PdfReader(io.BytesIO(inline.content)).pages) == pdf_text
 
 
 def test_mtess_cross_tenant_and_role_access(web_case):
-    client, _, box, company, _, outsider = web_case
+    client, db, box, company, _, outsider = web_case
     token(client, f"/app/certificates/mtess?company_id={company.id}")
     assert client.get("/app/certificates/mtess", params={
         "company_id": outsider.company_id,
     }).status_code == 404
+    documents = [GeneratedCertificate(company_id=company_id, document_type=DECLARATION,
+                                     title="Declaración de prueba", company_name_snapshot="Empresa de prueba",
+                                     body="Prueba")
+                 for company_id in (company.id, outsider.company_id)]
+    db.add_all(documents)
+    db.commit()
+    assert client.get(f"/app/certificates/mtess/{documents[1].id}/preview.pdf").status_code == 404
     box["user"].role = "empresa"
     box["user"].company_id = company.id
     assert client.get(f"/app/certificates/mtess?company_id={company.id}").status_code == 403
+    assert client.get(f"/app/certificates/mtess/{documents[0].id}/preview.pdf").status_code == 403
 
 
 def test_mtess_does_not_mark_generated_document_as_homologated(web_case):
@@ -215,6 +249,7 @@ def test_mtess_change_from_ten_to_eleven_keeps_old_version_but_warns(web_case):
     assert "cambió de régimen" in page.text
     assert "11 o más" in page.text
     assert "generá el documento correspondiente" in page.text
+    assert "/preview.pdf" not in page.text
 
 
 def test_mtess_declared_company_logo_is_rendered_without_default_branding(web_case):

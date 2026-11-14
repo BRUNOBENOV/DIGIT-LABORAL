@@ -4,6 +4,7 @@
 <style>
 .mtess-intro{display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px}
 .mtess-grid{display:grid;grid-template-columns:minmax(270px,.9fr) minmax(360px,1.1fr);gap:16px;margin-top:16px}
+.mtess-document-grid{grid-template-columns:minmax(250px,1fr) minmax(0,2.1fr);align-items:start}
 .mtess-panel{background:#fff;border:1px solid #dbe3f0;border-radius:14px;padding:18px;min-width:0}
 .mtess-panel h2{margin:0 0 12px;font-size:1.12rem;color:#102954}
 .mtess-panel p{line-height:1.55}
@@ -14,26 +15,44 @@
 .mtess-tags{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
 .mtess-tag{background:#edf3ff;color:#193d7b;padding:6px 10px;border-radius:99px;font-weight:700;font-size:.77rem}
 .mtess-tag.warning{background:#fff6e4;color:#875b13}
-.mtess-actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:14px}
 .mtess-help{color:#596980;font-size:.82rem}
-.mtess-preview{white-space:pre-wrap;font-family:'Times New Roman',Times,serif;font-size:.9rem;line-height:1.68;border:1px solid #dbe3f0;border-radius:8px;background:#fff;padding:20px;max-height:650px;overflow:auto}
-.mtess-annex-preview{white-space:normal;color:#000;background:#fff;font-size:1rem;line-height:1.3;padding:26px 32px}
-.mtess-annex-preview h3{font-family:'Times New Roman',Times,serif;font-size:1rem;font-weight:700;text-align:center;line-height:1.2;margin:0;padding:0}
-.mtess-annex-preview h3:last-of-type{margin-bottom:24px}
-.mtess-annex-preview p{font-family:'Times New Roman',Times,serif;text-align:justify;margin:0 0 18px;line-height:1.3}
-.mtess-annex-preview .mtess-annex-signature{text-align:left;margin:0}
-.mtess-annex-preview img{display:block;object-fit:contain;max-width:160px;max-height:64px;margin:0 0 12px}
-.mtess-annex-two .mtess-protocol-heading{font-weight:700;margin:12px 0 6px;text-align:left}
+.mtess-preview-panel,.mtess-protocol-axis,#mtess-firma-difusion{scroll-margin-top:90px}
+.mtess-preview-panel:target{border-color:#a9bcdb;outline:2px solid transparent}
+.mtess-preview-header{display:flex;justify-content:space-between;align-items:baseline;gap:0 12px;flex-wrap:wrap}
+.mtess-preview-panel>.alert{margin:0 0 12px}
+.mtess-preview-link{color:#193d7b;font-size:.82rem;font-weight:700;text-decoration:underline;text-underline-offset:2px}
+.mtess-preview-jump{display:none}
+.mtess-preview-meta{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;margin:0;color:#596980;font-size:.8rem}
+.mtess-preview-status{padding:3px 8px;border-radius:6px;background:#edf3ff;color:#193d7b;font-weight:700}
+.mtess-preview-actions{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}
+.mtess-preview-index{margin:0 0 14px;color:#193d7b;font-size:.85rem}
+.mtess-preview-index summary{width:fit-content;cursor:pointer;font-weight:700}
+.mtess-preview-index ul{margin:8px 0 0;padding-inline-start:22px}
+.mtess-preview-index li+li{margin-top:5px}
+.mtess-preview-index a{text-decoration:underline;text-underline-offset:2px}
+.mtess-preview-canvas{padding:clamp(10px,2vw,24px);border:1px solid #dbe3f0;border-radius:10px;background:#eef2f8}
+.mtess-preview-paper{
+  width:100%;max-width:760px;margin:0 auto;padding:clamp(28px,4.2vw,64px);
+  background:#fff;color:#000;border:1px solid #dbe3f0;border-radius:2px;box-shadow:0 8px 20px rgba(15,35,65,.09);
+  font:1rem/1.48 'Times New Roman',Times,serif;overflow-wrap:anywhere;
+}
+.app-body .mtess-preview-paper h3{margin:0 0 24px;color:#000;font:700 1.075rem/1.26 'Times New Roman',Times,serif;text-align:center;text-wrap:balance}
+.mtess-annex-heading span{display:block;margin-bottom:.35em}
+.mtess-preview-paper p{text-align:justify;margin:0 0 .95em;line-height:inherit}
+.mtess-preview-paper .mtess-annex-signature{text-align:left;margin:0}
+.mtess-preview-paper img{display:block;object-fit:contain;max-width:min(112px,45%);max-height:54px;margin:0 0 16px}
+.mtess-annex-two .mtess-protocol-heading{font-weight:700;margin:1.15em 0 .35em;text-align:left}
 .mtess-annex-two .mtess-protocol-axis,.mtess-annex-two .mtess-protocol-cover,.mtess-annex-two .mtess-protocol-annex,.mtess-annex-two .mtess-protocol-policy{text-align:center;font-weight:700}
-.mtess-annex-two .mtess-protocol-axis{margin:20px 0 12px}
-.mtess-annex-two .mtess-protocol-bullet{margin-bottom:7px;padding-left:14px;text-indent:-10px;text-align:justify}
-.mtess-annex-two table{border-collapse:collapse;width:100%;font-family:'Times New Roman',Times,serif;font-size:.87rem;margin:10px 0 18px}
-.mtess-annex-two td{border:1px solid #bbb;vertical-align:middle;padding:7px}
-.mtess-annex-two td:first-child{width:30%;font-weight:700}
+.app-body .mtess-annex-two h3.mtess-protocol-axis{margin:1.65em 0 .8em}
+.mtess-annex-two .mtess-protocol-cover{text-wrap:balance}
+.mtess-annex-two .mtess-protocol-bullet{margin-bottom:.5em;padding-left:14px;text-indent:-10px;text-align:left}
+.mtess-annex-two .mtess-protocol-reference{text-align:left}
+.mtess-annex-two table{border-collapse:collapse;width:100%;min-width:0;table-layout:fixed;font:inherit;font-size:.92em;margin:10px 0 18px}
+.app-body .main-content .mtess-annex-two table :is(th,td){border:1px solid #aaa;vertical-align:middle;padding:8px;background:#fff;color:#000;white-space:normal}
+.mtess-annex-two th{width:27%;text-align:left;font:inherit;font-weight:700}
 .mtess-annex-two td ul{margin:0;padding-left:20px}
 .mtess-annex-two td li{margin:0 0 5px}
 
-@media(max-width:550px){.mtess-annex-preview{padding:16px}}
 .mtess-history{width:100%;border-collapse:collapse;font-size:.87rem}
 .mtess-history th,.mtess-history td{text-align:left;vertical-align:top;padding:10px;border-bottom:1px solid #e4eaf3}
 .mtess-history th{color:#56657c;font-size:.75rem}
@@ -41,6 +60,18 @@
 .mtess-worker{padding:8px 0;display:flex;align-items:center;justify-content:space-between;gap:10px;border-bottom:1px solid #eef2f8}
 .mtess-worker span{font-size:.85rem}
 @media(max-width:850px){.mtess-grid{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:1100px){
+  .mtess-document-grid{grid-template-columns:minmax(0,1fr)}
+  .mtess-preview-jump{display:inline-block;margin-top:12px}
+}
+@media(max-width:550px){
+  .mtess-preview-panel{padding:12px}
+  .mtess-preview-paper{padding:24px 16px}
+  .mtess-preview-paper p{text-align:left}
+  .mtess-preview-actions .btn{min-height:44px}
+  .app-body .main-content .mtess-annex-two table :is(th,td){padding:6px}
+  .mtess-annex-two td ul{padding-left:13px}
+}
 </style>
 <div class="page-header mtess-intro">
  <div><span class="eyebrow">CERTIFICADOS · CUMPLIMIENTO NORMATIVO</span>
@@ -51,8 +82,6 @@
  <a class="btn ghost" href="{{ source_url }}" target="_blank" rel="noopener noreferrer">Resolución oficial</a></div>
 </div>
 <div class="legal-warning"><b>Documento interno, no homologación:</b> generar un modelo no equivale a firmarlo, difundirlo o presentarlo ante el MTESS. Revisá jurídicamente el texto antes de utilizarlo. Para empresas con RIT, la integración y eventual homologación deben tramitarse por los canales oficiales.</div>
-{% if request.query_params.get('created') %}<div class="alert success">Versión generada y guardada en el historial de esta empresa.</div>{% endif %}
-{% if request.query_params.get('already') %}<div class="alert">Ya existe una versión idéntica. No se generó un duplicado.</div>{% endif %}
 {% if request.query_params.get('evidence') %}<div class="alert success">Se registró la referencia de evidencia. No implica validación o aprobación del MTESS.</div>{% endif %}
 {% if regime_changed %}<div class="alert">La cantidad de trabajadores cambió de régimen. El documento histórico se conserva, pero necesitás generar el modelo que corresponde al plantel actual.</div>{% endif %}
 <section class="mtess-panel">
@@ -66,7 +95,7 @@
   </form>
 </section>
 {% if company %}
-<div class="mtess-grid">
+<div class="mtess-grid mtess-document-grid">
  <section class="mtess-panel">
   <span class="mtess-label">Trabajadores activos vinculados</span>
   <div class="mtess-stat">{{ active_count }}</div>
@@ -107,57 +136,76 @@
    {% else %}<input type="hidden" name="rit_status" value="sin">{% endif %}
    <button class="btn primary" type="submit">Generar {{ 'declaración' if active_count<=10 else 'protocolo' }}</button>
   </form>
+  {% if latest %}<a class="mtess-preview-link mtess-preview-jump" href="#vista-previa-mtess">Ir a la vista previa</a>{% endif %}
  </section>
- <section class="mtess-panel">
-  <h2>Vista previa y descargas</h2>
+ <section class="mtess-panel mtess-preview-panel" id="vista-previa-mtess" aria-labelledby="mtess-preview-title" tabindex="-1">
+  <div class="mtess-preview-header">
+   <h2 id="mtess-preview-title">Vista previa del documento</h2>
+   {% if latest %}<a class="mtess-preview-link" href="#mtess-firma-difusion">Ir a firma y difusión</a>{% endif %}
+  </div>
+  {% if request.query_params.get('created') %}<div class="alert success" role="status">Versión generada y guardada en el historial de esta empresa.</div>{% elif request.query_params.get('already') %}<div class="alert" role="status">Ya existe una versión idéntica. Se muestra el documento guardado.</div>{% endif %}
   {% if latest %}
-   {% set latestmeta = configs %}
-   <div class="mtess-tags"><span class="mtess-tag">Documento N.º {{ latest.id }}</span>
-    <span class="mtess-tag">Versión {{ latestmeta.get('document_version', 1) }}</span>
-    <span class="mtess-tag">{{ latest.status }}</span></div>
-   <p class="mtess-help">Generado: {{ latest.issue_date|fecha }}. {% if latest.document_type == 'mtess_declaracion_tolerancia_cero' %}Declaración conforme al texto orientativo del Anexo III, con nombre, lugar y fecha autocompletados.{% else %}Reproducción íntegra del modelo orientativo del Anexo II, con sus cuatro ejes, cuestionario y pasos de investigación. Revisar los datos organizativos y la vigencia normativa antes de firmarlo.{% endif %}</p>
-   {% if latest.document_type == 'mtess_declaracion_tolerancia_cero' %}
-   <div class="mtess-preview mtess-annex-preview" aria-label="Vista previa fiel del Anexo III">
-      {% if preview_logo_src %}<img src="{{ preview_logo_src }}" alt="Logo de {{ latest.company_name_snapshot }}">{% endif %}
-      {% for line in annex_heading %}<h3>{{ line }}</h3>{% endfor %}
-      {% for segments in annex_paragraphs %}
-      <p>{% for segment in segments %}{% if segment.bold %}<strong>{{ segment.text }}</strong>{% else %}{{ segment.text }}{% endif %}{% endfor %}</p>
-      {% endfor %}
-      <p class="mtess-annex-signature">{{ annex_location }}</p>
-      <p class="mtess-annex-signature">[Firma]</p>
+   {% set is_declaration = latest.document_type == 'mtess_declaracion_tolerancia_cero' %}
+   <div class="mtess-preview-meta">
+    <span>Documento N.º {{ latest.id }}</span>
+    <span>Versión {{ configs.get('document_version', 1) }}</span>
+    <time datetime="{{ latest.issue_date.isoformat() }}">Generado el {{ latest.issue_date|fecha }}</time>
+    <span class="mtess-preview-status">{{ latest.status }}</span>
    </div>
-   {% else %}
-   <div class="mtess-preview mtess-annex-preview mtess-annex-two" aria-label="Vista previa fiel del Anexo II">
-      {% if preview_logo_src %}<img src="{{ preview_logo_src }}" alt="Logo de {{ latest.company_name_snapshot }}">{% endif %}
-      {% for block in protocol_preview_blocks %}
-        {% if block.kind == 'questionnaire' %}
-          <table aria-label="Cuestionario orientativo sobre violencia y acoso laboral">
-           <tbody>
-            {% for group in protocol_questionnaire %}
-             <tr><td>{{ group[0] }}</td><td><ul>{% for question in group[1] %}<li>{{ question }}</li>{% endfor %}</ul></td></tr>
-            {% endfor %}
-           </tbody>
-          </table>
-        {% else %}
-          <p class="mtess-protocol-{{ block.kind }}">{{ block.text }}</p>
-        {% endif %}
-      {% endfor %}
-   </div>
-   {% endif %}
-   <div class="mtess-actions">
-    <a class="btn primary" href="/app/certificates/mtess/{{ latest.id }}/download.pdf">Descargar PDF</a>
+   <div class="mtess-preview-actions" role="group" aria-label="Acciones del documento">
+    <a class="btn primary" href="/app/certificates/mtess/{{ latest.id }}/preview.pdf" target="_blank" rel="noopener" aria-label="Ver PDF paginado (abre en otra pestaña)">Ver PDF paginado</a>
+    <a class="btn ghost" href="/app/certificates/mtess/{{ latest.id }}/download.pdf">Descargar PDF</a>
     <a class="btn ghost" href="/app/certificates/mtess/{{ latest.id }}/download.docx">Descargar Word</a>
     <a class="btn ghost" href="/app/certificates/mtess/{{ latest.id }}/download.pdf?kind=notice">Cartel de denuncias</a>
    </div>
+   {% if protocol_preview_blocks|selectattr('kind', 'equalto', 'axis')|list %}
+   <details class="mtess-preview-index">
+    <summary>Ir a un eje del protocolo</summary>
+    <ul>
+     {% for block in protocol_preview_blocks %}
+      {% if block.kind == 'axis' %}<li><a href="#mtess-eje-{{ loop.index }}">{{ block.text }}</a></li>{% endif %}
+     {% endfor %}
+    </ul>
+   </details>
+   {% endif %}
+   <div class="mtess-preview-canvas">
+    <article class="mtess-preview-paper{% if not is_declaration %} mtess-annex-two{% endif %}" aria-label="Vista previa fiel del Anexo {{ 'III' if is_declaration else 'II' }}">
+     {% if preview_logo_src %}<img src="{{ preview_logo_src }}" alt="Logo de {{ latest.company_name_snapshot }}">{% endif %}
+     {% if is_declaration %}
+      <h3 class="mtess-annex-heading"><span>{{ annex_heading[0] }}</span>{{ annex_heading[1:]|join(' ') }}</h3>
+      {% for segments in annex_paragraphs %}
+       <p>{% for segment in segments %}{% if segment.bold %}<strong>{{ segment.text }}</strong>{% else %}{{ segment.text }}{% endif %}{% endfor %}</p>
+      {% endfor %}
+      <p class="mtess-annex-signature">{{ annex_location }}</p>
+      <p class="mtess-annex-signature">[Firma]</p>
+     {% else %}
+      {% for block in protocol_preview_blocks %}
+       {% if block.kind == 'questionnaire' %}
+        <table aria-label="Cuestionario orientativo sobre violencia y acoso laboral">
+         <tbody>
+          {% for group in protocol_questionnaire %}
+           <tr><th scope="row">{{ group[0] }}</th><td><ul>{% for question in group[1] %}<li>{{ question }}</li>{% endfor %}</ul></td></tr>
+          {% endfor %}
+         </tbody>
+        </table>
+       {% elif block.kind == 'axis' %}
+        <h3 class="mtess-protocol-axis" id="mtess-eje-{{ loop.index }}" tabindex="-1">{{ block.text }}</h3>
+       {% else %}
+        <p class="mtess-protocol-{{ block.kind }}{% if 'https://' in block.text %} mtess-protocol-reference{% endif %}">{{ block.text }}</p>
+       {% endif %}
+      {% endfor %}
+     {% endif %}
+    </article>
+   </div>
   {% else %}
-   <p>Seleccioná la empresa y generá el documento correspondiente. Aparecerá aquí una previsualización y las descargas en Word y PDF.</p>
+   <p class="mtess-help">Seleccioná la empresa y generá el documento correspondiente para previsualizarlo y descargarlo.</p>
   {% endif %}
  </section>
 </div>
 {% if latest %}
 <div class="mtess-grid">
- <section class="mtess-panel">
-  <h2>Registro de firma y difusión</h2>
+ <section class="mtess-panel" id="mtess-firma-difusion" aria-labelledby="mtess-evidence-title" tabindex="-1">
+  <h2 id="mtess-evidence-title">Registro de firma y difusión</h2>
   <p class="mtess-help">Registrá la referencia de una constancia verificable (por ejemplo, ubicación en archivo documental o número de expediente). La carga manual no certifica la existencia de la firma.</p>
   <form method="post" action="/app/certificates/mtess/{{ latest.id }}/evidence">
    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
