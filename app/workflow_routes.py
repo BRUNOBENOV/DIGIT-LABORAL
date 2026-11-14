@@ -123,7 +123,10 @@ async def comparison_values(request):
         raise HTTPException(422, "Tipo de cálculo inválido.")
     scenarios = {}
     for side in ("a", "b"):
-        scenarios[side] = {field["name"]: str(form.get(side + "_" + field["name"], ""))
+        scenarios[side] = {field["name"]: str(form.get(
+                               side + "_" + field["name"],
+                               field["value"] if field["name"] == "pay_basis" else "",
+                           ))
                            for group in GROUPS[kind] for field in group["fields"]}
         scenarios[side]["kind"] = kind
     labels = {side: clean(form.get("label_" + side), 70) or "Escenario " + side.upper() for side in ("a", "b")}
