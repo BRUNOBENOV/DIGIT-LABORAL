@@ -42,7 +42,7 @@ def test_salary_daily_reproduces_journal_reference_without_importing_mensual_div
     result = calculate(salary(salary="3044000", days_paid="30", pay_basis="daily"))
     assert result["gross"] == 3_512_308
     assert result["net"] == 3_196_200
-    assert {"label": "Modalidad salarial", "value": "Jornalero · divisor 26"} in result["facts"]
+    assert {"label": "Modalidad salarial", "value": "Jornalero · jornal real por jornada; 26 es solo referencia mensual"} in result["facts"]
     assert any("más de 26" in warning for warning in result["warnings"])
 
 
