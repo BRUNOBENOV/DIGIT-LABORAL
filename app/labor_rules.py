@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
+from decimal import Decimal
 from .labor_calculator import amount as round_gs, anniversary
 
 
@@ -68,7 +69,8 @@ def preaviso_days(admission_date: date, as_of: date, *, trial_completed: bool = 
 
 
 def aguinaldo_amount(total_computable_remunerations: int | float) -> RuleResult:
-    amount = round_gs(max(0, float(total_computable_remunerations or 0)) / 12)
+    gross = Decimal(str(total_computable_remunerations or 0))
+    amount = round_gs(max(Decimal(0), gross) / Decimal(12))
     return RuleResult(amount, "Código del Trabajo, arts. 243 y 244", "La base debe incluir solamente remuneraciones legalmente computables.")
 
 
