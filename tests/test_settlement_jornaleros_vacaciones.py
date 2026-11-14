@@ -121,3 +121,12 @@ def test_special_vacation_scale_requires_verified_minimum():
 def test_large_aguinaldo_rounds_with_decimal_not_binary_floats():
     total = Decimal("100000000000.50")
     assert aguinaldo_amount(total).value == 8_333_333_333
+
+def test_standalone_vacation_double_payment_requires_proof():
+    base = {"kind": "vacation", "issued_date": "2026-11-14", "salary": "3044000",
+            "legal_minimum": "3044000", "vacation_quantity": "12", "vacation_double": "on"}
+    with pytest.raises(CalculationError) as error:
+        calculate(base)
+    assert error.value.field == "vacation_double_evidence"
+    base["vacation_double_evidence"] = "Período adquirido 2025 y vencimiento del plazo legal verificado."
+    assert item(calculate(base), "Remuneración de vacaciones") == 2_435_200
