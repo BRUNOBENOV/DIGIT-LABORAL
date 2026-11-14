@@ -704,16 +704,61 @@ def calculate(data, *, judicial_evidence_verified=False):
                 "La causal no está parametrizada como supuesto ordinario. El resultado queda como subtotal hasta documentar y revisar el régimen aplicable."
             )
 
-        simple = number(data, "pending_days", "vacaciones pendientes simples", maximum="365", decimals=2)
+        simple = number(data, "pending_days", "vacaciones causadas pendientes", maximum="365", decimals=2)
         double = number(data, "double_days", "vacaciones pendientes dobles", maximum="365", decimals=2)
         proportional = number(data, "proportional_days", "vacaciones proporcionales", maximum="30", decimals=2)
-        add("Vacaciones pendientes", salary / 30 * simple, f"Gs. {gs(salary)} / 30 × {simple}", "Arts. 218 y 221")
-        add("Vacaciones pendientes con pago doble", salary / 30 * double * 2, f"Gs. {gs(salary)} / 30 × {double} × 2", "Art. 223; procedencia revisada")
-        add("Vacaciones proporcionales", salary / 30 * proportional, f"Gs. {gs(salary)} / 30 × {proportional}", "Art. 221; causal y días reconocidos por el liquidador")
-        fact("Escala anual orientativa", f"{vacation_days(start, end)} días hábiles")
+        if proportional and reason not in {"dismissal", "worker_justified"}:
+            raise CalculationError(
+                "El art. 221 no concede automáticamente vacaciones proporcionales por esta causal. "
+                "En renuncia se pagan las vacaciones ya causadas; no informes proporcionales sin causa imputable al empleador.",
+                "proportional_days",
+            )
+        if proportional and end < anniversary(start, 1) and proportional > 12:
+            raise CalculationError("En el primer año no pueden reconocerse más de doce días proporcionales.", "proportional_days")
+        if double and (
+            not checked(data, "vacation_double_confirmed")
+            or len(clean(data.get("vacation_double_evidence"), 300)) < 12
+        ):
+            raise CalculationError(
+                "La compensación doble requiere verificar período causado, vencimiento del goce, causal "
+                "y respaldo documental (arts. 221 y 223).",
+                "vacation_double_evidence",
+            )
+        vacation_base = salary / Decimal("26") if settlement_daily else salary / Decimal("30")
+        if simple or double or proportional:
+            floor = number(data, "vacation_minimum_manual", "mínimo vacacional especial")
+            category = str(data.get("vacation_minimum_category") or "general_day")
+            minimum_rule = minimum_wage_for_period(end.strftime("%Y-%m"), category, floor)
+            legal_minimum = minimum_rule.get("amount")
+            if legal_minimum is None:
+                result["partial"] = True
+                result["warnings"].append(
+                    "No se pudo verificar el salario mínimo aplicable para el pago vacacional. "
+                    "El importe es provisional; seleccioná el régimen y completá el mínimo de la actividad."
+                )
+            else:
+                legal_daily = Decimal(legal_minimum) / Decimal("26" if settlement_daily else "30")
+                vacation_base = max(vacation_base, legal_daily)
+                fact("Base vacacional mínima controlada", f"Gs. {gs(legal_minimum)} mensuales")
+        add("Vacaciones pendientes", vacation_base * simple, f"Gs. {vacation_base:.4f} × {simple}", "Arts. 218, 220 y 221")
+        add("Vacaciones pendientes con pago doble", vacation_base * double * 2,
+            f"Gs. {vacation_base:.4f} × {double} × 2",
+            "Art. 221; doble compensación con causal y vencimiento documentados")
+        add("Vacaciones proporcionales", vacation_base * proportional,
+            f"Gs. {vacation_base:.4f} × {proportional}",
+            "Art. 221; extinción por causa imputable al empleador")
+        if double:
+            result["notes"].append("Fundamento de pago doble verificado: " + clean(data.get("vacation_double_evidence"), 300))
+        if proportional and years >= 1:
+            result["warnings"].append(
+                "Las vacaciones proporcionales se reconocieron para un vínculo mayor a un año; "
+                "revisá el período adquisitivo y la procedencia de la fracción antes de aprobar."
+            )
+        fact("Escala anual orientativa", f"{vacation_days(start, end)} días corridos")
         result["notes"].append(
-            "Los días de vacaciones simples, dobles y proporcionales se ingresan por separado y solo una vez. "
-            "La proporcionalidad y duplicación dependen de la causal, los períodos adquiridos y los plazos de goce; verificá el derecho antes de aprobar."
+            "Los días de vacaciones causadas, dobles y proporcionales se ingresan por separado. "
+            "La renuncia no elimina vacaciones ya causadas (art. 221), pero no genera por sí sola proporcionales. "
+            "El historial de períodos y pagos debe conciliarse; no se deducen saldos automáticamente de eventos sin revisar."
         )
     if kind in {"settlement", "aguinaldo"}:
         annual = number(data, "annual_remuneration", "remuneraciones computables del año", required=True)
