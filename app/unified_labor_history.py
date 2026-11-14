@@ -168,12 +168,12 @@ def _legacy_settlement(event: EmployeeEvent) -> dict:
     return dict(
         origin="imported", id=event.id, date=event.effective_date,
         employee=event.employee, company=event.employee.company,
-        label="Liquidación final · LIQ",
+        label="Liquidación final",
         period=source.get("departure") or event.effective_date.isoformat(),
         amount=None, status="Aprobado",
-        detail="; ".join(pieces) + ". Motivo de origen: " +
+        detail="; ".join(pieces) + ". Motivo de egreso: " +
                str(values.get("MOTSAL") or "no informado") +
-               ". Liquidación histórica aprobada para integrar el historial de DIGIT LABORAL; sin constancia de pago ni recibo operativo nuevo.",
+               ". Registro disponible para consulta; no constituye constancia de pago ni genera un recibo nuevo.",
         source=source, days=None, used_days=None, balance=None,
         url=f"/app/employees/{event.employee_id}#timeline",
         record=event, can_use_document=False,

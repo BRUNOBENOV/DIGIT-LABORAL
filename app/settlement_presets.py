@@ -45,6 +45,7 @@ def settlement_defaults(values):
     elif (not str(data.get("average_salary", "")).strip()
           and data.get("average_origin") != "payroll"
           and data.get("average_from_salary", "on") == "on"
+          and str(data.get("pay_basis") or "monthly") != "daily"
           and str(data.get("salary", "")).strip()):
         data["average_salary"] = str(data["salary"]).strip()
         data["average_from_salary"] = "on"

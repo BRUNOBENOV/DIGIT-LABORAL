@@ -12,7 +12,7 @@
 {% if compact %}</div>{% endif %}
 {% if field.type != 'checkbox' %}
 {% if field.type == 'select' %}
-<select id="f-{{ name }}" name="{{ name }}" {% if field.help %}aria-describedby="help-{{ name }}"{% endif %}>{% for k,label in field.attrs.options %}<option value="{{ k }}" {% if value == k %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+<select id="f-{{ name }}" name="{{ name }}" {% if field.required %}required{% endif %} {% if field.help %}aria-describedby="help-{{ name }}"{% endif %}>{% for k,label in field.attrs.options %}<option value="{{ k }}" {% if value == k %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
 {% elif field.type == 'textarea' %}<textarea id="f-{{ name }}" name="{{ name }}" rows="3" maxlength="600">{{ value }}</textarea>
 {% else %}<input id="f-{{ name }}" name="{{ name }}" type="{{ field.type }}" value="{{ value }}" {% if field.required %}required{% endif %} {% if field.help %}aria-describedby="help-{{ name }}"{% endif %} {% if error_field == field.name %}aria-invalid="true"{% endif %} {% for key,val in field.attrs.items() %}{{ key }}="{{ val }}"{% endfor %} {% if locked %}readonly{% endif %}>{% endif %}
 {% endif %}
@@ -25,11 +25,11 @@
 <fieldset class="dl-form-section" data-settlement-preview data-prefix="{{ prefix }}">
   <legend>Días e importes calculados</legend>
   <dl class="dl-facts">
-    {% for key,label in [('units','Años computables'),('days','Días de indemnización'),('notice_due','Preaviso de referencia · días'),('notice_payable','Preaviso pendiente · días'),('daily_base','Base diaria · promedio / 30'),('severance','Indemnización estimada'),('notice','Preaviso estimado')] %}
+    {% for key,label in [('units','Años computables'),('days','Días de indemnización'),('notice_due','Preaviso de referencia · días'),('notice_payable','Preaviso pendiente · días'),('daily_base','Base diaria indemnizatoria'),('severance','Indemnización estimada'),('notice','Preaviso estimado')] %}
     <div><dt>{{ label }}</dt><dd><output data-settlement-value="{{ key }}">—</output></dd></div>
     {% endfor %}
   </dl>
   <p class="dl-caption" role="status" aria-live="polite" data-settlement-status>Completá las fechas y el promedio. El servidor calcula los días; los importes se incorporan al pulsar Calcular o Recalcular.</p>
-  <small>Mensualizado: promedio mensual / 30. La fracción de antigüedad suma un año solo si supera seis meses. Se redondea cada concepto al final, sin redondear antes la base diaria.</small>
+  <small>Mensualizado: promedio mensual / 30. Jornalero: base diaria comprobada de remuneraciones computables, sin divisor supuesto. La fracción indemnizatoria suma un año únicamente si supera seis meses; se redondea cada concepto al final.</small>
 </fieldset>
 {% endmacro %}

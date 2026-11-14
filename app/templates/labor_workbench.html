@@ -32,17 +32,6 @@
 <div class="dl dl-workbench {{ 'dl-quick' if quick_steps else '' }} {{ 'dl-wrap' if not private else '' }}">
 <header class="dl-workbench-head"><p class="dl-eyebrow">{{ 'CENTRO PROFESIONAL' if private else 'CALCULADORAS LABORALES · PARAGUAY' }}</p><h1>{{ titles[kind] if private else 'Calculá. Revisá. Emití.' }}</h1><p>{% if private and kind == 'salary' %}Liquidá el período con desglose de sueldo, horas extras, comisiones, bonificaciones, aportes y descuentos. Revisá la base y el resultado antes de aprobar o imprimir.{% elif private and kind == 'settlement' %}Revisá salarios, conceptos de egreso y bases aplicables en un módulo dedicado, con desglose y descarga del resultado.{% elif private %}Completá los datos de esta liquidación. La revisión y el desglose permanecen dentro del módulo seleccionado.{% else %}Completá los datos y obtené un desglose listo para descargar. Los campos con * son obligatorios.{% endif %}</p></header>
 {% if private %}<div class="dl-output-actions"><a class="dl-textlink" href="/app/calculations">Volver al módulo Cálculo</a>{% if kind == 'salary' %}<a class="dl-textlink" href="/app/liquidaciones/salarios/importar-reop">Importar salarios desde Excel REOP</a><a class="dl-textlink" href="/app/liquidaciones/conciliar-planilla">Conciliar Excel de contabilidad</a><a class="dl-textlink" href="/app/compliance/salary-import">Validar REOP / REI</a>{% endif %}</div>{% else %}<div class="dl-output-actions"><a class="dl-textlink" href="/empezar">Guía para empezar</a><a class="dl-textlink" href="/herramientas/comparar?tipo={{ kind }}">Comparar dos escenarios</a></div>{% endif %}
-{% if private and kind == 'settlement' and user.role in ['administrador', 'contador'] %}
-<details style="border:1px solid #dae3f1;border-radius:10px;background:#f7faff;padding:12px 15px;margin:12px 0">
-  <summary style="cursor:pointer;color:#173b79;font-size:.85rem;font-weight:750">Incorporar liquidaciones del sistema anterior (LSLIQ)</summary>
-  <form method="post" action="/app/import/legacy-liquidations/preview" enctype="multipart/form-data" style="display:flex;gap:12px;align-items:end;flex-wrap:wrap;margin-top:12px">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <label style="font-size:.78rem">Planilla Excel LIQ (.xlsx)<input type="file" accept=".xlsx" name="file" required style="display:block;margin-top:5px"></label>
-    <button class="dl-button dl-outline" type="submit">Conciliar con los legajos existentes</button>
-  </form>
-  <p class="dl-caption">La conciliación incorpora antecedentes a esta misma trazabilidad; no emite nuevas liquidaciones ni modifica egresos, pagos o documentos aprobados.</p>
-</details>
-{% endif %}
 {% if private and kind == 'settlement' and request.query_params.get('liq_imported') is not none %}
 <p class="dl-alert" role="status">Antecedentes LIQ vinculados: {{ request.query_params.get('liq_imported') }}. Ya registrados: {{ request.query_params.get('liq_existing','0') }}. Sin coincidencia: {{ request.query_params.get('liq_rejected','0') }}. En conflicto: {{ request.query_params.get('liq_conflicts','0') }}.</p>
 {% endif %}
@@ -83,6 +72,30 @@
 
 <div class="dl-form-submit {{ 'dl-quick-fallback' if quick_steps else '' }}"><button class="dl-button" type="submit" data-keep-enabled="true">{{ 'Recalcular' if result else 'Calcular liquidación' }} <span aria-hidden="true">→</span></button><span>Revisá los conceptos antes de firmar.</span></div>
 </form>
+{% if kind == 'settlement' %}
+<script>
+(() => {
+  const form = document.getElementById("labor-form");
+  if (!form) return;
+  const basis = form.elements.namedItem("pay_basis");
+  const salary = form.elements.namedItem("salary");
+  const jornal = form.elements.namedItem("daily_rate");
+  const paid = form.elements.namedItem("days_paid");
+  if (!basis || !salary || !jornal) return;
+  const refresh = () => {
+    const daily = basis.value === "daily";
+    form.querySelectorAll('[data-field="salary"]').forEach(node => { node.hidden = daily; });
+    form.querySelectorAll('[data-field="daily_rate"]').forEach(node => { node.hidden = !daily; });
+    salary.required = !daily;
+    jornal.required = daily;
+    if (paid) paid.max = daily ? "31" : "30";
+  };
+  basis.addEventListener("change", refresh);
+  refresh();
+  // Sin inferencia de jornal a partir de montos históricos de unidad desconocida.
+})();
+</script>
+{% endif %}
 {% if kind == 'salary' %}
 <script>
 (() => {
@@ -242,13 +255,12 @@
 <details class="dl-history dl-trace" id="labor-history" {% if request.query_params.get('history_page') %}open{% endif %}>
   <summary class="dl-trace-summary">
     <span class="dl-trace-icon" aria-hidden="true">↺</span>
-    <span class="dl-trace-title"><strong>Trazabilidad de cálculos</strong><small>{{ "Cálculos guardados · liquidaciones actuales y antecedentes LIQ del mismo historial" if kind == "settlement" else "Cálculos guardados · consultar, descargar o rectificar" }}</small></span>
+    <span class="dl-trace-title"><strong>Trazabilidad de cálculos</strong><small>{{ "Cálculos guardados · consultar, descargar o rectificar" if kind == "settlement" else "Cálculos guardados · consultar, descargar o rectificar" }}</small></span>
     <span class="dl-trace-count">{{ labor_history.total }} registros</span>
   </summary>
   <div class="dl-trace-body">
     {% if request.query_params.get('deleted') %}<p class="dl-alert" role="status">Carga eliminada del historial operativo. El registro original permanece protegido para auditoría.</p>{% endif %}
-    <p style="margin:0 0 10px"><a class="dl-trace-action" href="/app/import/historical-review">Auditar origen MOV / LIQ y advertencias</a></p>
-    <div class="dl-trace-intro">{% if kind == "settlement" %}Las liquidaciones LIQ ya migradas forman parte de DIGIT LABORAL y figuran como Aprobado en el historial. Este estado reconoce su incorporación, no acredita pagos ni emite un nuevo recibo.{% else %}Se muestra una sola versión vigente de cada cálculo salarial rectificado. El original deja de aparecer después de aprobar la rectificación y sigue disponible para auditoría. Los borradores no reemplazan cálculos aprobados.{% endif %}</div>
+    <div class="dl-trace-intro">{% if kind == "settlement" %}El historial reúne las liquidaciones registradas y permite consultar sus importes y estados. La aprobación de un cálculo no acredita por sí sola el pago.{% else %}Se muestra una sola versión vigente de cada cálculo salarial rectificado. El original deja de aparecer después de aprobar la rectificación y sigue disponible para auditoría. Los borradores no reemplazan cálculos aprobados.{% endif %}</div>
     <div class="dl-trace-versions">
       <a class="dl-trace-action" href="/app/liquidaciones?{{ labor_deleted_toggle_query }}#labor-history">{{ 'Ocultar eliminados' if show_deleted_calculations else 'Historial de eliminaciones' }}</a>
     </div>

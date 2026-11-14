@@ -454,7 +454,8 @@ def test_pdf_and_csv_preserve_totals_and_copies():
 def test_pdf_long_settlement_and_csv_formula_injection():
     data=settlement()
     data.update(two_copies="on",notes="Revisión documentada. "*25,employee="=SUM(A1:A5)",
-                employer="<Sociedad & Asociados>",pending_days="12",double_days="6")
+                employer="<Sociedad & Asociados>",pending_days="12",double_days="6",
+                vacation_double_confirmed="on",vacation_double_evidence="Despido posterior al plazo de goce; período y respaldo verificados.")
     result=calculate(data)
     pages=PdfReader(io.BytesIO(build_liquidation_pdf(result))).pages
     assert len(pages) >= 2

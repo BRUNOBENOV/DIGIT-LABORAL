@@ -7,7 +7,7 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from .labor_wage_rules import minimum_wage_for_period
 from .settlement_presets import settlement_defaults
 
-VERSION = "2026.11.2"
+VERSION = "2026.11.14"
 SOURCE = "Centro laboral"
 TITLES = {"salary": "Liquidación de salario", "settlement": "Liquidación de haberes",
           "aguinaldo": "Aguinaldo", "vacation": "Vacaciones", "hours": "Horas y recargos"}
@@ -124,6 +124,11 @@ def settlement_projection(data):
     Monthly remuneration remains on base 30; do not import DOS base-26 totals.
     """
     data = settlement_defaults(data)
+    if "pay_basis" in data and not str(data.get("pay_basis") or "").strip():
+        raise CalculationError(
+            "Seleccioná si el trabajador es mensualizado o jornalero antes de calcular.",
+            "pay_basis",
+        )
     start, end = read_date(data, "start_date"), read_date(data, "end_date")
     if end < start:
         raise CalculationError("El egreso no puede ser anterior al ingreso.", "end_date")
@@ -166,13 +171,21 @@ def settlement_projection(data):
     multiplier = 2 if status in {"stability_double", "stability_double_pending"} else 1 if status in {"ordinary", "ordinary_reference"} else 0
     days = 15 * units * multiplier if multiplier else 0 if not applicable else None
     payable = int(Decimal(due) - served)
+    if multiplier and str(data.get("pay_basis") or "monthly") == "daily":
+        # La proyección debe mostrar días aun sin evidencia; jamás presentar
+        # dinero sin una base acreditada. calculate() valida antes de emitir.
+        daily_base = number(data, "indemnity_daily_base", "base diaria indemnizatoria", decimals=2)
+        if len(clean(data.get("indemnity_daily_evidence"), 300)) < 12:
+            daily_base = ZERO
+    else:
+        daily_base = average / Decimal("30")
     return dict(
         years=years, stability_detected=years >= 10, units=units, ordinary_days=15 * units, days=days,
         multiplier=multiplier, status=status, notice_due=due,
         notice_served=int(served), notice_payable=payable if multiplier else 0 if not applicable else None,
-        average=str(average), daily_base=f"{average / 30:,.2f}".translate(str.maketrans(",.", ".,")),
-        severance=amount(average / 30 * days) if multiplier and average else 0 if not applicable else None,
-        notice=amount(average / 30 * payable) if multiplier and average else 0 if not applicable else None,
+        average=str(average), daily_base=f"{daily_base:,.2f}".translate(str.maketrans(",.", ".,")),
+        severance=amount(daily_base * days) if multiplier and daily_base else 0 if not applicable else None,
+        notice=amount(daily_base * payable) if multiplier and daily_base else 0 if not applicable else None,
     )
 
 
@@ -181,6 +194,11 @@ def calculate(data, *, judicial_evidence_verified=False):
     kind = data.get("kind", "salary")
     if kind not in TITLES:
         raise CalculationError("Elegí un tipo de cálculo válido.", "kind")
+    if kind == "settlement" and "pay_basis" in data and not str(data.get("pay_basis") or "").strip():
+        raise CalculationError(
+            "Confirmá la modalidad salarial real antes de liquidar; el legajo no la especifica.",
+            "pay_basis",
+        )
     issued = read_date(data, "issued_date")
     identity = {key: clean(data.get(key), 180) for key in
                 ("employer", "ruc", "employee", "ci", "position", "prepared_by", "payment_method", "reference")}
@@ -207,15 +225,19 @@ def calculate(data, *, judicial_evidence_verified=False):
         # En jornalero, el jornal pactado es suficiente para liquidar:
         # la referencia mensual (jornal × 26) sirve solo para otros
         # controles del motor, NO se suma ni se utiliza como sueldo fijo.
-        daily_basis = kind in {"salary", "vacation"} and str(data.get("pay_basis") or "monthly") == "daily"
+        daily_basis = kind in {"salary", "settlement", "vacation"} and str(data.get("pay_basis") or "monthly") == "daily"
         explicit_jornal = str(data.get("daily_rate") or "").strip()
         reference_monthly = str(data.get("salary") or "").strip()
-        if daily_basis and explicit_jornal and reference_monthly in {"", "0", "0.0", "0.00"}:
+        if daily_basis and explicit_jornal:
+            # El jornal contractual, no un supuesto sueldo mensual, determina las
+            # jornadas pendientes y el valor vacacional en el egreso.
             salary = positive(data, "daily_rate", "jornal pactado") * Decimal("26")
+        elif daily_basis and kind == "settlement":
+            raise CalculationError("Ingresá el jornal real pactado para la liquidación final.", "daily_rate")
         else:
             salary = positive(data, "salary", "salario mensual")
     if kind in {"salary", "settlement"}:
-        pay_basis = str(data.get("pay_basis") or "monthly") if kind == "salary" else "monthly"
+        pay_basis = str(data.get("pay_basis") or "monthly")
         if pay_basis not in {"monthly", "daily"}:
             raise CalculationError("Elegí una modalidad salarial válida.", "pay_basis")
         max_days = "31" if pay_basis == "daily" else "30"
@@ -228,7 +250,7 @@ def calculate(data, *, judicial_evidence_verified=False):
             add("Jornales del período", daily_rate * days,
                 f"Gs. {daily_rate:.4f} × {days} jornadas",
                 "Jornal pactado o referencia mensual / 26; confirmar asistencia y contrato")
-            fact("Modalidad salarial", "Jornalero · divisor 26")
+            fact("Modalidad salarial", "Jornalero · jornal real por jornada; 26 es solo referencia mensual")
             fact("Jornal diario aplicado", f"Gs. {daily_rate:.4f}")
             if days > 26:
                 result["warnings"].append(
@@ -238,6 +260,8 @@ def calculate(data, *, judicial_evidence_verified=False):
             add("Salario del período", salary / 30 * days, f"Gs. {gs(salary)} / 30 × {days} días", "Base mensual")
             fact("Modalidad salarial", "Mensualizado · divisor 30")
         fact("Días remunerados", days)
+        if kind == "settlement" and pay_basis == "daily" and days > 26:
+            result["warnings"].append("Revisá los jornales pendientes superiores a 26; conciliá asistencia y pagos anteriores.")
         if kind == "salary":
             period = str(data.get("month", ""))
             try:
@@ -465,6 +489,7 @@ def calculate(data, *, judicial_evidence_verified=False):
 
     if kind == "settlement":
         start, end = read_date(data, "start_date"), read_date(data, "end_date")
+        settlement_daily = str(data.get("pay_basis") or "monthly") == "daily"
         if end < start:
             raise CalculationError("El egreso no puede ser anterior al ingreso.", "end_date")
         years = completed_years(start, end)
@@ -588,7 +613,9 @@ def calculate(data, *, judicial_evidence_verified=False):
                     "El vínculo no está marcado como indefinido. Verificá la modalidad y el vencimiento contractual; se omitió la fórmula ordinaria."
                 )
         elif reason in {"dismissal", "worker_justified"} and checked(data, "trial_completed"):
-            average = positive(data, "average_salary", "promedio salarial de los últimos seis meses o menor tiempo de servicio", decimals=2)
+            average = (number(data, "average_salary", "promedio mensual referencial", decimals=2)
+                       if settlement_daily
+                       else positive(data, "average_salary", "promedio salarial de los últimos seis meses o menor tiempo de servicio", decimals=2))
             if ordinary_reference:
                 fact("Régimen mostrado", "Ordinaria de referencia · estabilidad pendiente de revisión")
                 result["warnings"].append(
@@ -603,20 +630,31 @@ def calculate(data, *, judicial_evidence_verified=False):
                 )
             units = projection["units"]
             severance = projection["severance"] or 0
+            indemnity_daily_base = (positive(data, "indemnity_daily_base", "base diaria indemnizatoria", decimals=2)
+                                    if settlement_daily else average / Decimal("30"))
+            if settlement_daily and len(clean(data.get("indemnity_daily_evidence"), 300)) < 12:
+                raise CalculationError(
+                    "Documentá las remuneraciones y el jornal indemnizatorio promedio real (art. 92).",
+                    "indemnity_daily_evidence",
+                )
             average_label = (gs(average) if average == average.to_integral_value() else
                              f"{average:,.2f}".translate(str.maketrans(",.", ".,")))
             severance_legal = ("Arts. 91, 92 y 94–99; procedencia pendiente de revisión" if double_pending else "Arts. 91, 92 y 94–99; fundamento declarado y confirmado" if double_confirmed
                                else "Arts. 85, 91 y 92" if reason == "worker_justified" else "Arts. 91 y 92")
+            indemnity_formula_base = (
+                f"Base diaria verificada Gs. {indemnity_daily_base}" if settlement_daily
+                else f"Gs. {average_label} / 30"
+            )
             add(
                 "Indemnización doble por estabilidad · escenario condicionado" if double_pending else "Indemnización doble por estabilidad" if double_confirmed else "Indemnización ordinaria de referencia" if ordinary_reference else "Indemnización ordinaria por antigüedad", severance,
-                f"Gs. {average_label} / 30 × 15 × {units}" + (" × 2" if double_confirmed or double_pending else ""), severance_legal
+                f"{indemnity_formula_base} × 15 × {units}" + (" × 2" if double_confirmed or double_pending else ""), severance_legal
             )
             due, served = projection["notice_due"], projection["notice_served"]
             notice = projection["notice"] or 0
             notice_legal = "Arts. 85, 87, 90 y 92" if reason == "worker_justified" else "Arts. 87, 90 y 92"
             add(
                 "Indemnización por preaviso no cumplido · referencia" if ordinary_reference else "Indemnización por preaviso no cumplido", notice,
-                f"Gs. {average_label} / 30 × {due - served}", notice_legal
+                f"{indemnity_formula_base} × {due - served}", notice_legal
             )
             protected += severance + notice
             fact("Preaviso legal de referencia", f"{due} días")
@@ -624,8 +662,15 @@ def calculate(data, *, judicial_evidence_verified=False):
             fact("Días de preaviso a pagar", projection["notice_payable"])
             fact("Años computables para indemnización", units)
             fact("Días de indemnización", projection["days"])
-            fact("Promedio mensual computable", "Gs. " + average_label)
-            fact("Base diaria del mensualizado", "Promedio mensual / 30; sin redondeo intermedio")
+            if settlement_daily:
+                fact("Base diaria indemnizatoria del jornalero", "Gs. " + gs(indemnity_daily_base))
+                result["notes"].append(
+                    "Base diaria y remuneraciones verificadas para el jornalero: " +
+                    clean(data.get("indemnity_daily_evidence"), 300)
+                )
+            else:
+                fact("Promedio mensual computable", "Gs. " + average_label)
+                fact("Base diaria del mensualizado", "Promedio mensual / 30; sin redondeo intermedio")
             result["notes"].append(
                 "La indemnización utiliza el promedio salarial de los últimos seis meses o el menor tiempo trabajado. "
                 "La fracción adicional se considera si supera seis meses; revisá los conceptos computables y cualquier régimen especial."
@@ -670,16 +715,61 @@ def calculate(data, *, judicial_evidence_verified=False):
                 "La causal no está parametrizada como supuesto ordinario. El resultado queda como subtotal hasta documentar y revisar el régimen aplicable."
             )
 
-        simple = number(data, "pending_days", "vacaciones pendientes simples", maximum="365", decimals=2)
+        simple = number(data, "pending_days", "vacaciones causadas pendientes", maximum="365", decimals=2)
         double = number(data, "double_days", "vacaciones pendientes dobles", maximum="365", decimals=2)
         proportional = number(data, "proportional_days", "vacaciones proporcionales", maximum="30", decimals=2)
-        add("Vacaciones pendientes", salary / 30 * simple, f"Gs. {gs(salary)} / 30 × {simple}", "Arts. 218 y 221")
-        add("Vacaciones pendientes con pago doble", salary / 30 * double * 2, f"Gs. {gs(salary)} / 30 × {double} × 2", "Art. 223; procedencia revisada")
-        add("Vacaciones proporcionales", salary / 30 * proportional, f"Gs. {gs(salary)} / 30 × {proportional}", "Art. 221; causal y días reconocidos por el liquidador")
-        fact("Escala anual orientativa", f"{vacation_days(start, end)} días hábiles")
+        if proportional and reason not in {"dismissal", "worker_justified"}:
+            raise CalculationError(
+                "El art. 221 no concede automáticamente vacaciones proporcionales por esta causal. "
+                "En renuncia se pagan las vacaciones ya causadas; no informes proporcionales sin causa imputable al empleador.",
+                "proportional_days",
+            )
+        if proportional and end < anniversary(start, 1) and proportional > 12:
+            raise CalculationError("En el primer año no pueden reconocerse más de doce días proporcionales.", "proportional_days")
+        if double and (
+            not checked(data, "vacation_double_confirmed")
+            or len(clean(data.get("vacation_double_evidence"), 300)) < 12
+        ):
+            raise CalculationError(
+                "La compensación doble requiere verificar período causado, vencimiento del goce, causal "
+                "y respaldo documental (arts. 221 y 223).",
+                "vacation_double_evidence",
+            )
+        vacation_base = salary / Decimal("26") if settlement_daily else salary / Decimal("30")
+        if simple or double or proportional:
+            floor = number(data, "vacation_minimum_manual", "mínimo vacacional especial")
+            category = str(data.get("vacation_minimum_category") or "general_day")
+            minimum_rule = minimum_wage_for_period(end.strftime("%Y-%m"), category, floor)
+            legal_minimum = minimum_rule.get("amount")
+            if legal_minimum is None:
+                result["partial"] = True
+                result["warnings"].append(
+                    "No se pudo verificar el salario mínimo aplicable para el pago vacacional. "
+                    "El importe es provisional; seleccioná el régimen y completá el mínimo de la actividad."
+                )
+            else:
+                legal_daily = Decimal(legal_minimum) / Decimal("26" if settlement_daily else "30")
+                vacation_base = max(vacation_base, legal_daily)
+                fact("Base vacacional mínima controlada", f"Gs. {gs(legal_minimum)} mensuales")
+        add("Vacaciones pendientes", vacation_base * simple, f"Gs. {vacation_base:.4f} × {simple}", "Arts. 218, 220 y 221")
+        add("Vacaciones pendientes con pago doble", vacation_base * double * 2,
+            f"Gs. {vacation_base:.4f} × {double} × 2",
+            "Art. 221; doble compensación con causal y vencimiento documentados")
+        add("Vacaciones proporcionales", vacation_base * proportional,
+            f"Gs. {vacation_base:.4f} × {proportional}",
+            "Art. 221; extinción por causa imputable al empleador")
+        if double:
+            result["notes"].append("Fundamento de pago doble verificado: " + clean(data.get("vacation_double_evidence"), 300))
+        if proportional and years >= 1:
+            result["warnings"].append(
+                "Las vacaciones proporcionales se reconocieron para un vínculo mayor a un año; "
+                "revisá el período adquisitivo y la procedencia de la fracción antes de aprobar."
+            )
+        fact("Escala anual orientativa", f"{vacation_days(start, end)} días corridos")
         result["notes"].append(
-            "Los días de vacaciones simples, dobles y proporcionales se ingresan por separado y solo una vez. "
-            "La proporcionalidad y duplicación dependen de la causal, los períodos adquiridos y los plazos de goce; verificá el derecho antes de aprobar."
+            "Los días de vacaciones causadas, dobles y proporcionales se ingresan por separado. "
+            "La renuncia no elimina vacaciones ya causadas (art. 221), pero no genera por sí sola proporcionales. "
+            "El historial de períodos y pagos debe conciliarse; no se deducen saldos automáticamente de eventos sin revisar."
         )
     if kind in {"settlement", "aguinaldo"}:
         annual = number(data, "annual_remuneration", "remuneraciones computables del año", required=True)
@@ -701,6 +791,11 @@ def calculate(data, *, judicial_evidence_verified=False):
     if kind == "vacation":
         minimum = positive(data, "legal_minimum", "mínimo legal aplicable al período y actividad")
         days = number(data, "vacation_quantity", "días reconocidos", required=True, maximum="365", decimals=2)
+        if checked(data, "vacation_double") and len(clean(data.get("vacation_double_evidence"), 300)) < 12:
+            raise CalculationError(
+                "El pago doble de vacaciones requiere constancia del plazo de goce vencido y respaldo legal (art. 223).",
+                "vacation_double_evidence",
+            )
         factor = 2 if checked(data, "vacation_double") else 1
         vacation_basis = str(data.get("pay_basis") or "monthly")
         if vacation_basis not in {"monthly", "daily"}:

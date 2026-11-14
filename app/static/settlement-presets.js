@@ -28,7 +28,15 @@
   };
   const sync = () => {
     const inactive = noIndemnity() && regime.value !== "stability_double";
-    average.disabled = inactive;
+    const daily = field("pay_basis")?.value === "daily";
+    average.disabled = inactive || daily;
+    for (const name of ["indemnity_daily_base","indemnity_daily_evidence"]) {
+      const input = field(name);
+      if (!input) continue;
+      input.disabled = inactive || !daily;
+      input.required = !input.disabled;
+      input.closest(".dl-field").hidden = !daily;
+    }
     field("notice_served").disabled = inactive;
     if (step) {
       step.hidden = inactive && !field("protected")?.checked && !(automaticStability && stable() && reason.value === "justified");
@@ -60,7 +68,7 @@
     }
   };
   const suggest = () => {
-    if (field("average_origin")?.value === "payroll" || noIndemnity()) return;
+    if (field("pay_basis")?.value === "daily" || field("average_origin")?.value === "payroll" || noIndemnity()) return;
     if ((suggested.value === "on" || (!manuallyEdited && !average.value)) && salary.value) {
       average.value = salary.value;
       suggested.value = "on";
@@ -89,6 +97,10 @@
       suggested.value = "";
       manuallyEdited = true;
     }
+    if (event.target === field("pay_basis") && field("pay_basis")?.value === "daily" && suggested.value === "on") {
+      average.value = "";
+      suggested.value = "";
+    }
     if (event.target === salary) suggest();
     if (event.target === judicial && judicial.checked && automaticStability && stable()) {
       reason.value = "justified";
@@ -114,7 +126,7 @@
   },0));
   // Initial values may be copied from a saved calculation: preserve them.
   sync();
-  if (!average.value && salary.value) suggest();
+  if (field("pay_basis")?.value !== "daily" && !average.value && salary.value) suggest();
   let documentsSequence = 0, documentsController;
   form.querySelector("[data-refresh-judicial]")?.addEventListener("click", async () => {
     const current = ++documentsSequence; documentsController?.abort(); documentsController = new AbortController();
