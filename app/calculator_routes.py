@@ -477,13 +477,17 @@ def professional_page(request: Request, tipo: str = "settlement", company_id: Op
         values.update(salary=str(effective_salary), start_date=employee.admission_date.isoformat(),
                       apply_ips="on" if employee.ips_contributor else "",
                       indefinite="on" if employee.contract_type == "Tiempo indefinido" else "")
-        if tipo == "salary":
+        if tipo in {"salary", "settlement"}:
             frequency = (employee.payment_frequency or "").strip().lower()
             is_daily = any(word in frequency for word in ("jornal", "diario", "diaria"))
             values["pay_basis"] = "daily" if is_daily else "monthly"
-            # Un jornalero NO cobra 26 días por defecto: debe declararse
-            # la cantidad real de jornadas remuneradas del período.
-            values["days_paid"] = "" if is_daily else "30"
+            if tipo == "salary":
+                # No presumir 26 días efectivamente trabajados por ser jornalero.
+                values["days_paid"] = "" if is_daily else "30"
+            elif is_daily:
+                # La unidad de employee.salary no es inequívoca en registros
+                # históricos: no fabricar un jornal dividiendo por 26.
+                values["daily_rate"] = ""
         if tipo == "salary" and user.role in {"administrador", "contador", "auxiliar"}:
             try:
                 attendance = attendance_proposal(db, employee.company_id, employee.id, values["month"])
