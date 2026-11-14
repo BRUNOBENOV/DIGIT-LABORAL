@@ -480,7 +480,9 @@ def professional_page(request: Request, tipo: str = "settlement", company_id: Op
         if tipo in {"salary", "settlement"}:
             frequency = (employee.payment_frequency or "").strip().lower()
             is_daily = any(word in frequency for word in ("jornal", "diario", "diaria"))
-            values["pay_basis"] = "daily" if is_daily else "monthly"
+            unknown_modality = frequency in {"", "no especificado", "sin especificar", "indefinido"}
+            values["pay_basis"] = ("" if tipo == "settlement" and unknown_modality
+                                   else "daily" if is_daily else "monthly")
             if tipo == "salary":
                 # No presumir 26 días efectivamente trabajados por ser jornalero.
                 values["days_paid"] = "" if is_daily else "30"
