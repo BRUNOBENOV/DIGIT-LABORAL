@@ -12,7 +12,7 @@ from datetime import date, datetime, UTC
 from urllib.parse import quote
 
 from fastapi import Depends, Form, HTTPException, Request
-from fastapi.responses import RedirectResponse, StreamingResponse
+from fastapi.responses import RedirectResponse, Response, StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -31,6 +31,10 @@ from .mtess_document_export import (
 DECLARATION = "mtess_declaracion_tolerancia_cero"
 PROTOCOL = "mtess_protocolo_acoso_laboral"
 TYPES = (DECLARATION, PROTOCOL)
+_PROTOCOL_COVER_CONTINUATIONS = (
+    "INVESTIGACIÓN DE HECHOS DE DISCRIMINACIÓN, VIOLENCIA Y ACOSO EN EL MUNDO DEL TRABAJO.",
+    "DE DISCRIMINACIÓN, VIOLENCIA Y ACOSO EN EL MUNDO DEL TRABAJO",
+)
 LABELS = {
     DECLARATION: "Declaración de Tolerancia Cero — Anexo III",
     PROTOCOL: "Protocolo de Prevención, Atención e Investigación — Anexo II",
@@ -158,6 +162,17 @@ def _export_document(item: GeneratedCertificate, *, kind: str = "main",
     )
 
 
+def _protocol_preview_blocks(body: str) -> list[dict[str, str]]:
+    """Recompone en pantalla los títulos de portada divididos en el texto guardado."""
+    blocks: list[dict[str, str]] = []
+    for block in protocol_blocks(body):
+        if blocks and blocks[-1]["kind"] == "cover" and block["text"] in _PROTOCOL_COVER_CONTINUATIONS:
+            blocks[-1]["text"] += " " + block["text"]
+        else:
+            blocks.append(block)
+    return blocks
+
+
 def register_mtess_routes(app, *, render, require_roles, company_allowed,
                           company_ids_for_user, get_db, write_audit):
     """Se instala al final de main.py, cuando ya están definidos los auxiliares."""
@@ -225,7 +240,7 @@ def register_mtess_routes(app, *, render, require_roles, company_allowed,
                 if latest and latest.document_type == DECLARATION else [],
             annex_location=annex_three_location(latest.city, latest.issue_date)
                 if latest and latest.document_type == DECLARATION else "",
-            protocol_preview_blocks=protocol_blocks(latest.body)
+            protocol_preview_blocks=_protocol_preview_blocks(latest.body)
                 if latest and latest.document_type == PROTOCOL else [],
             protocol_questionnaire=QUESTIONNAIRE,
         )
@@ -265,7 +280,7 @@ def register_mtess_routes(app, *, render, require_roles, company_allowed,
         ).order_by(GeneratedCertificate.id.desc()).limit(1))
         if prev and prev.body == body:
             return RedirectResponse(
-                f"/app/certificates/mtess?company_id={company.id}&already=1", status_code=303
+                f"/app/certificates/mtess?company_id={company.id}&already=1#vista-previa-mtess", status_code=303
             )
         record = GeneratedCertificate(
             company_id=company.id, employee_id=None, document_type=document_type,
@@ -287,7 +302,7 @@ def register_mtess_routes(app, *, render, require_roles, company_allowed,
                     f"{company.legal_name} · {LABELS[document_type]} · {count} activos")
         db.commit()
         return RedirectResponse(
-            f"/app/certificates/mtess?company_id={company.id}&created={record.id}",
+            f"/app/certificates/mtess?company_id={company.id}&created={record.id}#vista-previa-mtess",
             status_code=303,
         )
 
@@ -325,6 +340,22 @@ def register_mtess_routes(app, *, render, require_roles, company_allowed,
         return RedirectResponse(
             f"/app/certificates/mtess?company_id={item.company_id}&evidence=1",
             status_code=303,
+        )
+
+    @app.get("/app/certificates/mtess/{document_id}/preview.pdf")
+    def mtess_preview_pdf(
+        document_id: int, user=Depends(staff), db: Session = Depends(get_db),
+    ):
+        item = checked_document(db, user, document_id)
+        data = _export_document(item)
+        name = safe_download_name(data.title, item.company_name_snapshot, "pdf")
+        return Response(
+            build_mtess_pdf_bytes(data),
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f"inline; filename*=UTF-8''{quote(name)}",
+                "Cache-Control": "private, no-store",
+            },
         )
 
     @app.get("/app/certificates/mtess/{document_id}/download.{extension}")
