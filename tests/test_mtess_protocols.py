@@ -68,9 +68,13 @@ def test_mtess_declaration_generation_and_downloads(web_case):
     assert any(run.bold for p in parsed.paragraphs for run in p.runs)
     assert len(parsed.inline_shapes) == 0  # Sin logo no hay gráfico de reserva.
     assert len(parsed.tables) == 0
+    assert parsed.paragraphs[-1].text == "Firma"
+    assert parsed.paragraphs[-1]._p.xpath("w:pPr/w:pBdr/w:top")
+    assert parsed.paragraphs[-2].paragraph_format.keep_with_next
     assert not any(word in text for word in (
         "BORRADOR - REVISAR ANTES DE FIRMAR",
         "Generado por Digit Laboral", "DOCUMENTO LABORAL",
+        "[Firma]",
     ))
     pdf_reader = PdfReader(io.BytesIO(pdf.content))
     pdf_text = "\n".join(p.extract_text() or "" for p in pdf_reader.pages)
@@ -81,12 +85,17 @@ def test_mtess_declaration_generation_and_downloads(web_case):
     assert "Generado por Digit Laboral" not in pdf_text
     assert "DOCUMENTO LABORAL" not in pdf_text
     assert "Página 1" not in pdf_text
+    assert len(pdf_reader.pages) == 1
+    assert pdf_text.strip().splitlines()[-1].strip() == "Firma"
+    assert "[Firma]" not in pdf_text
     preview = client.get("/app/certificates/mtess", params={"company_id": company.id})
     page = BeautifulSoup(preview.text, "html.parser")
     paper = page.select_one('article[aria-label="Vista previa fiel del Anexo III"]')
     assert paper.find("img") is None
     assert paper.find("h3").get_text().startswith("ANEXO III")
-    assert "[Firma]" in paper.get_text()
+    assert paper.select_one(".mtess-annex-signature").get_text(strip=True) == "Firma"
+    assert paper.select_one(".mtess-annex-location").get_text(strip=True) == parsed.paragraphs[-2].text
+    assert "[Firma]" not in paper.get_text()
     preview_link = page.select_one('.mtess-preview-actions a[href$="/preview.pdf"]')
     assert preview_link["href"] == f"/app/certificates/mtess/{record.id}/preview.pdf"
     assert preview_link["target"] == "_blank"
