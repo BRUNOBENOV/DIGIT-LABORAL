@@ -166,13 +166,25 @@ def settlement_projection(data):
     multiplier = 2 if status in {"stability_double", "stability_double_pending"} else 1 if status in {"ordinary", "ordinary_reference"} else 0
     days = 15 * units * multiplier if multiplier else 0 if not applicable else None
     payable = int(Decimal(due) - served)
+    if multiplier and str(data.get("pay_basis") or "monthly") == "daily":
+        # Art. 92.b: el valor indemnizatorio debe fundamentarse en las
+        # remuneraciones reales de los últimos seis meses, sin dividir
+        # arbitrariamente el jornal pactado entre 26 o 30.
+        daily_base = positive(data, "indemnity_daily_base", "base diaria indemnizatoria comprobada", decimals=2)
+        if len(clean(data.get("indemnity_daily_evidence"), 300)) < 12:
+            raise CalculationError(
+                "Documentá el origen del promedio y la base indemnizatoria diaria del jornalero (mínimo 12 caracteres).",
+                "indemnity_daily_evidence",
+            )
+    else:
+        daily_base = average / Decimal("30")
     return dict(
         years=years, stability_detected=years >= 10, units=units, ordinary_days=15 * units, days=days,
         multiplier=multiplier, status=status, notice_due=due,
         notice_served=int(served), notice_payable=payable if multiplier else 0 if not applicable else None,
-        average=str(average), daily_base=f"{average / 30:,.2f}".translate(str.maketrans(",.", ".,")),
-        severance=amount(average / 30 * days) if multiplier and average else 0 if not applicable else None,
-        notice=amount(average / 30 * payable) if multiplier and average else 0 if not applicable else None,
+        average=str(average), daily_base=f"{daily_base:,.2f}".translate(str.maketrans(",.", ".,")),
+        severance=amount(daily_base * days) if multiplier and daily_base else 0 if not applicable else None,
+        notice=amount(daily_base * payable) if multiplier and daily_base else 0 if not applicable else None,
     )
 
 
@@ -595,7 +607,9 @@ def calculate(data, *, judicial_evidence_verified=False):
                     "El vínculo no está marcado como indefinido. Verificá la modalidad y el vencimiento contractual; se omitió la fórmula ordinaria."
                 )
         elif reason in {"dismissal", "worker_justified"} and checked(data, "trial_completed"):
-            average = positive(data, "average_salary", "promedio salarial de los últimos seis meses o menor tiempo de servicio", decimals=2)
+            average = (number(data, "average_salary", "promedio mensual referencial", decimals=2)
+                       if settlement_daily
+                       else positive(data, "average_salary", "promedio salarial de los últimos seis meses o menor tiempo de servicio", decimals=2))
             if ordinary_reference:
                 fact("Régimen mostrado", "Ordinaria de referencia · estabilidad pendiente de revisión")
                 result["warnings"].append(
@@ -610,20 +624,26 @@ def calculate(data, *, judicial_evidence_verified=False):
                 )
             units = projection["units"]
             severance = projection["severance"] or 0
+            indemnity_daily_base = (positive(data, "indemnity_daily_base", "base diaria indemnizatoria", decimals=2)
+                                    if settlement_daily else average / Decimal("30"))
             average_label = (gs(average) if average == average.to_integral_value() else
                              f"{average:,.2f}".translate(str.maketrans(",.", ".,")))
             severance_legal = ("Arts. 91, 92 y 94–99; procedencia pendiente de revisión" if double_pending else "Arts. 91, 92 y 94–99; fundamento declarado y confirmado" if double_confirmed
                                else "Arts. 85, 91 y 92" if reason == "worker_justified" else "Arts. 91 y 92")
+            indemnity_formula_base = (
+                f"Base diaria verificada Gs. {indemnity_daily_base}" if settlement_daily
+                else f"Gs. {average_label} / 30"
+            )
             add(
                 "Indemnización doble por estabilidad · escenario condicionado" if double_pending else "Indemnización doble por estabilidad" if double_confirmed else "Indemnización ordinaria de referencia" if ordinary_reference else "Indemnización ordinaria por antigüedad", severance,
-                f"Gs. {average_label} / 30 × 15 × {units}" + (" × 2" if double_confirmed or double_pending else ""), severance_legal
+                f"{indemnity_formula_base} × 15 × {units}" + (" × 2" if double_confirmed or double_pending else ""), severance_legal
             )
             due, served = projection["notice_due"], projection["notice_served"]
             notice = projection["notice"] or 0
             notice_legal = "Arts. 85, 87, 90 y 92" if reason == "worker_justified" else "Arts. 87, 90 y 92"
             add(
                 "Indemnización por preaviso no cumplido · referencia" if ordinary_reference else "Indemnización por preaviso no cumplido", notice,
-                f"Gs. {average_label} / 30 × {due - served}", notice_legal
+                f"{indemnity_formula_base} × {due - served}", notice_legal
             )
             protected += severance + notice
             fact("Preaviso legal de referencia", f"{due} días")
@@ -631,8 +651,15 @@ def calculate(data, *, judicial_evidence_verified=False):
             fact("Días de preaviso a pagar", projection["notice_payable"])
             fact("Años computables para indemnización", units)
             fact("Días de indemnización", projection["days"])
-            fact("Promedio mensual computable", "Gs. " + average_label)
-            fact("Base diaria del mensualizado", "Promedio mensual / 30; sin redondeo intermedio")
+            if settlement_daily:
+                fact("Base diaria indemnizatoria del jornalero", "Gs. " + gs(indemnity_daily_base))
+                result["notes"].append(
+                    "Base diaria y remuneraciones verificadas para el jornalero: " +
+                    clean(data.get("indemnity_daily_evidence"), 300)
+                )
+            else:
+                fact("Promedio mensual computable", "Gs. " + average_label)
+                fact("Base diaria del mensualizado", "Promedio mensual / 30; sin redondeo intermedio")
             result["notes"].append(
                 "La indemnización utiliza el promedio salarial de los últimos seis meses o el menor tiempo trabajado. "
                 "La fracción adicional se considera si supera seis meses; revisá los conceptos computables y cualquier régimen especial."
