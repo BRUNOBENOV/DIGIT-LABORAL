@@ -137,7 +137,7 @@ def test_liq_only_appears_in_existing_settlement_and_employee_history():
         assert filtered["total"] == 1
         historic = filtered["rows"][0]
         assert historic["origin"] == "imported"
-        assert historic["label"] == "Liquidación final · LIQ"
+        assert historic["label"] == "Liquidación final"
         assert historic["status"] == "Aprobado"
         assert historic["can_use_document"] is False
         all_history = calculation_history_page(
