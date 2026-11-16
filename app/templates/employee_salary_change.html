@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Cambiar salario | Digit Laboral{% endblock %}
+{% block page_name %}Cambiar salario{% endblock %}
+{% block content %}
+<a class="back-link dark" href="/app/employees/{{ employee.id }}">← Volver al legajo</a>
+<div class="page-header">
+  <div>
+    <h1>Cambiar salario</h1>
+    <p>{{ employee.full_name }} · {{ employee.company.legal_name }}{% if employee.employee_code %} · Legajo {{ employee.employee_code }}{% endif %}</p>
+  </div>
+</div>
+<section class="panel">
+  <div class="panel-head"><div><span>Salario registrado</span><h2>Gs. {{ employee.base_salary|gs }}</h2></div></div>
+  <form method="post" action="/app/requests" class="form-grid">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="company_id" value="{{ employee.company_id }}">
+    <input type="hidden" name="employee_id" value="{{ employee.id }}">
+    <input type="hidden" name="request_type" value="Cambio salarial">
+    <input type="hidden" name="detail" value="Actualización del salario convenido desde el legajo.">
+    <label>Nuevo salario mensual (Gs.)
+      <input name="amount" type="number" min="1" max="2147483647" step="1" inputmode="numeric" required>
+    </label>
+    <label>Fecha de vigencia
+      <input name="effective_date" type="date" required>
+    </label>
+    <p class="form-intro span-2">El cambio se registra en el historial salarial cuando un administrador o contador aprueba y aplica la solicitud.</p>
+    <div class="form-actions span-2">
+      <a class="btn ghost" href="/app/employees/{{ employee.id }}">Cancelar</a>
+      <button class="btn primary" type="submit">Crear solicitud salarial</button>
+    </div>
+  </form>
+</section>
+{% endblock %}

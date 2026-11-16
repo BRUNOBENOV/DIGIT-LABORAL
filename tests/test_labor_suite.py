@@ -1258,6 +1258,85 @@ def test_reactivation_is_scoped_to_the_studio_and_requires_csrf_and_role(web_cas
     assert employee.status == "Desvinculado"
 
 
+def test_employee_salary_change_shortcut_uses_the_approved_request_workflow(web_case):
+    from app.models import CompanyRequest, SalaryHistory
+
+    client, db, auth, company, employee, outsider = web_case
+    employee.employee_code = 45106
+    employee.admission_date = date(2019, 12, 11)
+    db.commit()
+    original_salary = employee.base_salary
+    new_salary = original_salary + 150_000
+    dossier = f"/app/employees/{employee.id}"
+    shortcut = f"{dossier}/salary-change"
+    assert f'href="{shortcut}"' in client.get("/app/employees").text
+    assert f'href="{shortcut}"' in client.get(dossier).text
+    assert client.get(f"/app/employees/{outsider.id}/salary-change").status_code == 404
+
+    form = client.get(shortcut)
+    assert form.status_code == 200 and employee.full_name in form.text and "Legajo 45106" in form.text
+    fields = dict(re.findall(r'<input type="hidden" name="([^"]+)" value="([^"]*)">', form.text))
+    assert fields["employee_id"] == str(employee.id)
+    assert fields["company_id"] == str(company.id)
+    assert fields["request_type"] == "Cambio salarial"
+    assert db.query(CompanyRequest).count() == 0
+
+    effective_date = date(2026, 11, 1)
+    form_data = {**fields, "effective_date": effective_date.isoformat(), "amount": str(new_salary)}
+    response = client.post("/app/requests", data=form_data, follow_redirects=False)
+    assert response.status_code == 303
+    request_path = response.headers["location"]
+    csrf = fields["csrf_token"]
+    db.refresh(employee)
+    assert employee.base_salary == original_salary
+    assert client.post(f"{request_path}/apply", data={"csrf_token": csrf}).status_code == 409
+    assert "Aprobar cambio salarial" in client.get(request_path).text
+    auth["user"].role = "auxiliar"
+    assert "Aprobar cambio salarial" not in client.get(request_path).text
+    auth["user"].role = "contador"
+    approval = client.post(f"{request_path}/review", data={"csrf_token": csrf, "status": "Aprobada"}, follow_redirects=False)
+    assert approval.status_code == 303
+    assert "Aplicar cambio salarial" in client.get(request_path).text
+    applied = client.post(f"{request_path}/apply", data={"csrf_token": csrf})
+    assert applied.status_code == 200 and f'href="{dossier}#salary-history"' in applied.text
+    db.refresh(employee)
+    assert employee.base_salary == new_salary
+    change = db.query(SalaryHistory).filter_by(employee_id=employee.id).one()
+    assert (change.previous_salary, change.new_salary, change.effective_from) == (original_salary, new_salary, effective_date)
+
+
+def test_edit_admission_date_after_reactivation_records_the_correction(web_case):
+    from app.models import AuditLog, EmployeeEvent, SalaryHistory
+
+    client, db, _, _, employee, _ = web_case
+    original_admission = date(2019, 12, 11)
+    employee.status = "Desvinculado"
+    employee.employee_code = 45106
+    employee.birth_date = date(1985, 2, 10)
+    employee.admission_date = original_admission
+    employee.position = "Auxiliar técnico"
+    db.add(SalaryHistory(employee_id=employee.id, previous_salary=0, new_salary=employee.base_salary,
+                         effective_from=original_admission, reason="Alta salarial"))
+    db.commit()
+    dossier = f"/app/employees/{employee.id}"
+    csrf = token(client, dossier)
+    active = client.post(f"{dossier}/reactivate", data={"csrf_token": csrf}, follow_redirects=False)
+    assert active.status_code == 303
+    assert 'name="admission_date" value="2019-12-11" required' in client.get(dossier).text
+
+    data = {"csrf_token": csrf, "full_name": employee.full_name, "position": employee.position}
+    invalid = client.post(f"{dossier}/edit", data={**data, "admission_date": "1985-02-10"})
+    assert invalid.status_code == 422
+    result = client.post(f"{dossier}/edit", data={**data, "admission_date": "2021-04-02"}, follow_redirects=False)
+    assert result.status_code == 303 and result.headers["location"] == dossier
+    db.refresh(employee)
+    assert employee.status == "Activo" and employee.admission_date == date(2021, 4, 2)
+    assert db.query(SalaryHistory).filter_by(employee_id=employee.id).one().effective_from == original_admission
+    event = db.query(EmployeeEvent).filter_by(employee_id=employee.id, title="Fecha de ingreso actualizada").one()
+    assert "11/12/2019 al 02/04/2021" in event.detail
+    assert event.detail in db.query(AuditLog).filter_by(action="editar", entity_id=str(employee.id)).one().detail
+
+
 def test_employee_exit_rejects_prior_admission_date_and_non_authorized_role(web_case):
     client, db, box, company, employee, _ = web_case
     employee.admission_date = date(2025, 1, 1)
