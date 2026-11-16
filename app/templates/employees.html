@@ -14,6 +14,7 @@
   .employee-code-feedback{grid-column:1/-1;margin:-2px 0 4px;font-size:.82rem;min-height:1.2em}
   .employee-code-feedback[data-state="success"]{color:#26a269}.employee-code-feedback[data-state="error"]{color:#d65b64}.employee-code-feedback[data-state="loading"]{color:#9caec7}
   .employee-field-help{display:block;font-size:.7rem;line-height:1.4;color:var(--text-secondary,#aab8cc);font-weight:500;margin-top:4px}
+  .employee-salary-control{display:grid;align-content:start;gap:6px}
   .section-management-list{display:grid;gap:8px;margin-top:14px}
   .section-management-row{display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid var(--border-color,#334155);border-radius:10px;padding:11px 12px}
   .section-management-row small{display:block;color:var(--text-secondary,#aab8cc);margin-top:3px}
@@ -107,6 +108,9 @@
       <td><div class="table-actions"><a class="table-save" href="/app/employees/{{ employee.id }}">Expediente</a>{% if user.role in ['administrador','contador','auxiliar'] and employee.status != 'Archivado' %}<button class="table-save" type="button" data-modal-open="employeeModal" data-employee-code="{{ employee.employee_code }}" data-employee-company="{{ employee.company_id }}">Editar</button>{% endif %}
       <details class="employee-action-menu"><summary aria-label="Acciones de {{ employee.full_name }}">⋯ Acciones</summary><div class="employee-action-panel">
         <a href="/app/employees/{{ employee.id }}">Ver expediente</a>
+        {% if user.role in ['administrador','contador','auxiliar'] and employee.status != 'Archivado' and employee.company.status != 'Archivada' %}
+          <a href="/app/employees/{{ employee.id }}/salary-change">Cambiar salario</a>
+        {% endif %}
         {% if user.role in ['administrador','contador'] %}
           {% if employee.status == 'Activo' %}
             {% if exits_by_employee.get(employee.id) %}
@@ -198,7 +202,12 @@
       <label>Fecha de ingreso<input type="date" name="admission_date" id="employeeAdmissionDate" required></label>
       <label>Tipo de contrato<select name="contract_type" id="employeeContractType"><option>Tiempo indefinido</option><option>Plazo determinado</option><option>Obra o servicio</option><option>Aprendizaje</option><option>Otro</option><option>No especificado</option></select></label>
       <label>Frecuencia de pago<select name="payment_frequency" id="employeePaymentFrequency"><option>Mensual</option><option>Quincenal</option><option>Semanal</option><option>Jornal</option><option>No especificado</option></select></label>
-      <label>Salario convenido (Gs.)<input type="number" name="base_salary" id="employeeBaseSalary" min="0" step="1" required>{% if minimum_salary %}<small class="employee-field-help">Referencia mínima general: Gs. {{ minimum_salary.value|int|gs }}. Verificá el régimen aplicable.</small>{% endif %}</label>
+      <div class="employee-salary-control">
+        <label>Salario convenido (Gs.)<input type="number" name="base_salary" id="employeeBaseSalary" min="0" step="1" required>{% if minimum_salary %}<small class="employee-field-help">Referencia mínima general: Gs. {{ minimum_salary.value|int|gs }}. Verificá el régimen aplicable.</small>{% endif %}</label>
+        <div id="employeeSalaryAction" hidden>
+          <a id="employeeSalaryChange" class="btn outline">Cambiar salario</a>
+        </div>
+      </div>
       <label>Tipo de salario<select name="salary_type" id="employeeSalaryType"><option>Mensual</option><option>Quincenal</option><option>Semanal</option><option>Jornal</option><option>No especificado</option></select></label>
       <label>Jornada / horario<input name="work_schedule" id="employeeWorkSchedule" maxlength="120" placeholder="Ej.: Lunes a viernes, 08:00–17:00"></label>
       <label>Turno<select name="shift" id="employeeShift"><option>Diurno</option><option>Nocturno</option><option>Rotativo</option><option>Mixto</option><option>Otro</option><option>No especificado</option></select></label>
@@ -207,7 +216,6 @@
       <label>Número IPS del funcionario<input type="text" name="ips_number" id="employeeIpsNumber" maxlength="80" inputmode="numeric" placeholder="Solo números"></label>
       <label>Aporte IPS<select name="ips_contributor" id="employeeIpsContributor"><option value="true" selected>Sí, aporta</option><option value="false">No aporta</option></select></label>
       <label class="span-2">Bonificaciones / condiciones especiales / observaciones<textarea name="notes" id="employeeNotes" rows="3" maxlength="5000"></textarea></label>
-      <p class="span-2 employee-field-help" id="employeeSalaryNotice">El salario vigente de un legajo existente no puede cambiarse desde esta ficha; debe tramitarse mediante una solicitud salarial aprobada.</p>
       <div class="form-actions span-2">
         <button class="btn ghost" type="button" data-modal-close>Cancelar</button>
         {% if user.role in ['administrador','contador'] %}<button class="btn danger" id="employeeFormArchive" type="button" hidden>Archivar legajo</button>{% endif %}
@@ -248,6 +256,8 @@
   const intro = document.getElementById("employeeFormIntro");
   const submit = document.getElementById("employeeFormSubmit");
   const archiveButton = document.getElementById("employeeFormArchive");
+  const salaryAction = document.getElementById("employeeSalaryAction");
+  const salaryChangeLink = document.getElementById("employeeSalaryChange");
   const defaultAction = "/app/employees";
   const fieldNames = [
     "full_name","document_number","birth_date","nationality","marital_status","phone","email","address",
@@ -293,10 +303,10 @@
     if (archiveButton) archiveButton.hidden = true;
     companySelect.disabled = false;
     codeInput.readOnly = false;
-    const admission = field("admission_date");
     const salary = field("base_salary");
-    admission.readOnly = false;
-    salary.readOnly = false;
+    salary.disabled = false;
+    salaryAction.hidden = true;
+    salaryChangeLink.removeAttribute("href");
     if (clearFields) {
       fieldNames.forEach(function (name) {
         const el = field(name);
@@ -314,7 +324,7 @@
     form.action = "/app/employees/" + employee.id + "/edit";
     title.textContent = "Editar funcionario";
     eyebrow.textContent = "MANTENIMIENTOS · LEGAJO " + employee.employee_code;
-    intro.textContent = "Los datos se actualizarán en el expediente existente. El salario vigente permanece protegido por el flujo de solicitud y aprobación.";
+    intro.textContent = "Actualizá los datos del legajo o iniciá un cambio salarial.";
     submit.textContent = "Guardar cambios";
     if (archiveButton) archiveButton.hidden = false;
     if (window.DigitEntitySelect) await window.DigitEntitySelect.setValue(companySelect, employee.company_id);
@@ -340,9 +350,10 @@
     if (employee.branch_id) branchSelect.value = String(employee.branch_id);
     if (employee.section_id) sectionSelect.value = String(employee.section_id);
     field("admission_date").value = employee.admission_date || "";
-    field("admission_date").readOnly = true;
     field("base_salary").value = String(employee.base_salary || 0);
-    field("base_salary").readOnly = true;
+    field("base_salary").disabled = true;
+    salaryChangeLink.href = "/app/employees/" + employee.id + "/salary-change";
+    salaryAction.hidden = false;
     setFeedback("Legajo existente cargado. Podés editar los datos permitidos; no se crea un duplicado.", "success");
   }
   async function lookupCode() {

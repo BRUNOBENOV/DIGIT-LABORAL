@@ -1097,6 +1097,34 @@ def _apply_employee_payload(
     profile.salary_type = values["salary_type"]
 
 
+def _employee_for_edit(db: Session, user: User, employee_id: int) -> Employee:
+    employee = db.scalar(select(Employee).where(
+        Employee.id == employee_id,
+        Employee.company_id.in_(company_ids_for_user(db, user)),
+        Employee.status != "Archivado",
+    ).with_for_update())
+    if employee is None:
+        raise HTTPException(404, "Funcionario no encontrado.")
+    return employee
+
+
+def _apply_employee_edit(db: Session, employee: Employee, values: dict, user: User) -> None:
+    old_code = employee.employee_code
+    old_admission = employee.admission_date
+    _apply_employee_payload(db, employee, values, user)
+    detail = f"Legajo {old_code} → {employee.employee_code}; {employee.full_name}"
+    if old_admission != employee.admission_date:
+        correction = f"Fecha de ingreso del {old_admission:%d/%m/%Y} al {employee.admission_date:%d/%m/%Y}."
+        add_employee_event(
+            db, employee, user, "Corrección administrativa", "Fecha de ingreso actualizada",
+            correction, current_paraguay_date(),
+        )
+        detail = f"{detail}. {correction}"
+    else:
+        add_employee_event(db, employee, user, "Actualización", "Datos del funcionario actualizados")
+    write_audit(db, user, "editar", "funcionario", str(employee.id), detail)
+
+
 async def _json_object(request: Request) -> dict:
     try:
         payload = await request.json()
@@ -2970,9 +2998,7 @@ async def api_update_employee(
     user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
     db: Session = Depends(get_db),
 ):
-    employee = db.get(Employee, employee_id)
-    if not employee or employee.company_id not in company_ids_for_user(db, user) or employee.status == "Archivado":
-        raise HTTPException(404, "Funcionario no encontrado.")
+    employee = _employee_for_edit(db, user, employee_id)
     payload = await _json_object(request)
     if "company_id" in payload:
         try:
@@ -2986,13 +3012,7 @@ async def api_update_employee(
     merged["company_id"] = employee.company_id
     values = _validate_employee_payload(db, merged, existing=employee)
     _check_employee_uniqueness(db, values, exclude_id=employee.id)
-    old_code = employee.employee_code
-    _apply_employee_payload(db, employee, values, user)
-    add_employee_event(db, employee, user, "Actualización", "Datos del funcionario actualizados")
-    write_audit(
-        db, user, "editar", "funcionario", str(employee.id),
-        f"Legajo {old_code} → {employee.employee_code}; {employee.full_name}",
-    )
+    _apply_employee_edit(db, employee, values, user)
     try:
         db.commit()
     except IntegrityError as exc:
@@ -4219,6 +4239,7 @@ def edit_employee(
     employee_code: Annotated[str | None, Form()] = None,
     document_number: Annotated[str | None, Form()] = None,
     birth_date: Annotated[str | None, Form()] = None,
+    admission_date: Annotated[str | None, Form()] = None,
     branch_id: Annotated[str | None, Form()] = None,
     section_id: Annotated[str | None, Form()] = None,
     contract_type: Annotated[str | None, Form()] = None,
@@ -4241,9 +4262,7 @@ def edit_employee(
     user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
     db: Session = Depends(get_db),
 ):
-    employee = db.get(Employee, employee_id)
-    if not employee or employee.company_id not in company_ids_for_user(db, user) or employee.status == "Archivado":
-        raise HTTPException(404, "Funcionario no encontrado.")
+    employee = _employee_for_edit(db, user, employee_id)
     merged = _employee_api_record(db, employee)
     submitted = {
         "full_name": full_name,
@@ -4251,6 +4270,7 @@ def edit_employee(
         "employee_code": employee_code,
         "document_number": document_number,
         "birth_date": birth_date,
+        "admission_date": admission_date,
         "branch_id": branch_id,
         "section_id": section_id,
         "contract_type": contract_type,
@@ -4275,13 +4295,7 @@ def edit_employee(
     merged["company_id"] = employee.company_id
     values = _validate_employee_payload(db, merged, existing=employee)
     _check_employee_uniqueness(db, values, exclude_id=employee.id)
-    old_code = employee.employee_code
-    _apply_employee_payload(db, employee, values, user)
-    add_employee_event(db, employee, user, "Actualización", "Datos del funcionario actualizados")
-    write_audit(
-        db, user, "editar", "funcionario", str(employee.id),
-        f"Legajo {old_code} → {employee.employee_code}; {employee.full_name}",
-    )
+    _apply_employee_edit(db, employee, values, user)
     try:
         db.commit()
     except IntegrityError:
@@ -4740,6 +4754,24 @@ def notification_mark_read(
     return RedirectResponse("/app/notifications", status_code=303)
 
 
+@app.get("/app/employees/{employee_id}/salary-change", response_class=HTMLResponse)
+def employee_salary_change_form(
+    employee_id: int,
+    request: Request,
+    user: User = Depends(require_roles("administrador", "contador", "auxiliar")),
+    db: Session = Depends(get_db),
+):
+    employee = db.scalar(select(Employee).join(Company).where(
+        Employee.id == employee_id,
+        Employee.company_id.in_(company_ids_for_user(db, user)),
+        Employee.status != "Archivado",
+        Company.status != "Archivada",
+    ))
+    if employee is None:
+        raise HTTPException(404, "Funcionario no encontrado.")
+    return render(request, "employee_salary_change.html", db, user, employee=employee)
+
+
 @app.get("/app/requests", response_class=HTMLResponse)
 def requests_page(
     request: Request,
@@ -5164,6 +5196,16 @@ def download_request_attachment(
     return StreamingResponse(io.BytesIO(content), media_type=attachment.content_type, headers={"Content-Disposition": f'attachment; filename="{attachment.original_name}"'})
 
 
+def _request_for_update(db: Session, user: User, request_id: int) -> CompanyRequest:
+    item = db.scalar(select(CompanyRequest).where(
+        CompanyRequest.id == request_id,
+        CompanyRequest.company_id.in_(company_ids_for_user(db, user)),
+    ).with_for_update())
+    if item is None:
+        raise HTTPException(404, "Solicitud no encontrada.")
+    return item
+
+
 @app.post("/app/requests/{request_id}/status")
 def request_status(
     request_id: int,
@@ -5176,9 +5218,7 @@ def request_status(
     user: User = Depends(require_roles("administrador", "contador", "auxiliar", "abogado")),
     db: Session = Depends(get_db),
 ):
-    item = db.get(CompanyRequest, request_id)
-    if not item or item.company_id not in company_ids_for_user(db, user):
-        raise HTTPException(404)
+    item = _request_for_update(db, user, request_id)
     existing_workflow = db.scalar(select(RequestWorkflow).where(RequestWorkflow.request_id == item.id))
     if user.role == "abogado" and (not existing_workflow or existing_workflow.assigned_user_id != user.id):
         raise HTTPException(404, "Solicitud no encontrada.")
@@ -5265,9 +5305,7 @@ def review_request(
     user: User = Depends(require_roles("administrador", "contador")),
     db: Session = Depends(get_db),
 ):
-    item = db.get(CompanyRequest, request_id)
-    if not item or item.company_id not in company_ids_for_user(db, user):
-        raise HTTPException(404, "Solicitud no encontrada.")
+    item = _request_for_update(db, user, request_id)
     if status_value not in {"Aprobada", "Rechazada", "En revisión", "Falta información"}:
         raise HTTPException(400, "La decisión seleccionada no es válida.")
     if status_value == "Aprobada" and item.request_type.strip().casefold() == "vacaciones":
@@ -5342,9 +5380,7 @@ def apply_request(
     user: User = Depends(require_roles("administrador", "contador")),
     db: Session = Depends(get_db),
 ):
-    item = db.get(CompanyRequest, request_id)
-    if not item or item.company_id not in company_ids_for_user(db, user):
-        raise HTTPException(404, "Solicitud no encontrada.")
+    item = _request_for_update(db, user, request_id)
     workflow = db.scalar(select(RequestWorkflow).where(RequestWorkflow.request_id == item.id))
     # Idempotency check comes first: an already-applied operation remains a success
     # response even though its status is no longer "Aprobada".
@@ -5353,7 +5389,9 @@ def apply_request(
     if item.status != "Aprobada" or not workflow or not workflow.approved_at:
         raise HTTPException(409, "El trámite debe estar aprobado antes de aplicarse.")
     request_kind = item.request_type.strip().casefold()
-    employee = db.get(Employee, item.employee_id) if item.employee_id else None
+    employee = db.get(
+        Employee, item.employee_id, with_for_update=request_kind == "cambio salarial",
+    ) if item.employee_id else None
     if not employee or employee.company_id != item.company_id:
         raise HTTPException(400, "La solicitud requiere un funcionario válido de la misma empresa.")
 
