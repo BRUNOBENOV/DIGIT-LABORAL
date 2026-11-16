@@ -11,6 +11,8 @@ from sqlalchemy.orm import Session
 from . import main as core
 from .form_utils import OptionalQueryId
 from .models import Company, CompanyBranding, Employee, User, Vacation
+from .period_coverage import current_paraguay_date
+from .salary_history import salary_at
 
 
 router = APIRouter()
@@ -59,7 +61,7 @@ def _employee_dataset(db, employee):
         "address": employee.address or "", "position": employee.position or "",
         "admission": employee.admission_date.isoformat() if employee.admission_date else "",
         "admissionText": core.templates.env.filters["fecha_larga"](employee.admission_date),
-        "salary": str(employee.base_salary or 0), "ips": "true" if employee.ips_contributor else "false",
+        "salary": str(salary_at(db, employee, current_paraguay_date())), "ips": "true" if employee.ips_contributor else "false",
         "termination": employee.termination_date.isoformat() if employee.termination_date else "",
         "status": employee.status,
         "vacationStart": vacation.start_date.isoformat() if vacation and vacation.start_date else "",

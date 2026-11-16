@@ -1273,8 +1273,11 @@ def test_employee_salary_change_shortcut_uses_the_approved_request_workflow(web_
     assert f'href="{shortcut}"' in client.get(dossier).text
     assert client.get(f"/app/employees/{outsider.id}/salary-change").status_code == 404
 
+    auth["user"].role = "auxiliar"
+    db.commit()
     form = client.get(shortcut)
     assert form.status_code == 200 and employee.full_name in form.text and "Legajo 45106" in form.text
+    assert 'action="/app/requests"' in form.text
     fields = dict(re.findall(r'<input type="hidden" name="([^"]+)" value="([^"]*)">', form.text))
     assert fields["employee_id"] == str(employee.id)
     assert fields["company_id"] == str(company.id)
@@ -1289,11 +1292,12 @@ def test_employee_salary_change_shortcut_uses_the_approved_request_workflow(web_
     csrf = fields["csrf_token"]
     db.refresh(employee)
     assert employee.base_salary == original_salary
-    assert client.post(f"{request_path}/apply", data={"csrf_token": csrf}).status_code == 409
-    assert "Aprobar cambio salarial" in client.get(request_path).text
-    auth["user"].role = "auxiliar"
+    assert client.post(f"{request_path}/apply", data={"csrf_token": csrf}).status_code == 403
     assert "Aprobar cambio salarial" not in client.get(request_path).text
     auth["user"].role = "contador"
+    db.commit()
+    assert client.post(f"{request_path}/apply", data={"csrf_token": csrf}).status_code == 409
+    assert "Aprobar cambio salarial" in client.get(request_path).text
     approval = client.post(f"{request_path}/review", data={"csrf_token": csrf, "status": "Aprobada"}, follow_redirects=False)
     assert approval.status_code == 303
     assert "Aplicar cambio salarial" in client.get(request_path).text
@@ -1303,6 +1307,69 @@ def test_employee_salary_change_shortcut_uses_the_approved_request_workflow(web_
     assert employee.base_salary == new_salary
     change = db.query(SalaryHistory).filter_by(employee_id=employee.id).one()
     assert (change.previous_salary, change.new_salary, change.effective_from) == (original_salary, new_salary, effective_date)
+
+
+def test_accountant_saves_salary_directly_and_the_legajo_uses_its_effective_date(web_case, monkeypatch):
+    from datetime import timedelta
+    from app import main as core
+    from app.models import AuditLog, CompanyRequest, EmployeeEvent, SalaryHistory
+    from app.salary_history import salary_at
+
+    client, db, auth, company, employee, outsider = web_case
+    today = date(2026, 11, 16)
+    future = today + timedelta(days=15)
+    monkeypatch.setattr(core, "current_paraguay_date", lambda: today)
+    employee.employee_code = 45106
+    employee.admission_date = date(2019, 12, 11)
+    employee.base_salary = 2_800_000
+    db.commit()
+    dossier = f"/app/employees/{employee.id}"
+    shortcut = f"{dossier}/salary-change"
+    page = client.get(shortcut)
+    assert page.status_code == 200 and f'action="{shortcut}"' in page.text
+    assert "Guardar salario" in page.text and 'value="2026-11-16"' in page.text
+    csrf = token(client, shortcut)
+    data = {"csrf_token": csrf, "amount": "4100000", "effective_date": future.isoformat()}
+
+    auth["user"].role = "auxiliar"
+    assert client.post(shortcut, data=data).status_code == 403
+    auth["user"].role = "contador"
+    assert client.post(f"/app/employees/{outsider.id}/salary-change", data=data).status_code == 404
+    invalid = client.post(shortcut, data={**data, "effective_date": "2018-01-01"})
+    assert invalid.status_code == 422 and "fecha de ingreso o después" in invalid.text
+    assert 'value="4100000"' in invalid.text
+
+    scheduled = client.post(shortcut, data=data, follow_redirects=False)
+    assert scheduled.status_code == 303
+    assert scheduled.headers["location"] == f"{dossier}?salary_saved=1#salary-history"
+    dossier_page = client.get(scheduled.headers["location"])
+    assert "Cambio salarial guardado." in dossier_page.text and "Programado" in dossier_page.text
+    db.refresh(employee)
+    assert employee.base_salary == salary_at(db, employee, today) == 2_800_000
+    assert salary_at(db, employee, future) == 4_100_000
+
+    current_data = {**data, "amount": "3500000", "effective_date": today.isoformat()}
+    assert client.post(shortcut, data=current_data, follow_redirects=False).status_code == 303
+    assert client.post(shortcut, data=current_data, follow_redirects=False).status_code == 303
+    prior_day = today - timedelta(days=7)
+    prior_data = {**data, "amount": "3000000", "effective_date": prior_day.isoformat()}
+    assert client.post(shortcut, data=prior_data, follow_redirects=False).status_code == 303
+
+    db.refresh(employee)
+    assert employee.base_salary == salary_at(db, employee, today) == 3_500_000
+    assert salary_at(db, employee, prior_day) == 3_000_000
+    assert salary_at(db, employee, prior_day - timedelta(days=1)) == 2_800_000
+    assert db.query(SalaryHistory).filter_by(employee_id=employee.id).count() == 3
+    assert db.query(EmployeeEvent).filter_by(employee_id=employee.id, event_type="Salario").count() == 3
+    assert db.query(AuditLog).filter_by(action="cambiar_salario", entity_id=str(employee.id)).count() == 3
+    assert db.query(CompanyRequest).count() == 0
+
+    monkeypatch.setattr(core, "current_paraguay_date", lambda: future)
+    directory = client.get("/app/employees", params={"employee_sort": "salary"})
+    assert directory.status_code == 200 and 'data-employee-salary="4100000"' in directory.text
+    by_code = client.get("/api/employees/by-code/45106", params={"company_id": company.id})
+    assert by_code.json()["current_salary"] == 4_100_000
+    assert "<span>Salario vigente</span><b>Gs. 4.100.000</b>" in client.get(dossier).text
 
 
 def test_edit_admission_date_after_reactivation_records_the_correction(web_case):

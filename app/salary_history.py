@@ -6,9 +6,9 @@ instead of silently prorating a legally sensitive amount.
 """
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .models import Employee, SalaryHistory
@@ -33,24 +33,25 @@ def salary_from_history(
     employee: Employee, history: list[SalaryHistory], effective_on: date
 ) -> int:
     """Resolve the salary in effect on a date, without applying future changes."""
-    applicable = [item for item in history if item.effective_from <= effective_on]
-    if applicable:
-        latest = max(
-            applicable,
-            key=lambda item: (
-                item.effective_from,
-                item.created_at.isoformat() if item.created_at else "",
-                item.id or 0,
-            ),
-        )
-        return max(0, int(latest.new_salary or 0))
-
-    # Old imported legajos may have no history at all. Preserve their current
-    # salary as a compatibility fallback, but never use a known future salary
-    # as if it were already effective.
     if not history:
         return max(0, int(employee.base_salary or 0))
-    return 0
+    latest = _effective_change(history, effective_on)
+    if latest is not None:
+        return max(0, int(latest.new_salary or 0))
+    # A first adjustment may start the dated ledger of an existing employee.
+    # Its previous amount keeps the imported base available for manual review.
+    return max(0, int(min(history, key=_salary_order).previous_salary or 0))
+
+
+def _salary_order(item: SalaryHistory) -> tuple[date, str, int]:
+    return item.effective_from, item.created_at.isoformat() if item.created_at else "", item.id or 0
+
+
+def _effective_change(history: list[SalaryHistory], effective_on: date) -> SalaryHistory | None:
+    return max(
+        (item for item in history if item.effective_from <= effective_on),
+        key=_salary_order, default=None,
+    )
 
 
 def salary_at(db: Session, employee: Employee, effective_on: date) -> int:
@@ -58,6 +59,49 @@ def salary_at(db: Session, employee: Employee, effective_on: date) -> int:
     return salary_from_history(
         employee, employee_salary_history(db, employee.id), effective_on
     )
+
+
+def salary_amount_on(effective_on: date):
+    """SQL projection of the dated salary for employee directories and reports."""
+    history = SalaryHistory.employee_id == Employee.id
+    applicable = select(SalaryHistory.new_salary).where(
+        history, SalaryHistory.effective_from <= effective_on,
+    ).order_by(SalaryHistory.effective_from.desc(), SalaryHistory.created_at.desc(), SalaryHistory.id.desc())
+    prior = select(SalaryHistory.previous_salary).where(history).order_by(
+        SalaryHistory.effective_from, SalaryHistory.created_at, SalaryHistory.id,
+    )
+    return func.coalesce(
+        applicable.limit(1).correlate(Employee).scalar_subquery(),
+        prior.limit(1).correlate(Employee).scalar_subquery(),
+        Employee.base_salary,
+    )
+
+
+def record_salary_change(
+    db: Session, employee: Employee, *, amount: int, effective_from: date,
+    today: date, reason: str, user_email: str,
+) -> SalaryHistory | None:
+    """Append a dated change while the caller holds the employee's row lock."""
+    history = employee_salary_history(db, employee.id)
+    existing = _effective_change(history, effective_from)
+    if existing and existing.effective_from == effective_from and existing.new_salary == amount:
+        return None
+    now = datetime.now(UTC)
+    change = SalaryHistory(
+        employee_id=employee.id,
+        previous_salary=salary_from_history(employee, history, effective_from),
+        new_salary=amount,
+        effective_from=effective_from,
+        reason=reason,
+        created_by=user_email,
+        created_at=now,
+    )
+    db.add(change)
+    db.flush()
+    employee.base_salary = salary_from_history(employee, [*history, change], today)
+    employee.updated_by = user_email
+    employee.updated_at = now
+    return change
 
 
 def salary_for_period(
@@ -83,9 +127,13 @@ def salary_for_period(
             "verificá manualmente la base precargada."
         )
     elif not any(item.effective_from <= reference_date for item in history):
+        detail = (
+            "se sugirió el importe previo del legajo y debe verificarse"
+            if salary else "la base sugerida quedó en cero y debe verificarse"
+        )
         warnings.append(
             f"{employee.full_name}: no hay un salario registrado con vigencia al "
-            f"{reference_date:%d/%m/%Y}; la base sugerida quedó en cero y debe verificarse."
+            f"{reference_date:%d/%m/%Y}; {detail}."
         )
 
     if period_start < employee.admission_date <= period_end:

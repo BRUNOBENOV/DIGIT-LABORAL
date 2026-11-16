@@ -40,7 +40,7 @@ from .ai_service import generate_assistance
 from .auth import hash_password, verify_password
 from .labor_calculator import amount as round_gs, anniversary as labor_anniversary
 from .labor_wage_rules import minimum_wage_for_period
-from .salary_history import salary_for_period
+from .salary_history import record_salary_change, salary_amount_on, salary_at, salary_for_period, salary_from_history
 from .certificate_autofill import certificate_dossier_data, missing_contract_fields, has_pending_marker
 from .notice_documents import saved_notice_dates, notice_date_defaults, is_notice_letter
 from .pagination import Pagination, normalize_page_size
@@ -933,7 +933,7 @@ def _validate_employee_payload(
     if base_salary < 0:
         raise HTTPException(422, "El salario convenido no puede ser negativo.")
     if existing and base_salary != int(existing.base_salary or 0):
-        raise HTTPException(409, "El salario vigente solo puede modificarse mediante una solicitud salarial aprobada.")
+        raise HTTPException(409, "Usá Cambiar salario desde el legajo o una solicitud salarial aprobada.")
 
     contract_type = clean_text(
         payload.get("contract_type", existing.contract_type if existing else "Tiempo indefinido"),
@@ -1572,7 +1572,7 @@ def build_ai_context(db: Session, company: Company | None, employee: Employee | 
             "document_number": employee.document_number if employee else "",
             "position": employee.position if employee else "",
             "admission_date": employee.admission_date.isoformat() if employee and employee.admission_date else "",
-            "base_salary": employee.base_salary if employee else 0,
+            "base_salary": salary_at(db, employee, current_paraguay_date()) if employee else 0,
             "contract_type": employee.contract_type if employee else "",
             "ips_contributor": employee.ips_contributor if employee else False,
         },
@@ -1882,7 +1882,10 @@ def dashboard(request: Request, user: User = Depends(require_user), db: Session 
     minimum_salary = db.scalar(select(LaborParameter).where(LaborParameter.key == "minimum_monthly_salary_general", LaborParameter.active.is_(True)))
     low_salary_count = 0
     if company_ids and minimum_salary:
-        low_salary_count = db.scalar(select(func.count(Employee.id)).where(Employee.company_id.in_(company_ids), Employee.status == "Activo", Employee.base_salary < int(minimum_salary.value))) or 0
+        low_salary_count = db.scalar(select(func.count(Employee.id)).where(
+            Employee.company_id.in_(company_ids), Employee.status == "Activo",
+            salary_amount_on(current_paraguay_date()) < int(minimum_salary.value),
+        )) or 0
     branding_items = list(db.scalars(select(CompanyBranding).where(CompanyBranding.company_id.in_(company_ids)))) if company_ids else []
     branded_ids = {item.company_id for item in branding_items if item.logo_bytes}
     missing_logo_count = len([company_id for company_id in company_ids if company_id not in branded_ids])
@@ -2142,7 +2145,11 @@ def add_company(
 @app.get("/app/companies/{company_id}", response_class=HTMLResponse)
 def company_detail(request: Request, company_id: int, user: User = Depends(require_user), db: Session = Depends(get_db)):
     company = company_allowed(db, user, company_id)
-    employees = list(db.scalars(select(Employee).where(Employee.company_id == company_id).order_by(Employee.full_name)))
+    employee_rows = db.execute(
+        select(Employee, salary_amount_on(current_paraguay_date()))
+        .where(Employee.company_id == company_id).order_by(Employee.full_name)
+    ).all()
+    employees = [employee for employee, _ in employee_rows]
     requests_list = list(db.scalars(select(CompanyRequest).where(CompanyRequest.company_id == company_id).order_by(CompanyRequest.created_at.desc()).limit(10)))
     branches = list(db.scalars(select(Branch).where(Branch.company_id == company_id).order_by(Branch.name)))
     payrolls = list(db.scalars(select(Payroll).where(Payroll.company_id == company_id).order_by(Payroll.period.desc()).limit(6)))
@@ -2160,6 +2167,7 @@ def company_detail(request: Request, company_id: int, user: User = Depends(requi
         user,
         company=company,
         employees=employees,
+        salaries_by_employee={employee.id: salary for employee, salary in employee_rows},
         requests_list=requests_list,
         branches=branches,
         payrolls=payrolls,
@@ -2904,7 +2912,9 @@ def api_employee_by_code(
     ))
     if not employee:
         raise HTTPException(404, "No se encontró un funcionario con ese código en la empresa seleccionada.")
-    return _employee_api_record(db, employee)
+    return _employee_api_record(db, employee) | {
+        "current_salary": salary_at(db, employee, current_paraguay_date()),
+    }
 
 
 @app.get("/api/employees/{employee_id}")
@@ -3455,10 +3465,11 @@ def employees_page(
     if sync_due_employee_exits(db):
         db.commit()
     total_count = db.scalar(select(func.count()).select_from(query.subquery())) or 0
+    effective_salary = salary_amount_on(current_paraguay_date()).label("effective_salary")
     sort_columns = {
         "name": func.lower(Employee.full_name), "code": Employee.employee_code,
         "company": func.lower(Company.legal_name), "section": func.lower(CompanySection.name),
-        "admission": Employee.admission_date, "salary": Employee.base_salary,
+        "admission": Employee.admission_date, "salary": effective_salary,
         "document": Employee.document_number, "position": func.lower(Employee.position),
         "ips": Employee.ips_contributor, "status": Employee.status,
     }
@@ -3475,9 +3486,12 @@ def employees_page(
         query = query.outerjoin(CompanySection, Employee.section_id == CompanySection.id)
     sort_column = sort_columns[employee_sort]
     sort_expression = sort_column.desc() if direction == "desc" else sort_column.asc()
-    employees = list(db.scalars(
-        query.order_by(sort_expression.nulls_last(), Employee.id.asc()).limit(page_size).offset((page - 1) * page_size)
-    ))
+    records = db.execute(
+        query.add_columns(effective_salary).order_by(sort_expression.nulls_last(), Employee.id.asc())
+        .limit(page_size).offset((page - 1) * page_size)
+    ).all()
+    employees = [employee for employee, _ in records]
+    salaries_by_employee = {employee.id: salary for employee, salary in records}
     companies_query = select(Company).where(Company.id.in_(company_ids))
     if not show_archived:
         companies_query = companies_query.where(Company.status != "Archivada")
@@ -3526,6 +3540,7 @@ def employees_page(
         reactivatable_employee_ids=reactivatable_employee_ids,
         selected_section=section_id, status_filter=status_filter, show_archived=show_archived,
         selected_employee=active_employee_id, minimum_salary=minimum_salary,
+        salaries_by_employee=salaries_by_employee,
         total_count=total_count, current_page=page, total_pages=total_pages,
         selected_sort=employee_sort, sort_direction=direction,
         pager=pager, employee_quick=employee_quick,
@@ -3868,7 +3883,8 @@ def employee_detail_page(
     employee_exit = latest_exit(db, employee.id)
     final_settlement = latest_settlement(db, employee.id)
     events = list(db.scalars(select(EmployeeEvent).where(EmployeeEvent.employee_id == employee.id).order_by(EmployeeEvent.effective_date.desc(), EmployeeEvent.created_at.desc())))
-    salaries = list(db.scalars(select(SalaryHistory).where(SalaryHistory.employee_id == employee.id).order_by(SalaryHistory.effective_from.desc(), SalaryHistory.created_at.desc())))
+    salaries = list(db.scalars(select(SalaryHistory).where(SalaryHistory.employee_id == employee.id).order_by(SalaryHistory.effective_from.desc(), SalaryHistory.created_at.desc(), SalaryHistory.id.desc())))
+    salary_reference = current_paraguay_date()
     documents = list(db.scalars(select(Document).where(Document.employee_id == employee.id).order_by(Document.created_at.desc())))
     certificates = list(db.scalars(select(GeneratedCertificate).where(GeneratedCertificate.employee_id == employee.id).order_by(GeneratedCertificate.created_at.desc())))
     calculations = list(db.scalars(select(CalculationRecord).where(CalculationRecord.employee_id == employee.id).order_by(CalculationRecord.created_at.desc()).limit(30)))
@@ -3887,6 +3903,7 @@ def employee_detail_page(
     }
     return render(
         request, "employee_detail.html", db, user, employee=employee, events=events, salaries=salaries,
+        current_salary=salary_from_history(employee, salaries, salary_reference), salary_reference=salary_reference,
         documents=documents, certificates=certificates, calculations=calculations, vacations=vacations,
         payroll_lines=payroll_lines, deadlines=deadlines,
         employee_profile=_employee_profile(db, employee.id),
@@ -4769,7 +4786,68 @@ def employee_salary_change_form(
     ))
     if employee is None:
         raise HTTPException(404, "Funcionario no encontrado.")
-    return render(request, "employee_salary_change.html", db, user, employee=employee)
+    return _render_employee_salary_change(request, db, user, employee)
+
+
+def _render_employee_salary_change(
+    request: Request, db: Session, user: User, employee: Employee,
+    *, amount: str = "", effective_date: str | None = None, error: str = "",
+):
+    today = current_paraguay_date()
+    today_is_in_employment = employee.admission_date <= today and (
+        employee.termination_date is None or today <= employee.termination_date
+    )
+    if effective_date is None:
+        effective_date = today.isoformat() if today_is_in_employment else ""
+    response = render(
+        request, "employee_salary_change.html", db, user, employee=employee,
+        current_salary=salary_at(db, employee, today), amount=amount,
+        effective_date=effective_date, salary_error=error,
+    )
+    if error:
+        response.status_code = 422
+    return response
+
+
+@app.post("/app/employees/{employee_id}/salary-change")
+def save_employee_salary_change(
+    employee_id: int,
+    request: Request,
+    amount_raw: Annotated[str, Form(alias="amount")] = "",
+    effective_date_raw: Annotated[str, Form(alias="effective_date")] = "",
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    employee = _employee_for_edit(db, user, employee_id)
+    if employee.company.status == "Archivada":
+        raise HTTPException(404, "Funcionario no encontrado.")
+    try:
+        amount = _parse_optional_form_int(amount_raw, "salario", 1)
+        effective_from = _parse_optional_form_date(effective_date_raw, "fecha de vigencia")
+        if amount is None or effective_from is None:
+            raise HTTPException(422, "Ingresá el nuevo salario y su fecha de vigencia.")
+        if effective_from < employee.admission_date:
+            raise HTTPException(422, "La vigencia debe comenzar en la fecha de ingreso o después.")
+        if employee.termination_date and effective_from > employee.termination_date:
+            raise HTTPException(422, "La vigencia debe comenzar hasta la fecha de egreso.")
+    except HTTPException as exc:
+        return _render_employee_salary_change(
+            request, db, user, employee, amount=amount_raw, effective_date=effective_date_raw, error=exc.detail,
+        )
+
+    change = record_salary_change(
+        db, employee, amount=amount, effective_from=effective_from, today=current_paraguay_date(),
+        reason="Cambio salarial desde el legajo", user_email=user.email,
+    )
+    if change is not None:
+        detail = (
+            f"Gs. {format_gs(change.previous_salary)} → Gs. {format_gs(change.new_salary)} "
+            f"desde el {effective_from:%d/%m/%Y}."
+        )
+        add_employee_event(db, employee, user, "Salario", "Cambio salarial guardado", detail, effective_from, amount)
+        write_audit(db, user, "cambiar_salario", "funcionario", str(employee.id), detail)
+        db.commit()
+    return RedirectResponse(f"/app/employees/{employee.id}?salary_saved=1#salary-history", status_code=303)
 
 
 @app.get("/app/requests", response_class=HTMLResponse)
@@ -5401,17 +5479,13 @@ def apply_request(
             or item.effective_date is None
         ):
             raise HTTPException(400, "La solicitud salarial necesita un salario mensual positivo y una fecha efectiva válida.")
-        previous_salary = employee.base_salary
         effective_from = item.effective_date
-        employee.base_salary = item.amount
-        db.add(SalaryHistory(
-            employee_id=employee.id,
-            previous_salary=previous_salary,
-            new_salary=item.amount,
-            effective_from=effective_from,
+        change = record_salary_change(
+            db, employee, amount=item.amount, effective_from=effective_from, today=current_paraguay_date(),
             reason=f"Cambio salarial aprobado mediante solicitud #{item.id}",
-            created_by=user.email,
-        ))
+            user_email=user.email,
+        )
+        previous_salary = change.previous_salary if change is not None else item.amount
         add_employee_event(
             db, employee, user, "Salario",
             f"Cambio salarial aplicado por solicitud #{item.id}",
@@ -5728,7 +5802,8 @@ def calculations_page(
     )
     minimum_salary = get_parameter(db, "minimum_monthly_salary_general", 0)
     calculation_salary_default = (
-        int(selected_employee_record.base_salary or 0) if selected_employee_record else int(minimum_salary or 0)
+        salary_at(db, selected_employee_record, current_paraguay_date())
+        if selected_employee_record else int(minimum_salary or 0)
     )
     notice_data, notice_error = None, ""
     notice_reference = current_paraguay_date()
@@ -5806,8 +5881,9 @@ def save_calculation(
     if employee and employee.company_id != company.id:
         raise HTTPException(400, "El funcionario no pertenece a la empresa seleccionada.")
     if employee:
-        salary = salary or employee.base_salary
-        gross = gross or employee.base_salary
+        current_salary = salary_at(db, employee, current_paraguay_date())
+        salary = salary or current_salary
+        gross = gross or current_salary
     minimum_scale = None
     minimum_salary_for_calc = None
     if calculation_type == "vacation":
@@ -7453,6 +7529,7 @@ def employee_integral_report(
     payload = build_employee_report_pdf(
         company=company,
         employee=employee,
+        current_salary=salary_at(db, employee, current_paraguay_date()),
         calculations=calculations,
         certificates=certificates,
         vacations=vacations,
@@ -9272,7 +9349,7 @@ def aguinaldo_page(
         if selected_employee.termination_date:
             period_until = min(period_until, selected_employee.termination_date)
         reference_days = max(0, (period_until - period_from).days + 1)
-        salary_reference = selected_employee.base_salary if selected_employee.base_salary > 0 else None
+        salary_reference = salary_at(db, selected_employee, today) or None
         coverage = _employee_annual_coverage(
             db, db.get(Company, selected_company_id), selected_employee, suggested_year, today
         )
@@ -9826,6 +9903,7 @@ def employee_history_page(
         }
     return render(request, "employee_history.html", db, user, companies=companies, employees=employees,
                   selected_company=selected_company, selected_employee=selected.id if selected else None,
+                  current_salary=salary_at(db, selected, current_paraguay_date()) if selected else 0,
                   selected=selected, history=history, search_term=term, format_gs=format_gs)
 
 
@@ -11782,12 +11860,15 @@ def export_studio_backup(
 @app.get("/app/export/employees.csv")
 def export_employees(user: User = Depends(require_user), db: Session = Depends(get_db)):
     company_ids = company_ids_for_user(db, user)
-    employees = list(db.scalars(select(Employee).where(Employee.company_id.in_(company_ids)).order_by(Employee.full_name))) if company_ids else []
+    employees = db.execute(
+        select(Employee, salary_amount_on(current_paraguay_date()))
+        .where(Employee.company_id.in_(company_ids)).order_by(Employee.full_name)
+    ) if company_ids else ()
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(["Empresa", "RUC", "Funcionario", "Documento", "Cargo", "Ingreso", "Salario", "IPS", "Estado"])
-    for item in employees:
-        writer.writerow([_csv_safe_cell(value) for value in [item.company.legal_name, item.company.ruc, item.full_name, item.document_number, item.position, item.admission_date.isoformat(), item.base_salary, "Sí" if item.ips_contributor else "No", item.status]])
+    for item, current_salary in employees:
+        writer.writerow([_csv_safe_cell(value) for value in [item.company.legal_name, item.company.ruc, item.full_name, item.document_number, item.position, item.admission_date.isoformat(), current_salary, "Sí" if item.ips_contributor else "No", item.status]])
     data = output.getvalue().encode("utf-8-sig")
     return StreamingResponse(io.BytesIO(data), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=funcionarios_digit_laboral.csv"})
 

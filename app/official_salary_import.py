@@ -156,9 +156,12 @@ def prepare_import(db: Session, company, period: str, authority: str, *,
     for line, employee, detail in records:
         context = f"{employee.full_name} (legajo {employee.employee_code or employee.id})"
         err: list[str] = []
-        patronal = _patronal(db, company, employee, authority)
-        if not patronal or not re.fullmatch(r"[0-9]{1,20}", patronal):
-            err.append("falta número patronal numérico del organismo")
+        registered_patronal = _patronal(db, company, employee, authority)
+        patronal = registered_patronal.replace(".", "") if authority == "REOP" else registered_patronal
+        if not registered_patronal:
+            err.append("falta número patronal del organismo")
+        elif not re.fullmatch(r"[0-9]{1,20}", patronal):
+            err.append("el número patronal del organismo debe contener hasta 20 dígitos")
         ci = _text(employee.document_number)
         if not ci or not re.fullmatch(r"[0-9A-Za-z-]{2,40}", ci):
             err.append("documento de identidad ausente o con formato inválido")

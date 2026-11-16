@@ -63,6 +63,23 @@ def test_reop_32_exact_columns_and_excel_dates(monkeypatch):
         assert int(cells["C2"].find("m:v", ns).text) > 46000
 
 
+def test_reop_export_accepts_dotted_patronal_and_reports_truly_missing_numbers(monkeypatch):
+    company, _, _, _ = fixture_records(monkeypatch)
+    company.mtess_employer_number = "45.815"
+    rows, errors = service.prepare_import(None, company, "2026-10", "REOP", payment_code="1")
+    assert not errors and rows[0][0] == "45815"
+    assert company.mtess_employer_number == "45.815"
+
+    company.mtess_employer_number = ""
+    _, errors = service.prepare_import(None, company, "2026-10", "REOP", payment_code="1")
+    assert any("falta número patronal del organismo" in error for error in errors)
+
+    company.mtess_employer_number = "45.A15"
+    _, errors = service.prepare_import(None, company, "2026-10", "REOP", payment_code="1")
+    assert any("debe contener hasta 20 dígitos" in error for error in errors)
+    assert all("falta número patronal" not in error for error in errors)
+
+
 def test_reop_blank_unused_discount_pairs_in_export(monkeypatch):
     """REOP rejects numeric 0 with a blank concept (CONCEPTO_VACIO)."""
     company, _, _, _ = fixture_records(monkeypatch)

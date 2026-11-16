@@ -23,6 +23,8 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, Tabl
 from xml.sax.saxutils import escape as xml_escape
 from sqlalchemy import String, cast, func, or_, select
 from sqlalchemy.orm import Session
+from .period_coverage import current_paraguay_date
+from .salary_history import salary_amount_on
 
 from .models import (
     Aguinaldo,
@@ -481,8 +483,8 @@ def _row(spec: ReportSpec, value: Any) -> dict[str, Any]:
             result[4] = item.work_sector or item.work_location
         return dict(zip(report_columns(spec), result))
     if dataset == "employee":
-        item = value
-        result = [item.employee_code or "", item.full_name, item.company.legal_name, item.document_number, item.position, _date(item.admission_date), _date(item.termination_date), item.base_salary, item.contract_type, item.payment_frequency, _bool(item.ips_contributor), item.section.name if item.section else "", item.email, item.phone, item.status]
+        item, current_salary = value
+        result = [item.employee_code or "", item.full_name, item.company.legal_name, item.document_number, item.position, _date(item.admission_date), _date(item.termination_date), current_salary, item.contract_type, item.payment_frequency, _bool(item.ips_contributor), item.section.name if item.section else "", item.email, item.phone, item.status]
         if spec.variant == "profile":
             result += [item.address, _date(item.birth_date), item.contract_type]
         return dict(zip(report_columns(spec), result))
@@ -573,9 +575,11 @@ def fetch_report(
             pass
     elif spec.dataset == "employee":
         query, count_query = _employee_query(company_ids, company_id, employee_id, q, spec, year)
+        effective_salary = salary_amount_on(current_paraguay_date()).label("effective_salary")
+        query = query.add_columns(effective_salary)
         if status_filter:
             query = query.where(Employee.status == status_filter)
-        sort_map = {"name": Employee.full_name, "admission_date": Employee.admission_date, "date": Employee.admission_date, "salary": Employee.base_salary, "amount": Employee.base_salary, "code": Employee.employee_code, "status": Employee.status}
+        sort_map = {"name": Employee.full_name, "admission_date": Employee.admission_date, "date": Employee.admission_date, "salary": effective_salary, "amount": effective_salary, "code": Employee.employee_code, "status": Employee.status}
         order_column = sort_map.get(sort or ("admission_date" if spec.variant == "admission_date" else "name"), Employee.full_name)
         query = query.order_by(order_column.asc(), Employee.id.asc())
     elif spec.dataset == "payroll":
@@ -679,7 +683,7 @@ def fetch_report(
     values = list(db.execute(query.offset((page - 1) * page_size).limit(page_size)).all())
     records = []
     for value in values:
-        if spec.dataset in {"company", "employee", "payroll"}:
+        if spec.dataset in {"company", "payroll"}:
             record = _row(spec, value[0])
         else:
             record = _row(spec, value)

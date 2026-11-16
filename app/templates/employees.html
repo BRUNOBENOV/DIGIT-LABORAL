@@ -3,6 +3,7 @@
 {% block title %}Funcionarios | Digit Laboral{% endblock %}
 {% block page_name %}Funcionarios{% endblock %}
 {% block content %}
+{% set salary_action_label = 'Solicitar cambio salarial' if user.role == 'auxiliar' else 'Cambiar salario' %}
 <style>
   .employee-maintenance-filters{display:grid;grid-template-columns:minmax(220px,1.5fr) repeat(3,minmax(130px,1fr)) auto auto;gap:10px;align-items:end;margin:14px 0 18px}
   .employee-maintenance-filters label{display:grid;gap:6px;color:var(--text-secondary,#aab8cc);font-size:.78rem;font-weight:750}
@@ -95,21 +96,22 @@
   <tbody>
   {% for employee in employees %}
     {% set profile = employee_profiles.get(employee.id) %}
-    <tr data-employee-row data-employee-name="{{ employee.full_name|lower }}" data-employee-code="{{ employee.employee_code if employee.employee_code is not none else 0 }}" data-employee-company="{{ employee.company.legal_name|lower }}" data-employee-document="{{ employee.document_number|lower }}" data-employee-section="{{ employee.section.name|lower if employee.section else 'sin sección' }}" data-employee-position="{{ employee.position|lower }}" data-employee-admission="{{ employee.admission_date.isoformat() if employee.admission_date else '' }}" data-employee-salary="{{ employee.base_salary }}" data-employee-status="{{ employee.status|lower }}" data-employee-ips="{{ 'yes' if employee.ips_contributor else 'no' }}">
+    {% set current_salary = salaries_by_employee[employee.id] %}
+    <tr data-employee-row data-employee-name="{{ employee.full_name|lower }}" data-employee-code="{{ employee.employee_code if employee.employee_code is not none else 0 }}" data-employee-company="{{ employee.company.legal_name|lower }}" data-employee-document="{{ employee.document_number|lower }}" data-employee-section="{{ employee.section.name|lower if employee.section else 'sin sección' }}" data-employee-position="{{ employee.position|lower }}" data-employee-admission="{{ employee.admission_date.isoformat() if employee.admission_date else '' }}" data-employee-salary="{{ current_salary }}" data-employee-status="{{ employee.status|lower }}" data-employee-ips="{{ 'yes' if employee.ips_contributor else 'no' }}">
       <td><span class="employee-code-pill">Legajo {{ employee.employee_code if employee.employee_code is not none else 'Sin asignar' }}</span><br><b>{{ employee.full_name }}</b><small class="table-sub">{{ employee.email or employee.phone or 'Sin contacto' }}</small></td>
       <td>{{ employee.company.legal_name }}</td>
       <td>{{ employee.document_number }}</td>
       <td>{{ employee.section.name if employee.section else 'Sin sección' }}</td>
       <td>{{ employee.position }}</td>
       <td>{{ employee.admission_date|fecha }}</td>
-      <td>Gs. {{ employee.base_salary|gs }}{% if minimum_salary and employee.base_salary < minimum_salary.value %}<small class="salary-alert">Revisar referencia mínima general</small>{% endif %}</td>
+      <td>Gs. {{ current_salary|gs }}{% if minimum_salary and current_salary < minimum_salary.value %}<small class="salary-alert">Revisar referencia mínima general</small>{% endif %}</td>
       <td>{{ 'Sí' if employee.ips_contributor else 'No' }}</td>
       <td><span class="status-pill {{ employee.status|lower }}">{{ employee.status }}</span></td>
       <td><div class="table-actions"><a class="table-save" href="/app/employees/{{ employee.id }}">Expediente</a>{% if user.role in ['administrador','contador','auxiliar'] and employee.status != 'Archivado' %}<button class="table-save" type="button" data-modal-open="employeeModal" data-employee-code="{{ employee.employee_code }}" data-employee-company="{{ employee.company_id }}">Editar</button>{% endif %}
       <details class="employee-action-menu"><summary aria-label="Acciones de {{ employee.full_name }}">⋯ Acciones</summary><div class="employee-action-panel">
         <a href="/app/employees/{{ employee.id }}">Ver expediente</a>
         {% if user.role in ['administrador','contador','auxiliar'] and employee.status != 'Archivado' and employee.company.status != 'Archivada' %}
-          <a href="/app/employees/{{ employee.id }}/salary-change">Cambiar salario</a>
+          <a href="/app/employees/{{ employee.id }}/salary-change">{{ salary_action_label }}</a>
         {% endif %}
         {% if user.role in ['administrador','contador'] %}
           {% if employee.status == 'Activo' %}
@@ -205,7 +207,7 @@
       <div class="employee-salary-control">
         <label>Salario convenido (Gs.)<input type="number" name="base_salary" id="employeeBaseSalary" min="0" step="1" required>{% if minimum_salary %}<small class="employee-field-help">Referencia mínima general: Gs. {{ minimum_salary.value|int|gs }}. Verificá el régimen aplicable.</small>{% endif %}</label>
         <div id="employeeSalaryAction" hidden>
-          <a id="employeeSalaryChange" class="btn outline">Cambiar salario</a>
+          <a id="employeeSalaryChange" class="btn outline">{{ salary_action_label }}</a>
         </div>
       </div>
       <label>Tipo de salario<select name="salary_type" id="employeeSalaryType"><option>Mensual</option><option>Quincenal</option><option>Semanal</option><option>Jornal</option><option>No especificado</option></select></label>
@@ -350,7 +352,7 @@
     if (employee.branch_id) branchSelect.value = String(employee.branch_id);
     if (employee.section_id) sectionSelect.value = String(employee.section_id);
     field("admission_date").value = employee.admission_date || "";
-    field("base_salary").value = String(employee.base_salary || 0);
+    field("base_salary").value = String(employee.current_salary ?? employee.base_salary ?? 0);
     field("base_salary").disabled = true;
     salaryChangeLink.href = "/app/employees/" + employee.id + "/salary-change";
     salaryAction.hidden = false;
