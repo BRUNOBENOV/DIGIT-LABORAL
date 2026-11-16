@@ -38,6 +38,7 @@ def build_employee_report_pdf(
     historical_vacation_count: int = 0,
     historical_notices: list[dict[str, Any]] | None = None,
     historical_notice_count: int = 0,
+    current_salary: int | None = None,
 ) -> bytes:
     stream = io.BytesIO()
     doc = SimpleDocTemplate(stream, pagesize=A4, rightMargin=16 * mm, leftMargin=16 * mm, topMargin=15 * mm, bottomMargin=16 * mm)
@@ -82,7 +83,7 @@ def build_employee_report_pdf(
     data = [
         ["Funcionario", employee.full_name, "Cédula", employee.document_number],
         ["Cargo", employee.position or "—", "Ingreso", _date(employee.admission_date)],
-        ["Salario base", f"Gs. {_gs(employee.base_salary)}", "Estado", employee.status],
+        ["Salario base", f"Gs. {_gs(employee.base_salary if current_salary is None else current_salary)}", "Estado", employee.status],
         ["Contrato", employee.contract_type, "IPS", "Sí" if employee.ips_contributor else "No"],
     ]
     table = Table(data, colWidths=[30 * mm, 58 * mm, 28 * mm, 60 * mm])

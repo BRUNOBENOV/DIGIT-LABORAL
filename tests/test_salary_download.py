@@ -34,6 +34,9 @@ def data(case, **changes):
 def test_salary_file_download_preserves_bytes_attendance_audit_and_source(download_case, authority, mime, extension):
     client, db, _, company, employee, _, source = download_case
     original = source.input_json, source.result_json, source.amount, source.status
+    if authority == "REOP":
+        company.mtess_employer_number = "45.815"
+        db.commit()
     # fetch(FormData) uses multipart, while the no-JS fallback is URL-encoded.
     fields = data(download_case, authority=authority, name_order="apellido_primero", rei_category="E")
     response = client.post("/app/compliance/salary-import/export",
@@ -48,9 +51,12 @@ def test_salary_file_download_preserves_bytes_attendance_audit_and_source(downlo
         workbook = load_workbook(io.BytesIO(response.content), data_only=True)
         rows = list(workbook.active.values)
         assert tuple(rows[0]) == REOP_HEADERS and len(rows) == 2
+        assert rows[1][0] == "45815"
         assert rows[1][5] == 22 and rows[1][7] == 176.5
         assert rows[1][9] == 3_500_000 and rows[1][25] == 315_000
         workbook.close()
+        db.refresh(company)
+        assert company.mtess_employer_number == "45.815"
     else:
         lines = response.content.decode("cp1252").splitlines()
         assert len(lines) == 1

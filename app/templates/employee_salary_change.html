@@ -2,31 +2,35 @@
 {% block title %}Cambiar salario | Digit Laboral{% endblock %}
 {% block page_name %}Cambiar salario{% endblock %}
 {% block content %}
+{% set direct = user.role in ['administrador', 'contador'] %}
 <a class="back-link dark" href="/app/employees/{{ employee.id }}">← Volver al legajo</a>
 <div class="page-header">
   <div>
-    <h1>Cambiar salario</h1>
+    <h1>{{ 'Cambiar salario' if direct else 'Solicitar cambio salarial' }}</h1>
     <p>{{ employee.full_name }} · {{ employee.company.legal_name }}{% if employee.employee_code %} · Legajo {{ employee.employee_code }}{% endif %}</p>
   </div>
 </div>
 <section class="panel">
-  <div class="panel-head"><div><span>Salario registrado</span><h2>Gs. {{ employee.base_salary|gs }}</h2></div></div>
-  <form method="post" action="/app/requests" class="form-grid">
+  <div class="panel-head"><div><span>Salario vigente</span><h2>Gs. {{ current_salary|gs }}</h2></div></div>
+  {% if salary_error %}<div class="alert danger" role="alert">{{ salary_error }}</div>{% endif %}
+  <form method="post" action="{{ '/app/employees/' ~ employee.id ~ '/salary-change' if direct else '/app/requests' }}" class="form-grid">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <input type="hidden" name="company_id" value="{{ employee.company_id }}">
-    <input type="hidden" name="employee_id" value="{{ employee.id }}">
-    <input type="hidden" name="request_type" value="Cambio salarial">
-    <input type="hidden" name="detail" value="Actualización del salario convenido desde el legajo.">
+    {% if not direct %}
+      <input type="hidden" name="company_id" value="{{ employee.company_id }}">
+      <input type="hidden" name="employee_id" value="{{ employee.id }}">
+      <input type="hidden" name="request_type" value="Cambio salarial">
+      <input type="hidden" name="detail" value="Actualización del salario convenido desde el legajo.">
+    {% endif %}
     <label>Nuevo salario mensual (Gs.)
-      <input name="amount" type="number" min="1" max="2147483647" step="1" inputmode="numeric" required>
+      <input name="amount" type="number" min="1" max="2147483647" step="1" inputmode="numeric" value="{{ amount }}" required autofocus>
     </label>
     <label>Fecha de vigencia
-      <input name="effective_date" type="date" required>
+      <input name="effective_date" type="date" value="{{ effective_date }}" min="{{ employee.admission_date.isoformat() }}"{% if employee.termination_date %} max="{{ employee.termination_date.isoformat() }}"{% endif %} required>
     </label>
-    <p class="form-intro span-2">El cambio se registra en el historial salarial cuando un administrador o contador aprueba y aplica la solicitud.</p>
+    {% if not direct %}<p class="form-intro span-2">Un administrador o contador podrá aprobar y aplicar la solicitud.</p>{% endif %}
     <div class="form-actions span-2">
       <a class="btn ghost" href="/app/employees/{{ employee.id }}">Cancelar</a>
-      <button class="btn primary" type="submit">Crear solicitud salarial</button>
+      <button class="btn primary" type="submit">{{ 'Guardar salario' if direct else 'Enviar solicitud' }}</button>
     </div>
   </form>
 </section>

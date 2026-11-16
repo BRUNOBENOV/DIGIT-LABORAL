@@ -21,6 +21,8 @@ from .labor_rules import (
 )
 from .models import Branch, CalculationRecord, Employee, Payroll, PayrollLine, PayrollComplianceDetail, User
 from .labor_calculator import CalculationError, amount as round_gs, number
+from .period_coverage import current_paraguay_date
+from .salary_history import salary_at
 
 app = core.app
 
@@ -322,8 +324,9 @@ async def save_calculation_v24(
     total_remunerations = int(number(form, "total_remunerations", maximum="2147483647"))
     days = max(0.0, _float(form.get("days"), 0))
     if employee:
-        salary = salary or employee.base_salary
-        gross = gross or employee.base_salary
+        current_salary = salary_at(db, employee, current_paraguay_date())
+        salary = salary or current_salary
+        gross = gross or current_salary
 
     inputs: dict = {"calculation_type": calculation_type}
     results: dict = {}
