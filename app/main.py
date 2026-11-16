@@ -140,6 +140,7 @@ from .notification_worker import (
     create_due_official_certificate_notifications,
     create_due_request_notifications,
 )
+from .post_import_reactivation import reactivation_issue
 
 from .report_export import build_employee_report_pdf
 from .report_center import REPORTS, REPORT_GROUPS, fetch_report, get_report, make_pdf, make_xlsx, report_sort_options
@@ -3484,6 +3485,16 @@ def employees_page(
             .order_by(FinalSettlement.id.desc())
         ):
             settlements_by_employee.setdefault(item.employee_id, item)
+    reactivatable_employee_ids = set()
+    if user.role in {"administrador", "contador"}:
+        reactivatable_employee_ids = {
+            employee.id for employee in employees
+            if not reactivation_issue(
+                employee, company=employee.company,
+                has_settlement=employee.id in settlements_by_employee,
+                has_exit=employee.id in exits_by_employee,
+            )
+        }
     minimum_salary = db.scalar(select(LaborParameter).where(
         LaborParameter.key == "minimum_monthly_salary_general", LaborParameter.active.is_(True)
     ))
@@ -3492,6 +3503,7 @@ def employees_page(
         employees=employees, companies=companies, branches=branches, sections=sections,
         employee_profiles=employee_profiles, exits_by_employee=exits_by_employee,
         settlements_by_employee=settlements_by_employee, q=q, selected_company=company_id,
+        reactivatable_employee_ids=reactivatable_employee_ids,
         selected_section=section_id, status_filter=status_filter, show_archived=show_archived,
         selected_employee=active_employee_id, minimum_salary=minimum_salary,
         total_count=total_count, current_page=page, total_pages=total_pages,
@@ -3859,6 +3871,10 @@ def employee_detail_page(
         payroll_lines=payroll_lines, deadlines=deadlines,
         employee_profile=_employee_profile(db, employee.id),
         employee_exit=employee_exit, final_settlement=final_settlement,
+        can_reactivate=user.role in {"administrador", "contador"} and not reactivation_issue(
+            employee, company=employee.company,
+            has_settlement=final_settlement is not None, has_exit=employee_exit is not None,
+        ),
         historical_event_details=historical_event_details,
     )
 

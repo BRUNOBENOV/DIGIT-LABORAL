@@ -1,0 +1,7 @@
+<form method="post" action="/app/employees/{{ employee.id }}/reactivate"
+      data-confirm-message="¿Reactivar a {{ employee.full_name }}? Confirmá que continúa en el mismo vínculo laboral.{% if employee.termination_date %} Se quitará de la ficha la fecha de salida del {{ employee.termination_date|fecha }}.{% endif %}"
+      onsubmit="return window.confirm(this.dataset.confirmMessage)">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="expected_termination_date" value="{{ employee.termination_date.isoformat() if employee.termination_date else '' }}">
+  <button class="btn outline full" type="submit">Reactivar legajo</button>
+</form>

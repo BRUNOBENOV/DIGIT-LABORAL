@@ -1168,6 +1168,96 @@ def test_direct_employee_status_mutation_removed_and_archiving_restores_state(we
     assert db.query(EmployeeEvent).filter_by(employee_id=employee.id, event_type="Archivo").count() == 2
 
 
+@pytest.mark.parametrize("exit_date", [None, date(2023, 5, 12)])
+def test_reactivation_from_employee_directory_and_dossier(web_case, exit_date):
+    from app.models import AuditLog, EmployeeEvent, SalaryHistory
+
+    client, db, _, company, employee, _ = web_case
+    original_admission = date(2019, 12, 11)
+    employee.admission_date = original_admission
+    employee.status = "Desvinculado"
+    employee.termination_date = exit_date
+    db.add_all([
+        EmployeeEvent(employee_id=employee.id, event_type="Ingreso histórico", title="Ingreso original"),
+        SalaryHistory(employee_id=employee.id, previous_salary=0, new_salary=employee.base_salary,
+                      effective_from=original_admission, reason="Alta salarial"),
+    ])
+    db.commit()
+    path = f"/app/employees/{employee.id}"
+    action = f"{path}/reactivate"
+    selector = {"scope": "active", "selected_id": employee.id, "company_id": company.id}
+    directory = client.get("/app/employees", params={"status_filter": "Desvinculado"})
+    dossier = client.get(path)
+    assert directory.status_code == dossier.status_code == 200
+    assert all(f'action="{action}"' in page.text for page in (directory, dossier))
+    assert client.get("/api/selectors/employees", params=selector).status_code == 404
+
+    expected_date = exit_date.isoformat() if exit_date else ""
+    data = {"csrf_token": token(client, path), "expected_termination_date": expected_date}
+    stale = client.post(action, data={**data, "expected_termination_date": "2022-01-01"})
+    assert stale.status_code == 409
+    response = client.post(action, data=data, follow_redirects=False)
+    assert response.status_code == 303 and response.headers["location"] == f"{path}?reactivated=1"
+    updated_dossier = client.get(response.headers["location"])
+    assert "Legajo reactivado. El cambio quedó registrado en el historial." in updated_dossier.text
+    assert action not in updated_dossier.text
+    assert client.get("/api/selectors/employees", params=selector).status_code == 200
+    assert client.post(action, data=data).status_code == 409
+
+    db.refresh(employee)
+    assert (employee.status, employee.termination_date, employee.admission_date) == ("Activo", None, original_admission)
+    assert db.query(SalaryHistory).filter_by(employee_id=employee.id).one().new_salary == employee.base_salary
+    events = db.query(EmployeeEvent).filter_by(employee_id=employee.id).order_by(EmployeeEvent.id).all()
+    assert [event.title for event in events] == ["Ingreso original", "Legajo reactivado"]
+    audit = db.query(AuditLog).filter_by(action="reactivar_legajo", entity_id=str(employee.id)).one()
+    assert audit.detail == events[-1].detail and (expected_date or "sin fecha") in audit.detail
+
+
+@pytest.mark.parametrize("blocker", ["egreso", "liquidación", "empresa archivada", "legajo archivado"])
+def test_reactivation_with_linked_exit_or_archive_is_refused(web_case, blocker):
+    from app.models import EmployeeExit, FinalSettlement
+
+    client, db, _, company, employee, _ = web_case
+    employee.status = "Archivado" if blocker == "legajo archivado" else "Desvinculado"
+    if blocker == "empresa archivada":
+        company.status = "Archivada"
+    if blocker in {"egreso", "liquidación"}:
+        exit_record = EmployeeExit(
+            company_id=company.id, employee_id=employee.id, effective_date=date(2026, 11, 1),
+            reason="resignation", initiated_by="Trabajador",
+            status="Cancelado" if blocker == "liquidación" else "Efectivo",
+        )
+        db.add(exit_record)
+        db.flush()
+        if blocker == "liquidación":
+            db.add(FinalSettlement(company_id=company.id, employee_id=employee.id, employee_exit_id=exit_record.id))
+    db.commit()
+    path = f"/app/employees/{employee.id}"
+    action = f"{path}/reactivate"
+    assert action not in client.get(path).text
+    assert action not in client.get("/app/employees?show_archived=true").text
+    rejected = client.post(action, data={"csrf_token": token(client, path)})
+    assert rejected.status_code == 409
+    db.refresh(employee)
+    assert employee.status == ("Archivado" if blocker == "legajo archivado" else "Desvinculado")
+
+
+def test_reactivation_is_scoped_to_the_studio_and_requires_csrf_and_role(web_case):
+    client, db, auth, _, employee, outsider = web_case
+    employee.status = outsider.status = "Desvinculado"
+    db.commit()
+    path = f"/app/employees/{employee.id}"
+    action = f"{path}/reactivate"
+    assert client.post(action).status_code == 403
+    data = {"csrf_token": token(client, path)}
+    assert client.post(f"/app/employees/{outsider.id}/reactivate", data=data).status_code == 404
+    auth["user"].role = "auxiliar"
+    assert action not in client.get(path).text
+    assert client.post(action, data=data).status_code == 403
+    db.refresh(employee)
+    assert employee.status == "Desvinculado"
+
+
 def test_employee_exit_rejects_prior_admission_date_and_non_authorized_role(web_case):
     client, db, box, company, employee, _ = web_case
     employee.admission_date = date(2025, 1, 1)

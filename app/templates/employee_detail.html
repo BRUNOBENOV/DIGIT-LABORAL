@@ -24,6 +24,9 @@
 {% block content %}
 {% if user.role in ['administrador','contador','auxiliar'] %}<div class="dl"><a class="dl-button dl-payroll-link" href="/app/liquidaciones?company_id={{ employee.company_id }}&amp;employee_id={{ employee.id }}">Calcular y emitir una liquidación →</a></div>{% endif %}
 <a class="back-link dark" href="/app/employees">← Volver a funcionarios</a>
+{% if request.query_params.get('reactivated') == '1' and employee.status == 'Activo' %}
+  <div class="alert success" role="status">Legajo reactivado. El cambio quedó registrado en el historial.</div>
+{% endif %}
 <nav class="maintenance-subnav maintenance-detail-nav" aria-label="Subsecciones del expediente del funcionario">
   <a class="is-active" href="#employee-overview" aria-current="location">Resumen</a>
   <a href="#timeline">Historial <span>{{ events|length }}</span></a>
@@ -94,6 +97,8 @@
     {% if user.role in ['administrador','contador'] %}
       {% if employee.status == 'Activo' and not employee_exit %}
         <button class="btn outline full" type="button" data-modal-open="dossierExitModal" style="margin-top:12px">Registrar egreso</button>
+      {% elif can_reactivate %}
+        {% include 'components/employee_reactivate_form.html' %}
       {% endif %}
       {% if employee.status == 'Archivado' %}
         <form method="post" action="/app/employees/{{ employee.id }}/restore" style="margin-top:12px"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn outline full" type="submit">Restaurar legajo</button></form>
