@@ -44,6 +44,20 @@ def _extract_codes(notes: str | None) -> set[str]:
     return {part.strip() for part in match.group(1).split(",") if part.strip()}
 
 
+def reactivation_issue(
+    employee: Employee, *, company: Company | None, has_settlement: bool, has_exit: bool,
+) -> str:
+    if employee.status != "Desvinculado":
+        return "Ya está Activo." if employee.status == "Activo" else "Estado distinto de Desvinculado."
+    if has_settlement:
+        return "Tiene una liquidación final vinculada."
+    if has_exit:
+        return "Tiene un egreso formal no cancelado."
+    if company is None or company.status == "Archivada":
+        return "La empresa está archivada o no está disponible."
+    return ""
+
+
 def parse_correction_file(content: bytes, filename: str) -> tuple[str, list[dict]]:
     """Require a single-column XLSX/CSV with employee_id or CODTRA as its header."""
     if not content:
@@ -163,14 +177,10 @@ def build_correction_preview(
         elif not reason and len(group) > 1:
             reason = "CODTRA ambiguo: corresponde a varios legajos o empresas."
         elif not reason and employee is not None:
-            if employee.status != "Desvinculado":
-                reason = "Ya está Activo." if employee.status == "Activo" else "Estado distinto de Desvinculado."
-            elif employee.id in has_settlement:
-                reason = "Tiene una liquidación final vinculada."
-            elif employee.id in has_exit:
-                reason = "Tiene un egreso formal no cancelado."
-            elif companies.get(employee.company_id) is None or companies[employee.company_id].status == "Archivada":
-                reason = "La empresa está archivada o no está disponible."
+            reason = reactivation_issue(
+                employee, company=companies.get(employee.company_id),
+                has_settlement=employee.id in has_settlement, has_exit=employee.id in has_exit,
+            )
         seen.add(normalized)
         reviewed.append({
             "source_row": item["source_row"],

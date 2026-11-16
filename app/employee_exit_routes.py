@@ -1,4 +1,4 @@
-"""Labor exit workflow, final-settlement payment and non-destructive dossier archive.
+"""Labor exit workflow, final-settlement payment and dossier status corrections.
 
 Employment termination is distinct from accounting approval and proof of payment.
 Historical imports do not create these manual exit workflows.
@@ -23,6 +23,7 @@ from .models import (
     EmployeeExit, FinalSettlement, GeneratedCertificate, Studio, User,
 )
 from .period_coverage import current_paraguay_date
+from .post_import_reactivation import reactivation_issue
 from .salary_history import salary_at
 from .database import SessionLocal, apply_session_tenant_context
 
@@ -55,9 +56,14 @@ def latest_settlement(db: Session, employee_id: int) -> FinalSettlement | None:
         .order_by(FinalSettlement.id.desc()).limit(1)
     )
 
-def _allowed_employee(db: Session, user: User, employee_id: int) -> Employee:
-    employee = db.get(Employee, employee_id)
-    if not employee or employee.company_id not in core.company_ids_for_user(db, user):
+def _allowed_employee(db: Session, user: User, employee_id: int, *, lock: bool = False) -> Employee:
+    query = select(Employee).where(
+        Employee.id == employee_id, Employee.company_id.in_(core.company_ids_for_user(db, user)),
+    )
+    if lock:
+        query = query.with_for_update().execution_options(populate_existing=True)
+    employee = db.scalar(query)
+    if employee is None:
         raise HTTPException(404, "Funcionario no encontrado en tu estudio.")
     return employee
 
@@ -229,7 +235,7 @@ async def register_exit(
     user: User = Depends(core.require_roles("administrador", "contador")),
     db: Session = Depends(core.get_db),
 ):
-    employee = _allowed_employee(db, user, employee_id)
+    employee = _allowed_employee(db, user, employee_id, lock=True)
     today = current_paraguay_date()
     if employee.status != "Activo":
         raise HTTPException(409, "Solo se puede iniciar un egreso desde un legajo activo.")
@@ -281,12 +287,46 @@ async def register_exit(
         status_code=303,
     )
 
+@router.post("/app/employees/{employee_id}/reactivate")
+def reactivate_employee(
+    employee_id: int,
+    expected_termination_date: str = Form(""),
+    user: User = Depends(core.require_roles("administrador", "contador")),
+    db: Session = Depends(core.get_db),
+):
+    employee = _allowed_employee(db, user, employee_id, lock=True)
+    issue = reactivation_issue(
+        employee, company=employee.company,
+        has_settlement=latest_settlement(db, employee.id) is not None,
+        has_exit=latest_exit(db, employee.id) is not None,
+    )
+    if issue:
+        raise HTTPException(409, issue)
+    former_date = employee.termination_date.isoformat() if employee.termination_date else ""
+    if expected_termination_date != former_date:
+        raise HTTPException(409, "La fecha de salida cambió. Volvé a abrir el expediente y revisá el legajo.")
+
+    employee.status = "Activo"
+    employee.termination_date = None
+    employee.updated_at = datetime.now(UTC)
+    employee.updated_by = user.email
+    detail = (
+        "Se confirmó la continuidad del vínculo laboral. Estado anterior Desvinculado. "
+        f"Fecha de salida anterior: {former_date or 'sin fecha'}."
+    )
+    core.add_employee_event(
+        db, employee, user, "Corrección administrativa", "Legajo reactivado", detail, current_paraguay_date(),
+    )
+    core.write_audit(db, user, "reactivar_legajo", "funcionario", str(employee.id), detail)
+    db.commit()
+    return RedirectResponse(f"/app/employees/{employee.id}?reactivated=1", status_code=303)
+
 @router.post("/app/employees/{employee_id}/archive")
 def archive_employee(
     employee_id: int, user: User = Depends(core.require_roles("administrador", "contador")),
     db: Session = Depends(core.get_db),
 ):
-    employee = _allowed_employee(db, user, employee_id)
+    employee = _allowed_employee(db, user, employee_id, lock=True)
     if employee.status == "Archivado":
         return RedirectResponse(f"/app/employees/{employee.id}", status_code=303)
     state = {"status": employee.status, "termination_date": employee.termination_date.isoformat() if employee.termination_date else None}
@@ -304,7 +344,7 @@ def restore_employee(
     employee_id: int, user: User = Depends(core.require_roles("administrador", "contador")),
     db: Session = Depends(core.get_db),
 ):
-    employee = _allowed_employee(db, user, employee_id)
+    employee = _allowed_employee(db, user, employee_id, lock=True)
     if employee.status != "Archivado":
         raise HTTPException(409, "El legajo no está archivado.")
     archived = db.scalar(

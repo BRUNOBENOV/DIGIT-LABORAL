@@ -116,6 +116,7 @@
               <button type="button" data-modal-open="registerExitModal" data-register-exit data-employee-id="{{ employee.id }}" data-employee-name="{{ employee.full_name }}" data-admission-date="{{ employee.admission_date.isoformat() }}">Registrar egreso</button>
             {% endif %}
           {% elif employee.status == 'Desvinculado' %}
+            {% if employee.id in reactivatable_employee_ids %}{% include 'components/employee_reactivate_form.html' %}{% endif %}
             {% if settlements_by_employee.get(employee.id) %}<a href="/app/final-settlements/{{ settlements_by_employee[employee.id].id }}">Ver liquidación final</a>{% else %}<span class="employee-no-settlement">Liquidación no registrada (legajo histórico)</span>{% endif %}
           {% endif %}
           {% if employee.status == 'Archivado' %}
