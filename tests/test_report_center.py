@@ -251,3 +251,9 @@ def test_report_filter_form_does_not_offer_ignored_fields():
         assert settlements.status_code == 200
         assert "Año del período" in settlements.text
         assert 'name="period"' in settlements.text
+
+        for yearly in ("planilla-de-aguinaldo", "listado-vacacion"):
+            response = client.get(f"/app/reports/{yearly}")
+            assert response.status_code == 200
+            assert 'name="year"' in response.text
+            assert 'name="period"' not in response.text
