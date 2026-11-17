@@ -106,6 +106,25 @@ test('la planilla sale a la pestaña REOP activada, incluso en otra ventana, con
   assert.equal(resumed.base64, undefined);
 });
 
+test('bloquea entregar dos veces el mismo Excel y permite una planilla corregida', async () => {
+  const bridge = extension();
+  assert.equal((await bridge.external(stage)).ok, true);
+  await bridge.click();
+  assert.equal((await bridge.internal({type: 'info'})).ok, true);
+  const take = {type: 'take', batchId: stage.batchId, patronal: stage.patronal};
+  assert.equal((await bridge.internal(take)).ok, true);
+  for (const attempt of [stage, {...stage, batchId: '8'}]) {
+    const duplicate = await bridge.external(attempt);
+    assert.equal(duplicate.ok, false);
+    assert.match(duplicate.message, /misma planilla ya fue entregada a REOP/);
+  }
+  const revised = Buffer.from('PK\x03\x04 corrected synthetic workbook');
+  assert.equal((await bridge.external({
+    ...stage, base64: revised.toString('base64'),
+    sha256: createHash('sha256').update(revised).digest('hex'),
+  })).ok, true);
+});
+
 test('el resultado observado queda vinculado al lote y a los documentos de origen y destino', async () => {
   const bridge = extension();
   const poll = {type: 'status', batchId: stage.batchId};
