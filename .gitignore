@@ -1,0 +1,23 @@
+# Archivos privados y locales: nunca agregar datos de clientes al repositorio.
+.env
+.env.*
+!.env.example
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+*.log
+
+# Bases de trabajo y documentos subidos (el archivo ya versionado requiere auditoría aparte).
+data/*.db
+data/*.sqlite
+data/*.sqlite3
+app/data/*.db
+app/data/uploads/
+data/uploads/
+
+# Exportaciones temporales de planillas/recibos.
+*.bak
+*.tmp
