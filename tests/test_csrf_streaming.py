@@ -103,7 +103,8 @@ def test_csrf_rejects_oversize_body_on_regular_routes_without_content_length(mon
     assert any(message.get("status") == 413 for message in calls)
 
 
-def test_csrf_rejects_oversize_content_length_without_reading_body(monkeypatch):
+@pytest.mark.parametrize("length", [b"270000", b"9" * 5000, b"\xb2"])
+def test_csrf_rejects_oversize_content_length_without_reading_body(monkeypatch, length):
     from types import SimpleNamespace
     import app.main as main_module
 
@@ -121,7 +122,7 @@ def test_csrf_rejects_oversize_content_length_without_reading_body(monkeypatch):
     asyncio.run(main_module.CSRFMiddleware(endpoint)(
         {"type": "http", "method": "POST", "path": "/app/companies",
          "session": {"csrf_token": "synthetic-csrf-token"},
-         "headers": [(b"content-length", b"270000")]},
+         "headers": [(b"content-length", length)]},
         receive, send,
     ))
     assert any(message.get("status") == 413 for message in calls)
