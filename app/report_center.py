@@ -16,7 +16,7 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_LEFT
-from reportlab.lib.pagesizes import A4, landscape
+from reportlab.lib.pagesizes import A3, A4, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
@@ -205,7 +205,21 @@ def _employee_query(company_ids: list[int], company_id: int | None, employee_id:
         clause = or_(Employee.termination_date.is_not(None), Employee.status.ilike("%baja%"), Employee.status.ilike("%desped%"), Employee.status.ilike("%egreso%"))
         query, count_query = query.where(clause), count_query.where(clause)
     if year is not None:
-        clause = func.extract("year", Employee.admission_date) == year
+        if spec.variant == "terminated":
+            # A dismissal report is scoped by the recorded termination year,
+            # not the year the worker was first hired.
+            clause = func.extract("year", Employee.termination_date) == year
+        elif spec.variant == "annual" or spec.key in {
+            "p-empleados-obreros", "p-reg-gral-personas-ocupadas",
+        }:
+            # Annual registers show workers employed at any point in that year.
+            clause = (
+                (Employee.admission_date <= date(year, 12, 31))
+                & or_(Employee.termination_date.is_(None), Employee.termination_date >= date(year, 1, 1))
+            )
+        else:
+            # Admission-date listings retain their existing meaning.
+            clause = func.extract("year", Employee.admission_date) == year
         query, count_query = query.where(clause), count_query.where(clause)
     if q:
         term = f"%{q}%"
@@ -286,7 +300,7 @@ def _payroll_line_query(company_ids: list[int], company_id: int | None, employee
     return query, count_query
 
 
-def _calculation_query(company_ids: list[int], company_id: int | None, employee_id: int | None, q: str, status_filter: str, year: int | None, spec: ReportSpec):
+def _calculation_query(company_ids: list[int], company_id: int | None, employee_id: int | None, q: str, status_filter: str, year: int | None, period: str | None, spec: ReportSpec):
     query = select(CalculationRecord, Company, Employee).join(
         Company, CalculationRecord.company_id == Company.id
     ).outerjoin(Employee, CalculationRecord.employee_id == Employee.id).where(
@@ -317,7 +331,19 @@ def _calculation_query(company_ids: list[int], company_id: int | None, employee_
         clause = CalculationRecord.status == status_filter
         query, count_query = query.where(clause), count_query.where(clause)
     if year is not None:
-        clause = func.extract("year", CalculationRecord.created_at) == year
+        # The reference period is authoritative when present. Older calculations
+        # without a reference period retain their registration-year fallback.
+        clause = or_(
+            CalculationRecord.reference_period.startswith(f"{year:04d}"),
+            (
+                or_(CalculationRecord.reference_period.is_(None), CalculationRecord.reference_period == "")
+                & (func.extract("year", CalculationRecord.created_at) == year)
+            ),
+        )
+        query, count_query = query.where(clause), count_query.where(clause)
+    if period:
+        # Month filter was previously ignored for every calculation-based report.
+        clause = CalculationRecord.reference_period.startswith(period)
         query, count_query = query.where(clause), count_query.where(clause)
     return query, count_query
 
@@ -514,7 +540,8 @@ def _row(spec: ReportSpec, value: Any) -> dict[str, Any]:
         return dict(zip(report_columns(spec), [item.period_year, company.legal_name, employee.full_name, item.entitled_days, item.used_days, pending, _date(item.start_date), _date(item.end_date), item.status]))
     if dataset == "medical_exam":
         item, employee, company = value
-        state = "Vencido" if item.expires_on < date.today() else ("Por vencer" if (item.expires_on - date.today()).days <= 30 else "Vigente")
+        today = current_paraguay_date()
+        state = "Vencido" if item.expires_on < today else ("Por vencer" if (item.expires_on - today).days <= 30 else "Vigente")
         return dict(zip(report_columns(spec), [item.exam_code, company.legal_name, employee.full_name, item.exam_type, _date(item.exam_date), item.result, _date(item.expires_on), state, item.observations]))
     if dataset == "operation":
         item, employee, company = value
@@ -601,7 +628,7 @@ def fetch_report(
         else:
             query = query.order_by(Payroll.period.desc(), Employee.full_name.asc(), PayrollLine.id.desc())
     elif spec.dataset == "calculation":
-        query, count_query = _calculation_query(company_ids, company_id, employee_id, q, status_filter, year, spec)
+        query, count_query = _calculation_query(company_ids, company_id, employee_id, q, status_filter, year, period, spec)
         calc_sort = {"date": CalculationRecord.created_at, "amount": CalculationRecord.amount, "type": CalculationRecord.calculation_type, "status": CalculationRecord.status, "period": CalculationRecord.reference_period}
         if sort in calc_sort:
             order_column = calc_sort[sort]
@@ -744,11 +771,18 @@ def make_xlsx(spec: ReportSpec, rows: list[dict[str, Any]]) -> bytes:
 
 def make_pdf(spec: ReportSpec, rows: list[dict[str, Any]], company_name: str = "") -> bytes:
     output = io.BytesIO()
-    page = landscape(A4) if len(report_columns(spec)) > 7 else A4
+    column_count = len(report_columns(spec))
+    # A4 landscape makes 18-column payroll reports unreadable. Use the larger
+    # paper format for data-dense exports, preserving every stored column.
+    page = landscape(A3) if column_count > 12 else (landscape(A4) if column_count > 7 else A4)
+    text_size = 7 if column_count > 12 else (8 if column_count > 7 else 9)
     doc = SimpleDocTemplate(output, pagesize=page, rightMargin=10 * mm, leftMargin=10 * mm, topMargin=12 * mm, bottomMargin=12 * mm, title=spec.label)
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle("ReportTitle", parent=styles["Title"], alignment=TA_LEFT, textColor=colors.HexColor("#05256D"), fontName="Helvetica-Bold", fontSize=15, leading=18, spaceAfter=4)
-    small_style = ParagraphStyle("ReportSmall", parent=styles["Normal"], fontSize=7, leading=8, wordWrap="CJK")
+    small_style = ParagraphStyle(
+        "ReportSmall", parent=styles["Normal"],
+        fontSize=text_size, leading=text_size + 1.5, wordWrap="CJK",
+    )
     elements = [Paragraph(spec.label, title_style), Paragraph(xml_escape(f"Digit Laboral · Emitido {date.today().strftime('%d/%m/%Y')}" + (f" · {company_name}" if company_name else "")), small_style), Spacer(1, 4 * mm)]
     if spec.note:
         elements.extend([Paragraph(spec.note, small_style), Spacer(1, 3 * mm)])
@@ -757,13 +791,13 @@ def make_pdf(spec: ReportSpec, rows: list[dict[str, Any]], company_name: str = "
     for row in rows:
         data.append([Paragraph(str(row.get(column, "") if row.get(column) is not None else "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\n", "<br/>"), small_style) for column in report_columns(spec)])
     width = page[0] - 20 * mm
-    col_widths = [width / max(1, len(report_columns(spec)))] * len(report_columns(spec))
+    col_widths = [width / max(1, column_count)] * column_count
     table = Table(data, colWidths=col_widths, repeatRows=1, hAlign="LEFT")
     table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#05256D")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 6),
+        ("FONTSIZE", (0, 0), (-1, -1), text_size),
         ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#CFD8E5")),
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F2F5FA")]),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
