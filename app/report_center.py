@@ -215,7 +215,13 @@ def _employee_query(company_ids: list[int], company_id: int | None, employee_id:
             # Annual registers show workers employed at any point in that year.
             clause = (
                 (Employee.admission_date <= date(year, 12, 31))
-                & or_(Employee.termination_date.is_(None), Employee.termination_date >= date(year, 1, 1))
+                & or_(
+                    Employee.termination_date >= date(year, 1, 1),
+                    (
+                        Employee.termination_date.is_(None)
+                        & Employee.status.notin_(("Desvinculado", "Archivado"))
+                    ),
+                )
             )
         else:
             # Admission-date listings retain their existing meaning.
