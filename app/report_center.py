@@ -783,7 +783,7 @@ def make_pdf(spec: ReportSpec, rows: list[dict[str, Any]], company_name: str = "
         "ReportSmall", parent=styles["Normal"],
         fontSize=text_size, leading=text_size + 1.5, wordWrap="CJK",
     )
-    elements = [Paragraph(spec.label, title_style), Paragraph(xml_escape(f"Digit Laboral · Emitido {date.today().strftime('%d/%m/%Y')}" + (f" · {company_name}" if company_name else "")), small_style), Spacer(1, 4 * mm)]
+    elements = [Paragraph(spec.label, title_style), Paragraph(xml_escape(f"Digit Laboral · Emitido {current_paraguay_date().strftime('%d/%m/%Y')}" + (f" · {company_name}" if company_name else "")), small_style), Spacer(1, 4 * mm)]
     if spec.note:
         elements.extend([Paragraph(spec.note, small_style), Spacer(1, 3 * mm)])
     headers = [Paragraph(str(column), small_style) for column in report_columns(spec)]
