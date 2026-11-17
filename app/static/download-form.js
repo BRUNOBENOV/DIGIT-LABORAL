@@ -69,8 +69,12 @@
     const existingFile = form.querySelector('[data-reop-file]');
     const status = form.querySelector('[data-download-status]');
     const batchLink = form.querySelector('[data-download-batch]');
+    const resumeButton = form.querySelector('[data-reop-resume]');
+    let savedBatch;
+    try { savedBatch = JSON.parse(form.dataset.savedBatch || 'null'); } catch (_) { savedBatch = null; }
     if (!buttons.length || !status) return;
     if (bridgeButton && assistantId) bridgeButton.hidden = false;
+    if (bridgeButton && savedBatch && !savedBatch.reusable) bridgeButton.disabled = true;
     let busy = false;
     let followToken = 0;
     let followTimer;
@@ -81,6 +85,23 @@
       status.textContent = text;
       status.dataset.state = state;
     };
+    function linkBatch(batchId) {
+      if (!batchLink || !/^\d+$/.test(String(batchId || ''))) return;
+      const url = new URL(batchLink.href, window.location.origin);
+      url.searchParams.set('batch_id', batchId);
+      url.hash = 'lote-' + batchId;
+      batchLink.href = url.href;
+      batchLink.hidden = false;
+    }
+    async function persistProgress(batchId, progress) {
+      try {
+        await fetch('/app/compliance/salary-import/batches/' + batchId + '/progress', {
+          method: 'POST', credentials: 'same-origin',
+          headers: {'Content-Type': 'application/json', 'X-CSRF-Token': form.elements.csrf_token.value},
+          body: JSON.stringify(progress),
+        });
+      } catch (_) { /* Live status remains available from the extension. */ }
+    }
     const filename = (header, fallback) => {
       const utf8 = /filename\*=UTF-8''([^;]+)/i.exec(header);
       const plain = /filename="([^"]+)"|filename=([^;]+)/i.exec(header);
@@ -138,6 +159,7 @@
               const style = progress.phase === 'corrections' ? 'error'
                 : ['prevalidated', 'imported'].includes(progress.phase) ? 'success' : 'loading';
               notify(progressText(batchId, progress), style);
+              await persistProgress(batchId, progress);
             }
             if (progress.phase === 'imported') return;
           } else if (Object.hasOwn(reviewMessages, state.review) && state.review !== previous) {
@@ -154,9 +176,45 @@
       }
       followTimer = window.setTimeout(check, 3000);
     }
+    async function resume(explicit = false) {
+      if (!savedBatch?.resumeKey || !assistantId) return;
+      linkedBatch = String(savedBatch.id);
+      linkBatch(linkedBatch);
+      if (portalLink) portalLink.hidden = false;
+      if (savedBatch.progress) notify(progressText(linkedBatch, savedBatch.progress) + ' Último estado guardado.', 'loading');
+      try {
+        const capabilities = await extensionMessage(assistantId, {type: 'ping'});
+        if (!capabilities.resume) {
+          if (explicit) notify('Para retomar el seguimiento, actualizá el asistente de Chrome desde esta página.', 'loading');
+          return;
+        }
+        const state = await extensionMessage(assistantId, {
+          type: 'resume', batchId: linkedBatch, resumeKey: savedBatch.resumeKey,
+        });
+        if (!state.active) {
+          if (explicit || !savedBatch.progress) notify('Lote #' + linkedBatch + ' guardado. Consultá el resultado en REOP antes de volver a cargar.', 'loading');
+          return;
+        }
+        if (resumeButton) resumeButton.hidden = true;
+        if (state.progress) {
+          notify(progressText(linkedBatch, state.progress), state.progress.phase === 'corrections' ? 'error' : 'success');
+          await persistProgress(linkedBatch, state.progress);
+        }
+        showReopAction(!['corrections', 'imported'].includes(state.progress?.phase), state.progress?.phase === 'prevalidated');
+        if (state.progress?.phase !== 'imported') follow(linkedBatch);
+      } catch (_) {
+        if (explicit) notify('El lote está guardado. Revisá REOP o actualizá el asistente para retomar el seguimiento.', 'loading');
+      }
+    }
+    resumeButton?.addEventListener('click', () => resume(true));
+    if (savedBatch) {
+      linkBatch(savedBatch.id);
+      if (savedBatch.resumeKey) resume();
+    }
     form.addEventListener('submit', async event => {
       if (event.defaultPrevented) return;
       event.preventDefault();
+      if (form.dataset.reviewStale === 'true') return;
       if (busy) return;
       const button = event.submitter || buttons[0];
       const bridge = Boolean(assistantId && bridgeButton && button === bridgeButton);
@@ -223,12 +281,16 @@
         if (!blob.size) throw new Error('El archivo recibido está vacío. Volvé a verificar la planilla.');
         const fileName = filename(disposition, `salarios.${format}`);
         const batchId = response.headers.get('X-Integration-Batch-Id');
-        if (batchLink && /^\d+$/.test(batchId || '')) {
-          const url = new URL(batchLink.href, window.location.origin);
-          url.searchParams.set('batch_id', batchId);
-          url.hash = `lote-${batchId}`;
-          batchLink.href = url.href;
-          batchLink.hidden = false;
+        linkBatch(batchId);
+        if (/^\d+$/.test(batchId || '')) {
+          let reuse = form.elements.reuse_batch_id;
+          if (!reuse) {
+            reuse = document.createElement('input');
+            reuse.type = 'hidden';
+            reuse.name = 'reuse_batch_id';
+            form.append(reuse);
+          }
+          reuse.value = batchId;
         }
         if (bridge) {
           if (format !== 'xlsx' || blob.size > 5 * 1024 * 1024 || !/^\d+$/.test(batchId || '')) {
@@ -238,6 +300,7 @@
             type: 'stage', protocol, batchId, prevalidate: startFromDigit, filename: fileName, base64: await encodeFile(blob),
             period: response.headers.get('X-REOP-Period'), patronal: response.headers.get('X-REOP-Patronal'),
             rows: response.headers.get('X-REOP-Rows'), sha256: response.headers.get('X-REOP-SHA256'),
+            resumeKey: response.headers.get('X-REOP-Resume-Key'),
           });
           if (portalLink) portalLink.hidden = false;
           linkedBatch = startFromDigit ? batchId : undefined;

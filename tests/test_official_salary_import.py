@@ -80,6 +80,34 @@ def test_reop_export_accepts_dotted_patronal_and_reports_truly_missing_numbers(m
     assert all("falta número patronal" not in error for error in errors)
 
 
+def test_reop_automatic_payment_preserves_each_workers_recorded_method(monkeypatch):
+    company, line, employee, detail = fixture_records(monkeypatch)
+    other = SimpleNamespace(**vars(employee))
+    other.id, other.document_number, other.full_name = 4, "7654321", "OTRO TRABAJADOR"
+    cash = SimpleNamespace(**vars(detail))
+    cash.payment_method = "Efectivo"
+    monkeypatch.setattr(service, "_source", lambda *args: (
+        SimpleNamespace(status="Cerrada"), [(line, employee, detail), (line, other, cash)],
+    ))
+    rows, errors = service.prepare_import(None, company, "2026-10", "REOP", payment_code="auto")
+    assert not errors
+    assert [row[4] for row in rows] == [3, 1]
+    assert detail.payment_method == "Transferencia" and cash.payment_method == "Efectivo"
+    cash.payment_method = ""
+    _, errors = service.prepare_import(None, company, "2026-10", "REOP", payment_code="auto")
+    assert any("falta una forma de pago reconocida" in error for error in errors)
+
+
+def test_patronal_observations_are_grouped_with_the_affected_workers():
+    from app.salary_import_view import group_import_errors
+    grouped = group_import_errors([
+        "PRIMER TRABAJADOR (legajo 4): falta número patronal del organismo.",
+        "SEGUNDO TRABAJADOR (legajo 5): falta número patronal del organismo.",
+    ], 12)
+    assert len(grouped) == 1 and len(grouped[0]["workers"]) == 2
+    assert grouped[0]["url"] == "/app/companies/12?open=editCompanyModal"
+
+
 def test_reop_blank_unused_discount_pairs_in_export(monkeypatch):
     """REOP rejects numeric 0 with a blank concept (CONCEPTO_VACIO)."""
     company, _, _, _ = fixture_records(monkeypatch)

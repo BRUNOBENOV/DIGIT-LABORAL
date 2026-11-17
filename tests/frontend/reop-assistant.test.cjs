@@ -142,6 +142,25 @@ test('la copia temporal se descarta por vencimiento o al salir de la vista previ
   assert.equal((await bridge.external({type: 'ping'})).busy, false);
 });
 
+test('retoma un lote después de recargar únicamente con su clave de recuperación', async () => {
+  const bridge = extension();
+  const resumeKey = 'a'.repeat(43);
+  const reloaded = {...source, documentId: 'reloaded-doc'};
+  assert.equal((await bridge.external({...stage, resumeKey})).ok, true);
+  await bridge.click();
+  assert.equal((await bridge.internal({type: 'info'})).ok, true);
+  await bridge.internal({type: 'take', batchId: stage.batchId, patronal: stage.patronal});
+  await bridge.internal({type: 'progress', batchId: stage.batchId, phase: 'prevalidated', valid: 2, errors: 0, imported: 0});
+  bridge.navigate(source.tab.id);
+  assert.equal((await bridge.external({type: 'status', batchId: stage.batchId}, reloaded)).active, false);
+  assert.equal((await bridge.external({type: 'resume', batchId: stage.batchId, resumeKey: 'b'.repeat(43)}, reloaded)).active, false);
+  const resumed = await bridge.external({type: 'resume', batchId: stage.batchId, resumeKey}, reloaded);
+  assert.equal(resumed.active, true);
+  assert.equal(resumed.progress.phase, 'prevalidated');
+  assert.equal((await bridge.external({type: 'status', batchId: stage.batchId}, source)).active, false);
+  assert.equal((await bridge.external({type: 'status', batchId: stage.batchId}, reloaded)).active, true);
+});
+
 test('publica la cola del lote y descarta detalles o conteos que no corresponden a esa etapa', async () => {
   const bridge = extension();
   const batch = {batchId: stage.batchId};

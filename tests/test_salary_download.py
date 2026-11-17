@@ -127,6 +127,75 @@ def test_preview_has_recoverable_download_and_versioned_shared_scripts(download_
         assert script and "?v=" in script["src"]
 
 
+def test_saved_salary_batch_reopens_with_workers_and_reuses_identical_bytes(download_case):
+    client, db, _, company, employee, outsider, source = download_case
+    original = client.post("/app/compliance/salary-import/export", data=data(download_case))
+    assert original.status_code == 200
+    batch_id = original.headers["X-Integration-Batch-Id"]
+    page = client.get("/app/compliance/salary-import", params={
+        "company_id": company.id, "employee_id": employee.id, "period": "2026-10", "payment_code": "1",
+    })
+    html = BeautifulSoup(page.text, "html.parser")
+    reviewed = html.select_one("[data-import-worker-row]")
+    assert employee.document_number in reviewed.text and employee.full_name in reviewed.text
+    saved = html.select_one("form[data-saved-batch]")
+    assert saved and json.loads(saved["data-saved-batch"])["id"] == int(batch_id)
+    assert html.select_one("[data-salary-import-filters]")
+    assert html.select_one('script[src*="salary-import.js"]')
+    reused = client.post("/app/compliance/salary-import/export", data=data(download_case, reuse_batch_id=batch_id))
+    assert reused.status_code == 200 and reused.content == original.content
+    assert db.scalar(select(func.count(IntegrationBatch.id))) == 1
+    rejected = client.post("/app/compliance/salary-import/export", data=data(
+        download_case, reuse_batch_id=batch_id, company_id=outsider.company_id, employee_id=outsider.id,
+    ))
+    assert rejected.status_code == 404
+    inputs = json.loads(source.input_json)
+    inputs["hours_worked"] = "180"
+    source.input_json = json.dumps(inputs)
+    db.commit()
+    changed = client.post("/app/compliance/salary-import/export", data=data(download_case, reuse_batch_id=batch_id))
+    assert changed.status_code == 409
+    assert db.scalar(select(func.count(IntegrationBatch.id))) == 1
+
+
+def test_reop_progress_is_saved_as_an_observation_and_cannot_forge_completion(download_case):
+    client, db, _, _, _, _, _ = download_case
+    original = client.post("/app/compliance/salary-import/export", data=data(download_case))
+    batch_id = original.headers["X-Integration-Batch-Id"]
+    url = f"/app/compliance/salary-import/batches/{batch_id}/progress"
+    assert client.post(url, json={"phase": "prevalidated", "valid": 1, "errors": 0, "imported": 0}).status_code == 403
+    headers = {"X-CSRF-Token": token(client)}
+    assert client.post(url, headers=headers, json={
+        "phase": "imported", "valid": 1, "errors": 0, "imported": 2,
+    }).status_code == 422
+    state = {"phase": "prevalidated", "valid": 1, "errors": 0, "imported": 0}
+    assert client.post(url, headers=headers, json=state).status_code == 200
+    batch = db.get(IntegrationBatch, int(batch_id))
+    assert batch.status == "Generado"
+    assert json.loads(batch.payload_json)["assistant_progress"]["phase"] == "prevalidated"
+    assert client.post(url, headers=headers, json={**state, "phase": "imported", "imported": 1}).status_code == 200
+    assert client.post(url, headers=headers, json={"phase": "attached"}).status_code == 200
+    db.refresh(batch)
+    assert json.loads(batch.payload_json)["assistant_progress"]["phase"] == "imported"
+    assert batch.status == "Generado"
+
+
+def test_attendance_correction_returns_to_the_full_company_review(download_case):
+    from urllib.parse import parse_qs, urlsplit
+    client, _, _, company, _, _, _ = download_case
+    page = client.get("/app/compliance/salary-import", params={
+        "company_id": company.id, "period": "2026-10", "source_type": "auto", "payment_code": "1",
+    })
+    html = BeautifulSoup(page.text, "html.parser")
+    form = html.select_one("[data-salary-import-details]")
+    fields = {node["name"]: node.get("value", "") for node in form.select("input[name]") if node.get("type") != "checkbox"}
+    response = client.post("/app/compliance/salary-import/details", data={**fields, "confirmed": "si"}, follow_redirects=False)
+    assert response.status_code == 303
+    query = parse_qs(urlsplit(response.headers["location"]).query)
+    assert query["company_id"] == [str(company.id)] and query["payment_code"] == ["1"]
+    assert query["source_type"] == ["auto"] and "employee_id" not in query
+
+
 def reop_review_from_preview(case):
     client, _, _, company, employee, *_ = case
     response = client.get("/app/compliance/salary-import", params={

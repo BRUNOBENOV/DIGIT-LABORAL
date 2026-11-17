@@ -10808,7 +10808,7 @@ def salary_import_page(
     company_id: OptionalQueryId = None,
     period: str = "",
     authority: str = "REOP",
-    payment_code: str = "",
+    payment_code: str = "auto",
     other_category: str = "",
     rei_category: str = "",
     name_order: str = "",
@@ -10824,6 +10824,7 @@ def salary_import_page(
         salary_excluded_records, approved_employee_choices, salary_export_employee_eligible,
     )
     from .reop_assistant import REOP_ASSISTANT_ID, reop_assistant_patronal, reop_assistant_review
+    from .salary_import_view import group_import_errors, reviewed_workers
 
     ids = company_ids_for_user(db, user)
     companies = seed_choices(
@@ -10918,6 +10919,27 @@ def salary_import_page(
         )
         if preview and company and authority == "REOP" else []
     )
+    review_hash = reop_assistant_review(rows, excluded_salary, effective_source) if preview and not errors else ""
+    worker_rows = reviewed_workers(rows, approved_choices, errors, authority)
+    saved_batch = None
+    if company and preview and user.role in {"administrador", "contador"}:
+        recent = db.scalars(select(IntegrationBatch).where(
+            IntegrationBatch.company_id == company.id, IntegrationBatch.authority == authority,
+            IntegrationBatch.period == period, IntegrationBatch.batch_type == "Importación de salarios",
+            IntegrationBatch.created_by == user.email,
+        ).order_by(IntegrationBatch.id.desc()).limit(20))
+        for batch in recent:
+            payload = json_dict(batch.payload_json)
+            if payload.get("employee_scope_id") == employee_id:
+                saved_batch = {
+                    "id": batch.id, "status": batch.status, "rows": batch.item_count,
+                    "resumeKey": payload.get("assistant_resume_key", ""),
+                    "progress": payload.get("assistant_progress"),
+                    "matches": bool(review_hash and payload.get("review_hash") == review_hash),
+                    "reusable": batch.status == "Generado" and not batch.receipt_file_name
+                        and (payload.get("assistant_progress") or {}).get("phase") != "imported",
+                }
+                break
     return render(
         request, "salary_import.html", db, user, companies=companies,
         selected_company=company, period=period, authority=authority,
@@ -10933,8 +10955,10 @@ def salary_import_page(
         excluded_salary=excluded_salary, approved_choices=approved_choices,
         preview_headers=preview_headers, preview_rows=preview_rows,
         reop_assistant_id=assistant_id, reop_assistant_patronal=assistant_patronal,
-        reop_assistant_review=reop_assistant_review(rows, excluded_salary, effective_source) if assistant_patronal else "",
+        reop_assistant_review=review_hash if assistant_patronal else "",
         vacation_links=vacation_links,
+        worker_rows=worker_rows, error_groups=group_import_errors(errors, company.id) if company else [],
+        saved_batch=saved_batch,
     )
 
 
@@ -10966,7 +10990,7 @@ def approve_pending_salary_import(
         raise HTTPException(422, "Organismo de exportación inválido.")
     if not re.fullmatch(r"(19|20)\d{2}-(0[1-9]|1[0-2])", period or ""):
         raise HTTPException(422, "Seleccioná un período válido AAAA-MM.")
-    if authority == "REOP" and payment_code not in {"1", "2", "3", "4"}:
+    if authority == "REOP" and payment_code not in {"auto", "1", "2", "3", "4"}:
         raise HTTPException(422, "Seleccioná una forma de pago real para verificar REOP.")
 
     # Re-fetch the selected company/period on the server; do not trust employee
@@ -11141,6 +11165,7 @@ def save_salary_import_details(
     payment_method: Annotated[str, Form()] = "",
     confirmed: Annotated[str, Form()] = "",
     override_existing: Annotated[str, Form()] = "",
+    return_to: Annotated[str, Form()] = "",
     user: User = Depends(require_roles("administrador", "contador")),
     db: Session = Depends(get_db),
 ):
@@ -11226,10 +11251,60 @@ def save_salary_import_details(
     )
     db.commit()
     system = authority if authority in {"REOP", "REI"} else "REOP"
+    if return_to and len(return_to) <= 3000:
+        from urllib.parse import parse_qs, urlencode, urlsplit
+        target = urlsplit(return_to)
+        query = parse_qs(target.query)
+        if (not target.scheme and not target.netloc and target.path == "/app/compliance/salary-import"
+            and query.get("company_id") == [str(company.id)] and query.get("period") == [item.reference_period]):
+            allowed = {"company_id", "period", "authority", "source_type", "employee_id",
+                       "payment_code", "other_category", "rei_category", "name_order"}
+            values = {key: value[0] for key, value in query.items() if key in allowed}
+            values["details_saved"] = "1"
+            return RedirectResponse(target.path + "?" + urlencode(values), status_code=303)
     return RedirectResponse(
         f"/app/compliance/salary-import?company_id={company.id}&period={item.reference_period}"
         f"&authority={system}&source_type=approved&employee_id={item.employee_id}&details_saved=1", status_code=303,
     )
+
+
+def _salary_export_batch(db: Session, user: User, batch_id: int, *, lock: bool = False):
+    query = select(IntegrationBatch).where(
+        IntegrationBatch.id == batch_id,
+        IntegrationBatch.company_id.in_(company_ids_for_user(db, user)),
+        IntegrationBatch.created_by == user.email,
+        IntegrationBatch.batch_type == "Importación de salarios",
+    )
+    if lock:
+        query = query.with_for_update()
+    batch = db.scalar(query)
+    if batch is None:
+        raise HTTPException(404, "Lote salarial no encontrado.")
+    return batch
+
+
+@app.post("/app/compliance/salary-import/batches/{batch_id}/progress")
+async def save_salary_batch_progress(
+    batch_id: int, request: Request,
+    user: User = Depends(require_roles("administrador", "contador")),
+    db: Session = Depends(get_db),
+):
+    from .salary_import_view import checked_progress
+    batch = _salary_export_batch(db, user, batch_id, lock=True)
+    if batch.authority != "REOP":
+        raise HTTPException(422, "El seguimiento corresponde a REOP.")
+    try:
+        progress = checked_progress(await _json_object(request), batch.item_count)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    payload = json_dict(batch.payload_json)
+    previous = payload.get("assistant_progress") or {}
+    if previous.get("phase") != "imported" and progress != previous:
+        payload["assistant_progress"] = progress
+        payload["assistant_observed_at"] = datetime.now(UTC).isoformat()
+        batch.payload_json = json.dumps(payload, ensure_ascii=False)
+        db.commit()
+    return {"saved": True}
 
 
 @app.post("/app/compliance/salary-import/export")
@@ -11247,6 +11322,7 @@ def salary_import_export(
     accept_partial: Annotated[str, Form()] = "",
     delivery: Annotated[str, Form()] = "download",
     reop_review: Annotated[str, Form()] = "",
+    reuse_batch_id: Annotated[int | None, Form()] = None,
     user: User = Depends(require_roles("administrador", "contador")),
     db: Session = Depends(get_db),
 ):
@@ -11303,7 +11379,29 @@ def salary_import_export(
             raise HTTPException(409, "La carga con Chrome requiere una sola patronal por lote.")
         if reop_review != reop_assistant_review(rows, exclusions, effective_source):
             raise HTTPException(409, "Los datos pueden haber cambiado. Volvé a pulsar «Verificar archivo» y revisá la planilla.")
-    content = build_reop_xlsx(rows) if authority == "REOP" else build_rei_txt(rows)
+    review_hash = reop_assistant_review(rows, exclusions, effective_source)
+    reused = reuse_batch_id is not None
+    if reused:
+        batch = _salary_export_batch(db, user, reuse_batch_id, lock=True)
+        payload = json_dict(batch.payload_json)
+        if (batch.company_id != company.id or batch.authority != authority or batch.period != period
+            or payload.get("employee_scope_id") != employee_id or payload.get("review_hash") != review_hash):
+            raise HTTPException(409, "El lote guardado corresponde a otros datos. Volvé a verificar la planilla.")
+        if delivery == "reop-browser" and (
+            batch.status != "Generado" or batch.receipt_file_name
+            or (payload.get("assistant_progress") or {}).get("phase") == "imported"
+        ):
+            raise HTTPException(409, "El lote ya tiene un resultado. Revisalo en REOP antes de realizar otra carga.")
+        if batch.file_bytes is not None:
+            content = bytes(batch.file_bytes)
+        elif batch.storage_key and storage.exists(batch.storage_key):
+            content = storage.get(batch.storage_key)
+        else:
+            raise HTTPException(404, "El archivo del lote no está disponible.")
+        if hashlib.sha256(content).hexdigest() != batch.file_sha256:
+            raise HTTPException(409, "El archivo guardado difiere de su huella.")
+    else:
+        content = build_reop_xlsx(rows) if authority == "REOP" else build_rei_txt(rows)
     if patronal and len(content) > REOP_ASSISTANT_MAX_BYTES:
         raise HTTPException(413, "La planilla supera los 5 MB del asistente. Usá «Descargar Excel REOP».")
     media = MIME_REOP if authority == "REOP" else MIME_REI
@@ -11311,13 +11409,14 @@ def salary_import_export(
     safe_ruc = re.sub(r"[^A-Za-z0-9_-]+", "-", company.ruc or str(company.id))
     scope = f"_legajo-{employee_id}" if employee_id is not None else ""
     file_name = f"{authority.lower()}_salarios_{safe_ruc}_{period}{scope}.{extension}"
-    batch = register_batch(
-        db, company=company, authority=authority, batch_type="Importación de salarios",
-        period=period, content=content, created_by=user.email,
-    )
-    batch.file_name = file_name
-    batch.item_count = len(rows)
-    batch.payload_json = json.dumps({
+    if not reused:
+        batch = register_batch(
+            db, company=company, authority=authority, batch_type="Importación de salarios",
+            period=period, content=content, created_by=user.email,
+        )
+        batch.file_name = file_name
+        batch.item_count = len(rows)
+    payload = json_dict(batch.payload_json) if reused else {
         "source_type": effective_source,
         "employee_scope_id": employee_id,
         "excluded_calculation_ids": [item["calculation_id"] for item in exclusions],
@@ -11329,13 +11428,19 @@ def salary_import_export(
         "name_order": name_order if authority == "REI" else None,
         "rei_category": rei_category if authority == "REI" else None,
         "status_note": "Exportación local para revisión; no presentación oficial.",
-    }, ensure_ascii=False)
-    key = f"integrations/{company.id}/salary-import/batch-{batch.id}.{extension}"
-    storage.put(key, content, media)
-    batch.storage_key = key
-    batch.file_bytes = content if settings.storage_backend == "local" else None
+        "review_hash": review_hash,
+    }
+    if patronal and not payload.get("assistant_resume_key"):
+        payload["assistant_resume_key"] = secrets.token_urlsafe(32)
+    batch.payload_json = json.dumps(payload, ensure_ascii=False)
+    if not reused:
+        key = f"integrations/{company.id}/salary-import/batch-{batch.id}.{extension}"
+        storage.put(key, content, media)
+        batch.storage_key = key
+        batch.file_bytes = content if settings.storage_backend == "local" else None
     write_audit(
-        db, user, "exportar_importacion_salarios", "lote_integracion", str(batch.id),
+        db, user, "reutilizar_importacion_salarios" if reused else "exportar_importacion_salarios",
+        "lote_integracion", str(batch.id),
         f"{authority} · {period} · {len(rows)} empleados · SHA-256 {batch.file_sha256}",
     )
     db.commit()
@@ -11343,7 +11448,8 @@ def salary_import_export(
                "Cache-Control": "no-store", "X-Integration-Batch-Id": str(batch.id)}
     if patronal:
         headers.update({"X-REOP-Patronal": patronal, "X-REOP-Period": period,
-                        "X-REOP-Rows": str(len(rows)), "X-REOP-SHA256": batch.file_sha256})
+                        "X-REOP-Rows": str(len(rows)), "X-REOP-SHA256": batch.file_sha256,
+                        "X-REOP-Resume-Key": payload["assistant_resume_key"]})
     return Response(
         content=content, media_type=media, headers=headers,
     )
