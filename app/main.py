@@ -338,6 +338,29 @@ class CSRFMiddleware:
             await self.app(scope, receive, send)
             return
 
+        # Cap all POST bodies before buffering them for CSRF verification.
+        # The previous fallback of None allowed unbounded memory use on routes
+        # outside the calculator/import handlers.
+        headers = {key.decode("latin1").lower(): value.decode("latin1") for key, value in scope.get("headers", [])}
+        content_type = headers.get("content-type", "")
+        if path == "/app/liquidaciones/conciliar-planilla":
+            limit = 2 * 1024 * 1024 + 32768
+        elif path == "/app/liquidaciones/salarios/importar-reop/previsualizar":
+            limit = 5 * 1024 * 1024 + 32768
+        elif path.startswith("/herramientas/") or path.startswith("/app/liquidaciones/"):
+            limit = 64000
+        else:
+            limit = max(settings.max_upload_size, settings.max_logo_size, 1024) + 256 * 1024
+        content_length = headers.get("content-length", "")
+        if content_length and (
+            not content_length.isascii()
+            or not content_length.isdigit()
+            or len(content_length) > 20
+            or int(content_length) > limit
+        ):
+            await Response("Formulario demasiado grande.", status_code=413)(scope, receive, send)
+            return
+
         body_parts: list[bytes] = []
         body_size = 0
         more = True
@@ -348,25 +371,13 @@ class CSRFMiddleware:
             if message.get("type") != "http.request":
                 continue
             body_size += len(message.get("body", b""))
-            # La conciliación salarial acepta XLSX efímeros de hasta 2 MiB;
-            # los demás formularios del calculador conservan el límite de 64 KiB.
-            if path == "/app/liquidaciones/conciliar-planilla":
-                limit = 2 * 1024 * 1024 + 32768  # espacio multipart/control CSRF
-            elif path == "/app/liquidaciones/salarios/importar-reop/previsualizar":
-                limit = 5 * 1024 * 1024 + 32768  # XLSX REOP con protección CSRF
-            elif path.startswith("/herramientas/") or path.startswith("/app/liquidaciones/"):
-                limit = 64000
-            else:
-                limit = None
-            if limit is not None and body_size > limit:
+            if body_size > limit:
                 await Response("Formulario demasiado grande.", status_code=413)(scope, receive, send)
                 return
             body_parts.append(message.get("body", b""))
             more = message.get("more_body", False)
         body = b"".join(body_parts)
-        headers = {key.decode("latin1").lower(): value.decode("latin1") for key, value in scope.get("headers", [])}
         supplied = headers.get("x-csrf-token", "")
-        content_type = headers.get("content-type", "")
         if not supplied and content_type.startswith("application/x-www-form-urlencoded"):
             parsed = parse_qs(body.decode("utf-8", errors="replace"))
             supplied = (parsed.get("csrf_token") or [""])[0]

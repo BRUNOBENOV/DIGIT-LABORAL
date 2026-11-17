@@ -11,10 +11,14 @@
 <form method="get" action="/app/reports/{{ report.key }}" id="reportFilters" data-paginated-filters class="report-detail-filters">
 <label>Buscar<input type="search" name="q" value="{{ filters.q or '' }}" placeholder="Nombre, RUC, documento…"></label>
 <label>Empresa<select name="company_id" data-searchable-entity="company" data-entity-scope="all"><option value="">Todas las autorizadas</option>{% for company in companies|entity_choices %}<option value="{{ company.id }}" {{ 'selected' if selected_company == company.id }}>{{ company.legacy_code or (company.company_code if company.company_code is not none else 'Sin código') }} - {{ company.legal_name }}</option>{% endfor %}</select></label>
-<label>Funcionario<select name="employee_id" data-searchable-entity="employee" data-entity-scope="all"><option value="">Todos</option>{% for employee in employees|entity_choices %}<option value="{{ employee.id }}" {{ 'selected' if selected_employee == employee.id }} data-company="{{ employee.company_id }}">{{ employee.employee_code if employee.employee_code is not none else 'Sin legajo' }} - {{ employee.full_name }}</option>{% endfor %}</select></label>
+{% if report.dataset != "company" %}<label>Funcionario<select name="employee_id" data-searchable-entity="employee" data-entity-scope="all"><option value="">Todos</option>{% for employee in employees|entity_choices %}<option value="{{ employee.id }}" {{ 'selected' if selected_employee == employee.id }} data-company="{{ employee.company_id }}">{{ employee.employee_code if employee.employee_code is not none else 'Sin legajo' }} - {{ employee.full_name }}</option>{% endfor %}</select></label>{% endif %}
 <label>Estado<input type="text" name="status" value="{{ filters.status or '' }}" placeholder="Ej.: Cerrado"></label>
-<label>Año<input type="number" name="year" min="2000" max="2100" value="{{ filters.year or '' }}" placeholder="Ej.: 2026"></label>
+{% if report.dataset != "company" %}
+<label>{% if report.variant == "terminated" %}Año de egreso{% elif report.variant == "admission_date" %}Año de ingreso{% elif report.dataset == "calculation" %}Año del período{% elif report.variant == "annual" or report.key in ["p-empleados-obreros", "p-reg-gral-personas-ocupadas"] %}Año del registro{% else %}Año{% endif %}<input type="number" name="year" min="2000" max="2100" value="{{ filters.year or '' }}" placeholder="Ej.: 2026"></label>
+{% endif %}
+{% if report.dataset in ["payroll", "payroll_line", "family_allowance", "calculation", "operation"] %}
 <label>Periodo<input type="month" name="period" value="{{ filters.period or '' }}"></label>
+{% endif %}
 <label>Ordenar por<select name="sort" id="reportSort" data-sort-control data-sort-server="true" data-sort-signed data-sort-direction="{{ 'desc' if filters.sort.startswith('-') else 'asc' }}"><option value="" {{ 'selected' if not filters.sort }}>Predeterminado</option>{% for sort_key, sort_label in sort_options %}<option value="{{ sort_key }}" {{ 'selected' if filters.sort.removeprefix('-') == sort_key }}>{{ sort_label }}</option>{% endfor %}</select></label>
 <button class="btn primary" type="submit">Aplicar</button>
 </form>

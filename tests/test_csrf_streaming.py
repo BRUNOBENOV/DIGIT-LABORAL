@@ -76,6 +76,57 @@ def test_csrf_replays_once_and_preserves_real_disconnect():
     assert original == []
 
 
+
+def test_csrf_rejects_oversize_body_on_regular_routes_without_content_length(monkeypatch):
+    """A non-calculator POST no longer buffers an unlimited request."""
+    from types import SimpleNamespace
+    import app.main as main_module
+
+    monkeypatch.setattr(main_module, "settings", SimpleNamespace(
+        csrf_enabled=True, max_upload_size=1024, max_logo_size=1024,
+    ))
+    payload = b"x" * (1024 + 256 * 1024 + 1)
+    calls = []
+    async def receive():
+        return {"type": "http.request", "body": payload, "more_body": False}
+    async def send(message):
+        calls.append(message)
+    async def endpoint(scope, receive, send):
+        raise AssertionError("Oversize POST must not reach the application")
+
+    asyncio.run(main_module.CSRFMiddleware(endpoint)(
+        {"type": "http", "method": "POST", "path": "/app/companies",
+         "session": {"csrf_token": "synthetic-csrf-token"},
+         "headers": [(b"content-type", b"application/octet-stream")]},
+        receive, send,
+    ))
+    assert any(message.get("status") == 413 for message in calls)
+
+
+@pytest.mark.parametrize("length", [b"270000", b"9" * 5000, b"\xb2"])
+def test_csrf_rejects_oversize_content_length_without_reading_body(monkeypatch, length):
+    from types import SimpleNamespace
+    import app.main as main_module
+
+    monkeypatch.setattr(main_module, "settings", SimpleNamespace(
+        csrf_enabled=True, max_upload_size=1024, max_logo_size=1024,
+    ))
+    calls = []
+    async def receive():
+        raise AssertionError("The body should not be read when it is already too large")
+    async def send(message):
+        calls.append(message)
+    async def endpoint(scope, receive, send):
+        raise AssertionError("Oversize POST must not reach the application")
+
+    asyncio.run(main_module.CSRFMiddleware(endpoint)(
+        {"type": "http", "method": "POST", "path": "/app/companies",
+         "session": {"csrf_token": "synthetic-csrf-token"},
+         "headers": [(b"content-length", length)]},
+        receive, send,
+    ))
+    assert any(message.get("status") == 413 for message in calls)
+
 if __name__ == "__main__":
     asyncio.run(stream_check(sys.argv[1]))
     print("stream-complete")
