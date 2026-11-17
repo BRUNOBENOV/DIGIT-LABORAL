@@ -119,7 +119,7 @@ async function prepareWorkbook(message) {
   const digest = await crypto.subtle.digest("SHA-256", bytes);
   const hex = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
   if (hex !== sha256) throw new Error("La huella del Excel no coincide con la del lote de Digit Laboral.");
-  return {batchId, period, patronal, rows, filename, base64, expiresAt: Date.now() + TTL};
+  return {batchId, period, patronal, rows, filename, base64, sha256, expiresAt: Date.now() + TTL};
 }
 
 chrome.runtime.onMessageExternal.addListener(reply(async (message, sender) => {
@@ -167,12 +167,13 @@ chrome.runtime.onMessageExternal.addListener(reply(async (message, sender) => {
     throw new Error("Actualizá la extensión de Digit Laboral.");
   }
   if (existing) throw new Error("Ya hay un lote pendiente. Adjuntalo o descartalo desde el asistente en REOP.");
-  // A delivered batch remains in tracking after its pending handoff is consumed.
-  // Never stage that same batch again while REOP may still be processing it.
+  // The pending handoff is consumed after delivery, but the workbook stays in tracking.
+  // Deduplicate the same workbook even across new batch IDs; corrected files have a different hash.
   const alreadyDelivered = Object.values(await readTracking()).some(entry =>
-    String(entry.batchId) === String(message.batchId));
+    entry.patronal === message.patronal && entry.period === message.period &&
+    entry.sha256 === message.sha256);
   if (alreadyDelivered) {
-    throw new Error("Este lote ya fue entregado a REOP. Revisá su seguimiento antes de intentar otra carga.");
+    throw new Error("Esta misma planilla ya fue entregada a REOP. Revisá su seguimiento antes de otra carga.");
   }
   const pending = {
     ...await prepareWorkbook(message),
@@ -278,7 +279,8 @@ chrome.runtime.onMessage.addListener(reply(async (message, sender) => {
   const expiresAt = Date.now() + TRACKING_TTL;
   const entries = await readTracking();
   entries[sender.tab.id] = {
-    batchId, period, patronal, rows: Number(rows), filename, sourceTab, sourceDocument, resumeKey,
+    batchId, period, patronal, rows: Number(rows), filename, sha256: pending.sha256,
+    sourceTab, sourceDocument, resumeKey,
     targetDocument: sender.documentId, expiresAt, progress: null,
   };
   await chrome.storage.session.set({[TRACKING]: entries});
