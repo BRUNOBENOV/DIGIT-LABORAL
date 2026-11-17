@@ -1,17 +1,20 @@
 from __future__ import annotations
 
 import re
+from datetime import date, datetime
 from io import BytesIO
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 from openpyxl import load_workbook
+from pypdf import PdfReader
 from sqlalchemy import select
 
 from app.config import settings
 from app.main import app
 from app.database import SessionLocal
-from app.models import CalculationRecord, Company
-from app.report_center import REPORTS, get_report, make_xlsx, report_columns
+from app.models import CalculationRecord, Company, Employee
+from app.report_center import REPORTS, fetch_report, get_report, make_pdf, make_xlsx, report_columns
 
 
 def _login(client: TestClient) -> None:
@@ -159,3 +162,72 @@ def test_excel_export_forces_user_supplied_strings_to_text():
     assert isinstance(cell.value, str) and cell.value.startswith("'=")
     assert tab_prefixed.data_type != "f"
     assert isinstance(tab_prefixed.value, str) and tab_prefixed.value.startswith("'\t=")
+
+
+def test_report_year_filters_use_termination_and_active_annual_coverage():
+    """A former worker hired before the requested year must not disappear."""
+    marker = "audit-report-years-" + uuid4().hex[:12]
+    with SessionLocal() as db:
+        company = db.scalar(select(Company).order_by(Company.id))
+        assert company is not None
+        worker = Employee(
+            company_id=company.id, full_name=marker, document_number=marker,
+            admission_date=date(2020, 5, 12), termination_date=date(2026, 10, 3),
+            status="Desvinculado", base_salary=3044000,
+        )
+        db.add(worker)
+        db.flush()
+        options = dict(company_ids=[company.id], company_id=company.id, q=marker)
+        def records(report_key, year):
+            return fetch_report(db, REPORTS[report_key], **options, year=year)["records"]
+
+        assert len(records("personales-despedidos", 2026)) == 1
+        assert records("personales-despedidos", 2020) == []
+        assert len(records("listado-anual-reg-empleados-obreros", 2025)) == 1
+        assert len(records("p-empleados-obreros", 2026)) == 1
+        assert records("p-empleados-obreros", 2027) == []
+        assert len(records("listado-empl-fecha", 2020)) == 1
+        assert records("listado-empl-fecha", 2026) == []
+        db.rollback()
+
+
+def test_calculation_reports_filter_by_reference_period_not_save_timestamp():
+    marker = "audit-report-period-" + uuid4().hex[:12]
+    with SessionLocal() as db:
+        company = db.scalar(select(Company).order_by(Company.id))
+        assert company is not None
+        for period, registered in (
+            ("2025-08", datetime(2026, 11, 2)),
+            ("2026-10", datetime(2025, 11, 2)),
+        ):
+            db.add(CalculationRecord(
+                company_id=company.id, calculation_type="suite_settlement",
+                reference_period=period, amount=12345, status="Borrador",
+                source="audit", notes=marker, created_at=registered,
+                created_by="audit-test",
+            ))
+        db.flush()
+        options = dict(company_ids=[company.id], company_id=company.id, q=marker)
+        def count(*, year=None, period=None):
+            return len(fetch_report(
+                db, REPORTS["liquidacion-haberes"], **options, year=year, period=period,
+            )["records"])
+
+        assert count(year=2025) == 1
+        assert count(year=2026) == 1
+        assert count(period="2025-08") == 1
+        assert count(period="2026-10") == 1
+        assert count(year=2025, period="2025-08") == 1
+        assert count(year=2026, period="2025-08") == 0
+        db.rollback()
+
+
+def test_wide_salary_report_pdf_uses_large_landscape_paper():
+    spec = REPORTS["planilla-de-pago"]
+    row = {column: "" for column in report_columns(spec)}
+    row["Funcionario"] = "Funcionario de prueba"
+    payload = make_pdf(spec, [row])
+    document = PdfReader(BytesIO(payload))
+    assert len(document.pages) == 1
+    assert float(document.pages[0].mediabox.width) > 1000  # landscape A3
+    assert float(document.pages[0].mediabox.width) > float(document.pages[0].mediabox.height)
