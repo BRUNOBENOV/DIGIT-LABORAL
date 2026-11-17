@@ -106,6 +106,19 @@ test('la planilla sale a la pestaña REOP activada, incluso en otra ventana, con
   assert.equal(resumed.base64, undefined);
 });
 
+test('no permite entregar nuevamente el mismo lote, pero sí preparar otro lote', async () => {
+  const bridge = extension();
+  assert.equal((await bridge.external(stage)).ok, true);
+  await bridge.click();
+  assert.equal((await bridge.internal({type: 'info'})).ok, true);
+  const take = {type: 'take', batchId: stage.batchId, patronal: stage.patronal};
+  assert.equal((await bridge.internal(take)).ok, true);
+  const duplicate = await bridge.external(stage);
+  assert.equal(duplicate.ok, false);
+  assert.match(duplicate.message, /ya fue entregado a REOP/);
+  assert.equal((await bridge.external({...stage, batchId: '8'})).ok, true);
+});
+
 test('el resultado observado queda vinculado al lote y a los documentos de origen y destino', async () => {
   const bridge = extension();
   const poll = {type: 'status', batchId: stage.batchId};
