@@ -231,3 +231,23 @@ def test_wide_salary_report_pdf_uses_large_landscape_paper():
     assert len(document.pages) == 1
     assert float(document.pages[0].mediabox.width) > 1000  # landscape A3
     assert float(document.pages[0].mediabox.width) > float(document.pages[0].mediabox.height)
+
+
+def test_report_filter_form_does_not_offer_ignored_fields():
+    with TestClient(app) as client:
+        _login(client)
+        companies = client.get("/app/reports/listado-empresa")
+        assert companies.status_code == 200
+        assert 'name="year"' not in companies.text
+        assert 'name="period"' not in companies.text
+        assert 'name="employee_id"' not in companies.text
+
+        dismissed = client.get("/app/reports/personales-despedidos")
+        assert dismissed.status_code == 200
+        assert "Año de egreso" in dismissed.text
+        assert 'name="period"' not in dismissed.text
+
+        settlements = client.get("/app/reports/liquidacion-haberes")
+        assert settlements.status_code == 200
+        assert "Año del período" in settlements.text
+        assert 'name="period"' in settlements.text
