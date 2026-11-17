@@ -175,7 +175,14 @@ def test_report_year_filters_use_termination_and_active_annual_coverage():
             admission_date=date(2020, 5, 12), termination_date=date(2026, 10, 3),
             status="Desvinculado", base_salary=3044000,
         )
-        db.add(worker)
+        # A historical worker marked as departed but without an exit date
+        # must not be invented as employed in every later reporting year.
+        unresolved = Employee(
+            company_id=company.id, full_name=marker + " sin egreso",
+            document_number=marker + "-unknown", admission_date=date(2020, 5, 12),
+            termination_date=None, status="Desvinculado", base_salary=3044000,
+        )
+        db.add_all([worker, unresolved])
         db.flush()
         options = dict(company_ids=[company.id], company_id=company.id, q=marker)
         def records(report_key, year):
@@ -186,7 +193,7 @@ def test_report_year_filters_use_termination_and_active_annual_coverage():
         assert len(records("listado-anual-reg-empleados-obreros", 2025)) == 1
         assert len(records("p-empleados-obreros", 2026)) == 1
         assert records("p-empleados-obreros", 2027) == []
-        assert len(records("listado-empl-fecha", 2020)) == 1
+        assert len(records("listado-empl-fecha", 2020)) == 2
         assert records("listado-empl-fecha", 2026) == []
         db.rollback()
 
