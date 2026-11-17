@@ -16,7 +16,7 @@
 {% if report.dataset != "company" %}
 <label>{% if report.variant == "terminated" %}Año de egreso{% elif report.variant == "admission_date" %}Año de ingreso{% elif report.dataset == "calculation" %}Año del período{% elif report.variant == "annual" or report.key in ["p-empleados-obreros", "p-reg-gral-personas-ocupadas"] %}Año del registro{% else %}Año{% endif %}<input type="number" name="year" min="2000" max="2100" value="{{ filters.year or '' }}" placeholder="Ej.: 2026"></label>
 {% endif %}
-{% if report.dataset in ["payroll", "payroll_line", "family_allowance", "calculation", "aguinaldo", "vacation", "operation"] %}
+{% if report.dataset in ["payroll", "payroll_line", "family_allowance", "calculation", "operation"] %}
 <label>Periodo<input type="month" name="period" value="{{ filters.period or '' }}"></label>
 {% endif %}
 <label>Ordenar por<select name="sort" id="reportSort" data-sort-control data-sort-server="true" data-sort-signed data-sort-direction="{{ 'desc' if filters.sort.startswith('-') else 'asc' }}"><option value="" {{ 'selected' if not filters.sort }}>Predeterminado</option>{% for sort_key, sort_label in sort_options %}<option value="{{ sort_key }}" {{ 'selected' if filters.sort.removeprefix('-') == sort_key }}>{{ sort_label }}</option>{% endfor %}</select></label>
