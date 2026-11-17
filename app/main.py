@@ -352,7 +352,12 @@ class CSRFMiddleware:
         else:
             limit = max(settings.max_upload_size, settings.max_logo_size, 1024) + 256 * 1024
         content_length = headers.get("content-length", "")
-        if content_length.isdecimal() and int(content_length) > limit:
+        if content_length and (
+            not content_length.isascii()
+            or not content_length.isdigit()
+            or len(content_length) > 20
+            or int(content_length) > limit
+        ):
             await Response("Formulario demasiado grande.", status_code=413)(scope, receive, send)
             return
 
