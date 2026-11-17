@@ -167,6 +167,13 @@ chrome.runtime.onMessageExternal.addListener(reply(async (message, sender) => {
     throw new Error("Actualizá la extensión de Digit Laboral.");
   }
   if (existing) throw new Error("Ya hay un lote pendiente. Adjuntalo o descartalo desde el asistente en REOP.");
+  // A delivered batch remains in tracking after its pending handoff is consumed.
+  // Never stage that same batch again while REOP may still be processing it.
+  const alreadyDelivered = Object.values(await readTracking()).some(entry =>
+    String(entry.batchId) === String(message.batchId));
+  if (alreadyDelivered) {
+    throw new Error("Este lote ya fue entregado a REOP. Revisá su seguimiento antes de intentar otra carga.");
+  }
   const pending = {
     ...await prepareWorkbook(message),
     sourceTab: sender.tab.id,
