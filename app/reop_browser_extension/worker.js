@@ -130,7 +130,20 @@ chrome.runtime.onMessageExternal.addListener(reply(async (message, sender) => {
   }
   const existing = await readPending();
   if (message.type === "ping") {
-    return {protocol: PROTOCOL, busy: Boolean(existing), separateWindows: true, tracking: true, directPrevalidation: true, startFromDigit: true};
+    return {protocol: PROTOCOL, busy: Boolean(existing), separateWindows: true, tracking: true, directPrevalidation: true, startFromDigit: true, resume: true};
+  }
+  if (message.type === "resume") {
+    if (!/^[A-Za-z0-9_-]{32,100}$/.test(message.resumeKey || "")) {
+      throw new Error("Volvé a abrir el lote desde Digit Laboral.");
+    }
+    const entries = await readTracking();
+    const match = Object.values(entries).find(entry =>
+      entry.batchId === message.batchId && entry.resumeKey === message.resumeKey);
+    if (!match) return {active: false};
+    match.sourceTab = sender.tab.id;
+    match.sourceDocument = sender.documentId;
+    await chrome.storage.session.set({[TRACKING]: entries});
+    return {active: true, progress: match.progress};
   }
   if (message.type === "status" || message.type === "open-portal") {
     const entries = await readTracking();
@@ -159,6 +172,7 @@ chrome.runtime.onMessageExternal.addListener(reply(async (message, sender) => {
     sourceTab: sender.tab.id,
     sourceDocument: sender.documentId,
     autoPrevalidate: message.prevalidate === true,
+    resumeKey: /^[A-Za-z0-9_-]{32,100}$/.test(message.resumeKey || "") ? message.resumeKey : "",
   };
   const tab = pending.autoPrevalidate ? await readPortalTab((await chrome.storage.session.get(PORTAL_TAB))[PORTAL_TAB]) : null;
   if (tab && isSalaryPage(tab.url) && tab.status !== "loading" && !tab.discarded && !tab.frozen) {
@@ -252,12 +266,12 @@ chrome.runtime.onMessage.addListener(reply(async (message, sender) => {
   if (message.type !== "take" || String(message.patronal).trim() !== pending.patronal) {
     throw new Error("La patronal abierta en REOP no coincide con la planilla.");
   }
-  const {batchId, period, patronal, rows, sourceTab, sourceDocument} = pending;
+  const {batchId, period, patronal, rows, sourceTab, sourceDocument, resumeKey} = pending;
   const filename = pending.filename.replace(/\.xlsx$/, `_lote-${batchId}.xlsx`);
   const expiresAt = Date.now() + TRACKING_TTL;
   const entries = await readTracking();
   entries[sender.tab.id] = {
-    batchId, period, patronal, rows: Number(rows), filename, sourceTab, sourceDocument,
+    batchId, period, patronal, rows: Number(rows), filename, sourceTab, sourceDocument, resumeKey,
     targetDocument: sender.documentId, expiresAt, progress: null,
   };
   await chrome.storage.session.set({[TRACKING]: entries});
@@ -279,7 +293,8 @@ function clearForTab(tabId, removed = false) {
       await chrome.storage.session.set({[STATE]: {...unbound, review: "portal"}});
     }
     const entries = await readTracking();
-    const remaining = Object.entries(entries).filter(([target, entry]) => Number(target) !== tabId && entry.sourceTab !== tabId);
+    const remaining = Object.entries(entries).filter(([target, entry]) =>
+      Number(target) !== tabId && (entry.sourceTab !== tabId || Boolean(entry.resumeKey)));
     if (remaining.length !== Object.keys(entries).length) {
       await chrome.storage.session.set({[TRACKING]: Object.fromEntries(remaining)});
     }

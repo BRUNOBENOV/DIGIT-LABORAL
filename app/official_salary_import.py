@@ -9,6 +9,7 @@ import csv
 import io
 import re
 import zipfile
+import unicodedata
 from calendar import monthrange
 from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
@@ -50,6 +51,20 @@ REI_FIELDS_2016 = (
 )
 MIME_REOP = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 MIME_REI = "text/plain; charset=windows-1252"
+REOP_PAYMENT_LABELS = {"1": "Efectivo", "2": "Cheque", "3": "Banco", "4": "Giro"}
+
+
+def reop_payment_code(method: str) -> str:
+    text = "".join(
+        char for char in unicodedata.normalize("NFD", str(method or "").strip().casefold())
+        if unicodedata.category(char) != "Mn"
+    )
+    aliases = {
+        "efectivo": "1", "cheque": "2", "banco": "3", "transferencia": "3",
+        "transferencia bancaria": "3", "deposito": "3", "deposito bancario": "3",
+        "banco (deposito o transferencia)": "3", "giro": "4",
+    }
+    return text if text in REOP_PAYMENT_LABELS else aliases.get(text, "")
 
 
 class SalaryImportError(ValueError):
@@ -138,15 +153,17 @@ def prepare_import(db: Session, company, period: str, authority: str, *,
     errors: list[str] = list(source_errors)
     rows: list[list] = []
     if authority == "REOP":
-        if payment_code not in {"1", "2", "3", "4"}:
+        if payment_code not in {"auto", "1", "2", "3", "4"}:
             errors.append("REOP: seleccioná el código de forma de pago que corresponda al modelo vigente (1-4).")
         if other_category and other_category not in REOP_OTHER_COLUMNS:
             errors.append("REOP: clasificación de otros ingresos inválida.")
-        methods = {_text(d.payment_method).casefold() for _, _, d in records
+        methods = {reop_payment_code(d.payment_method) or _text(d.payment_method).casefold() for _, _, d in records
                    if d is not None and _text(d.payment_method)}
-        if len(methods) > 1:
+        numeric_methods = {_text(d.payment_method) for _, _, d in records
+                           if d is not None and _text(d.payment_method).isdigit()}
+        if payment_code != "auto" and len(methods) > 1:
             errors.append("REOP: la nómina contiene distintas formas de pago. No se puede usar un único código para todos; revisá cada detalle.")
-        elif methods and next(iter(methods)).isdigit() and payment_code != next(iter(methods)):
+        elif payment_code != "auto" and numeric_methods and numeric_methods != {payment_code}:
             errors.append("REOP: el código de forma de pago elegido difiere del registrado en la nómina.")
     else:
         if name_order not in {"apellido_primero", "nombre_primero"}:
@@ -156,6 +173,11 @@ def prepare_import(db: Session, company, period: str, authority: str, *,
     for line, employee, detail in records:
         context = f"{employee.full_name} (legajo {employee.employee_code or employee.id})"
         err: list[str] = []
+        row_payment = payment_code
+        if authority == "REOP" and payment_code == "auto":
+            row_payment = reop_payment_code(detail.payment_method if detail else "")
+            if not row_payment:
+                err.append("falta una forma de pago reconocida en el salario guardado")
         registered_patronal = _patronal(db, company, employee, authority)
         patronal = registered_patronal.replace(".", "") if authority == "REOP" else registered_patronal
         if not registered_patronal:
@@ -305,7 +327,7 @@ def prepare_import(db: Session, company, period: str, authority: str, *,
                     err.append("faltan horas ordinarias efectivamente trabajadas")
                 # Las 32 columnas corresponden a la plantilla proporcionada por el usuario.
                 continue_row = [
-                    patronal, ci, dstart, dend, int(payment_code) if payment_code in {"1", "2", "3", "4"} else 0,
+                    patronal, ci, dstart, dend, int(row_payment) if row_payment in REOP_PAYMENT_LABELS else 0,
                     getattr(detail, "days_reop", days), 0,
                     int(hours) if hours == int(hours) else float(hours),
                     int(extra_hours) if extra_hours == int(extra_hours) else float(extra_hours),
