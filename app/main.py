@@ -3503,6 +3503,25 @@ def employees_page(
     ).all()
     employees = [employee for employee, _ in records]
     salaries_by_employee = {employee.id: salary for employee, salary in records}
+    # Surface other employer records for the SAME document without confusing
+    # them with duplicate rows. One scoped query replaces per-row lookups.
+    document_company_counts: dict[str, int] = {}
+    if employees:
+        page_documents = {
+            normalize_document_number(item.document_number)
+            for item in employees if item.document_number
+        }
+        if page_documents:
+            from sqlalchemy import distinct
+            normalized_sql = func.replace(
+                func.replace(func.replace(Employee.document_number, ".", ""), "-", ""), " ", ""
+            )
+            linked = db.execute(
+                select(normalized_sql, func.count(distinct(Employee.company_id)))
+                .where(Employee.company_id.in_(company_ids), normalized_sql.in_(page_documents))
+                .group_by(normalized_sql)
+            ).all()
+            document_company_counts = {key: int(count) for key, count in linked}
     companies_query = select(Company).where(Company.id.in_(company_ids))
     if not show_archived:
         companies_query = companies_query.where(Company.status != "Archivada")
@@ -3552,6 +3571,7 @@ def employees_page(
         selected_section=section_id, status_filter=status_filter, show_archived=show_archived,
         selected_employee=active_employee_id, minimum_salary=minimum_salary,
         salaries_by_employee=salaries_by_employee,
+        document_company_counts=document_company_counts,
         total_count=total_count, current_page=page, total_pages=total_pages,
         selected_sort=employee_sort, sort_direction=direction,
         pager=pager, employee_quick=employee_quick,
@@ -3893,6 +3913,8 @@ def employee_detail_page(
         db.refresh(employee)
     employee_exit = latest_exit(db, employee.id)
     final_settlement = latest_settlement(db, employee.id)
+    from .employee_company_change_routes import related_employers
+    other_employer_records = related_employers(db, user, employee)
     events = list(db.scalars(select(EmployeeEvent).where(EmployeeEvent.employee_id == employee.id).order_by(EmployeeEvent.effective_date.desc(), EmployeeEvent.created_at.desc())))
     salaries = list(db.scalars(select(SalaryHistory).where(SalaryHistory.employee_id == employee.id).order_by(SalaryHistory.effective_from.desc(), SalaryHistory.created_at.desc(), SalaryHistory.id.desc())))
     salary_reference = current_paraguay_date()
@@ -3919,6 +3941,7 @@ def employee_detail_page(
         payroll_lines=payroll_lines, deadlines=deadlines,
         employee_profile=_employee_profile(db, employee.id),
         employee_exit=employee_exit, final_settlement=final_settlement,
+        other_employer_records=other_employer_records,
         can_reactivate=user.role in {"administrador", "contador"} and not reactivation_issue(
             employee, company=employee.company,
             has_settlement=final_settlement is not None, has_exit=employee_exit is not None,
@@ -12478,6 +12501,8 @@ from .employee_exit_routes import router as employee_exit_router
 app.include_router(employee_exit_router)
 from .employee_deletion_routes import router as employee_deletion_router
 app.include_router(employee_deletion_router)
+from .employee_company_change_routes import router as employee_company_change_router
+app.include_router(employee_company_change_router)
 from .test_dossier_cleanup_routes import router as test_dossier_cleanup_router
 app.include_router(test_dossier_cleanup_router)
 

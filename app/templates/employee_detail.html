@@ -1,5 +1,7 @@
 {% extends "base.html" %}
-{% block title %}{{ employee.full_name }} | Digit Laboral
+{% block title %}{{ employee.full_name }} | Digit Laboral{% endblock %}
+{% block page_name %}Expediente laboral{% endblock %}
+{% block content %}
 {% if user.role in ['administrador','contador'] and employee.status == 'Activo' and not employee_exit %}
 <div class="modal" id="dossierExitModal" aria-hidden="true"><div class="modal-backdrop" data-modal-close></div><section class="modal-card">
   <button class="modal-x" type="button" data-modal-close aria-label="Cerrar">×</button>
@@ -19,9 +21,6 @@
   </form>
 </section></div>
 {% endif %}
-{% endblock %}
-{% block page_name %}Expediente laboral{% endblock %}
-{% block content %}
 {% set can_request_salary = user.role in ['administrador','contador','auxiliar'] and employee.status != 'Archivado' and employee.company.status != 'Archivada' %}
 {% set salary_action_label = 'Solicitar cambio salarial' if user.role == 'auxiliar' else 'Cambiar salario' %}
 {% if user.role in ['administrador','contador','auxiliar'] %}<div class="dl"><a class="dl-button dl-payroll-link" href="/app/liquidaciones?company_id={{ employee.company_id }}&amp;employee_id={{ employee.id }}">Calcular y emitir una liquidación →</a></div>{% endif %}
@@ -29,6 +28,24 @@
 {% if request.query_params.get('reactivated') == '1' and employee.status == 'Activo' %}
   <div class="alert success" role="status">Legajo reactivado. El cambio quedó registrado en el historial.</div>
 {% endif %}
+{% if request.query_params.get('company_corrected') == '1' %}
+  <div class="alert success" role="status">Empresa del legajo rectificada. Se conservaron los datos personales y el salario inicial; la operación quedó registrada en auditoría.</div>
+{% endif %}
+{% if other_employer_records %}
+<section class="employee-employer-switch" aria-label="Otros legajos de esta cédula">
+  <div class="employee-employer-switch-title"><b>Esta cédula figura en {{ other_employer_records|length + 1 }} legajos empresariales.</b><small>Seleccioná el expediente de la empresa que corresponda. Los historiales y liquidaciones permanecen separados.</small></div>
+  <div class="employee-employer-switch-links">
+    {% for related in other_employer_records %}<a class="btn outline" href="/app/employees/{{ related.id }}">{{ related.company.legal_name }} · {{ related.status }}</a>{% endfor %}
+    {% if user.role in ['administrador','contador'] %}<a class="btn ghost" href="/app/employees/{{ employee.id }}/change-company">Revisar empresa</a>{% endif %}
+  </div>
+</section>
+{% endif %}
+<style>
+.employee-employer-switch{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:14px 17px;margin:12px 0 18px;border:1px solid rgba(53,114,184,.25);border-radius:12px;background:rgba(53,114,184,.065)}
+.employee-employer-switch-title{display:grid;gap:5px;flex:1 1 250px}
+.employee-employer-switch-title small{color:var(--text-secondary,#66758d);line-height:1.4}
+.employee-employer-switch-links{display:flex;gap:8px;flex-wrap:wrap}
+</style>
 <nav class="maintenance-subnav maintenance-detail-nav" aria-label="Subsecciones del expediente del funcionario">
   <a class="is-active" href="#employee-overview" aria-current="location">Resumen</a>
   <a href="#timeline">Historial <span>{{ events|length }}</span></a>
@@ -47,6 +64,7 @@
     <div class="tag-row"><span>{{ employee.contract_type }}</span><span>{{ employee.payment_frequency }}</span><span class="status-pill {{ employee.status|lower }}">{{ employee.status }}</span></div>
   </div>
   {% if user.role in ['administrador', 'contador', 'auxiliar'] %}<button class="btn outline" type="button" data-modal-open="editEmployeeDetail">Editar ficha</button>{% endif %}
+  {% if user.role in ['administrador','contador'] %}<a class="btn outline" href="/app/employees/{{ employee.id }}/change-company">Cambiar empresa</a>{% endif %}
   {% if user.role in ['administrador','contador'] %}<a class="btn danger" href="/app/employees/{{ employee.id }}/permanent-delete">Eliminar definitivamente</a>{% endif %}
 </section>
 

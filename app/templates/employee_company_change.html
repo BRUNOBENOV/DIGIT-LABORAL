@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}Revisar empresa del legajo | Digit Laboral{% endblock %}
+{% block page_name %}Funcionarios{% endblock %}
+{% block content %}
+<style>
+.company-correction-shell{max-width:1050px;margin:0 auto 30px;display:grid;gap:18px}
+.company-correction-header{display:flex;align-items:flex-start;justify-content:space-between;gap:18px}
+.company-correction-header h1{margin:5px 0 8px;font-size:clamp(1.5rem,2.5vw,2rem)}
+.company-correction-header p{margin:0;max-width:70ch;line-height:1.55}
+.company-correction-grid{display:grid;grid-template-columns:1.1fr .9fr;gap:16px;align-items:start}
+.company-correction-card{padding:22px;border:1px solid var(--border-color,#dbe4f0);border-radius:14px;background:var(--surface,#fff);box-shadow:0 2px 8px rgba(11,35,74,.04)}
+.company-correction-card h2{font-size:1.12rem;margin:0 0 12px}
+.company-correction-card p{font-size:.89rem;line-height:1.55}
+.company-correction-card .eyebrow{display:block;margin-bottom:6px;font-size:.69rem}
+.company-correction-stat{display:grid;grid-template-columns:115px 1fr;gap:10px;padding:10px 0;border-bottom:1px solid var(--border-color,#e3e8ee);font-size:.86rem}
+.company-correction-stat:last-child{border-bottom:0}
+.company-correction-stat span{color:var(--text-secondary,#63758d)}
+.company-correction-stat strong{overflow-wrap:anywhere}
+.company-correction-linked{display:grid;gap:10px}
+.company-correction-linked a{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px;padding:12px;border-radius:10px;border:1px solid var(--border-color,#dbe4f0);text-decoration:none}
+.company-correction-linked a:hover,.company-correction-linked a:focus-visible{border-color:#3572b8;background:rgba(53,114,184,.06)}
+.company-correction-linked small{display:block;color:var(--text-secondary,#66758d);margin-top:5px}
+.company-correction-notice{padding:13px 15px;border-radius:10px;background:rgba(53,114,184,.08);border:1px solid rgba(53,114,184,.22);line-height:1.5;font-size:.88rem}
+.company-correction-notice.warning{background:rgba(194,135,48,.08);border-color:rgba(194,135,48,.3)}
+.company-correction-form{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.company-correction-form label{display:grid;gap:6px;font-size:.82rem;font-weight:700}
+.company-correction-form input,.company-correction-form textarea,.company-correction-form select{box-sizing:border-box;width:100%;min-width:0;border:1px solid var(--border-color,#cfd8e4);border-radius:9px;padding:10px 12px;background:var(--input-bg,#fff);color:var(--text-primary,#19314b);font:inherit}
+.company-correction-form .span-2{grid-column:1/-1}
+.company-correction-confirm{display:flex!important;align-items:flex-start;flex-direction:row;gap:10px;font-weight:500!important;line-height:1.5}
+.company-correction-confirm input{width:auto;margin-top:4px}
+.company-correction-actions{display:flex;align-items:center;flex-wrap:wrap;gap:10px}
+@media(max-width:830px){.company-correction-grid{grid-template-columns:1fr}}
+@media(max-width:620px){.company-correction-header{display:block}.company-correction-header .btn{margin-top:12px}.company-correction-form{grid-template-columns:1fr}.company-correction-form .span-2{grid-column:1}}
+</style>
+<div class="company-correction-shell">
+  <div class="company-correction-header">
+    <div><span class="eyebrow">MANTENIMIENTOS · FUNCIONARIOS</span><h1>Cambiar empresa del funcionario</h1>
+    <p>Revisá en qué empresa está registrado este trabajador. Podés abrir otro legajo existente sin duplicarlo o corregir una empresa asignada por error, cuando no tenga antecedentes que deban permanecer asociados al empleador anterior.</p></div>
+    <a class="btn outline" href="/app/employees/{{ employee.id }}">Volver al expediente</a>
+  </div>
+  {% if correction_error %}<div class="alert danger" role="alert">{{ correction_error }}</div>{% endif %}
+  <div class="company-correction-grid">
+    <section class="company-correction-card" aria-label="Legajo seleccionado">
+      <span class="eyebrow">LEGAJO SELECCIONADO</span><h2>{{ employee.full_name }}</h2>
+      <div class="company-correction-stat"><span>Cédula</span><strong>{{ employee.document_number }}</strong></div>
+      <div class="company-correction-stat"><span>Empresa actual del legajo</span><strong>{{ employee.company.legal_name }}</strong></div>
+      <div class="company-correction-stat"><span>Código Legajo</span><strong>{{ employee.employee_code or 'Sin asignar' }}</strong></div>
+      <div class="company-correction-stat"><span>Ingreso</span><strong>{{ employee.admission_date|fecha }}</strong></div>
+      <div class="company-correction-stat"><span>Estado</span><strong>{{ employee.status }}</strong></div>
+      <p class="company-correction-notice warning">La empresa registrada en Digit Laboral no determina por sí sola el empleador vigente ante el IPS o el MTESS. No se modifican presentaciones oficiales desde esta pantalla.</p>
+    </section>
+    <section class="company-correction-card" aria-label="Otros legajos por documento">
+      <span class="eyebrow">MISMA CÉDULA</span><h2>Otras empresas registradas</h2>
+      {% if related_employers %}
+        <p>Encontré {{ related_employers|length }} {{ 'legajo' if related_employers|length == 1 else 'legajos' }} con esta cédula en otras empresas autorizadas. Seleccioná el que corresponde antes de realizar cálculos.</p>
+        <div class="company-correction-linked">
+          {% for related in related_employers %}
+            <a href="/app/employees/{{ related.id }}">
+              <span><b>{{ related.company.legal_name }}</b><small>Legajo {{ related.employee_code or 'sin código' }} · {{ related.status }} · Ingreso {{ related.admission_date|fecha }}</small></span>
+              <span>Ver expediente</span>
+            </a>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p>No encontré otro legajo con esta cédula en las empresas a las que tenés acceso.</p>
+      {% endif %}
+    </section>
+  </div>
+  <section class="company-correction-card" aria-labelledby="companyCorrectionTitle">
+    <span class="eyebrow">CORRECCIÓN ADMINISTRATIVA</span><h2 id="companyCorrectionTitle">Rectificar empresa elegida por error</h2>
+    <p>Esta opción es únicamente para corregir el registro original de un legajo sin operaciones posteriores. <b>Si hubo un cambio real de empleador, no uses este formulario:</b> corresponde tramitar el egreso y el alta de la nueva relación laboral por separado.</p>
+    {% if correction_issues %}
+      <div class="company-correction-notice warning" role="status">
+        <b>Rectificación no disponible para este legajo.</b>
+        {% for issue in correction_issues %}<p>{{ issue }}</p>{% endfor %}
+        {% if blockers %}
+          <p>Antecedentes vinculados: {% for item in blockers %}{{ item.label }} ({{ item.count }}){{ ', ' if not loop.last }}{% endfor %}.</p>
+        {% endif %}
+        <p>Podés abrir el expediente de la otra empresa arriba o gestionar el egreso y alta correspondientes, conservando el historial original.</p>
+      </div>
+    {% elif companies %}
+      <form method="post" action="/app/employees/{{ employee.id }}/change-company" class="company-correction-form" id="companyCorrectionForm">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="correction_token" value="{{ correction_token }}">
+        <label class="span-2">Empresa correcta
+          <select name="destination_company_id" required id="companyCorrectionDestination">
+            <option value="">Seleccioná una empresa activa…</option>
+            {% for company in companies %}
+              <option value="{{ company.id }}" {% if related_employers|selectattr('company_id','equalto',company.id)|list %}data-existing="true"{% endif %}>{{ company.company_code or 'Sin código' }} · {{ company.legal_name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <div class="company-correction-notice warning span-2" id="companyCorrectionExisting" hidden>Ya existe un legajo de esta cédula en esa empresa. Usá el enlace «Ver expediente» de arriba: no se fusionarán los historiales.</div>
+        <label>Nuevo Código Legajo en la empresa destino
+          <input name="new_employee_code" type="number" min="1" max="2147483647" step="1" value="{{ employee.employee_code or '' }}" required>
+        </label>
+        <label class="span-2">Motivo de rectificación
+          <textarea name="reason" minlength="12" maxlength="500" rows="3" required placeholder="Indicá por qué se seleccionó una empresa incorrecta al registrar el legajo."></textarea>
+        </label>
+        <label class="company-correction-confirm span-2"><input type="checkbox" name="acknowledgment" value="confirm" required> Confirmo que se trata de una empresa asignada por error y no de un traslado de empleador. Comprendo que no se corregirán automáticamente los registros del IPS ni del MTESS.</label>
+        <div class="company-correction-actions span-2">
+          <a href="/app/employees/{{ employee.id }}" class="btn outline">Cancelar</a>
+          <button class="btn primary" type="submit" id="companyCorrectionSubmit">Confirmar rectificación</button>
+        </div>
+      </form>
+      <script>
+        (() => {
+          const select = document.getElementById("companyCorrectionDestination");
+          const notice = document.getElementById("companyCorrectionExisting");
+          const submit = document.getElementById("companyCorrectionSubmit");
+          const update = () => {
+            const taken = select.selectedOptions[0]?.dataset.existing === "true";
+            notice.hidden = !taken;
+            submit.disabled = taken || !select.value;
+          };
+          select.addEventListener("change", update);
+          update();
+        })();
+      </script>
+    {% else %}
+      <p>No hay otra empresa activa disponible en tu estudio para realizar la rectificación.</p>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}
