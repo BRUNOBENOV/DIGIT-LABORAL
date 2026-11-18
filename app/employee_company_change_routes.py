@@ -5,7 +5,7 @@ exist for the same person, the user can open the correct dossier instead.
 """
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
@@ -19,7 +19,7 @@ from . import main as core
 from .config import settings
 from .employee_deletion import automatic_entry_drafts, deletion_preview
 from .import_service import normalize_document_number
-from .models import Company, ComplianceEvent, Employee, EmployeeEvent, SalaryHistory, User
+from .models import Company, ComplianceEvent, Employee, EmployeeComplianceProfile, EmployeeEvent, SalaryHistory, User
 from .period_coverage import current_paraguay_date
 
 router = APIRouter()
@@ -100,6 +100,8 @@ def review_page(request: Request, db: Session, user: User, employee: Employee, *
         employee=employee, companies=options, related_employers=linked,
         correction_issues=issues, blockers=review["blockers"],
         correction_token=preview_token(user, employee, review["fingerprint"]) if not issues else "",
+        new_employment_token=preview_token(user, employee, "new-employment"),
+        new_employment_today=current_paraguay_date(),
         correction_error=error,
     )
     response.status_code = status
@@ -192,3 +194,135 @@ def change_company_confirm(
         db.rollback()
         raise HTTPException(409, "El legajo o la cédula ya existe en la empresa destino. No se guardó ningún cambio.")
     return RedirectResponse(f"/app/employees/{employee.id}?company_corrected=1", status_code=303)
+
+
+@router.post("/app/employees/{employee_id}/new-employment")
+def register_new_employer(
+    employee_id: int,
+    request: Request,
+    destination_company_id: Annotated[int, Form()],
+    admission_date: Annotated[date, Form()],
+    position: Annotated[str, Form()],
+    base_salary: Annotated[int, Form()],
+    payment_frequency: Annotated[str, Form()],
+    contract_type: Annotated[str, Form()],
+    ips_contributor: Annotated[str, Form()],
+    new_employment_token: Annotated[str, Form()],
+    employee_code: Annotated[str, Form()] = "",
+    acknowledgement: Annotated[str, Form()] = "",
+    user: User = Depends(core.require_roles("administrador", "contador")),
+    db: Session = Depends(core.get_db),
+):
+    """Start a separate employment relationship; never transfer the previous dossier."""
+    source = allowed_employee(db, user, employee_id)
+    if not validate_token(new_employment_token, user, source, "new-employment"):
+        return review_page(request, db, user, source,
+            error="La revisión venció o el legajo cambió. Volvé a abrir la pantalla.", status=409)
+    if acknowledgement != "new":
+        return review_page(request, db, user, source,
+            error="Confirmá que estás registrando una relación laboral nueva, no corrigiendo el empleador anterior.", status=422)
+    destination = core.company_allowed(db, user, destination_company_id)
+    if destination.id == source.company_id or destination.status == "Archivada" or destination.studio_id != source.company.studio_id:
+        return review_page(request, db, user, source,
+            error="Elegí una empresa distinta y activa dentro de tu estudio.", status=422)
+    # Lock the employer row to serialize competing registrations from this wizard.
+    db.scalar(select(Company).where(Company.id == destination.id).with_for_update())
+    document = normalize_document_number(source.document_number)
+    if not document:
+        return review_page(request, db, user, source, error="El funcionario no tiene una cédula válida.", status=422)
+    normalized_sql = func.replace(
+        func.replace(func.replace(func.replace(Employee.document_number, ".", ""), "-", ""), " ", ""), "/", ""
+    )
+    duplicate = db.scalar(select(Employee.id).where(
+        Employee.company_id == destination.id, normalized_sql == document
+    ).limit(1))
+    if duplicate is not None:
+        return review_page(request, db, user, source,
+            error="La persona ya tiene un legajo en esa empresa. Abrí el expediente existente; no se crea un segundo registro.", status=409)
+    if not 1 <= base_salary <= 2_147_483_647:
+        return review_page(request, db, user, source,
+            error="Ingresá el salario convenido de la nueva empresa, mayor a cero y en guaraníes.", status=422)
+    if not position.strip() or len(position.strip()) > 140:
+        return review_page(request, db, user, source, error="Ingresá el nuevo cargo (máximo 140 caracteres).", status=422)
+    if payment_frequency not in {"Mensual", "Quincenal", "Semanal", "Jornal"}:
+        return review_page(request, db, user, source, error="Seleccioná una frecuencia de pago válida.", status=422)
+    if contract_type not in {"Tiempo indefinido", "Plazo determinado", "Obra o servicio", "Aprendizaje", "Otro"}:
+        return review_page(request, db, user, source, error="Seleccioná un tipo de contrato válido.", status=422)
+    if ips_contributor not in {"true", "false"}:
+        return review_page(request, db, user, source, error="Confirmá si la nueva relación aporta al IPS.", status=422)
+    if source.birth_date and admission_date <= source.birth_date:
+        return review_page(request, db, user, source, error="La fecha de ingreso debe ser posterior al nacimiento.", status=422)
+    if admission_date > date(current_paraguay_date().year + 1, 12, 31) or admission_date < date(1900, 1, 1):
+        return review_page(request, db, user, source, error="Revisá la fecha de ingreso de la nueva relación laboral.", status=422)
+    if employee_code.strip():
+        try:
+            code = int(employee_code.strip())
+        except ValueError:
+            return review_page(request, db, user, source, error="El Código Legajo debe ser numérico.", status=422)
+    else:
+        code = core._next_employee_code(db, destination.id)
+    if not 1 <= code <= 2_147_483_647 or db.scalar(select(Employee.id).where(
+        Employee.company_id == destination.id, Employee.employee_code == code
+    ).limit(1)) is not None:
+        return review_page(request, db, user, source, error="El Código Legajo no está disponible en la empresa destino.", status=409)
+
+    old_profile = db.scalar(select(EmployeeComplianceProfile).where(EmployeeComplianceProfile.employee_id == source.id))
+    worker = Employee(
+        company_id=destination.id, employee_code=code, full_name=source.full_name,
+        document_number=document, birth_date=source.birth_date,
+        phone=source.phone or "", email=source.email or "", address=source.address or "",
+        position=position.strip(), admission_date=admission_date, base_salary=base_salary,
+        status="Activo", branch_id=None, section_id=None,
+        payment_frequency=payment_frequency, contract_type=contract_type,
+        ips_contributor=ips_contributor == "true", notes="",
+        updated_at=datetime.now(UTC), updated_by=user.email,
+    )
+    try:
+        db.add(worker)
+        db.flush()
+        db.add(EmployeeComplianceProfile(
+            employee_id=worker.id,
+            document_type=old_profile.document_type if old_profile else "CI",
+            sex=old_profile.sex if old_profile else "",
+            nationality=old_profile.nationality if old_profile else "Paraguaya",
+            marital_status=old_profile.marital_status if old_profile else "",
+            birth_place=old_profile.birth_place if old_profile else "",
+            ips_number=old_profile.ips_number if old_profile else "",
+            salary_type=payment_frequency,
+        ))
+        db.add(SalaryHistory(
+            employee_id=worker.id, previous_salary=0, new_salary=base_salary,
+            effective_from=admission_date, reason="Salario inicial · nuevo empleador",
+            created_by=user.email,
+        ))
+        core.add_employee_event(
+            db, worker, user, "Alta", "Nueva relación laboral",
+            f"Alta en {destination.legal_name}. Datos personales tomados del legajo "
+            f"{source.employee_code or source.id} de {source.company.legal_name} (ID {source.id}). "
+            "El historial del empleador anterior no se transfirió.",
+            admission_date, base_salary,
+        )
+        core.ensure_compliance_event(
+            db, company_id=destination.id, employee_id=worker.id, branch_id=None,
+            authority="REOP", event_type="Entrada", event_date=admission_date, due_date=None,
+            payload={"employee_id": worker.id}, created_by=user.email,
+            source_key=f"employee:{worker.id}:entry:reop",
+        )
+        if worker.ips_contributor:
+            core.ensure_compliance_event(
+                db, company_id=destination.id, employee_id=worker.id, branch_id=None,
+                authority="REI", event_type="Entrada", event_date=admission_date, due_date=None,
+                payload={"employee_id": worker.id}, created_by=user.email,
+                source_key=f"employee:{worker.id}:entry:rei",
+            )
+        core.write_audit(
+            db, user, "alta_nuevo_empleador", "funcionario", str(worker.id),
+            f"Legajo nuevo en empresa {destination.id}, proveniente de ficha "
+            f"{source.id} (empresa {source.company_id}). Sin transferencia de historial.",
+        )
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(409, "El código o la cédula ya está registrado en la empresa seleccionada.") from exc
+
+    return RedirectResponse(f"/app/employees/{worker.id}?new_employment=1", status_code=303)
