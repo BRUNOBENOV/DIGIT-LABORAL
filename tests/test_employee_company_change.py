@@ -114,7 +114,7 @@ def form_data(csrf, token, ids):
 
 
 def test_company_correction_moves_only_clean_dossier_and_keeps_salary_initial():
-    with workforce() as ids, TestClient(app) as client:
+    with TestClient(app) as client, workforce() as ids:
         csrf = login(client)
         page = client.get(f"/app/employees/{ids['worker']}/change-company")
         assert page.status_code == 200
@@ -140,7 +140,7 @@ def test_company_correction_moves_only_clean_dossier_and_keeps_salary_initial():
 
 
 def test_existing_same_document_in_another_company_is_switchable_not_mergeable():
-    with workforce(duplicate=True) as ids, TestClient(app) as client:
+    with TestClient(app) as client, workforce(duplicate=True) as ids:
         csrf = login(client)
         page = client.get(f"/app/employees/{ids['worker']}/change-company")
         assert page.status_code == 200
@@ -161,7 +161,7 @@ def test_existing_same_document_in_another_company_is_switchable_not_mergeable()
 
 
 def test_company_correction_refuses_dossiers_with_saved_payroll_calculations():
-    with workforce(linked=True) as ids, TestClient(app) as client:
+    with TestClient(app) as client, workforce(linked=True) as ids:
         csrf = login(client)
         page = client.get(f"/app/employees/{ids['worker']}/change-company")
         assert page.status_code == 200
@@ -175,7 +175,7 @@ def test_company_correction_refuses_dossiers_with_saved_payroll_calculations():
 
 
 def test_company_correction_rejects_expired_or_invalid_review_token():
-    with workforce() as ids, TestClient(app) as client:
+    with TestClient(app) as client, workforce() as ids:
         csrf = login(client)
         response = client.post(f"/app/employees/{ids['worker']}/change-company",
             data=form_data(csrf, "invalid", ids), follow_redirects=False)
@@ -185,7 +185,7 @@ def test_company_correction_rejects_expired_or_invalid_review_token():
 
 
 def test_employee_exit_modal_is_in_body_not_in_page_title():
-    with workforce() as ids, TestClient(app) as client:
+    with TestClient(app) as client, workforce() as ids:
         login(client)
         page = client.get(f"/app/employees/{ids['worker']}")
         assert page.status_code == 200
