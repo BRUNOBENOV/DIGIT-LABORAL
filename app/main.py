@@ -3913,6 +3913,8 @@ def employee_detail_page(
         db.refresh(employee)
     employee_exit = latest_exit(db, employee.id)
     final_settlement = latest_settlement(db, employee.id)
+    from .employee_company_change_routes import related_employers
+    other_employer_records = related_employers(db, user, employee)
     events = list(db.scalars(select(EmployeeEvent).where(EmployeeEvent.employee_id == employee.id).order_by(EmployeeEvent.effective_date.desc(), EmployeeEvent.created_at.desc())))
     salaries = list(db.scalars(select(SalaryHistory).where(SalaryHistory.employee_id == employee.id).order_by(SalaryHistory.effective_from.desc(), SalaryHistory.created_at.desc(), SalaryHistory.id.desc())))
     salary_reference = current_paraguay_date()
@@ -3939,6 +3941,7 @@ def employee_detail_page(
         payroll_lines=payroll_lines, deadlines=deadlines,
         employee_profile=_employee_profile(db, employee.id),
         employee_exit=employee_exit, final_settlement=final_settlement,
+        other_employer_records=other_employer_records,
         can_reactivate=user.role in {"administrador", "contador"} and not reactivation_issue(
             employee, company=employee.company,
             has_settlement=final_settlement is not None, has_exit=employee_exit is not None,
