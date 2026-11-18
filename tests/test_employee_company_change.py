@@ -28,7 +28,10 @@ def login(client):
         "csrf_token": token.group(1),
     }, follow_redirects=False)
     assert response.status_code == 303
-    return token.group(1)
+    dashboard = client.get("/app")
+    csrf = re.search(r'name="csrf_token" value="([^"]+)"', dashboard.text)
+    assert dashboard.status_code == 200 and csrf
+    return csrf.group(1)
 
 
 @contextmanager
