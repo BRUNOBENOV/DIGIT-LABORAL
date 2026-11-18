@@ -109,7 +109,9 @@
       <td class="employee-company-cell"><strong>{{ employee.company.legal_name }}</strong>
         {% set same_document_companies = document_company_counts.get(employee.document_number|replace('.','')|replace('-','')|replace(' ','')|replace('/',''), 1) %}
         {% if same_document_companies > 1 %}
-        <a class="employee-company-more" href="/app/employees/{{ employee.id }}/change-company" title="Ver los legajos de esta cédula en otras empresas">↗ {{ same_document_companies }} empresas · elegir legajo</a>
+        {% if user.role in ['administrador','contador'] %}
+          <a class="employee-company-more" href="/app/employees/{{ employee.id }}/change-company" title="Ver los legajos de esta cédula en otras empresas">↗ {{ same_document_companies }} empresas · elegir legajo</a>
+        {% else %}<span class="employee-company-more">{{ same_document_companies }} empresas registradas</span>{% endif %}
         {% endif %}
       </td>
       <td>{{ employee.document_number }}</td>
@@ -119,8 +121,9 @@
       <td>Gs. {{ current_salary|gs }}{% if minimum_salary and current_salary < minimum_salary.value %}<small class="salary-alert">Revisar referencia mínima general</small>{% endif %}</td>
       <td>{{ 'Sí' if employee.ips_contributor else 'No' }}</td>
       <td><span class="status-pill {{ employee.status|lower }}">{{ employee.status }}</span></td>
-      <td><div class="table-actions"><a class="table-save" href="/app/employees/{{ employee.id }}">Expediente</a>{% if user.role in ['administrador','contador','auxiliar'] and employee.status != 'Archivado' %}<button class="table-save" type="button" data-modal-open="employeeModal" data-employee-code="{{ employee.employee_code }}" data-employee-company="{{ employee.company_id }}">Editar</button>{% endif %}
+      <td><div class="table-actions"><a class="table-save" href="/app/employees/{{ employee.id }}">Expediente</a>
       <details class="employee-action-menu"><summary aria-label="Acciones de {{ employee.full_name }}">⋯ Acciones</summary><div class="employee-action-panel">
+        {% if user.role in ['administrador','contador','auxiliar'] and employee.status != 'Archivado' %}<button type="button" data-modal-open="employeeModal" data-employee-code="{{ employee.employee_code }}" data-employee-company="{{ employee.company_id }}">Editar ficha</button>{% endif %}
         <a href="/app/employees/{{ employee.id }}">Ver expediente</a>
         {% if user.role in ['administrador','contador'] %}<a href="/app/employees/{{ employee.id }}/change-company">Cambiar empresa / ver otros legajos</a>{% endif %}
         {% if user.role in ['administrador','contador','auxiliar'] and employee.status != 'Archivado' and employee.company.status != 'Archivada' %}
