@@ -12478,6 +12478,8 @@ from .employee_exit_routes import router as employee_exit_router
 app.include_router(employee_exit_router)
 from .employee_deletion_routes import router as employee_deletion_router
 app.include_router(employee_deletion_router)
+from .employee_company_change_routes import router as employee_company_change_router
+app.include_router(employee_company_change_router)
 from .test_dossier_cleanup_routes import router as test_dossier_cleanup_router
 app.include_router(test_dossier_cleanup_router)
 
