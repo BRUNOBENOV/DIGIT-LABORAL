@@ -35,7 +35,7 @@
 <div class="company-correction-shell">
   <div class="company-correction-header">
     <div><span class="eyebrow">MANTENIMIENTOS · FUNCIONARIOS</span><h1>Cambiar empresa del funcionario</h1>
-    <p>Revisá en qué empresa está registrado este trabajador. Podés abrir otro legajo existente sin duplicarlo o corregir una empresa asignada por error, cuando no tenga antecedentes que deban permanecer asociados al empleador anterior.</p></div>
+    <p>Gestioná correctamente el empleador actual: abrí un legajo existente, creá una nueva relación laboral sin perder antecedentes o rectificá una empresa asignada por error.</p></div>
     <a class="btn outline" href="/app/employees/{{ employee.id }}">Volver al expediente</a>
   </div>
   {% if correction_error %}<div class="alert danger" role="alert">{{ correction_error }}</div>{% endif %}
@@ -66,6 +66,90 @@
       {% endif %}
     </section>
   </div>
+  <section class="company-correction-card" aria-labelledby="newEmployerTitle" id="newEmployer">
+    <span class="eyebrow">CAMBIO REAL DE EMPLEADOR</span>
+    <h2 id="newEmployerTitle">Registrar nueva relación laboral en otra empresa</h2>
+    <p>Si anteriormente trabajaba para esta empresa y ahora presta servicios para otra, creá <b>un legajo nuevo en el empleador actual</b>. Se copiarán únicamente sus datos de identificación y contacto. Las liquidaciones, salarios anteriores, fechas de ingreso y documentos seguirán perteneciendo a cada empleador original.</p>
+    {% if employee.status == 'Activo' %}
+      <p class="company-correction-notice warning"><b>El legajo anterior figura activo.</b> Esta alta no registra su egreso. Si dejó de prestar servicios para la empresa anterior, gestioná el egreso por separado con la fecha y el motivo reales; no se cambiará automáticamente su situación laboral.</p>
+    {% endif %}
+    {% if companies %}
+      <form method="post" action="/app/employees/{{ employee.id }}/new-employment" class="company-correction-form" id="newEmploymentForm">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="new_employment_token" value="{{ new_employment_token }}">
+        <label class="span-2">Empresa en la que ahora trabaja *
+          <select name="destination_company_id" id="newEmploymentCompany" required>
+            <option value="">Seleccioná la nueva empresa…</option>
+            {% for company in companies %}
+              <option value="{{ company.id }}" {% if related_employers|selectattr('company_id','equalto',company.id)|list %}data-existing="true"{% endif %}>{{ company.company_code or 'Sin código' }} · {{ company.legal_name }}</option>
+            {% endfor %}
+          </select>
+          <small>Si KAJI S.A. no está registrada, <a href="/app/companies">creá primero su ficha de empresa</a> y volvé aquí.</small>
+        </label>
+        <div class="company-correction-notice warning span-2" id="newEmploymentExisting" hidden>La persona ya tiene un legajo en esa empresa. Abrí el expediente correspondiente en «Otras empresas registradas», sin generar un duplicado.</div>
+        <label>Fecha real de ingreso a la nueva empresa *
+          <input name="admission_date" type="date" required>
+        </label>
+        <label>Código Legajo
+          <input name="employee_code" type="number" min="1" max="2147483647" step="1" placeholder="Automático si lo dejás vacío">
+        </label>
+        <label class="span-2">Nuevo cargo *
+          <input name="position" type="text" maxlength="140" required placeholder="Cargo desempeñado en la nueva empresa">
+        </label>
+        <label>Salario convenido en la nueva empresa (Gs.) *
+          <input name="base_salary" type="number" min="1" max="2147483647" step="1" required placeholder="Ingresá el salario real">
+        </label>
+        <label>Frecuencia de pago *
+          <select name="payment_frequency" required>
+            <option value="Mensual">Mensual</option>
+            <option value="Quincenal">Quincenal</option>
+            <option value="Semanal">Semanal</option>
+            <option value="Jornal">Jornal</option>
+          </select>
+        </label>
+        <label>Tipo de contrato *
+          <select name="contract_type" required>
+            <option value="Tiempo indefinido">Tiempo indefinido</option>
+            <option value="Plazo determinado">Plazo determinado</option>
+            <option value="Obra o servicio">Obra o servicio</option>
+            <option value="Aprendizaje">Aprendizaje</option>
+            <option value="Otro">Otro</option>
+          </select>
+        </label>
+        <label>Aporta IPS en el nuevo empleo *
+          <select name="ips_contributor" required>
+            <option value="true">Sí</option>
+            <option value="false">No</option>
+          </select>
+        </label>
+        <div class="company-correction-notice span-2">Se crearán <b>borradores internos de alta REOP</b> y, si corresponde, <b>REI</b>. No se presentarán ni se enviarán automáticamente al MTESS o al IPS. Revisá las comunicaciones oficiales antes de emitirlas.</div>
+        <label class="company-correction-confirm span-2">
+          <input type="checkbox" name="acknowledgement" value="new" required>
+          Confirmo que comienza una relación laboral distinta y que los datos ingresados corresponden a la nueva empresa. El historial y el estado del empleador anterior se conservarán.
+        </label>
+        <div class="company-correction-actions span-2">
+          <a href="/app/employees/{{ employee.id }}" class="btn outline">Cancelar</a>
+          <button class="btn primary" type="submit" id="newEmploymentSubmit">Registrar nuevo empleo</button>
+        </div>
+      </form>
+      <script>
+        (() => {
+          const company = document.getElementById("newEmploymentCompany");
+          const notice = document.getElementById("newEmploymentExisting");
+          const save = document.getElementById("newEmploymentSubmit");
+          const sync = () => {
+            const existing = company.selectedOptions[0]?.dataset.existing === "true";
+            notice.hidden = !existing;
+            save.disabled = existing || !company.value;
+          };
+          company.addEventListener("change", sync);
+          sync();
+        })();
+      </script>
+    {% else %}
+      <p>No hay otra empresa activa registrada en tu estudio. <a href="/app/companies">Registrá la nueva empresa</a> antes de crear este vínculo laboral.</p>
+    {% endif %}
+  </section>
   <section class="company-correction-card" aria-labelledby="companyCorrectionTitle">
     <span class="eyebrow">CORRECCIÓN ADMINISTRATIVA</span><h2 id="companyCorrectionTitle">Rectificar empresa elegida por error</h2>
     <p>Esta opción es únicamente para corregir el registro original de un legajo sin operaciones posteriores. <b>Si hubo un cambio real de empleador, no uses este formulario:</b> corresponde tramitar el egreso y el alta de la nueva relación laboral por separado.</p>
