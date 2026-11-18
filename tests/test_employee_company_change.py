@@ -319,7 +319,7 @@ def test_new_employment_requires_new_salary_and_employer_specific_fields():
         for change in (
             {"base_salary": "0"}, {"base_salary": "-200"},
             {"position": ""}, {"ips_contributor": "maybe"},
-            {"admission_date": "1901-01-01"},
+            {"admission_date": "1899-01-01"},
         ):
             response = client.post(url, data=new_employment_data(csrf, token, ids, **change),
                                    follow_redirects=False)
