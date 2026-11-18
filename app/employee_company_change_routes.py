@@ -45,7 +45,7 @@ def related_employers(db: Session, user: User, employee: Employee) -> list[Emplo
     if not document:
         return []
     cleaned = func.replace(
-        func.replace(func.replace(Employee.document_number, ".", ""), "-", ""), " ", ""
+        func.replace(func.replace(func.replace(Employee.document_number, ".", ""), "-", ""), " ", ""), "/", ""
     )
     query = select(Employee).where(
         Employee.id != employee.id,
@@ -142,10 +142,17 @@ def change_company_confirm(
     if not 1 <= new_employee_code <= 2_147_483_647:
         return review_page(request, db, user, employee, error="El nuevo Código Legajo debe ser positivo.", status=422)
     document = normalize_document_number(employee.document_number)
-    existing = list(db.scalars(select(Employee).where(Employee.company_id == destination.id)))
-    if any(normalize_document_number(item.document_number) == document for item in existing):
+    # Restrict duplicate checks to the destination company, without loading its employees.
+    normalized_sql = func.replace(
+        func.replace(func.replace(func.replace(Employee.document_number, ".", ""), "-", ""), " ", ""), "/", ""
+    )
+    if db.scalar(select(Employee.id).where(
+        Employee.company_id == destination.id, normalized_sql == document
+    ).limit(1)) is not None:
         return review_page(request, db, user, employee, error="Ya existe un legajo con esta cédula en la empresa destino. Abrí ese expediente; no se fusionan registros.", status=409)
-    if any(item.employee_code == new_employee_code for item in existing):
+    if db.scalar(select(Employee.id).where(
+        Employee.company_id == destination.id, Employee.employee_code == new_employee_code
+    ).limit(1)) is not None:
         return review_page(request, db, user, employee, error="El Código Legajo ya está ocupado en la empresa destino.", status=409)
 
     old_company_id = employee.company_id
