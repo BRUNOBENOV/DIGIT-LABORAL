@@ -125,7 +125,7 @@
       <details class="employee-action-menu"><summary aria-label="Acciones de {{ employee.full_name }}">⋯ Acciones</summary><div class="employee-action-panel">
         {% if user.role in ['administrador','contador','auxiliar'] and employee.status != 'Archivado' %}<button type="button" data-modal-open="employeeModal" data-employee-code="{{ employee.employee_code }}" data-employee-company="{{ employee.company_id }}">Editar ficha</button>{% endif %}
         <a href="/app/employees/{{ employee.id }}">Ver expediente</a>
-        {% if user.role in ['administrador','contador'] %}<a href="/app/employees/{{ employee.id }}/change-company">Cambiar empresa / ver otros legajos</a>{% endif %}
+        {% if user.role in ['administrador','contador'] %}<a href="/app/employees/{{ employee.id }}/change-company">Nuevo empleador / cambiar empresa</a>{% endif %}
         {% if user.role in ['administrador','contador','auxiliar'] and employee.status != 'Archivado' and employee.company.status != 'Archivada' %}
           <a href="/app/employees/{{ employee.id }}/salary-change">{{ salary_action_label }}</a>
         {% endif %}
