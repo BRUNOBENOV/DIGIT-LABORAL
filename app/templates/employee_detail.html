@@ -31,6 +31,9 @@
 {% if request.query_params.get('company_corrected') == '1' %}
   <div class="alert success" role="status">Empresa del legajo rectificada. Se conservaron los datos personales y el salario inicial; la operación quedó registrada en auditoría.</div>
 {% endif %}
+{% if request.query_params.get('new_employment') == '1' %}
+  <div class="alert success" role="status"><b>Nueva relación laboral registrada.</b> Este legajo pertenece a {{ employee.company.legal_name }}. Los historiales de los empleadores anteriores permanecen separados. Revisá los borradores REOP/REI antes de comunicarlos oficialmente.</div>
+{% endif %}
 {% if other_employer_records %}
 <section class="employee-employer-switch" aria-label="Otros legajos de esta cédula">
   <div class="employee-employer-switch-title"><b>Esta cédula figura en {{ other_employer_records|length + 1 }} legajos empresariales.</b><small>Seleccioná el expediente de la empresa que corresponda. Los historiales y liquidaciones permanecen separados.</small></div>
@@ -64,7 +67,7 @@
     <div class="tag-row"><span>{{ employee.contract_type }}</span><span>{{ employee.payment_frequency }}</span><span class="status-pill {{ employee.status|lower }}">{{ employee.status }}</span></div>
   </div>
   {% if user.role in ['administrador', 'contador', 'auxiliar'] %}<button class="btn outline" type="button" data-modal-open="editEmployeeDetail">Editar ficha</button>{% endif %}
-  {% if user.role in ['administrador','contador'] %}<a class="btn outline" href="/app/employees/{{ employee.id }}/change-company">Cambiar empresa</a>{% endif %}
+  {% if user.role in ['administrador','contador'] %}<a class="btn outline" href="/app/employees/{{ employee.id }}/change-company">Nuevo empleador / cambiar empresa</a>{% endif %}
   {% if user.role in ['administrador','contador'] %}<a class="btn danger" href="/app/employees/{{ employee.id }}/permanent-delete">Eliminar definitivamente</a>{% endif %}
 </section>
 
