@@ -268,7 +268,7 @@ def calculate(data, *, judicial_evidence_verified=False):
             # solo se admite el importe truncado al guaraní (diferencia
             # matemática de como máximo 1 Gs.) y únicamente en salario
             # mensual. No se alteran otros haberes, egresos ni jornaleros.
-            raw_salary = salary / Decimal("30") * days
+            raw_salary = (salary * days) / Decimal("30")
             rounded_salary = amount(raw_salary)
             salary_to_pay = rounded_salary
             rounding_method = str(data.get("monthly_proration_rounding") or "commercial").strip()
