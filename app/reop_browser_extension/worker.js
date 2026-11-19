@@ -93,7 +93,7 @@ async function readVisibleIpsSnapshot() {
   if (tabs.length !== 1) {
     throw new Error(tabs.length
       ? "Hay varias pestañas de Consulta Planillas IPS. Dejá abierta solamente una."
-      : "Abrí IPS REI → Consulta Planillas y mostr á la planilla del mes antes de continuar.".replace("mostr á", "mostrá"));
+      : "Abrí IPS REI → Consulta Planillas y mostrá la planilla del mes antes de continuar.");
   }
   let frames;
   try {
