@@ -41,7 +41,7 @@
   <section class="panel">
     <form class="portal-reconcile-form" id="portalReconcileSelection" method="get" action="/app/compliance/portal-reconciliation">
       <label>Empresa de trabajo
-        <select name="company_id" id="portalCompany" required>
+        <select name="company_id" id="portalCompany" required data-searchable-entity="company" data-entity-scope="current">
           <option value="">Elegí una empresa…</option>
           {% for company in companies %}<option value="{{ company.id }}" {{ 'selected' if selected_company and selected_company.id == company.id }}>{{ company.company_code or 'Sin código' }} · {{ company.legal_name }}</option>{% endfor %}
         </select>
