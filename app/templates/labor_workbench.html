@@ -145,10 +145,14 @@
   const jornalInput = form.elements.namedItem("daily_rate");
   const monthlySalaryField = form.querySelector('[data-field="salary"]');
   const dailyRateField = form.querySelector('[data-field="daily_rate"]');
+  const ipsReferenceField = form.querySelector('[data-field="ips_salary_reference"]');
+  const ipsReferenceInput = form.elements.namedItem("ips_salary_reference");
   function showApplicableWageFields() {
     const jornalero = basis?.value === "daily";
     if (dailyRateField) dailyRateField.style.display = jornalero ? "" : "none";
     if (monthlySalaryField) monthlySalaryField.style.display = jornalero ? "none" : "";
+    if (ipsReferenceField) ipsReferenceField.style.display = jornalero ? "none" : "";
+    if (jornalero && ipsReferenceInput) ipsReferenceInput.value = "";
     // Jornalero = jornal pactado; la referencia mensual es opcional y no
     // puede impedir guardar cuando se conoce el jornal real.
     if (salaryInput) salaryInput.required = !jornalero;
