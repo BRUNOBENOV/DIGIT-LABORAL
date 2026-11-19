@@ -84,33 +84,47 @@ function captureVisibleIpsPlanilla() {
   return matches[0] || null;
 }
 
-async function readVisibleIpsSnapshot() {
-  const tabs = (await chrome.tabs.query({url: IPS_ORIGIN + "/*"})).filter(tab => {
-    const url = parseUrl(tab.url);
-    return !tab.incognito && tab.status === "complete" &&
-      url?.origin === IPS_ORIGIN && url.pathname === IPS_SHEET_PATH;
-  });
-  if (tabs.length !== 1) {
-    throw new Error(tabs.length
-      ? "Hay varias pestañas de Consulta Planillas IPS. Dejá abierta solamente una."
-      : "Abrí IPS REI → Consulta Planillas y mostrá la planilla del mes antes de continuar.");
-  }
-  let frames;
-  try {
-    frames = await chrome.scripting.executeScript({
-      target: {tabId: tabs[0].id, allFrames: true},
+const IPS_CAPTURE = "digit-ips-capture";
+const IPS_CAPTURE_TTL = 5 * 60 * 1000;
+function isIpsSheetPage(url) {
+  const parsed = parseUrl(url);
+  return parsed?.origin === IPS_ORIGIN && parsed.pathname === IPS_SHEET_PATH;
+}
+
+async function captureIpsWithActiveTab(tab) {
+  // Called only by the user clicking the extension action on an IPS tab.
+  // Chrome grants activeTab for that tab; no persistent host permission needed.
+  return serialize(async () => {
+    if (!Number.isInteger(tab.id) || tab.incognito || !isIpsSheetPage(tab.url)) return;
+    const frames = await chrome.scripting.executeScript({
+      target: {tabId: tab.id, allFrames: true},
       func: captureVisibleIpsPlanilla,
     });
-  } catch (_) {
-    throw new Error("Chrome no pudo leer la planilla IPS. Revisá el permiso de la extensión y actualizala.");
+    const candidates = frames.map(frame => frame.result).filter(Boolean);
+    const problem = candidates.find(value => value.error);
+    if (problem) throw new Error(problem.error);
+    if (candidates.length !== 1) {
+      throw new Error("Abrí el detalle de una sola planilla de IPS y pulsá de nuevo el asistente.");
+    }
+    await chrome.storage.session.set({
+      [IPS_CAPTURE]: {at: Date.now(), snapshot: candidates[0]},
+    });
+    await chrome.action.setBadgeText({tabId: tab.id, text: "IPS"});
+    await chrome.action.setTitle({tabId: tab.id, title: "Planilla IPS capturada. Regresá a Conciliación en Digit Laboral."});
+  }).catch(error => {
+    chrome.action.setBadgeText({tabId: tab.id, text: "!"}).catch(() => {});
+    chrome.action.setTitle({tabId: tab.id, title: error.message || "No se pudo leer la planilla IPS."}).catch(() => {});
+  });
+}
+
+async function readVisibleIpsSnapshot() {
+  const captured = (await chrome.storage.session.get(IPS_CAPTURE))[IPS_CAPTURE];
+  if (!captured || !Number.isSafeInteger(captured.at) ||
+      Date.now() - captured.at > IPS_CAPTURE_TTL) {
+    throw new Error("Abrí la planilla IPS en Chrome y pulsá primero el ícono del asistente en esa pestaña.");
   }
-  const candidates = frames.map(frame => frame.result).filter(Boolean);
-  const problem = candidates.find(value => value.error);
-  if (problem) throw new Error(problem.error);
-  if (candidates.length !== 1) {
-    throw new Error("No se identificó una única planilla IPS visible con cédulas, días y salarios. Abrí su detalle.");
-  }
-  return candidates[0];
+  await chrome.storage.session.remove(IPS_CAPTURE);
+  return captured.snapshot;
 }
 
 let pendingOperation = Promise.resolve();
@@ -308,6 +322,7 @@ chrome.runtime.onMessageExternal.addListener(reply(async (message, sender) => {
 }));
 
 function openPortal(tab) {
+  if (isIpsSheetPage(tab?.url)) return captureIpsWithActiveTab(tab);
   if (!Number.isInteger(tab.id) || tab.incognito || parseUrl(tab.url)?.origin !== REOP) {
     if (Number.isInteger(tab.id)) {
       chrome.action.setBadgeText({tabId: tab.id, text: "REOP"}).catch(() => {});
