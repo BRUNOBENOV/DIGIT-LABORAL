@@ -104,10 +104,6 @@ GROUPS = {
     "salary": [
         group("Salario del período", [field("month", "Mes liquidado", "month", required=True),
             PAY_BASIS, SALARY, DAILY_RATE, DAYS,
-            field("ips_salary_reference", "Salario Real de IPS · Gs. (opcional)",
-                  help="Solo mensualizados. Copiá el campo «Salario Real» de la planilla IPS, "
-                       "no «Salario a Pagar». Digit solo conciliará una diferencia de "
-                       "redondeo de hasta 1 Gs.; si está vacío, conserva el cálculo habitual."),
             field("days_worked", "Jornadas efectivamente trabajadas", max="31",
                   help="Dato del recibo. Distinto de la base mensual de 30 días."),
             field("hours_worked", "Horas ordinarias efectivamente trabajadas", max="744", step="0.01",
