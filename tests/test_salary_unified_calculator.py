@@ -12,6 +12,56 @@ def test_salary_monthly_keeps_divisor_30():
     assert {"label": "Modalidad salarial", "value": "Mensualizado · divisor 30"} in result["facts"]
 
 
+def test_monthly_salary_ips_rounding_reconciliation_does_not_change_paid_days():
+    regular = calculate(salary(
+        salary="3044000", days_paid="25", days_worked="25", month="2026-10",
+        pay_basis="monthly",
+    ))
+    assert regular["earnings"][0]["amount"] == 2_536_667
+    assert regular["net"] == 2_308_367
+
+    reconciled = calculate(salary(
+        salary="3044000", days_paid="25", days_worked="25", month="2026-10",
+        pay_basis="monthly", ips_salary_reference="2536666",
+    ))
+    assert reconciled["earnings"][0]["label"] == "Salario del período"
+    assert reconciled["earnings"][0]["amount"] == 2_536_666
+    assert reconciled["gross"] == 2_536_666
+    assert reconciled["deductions"][0]["amount"] == 228_300
+    assert reconciled["net"] == 2_308_366
+    assert {"label": "Días remunerados", "value": 25} in reconciled["facts"]
+    assert any("truncamiento" in note for note in reconciled["notes"])
+    assert any(fact["label"] == "Diferencia de redondeo conciliada con IPS"
+               for fact in reconciled["facts"])
+
+
+@pytest.mark.parametrize("reference", ["2536665", "2536668", "2638133", "-1", "abc"])
+def test_monthly_salary_ips_reference_rejects_other_differences(reference):
+    with pytest.raises(CalculationError) as error:
+        calculate(salary(
+            salary="3044000", days_paid="25", pay_basis="monthly",
+            ips_salary_reference=reference,
+        ))
+    assert error.value.field == "ips_salary_reference"
+
+
+def test_monthly_salary_ips_reference_agrees_without_adjustment():
+    result = calculate(salary(
+        salary="3044000", days_paid="30", pay_basis="monthly",
+        ips_salary_reference="3044000",
+    ))
+    assert result["gross"] == 3_044_000
+    assert not any(fact["label"] == "Diferencia de redondeo conciliada con IPS"
+                   for fact in result["facts"])
+
+
+def test_ips_salary_reference_does_not_apply_to_jornalero_or_settlement():
+    with pytest.raises(CalculationError) as error:
+        calculate(salary(pay_basis="daily", daily_rate="120000",
+                         ips_salary_reference="1000000"))
+    assert error.value.field == "ips_salary_reference"
+
+
 def test_salary_daily_wage_alone_is_sufficient_for_18_paid_days():
     result = calculate(salary(
         salary="", pay_basis="daily", daily_rate="117077",
