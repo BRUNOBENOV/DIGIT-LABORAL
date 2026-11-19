@@ -257,14 +257,17 @@ test('conserva el lote si Chrome revocó el acceso y arranca al pulsar el ícono
 });
 
 
-test('lectura IPS exige pantalla autorizada y no inicia cargas, clics ni envíos', async () => {
+test('captura IPS con activeTab explícito, consumo único y ningún envío', async () => {
   const bridge = extension();
   assert.equal((await bridge.external({type:'read-ips-planilla',protocol:1})).ok, false);
   assert.equal((await bridge.external({type:'stage',protocol:1}, ipsSender)).ok, false);
+  assert.equal((await bridge.external({type:'read-ips-planilla',protocol:1}, ipsSender)).ok, false);
+  await bridge.click({url: ipsTab.url, tab: ipsTab});
   const result = await bridge.external({type:'read-ips-planilla',protocol:1}, ipsSender);
   assert.equal(result.ok, true);
   assert.equal(result.snapshot.source, 'IPS_REI');
   assert.equal(result.snapshot.rows[0].salary_paid_ips, 202933);
   assert.deepEqual(bridge.injected, [ipsTab.id]);
   assert.deepEqual(bridge.tabActions, []);
+  assert.equal((await bridge.external({type:'read-ips-planilla',protocol:1}, ipsSender)).ok, false);
 });
