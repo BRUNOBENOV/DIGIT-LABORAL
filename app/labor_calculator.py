@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from calendar import monthrange
 from datetime import date
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from decimal import Decimal, InvalidOperation, ROUND_DOWN, ROUND_HALF_UP
 from .labor_wage_rules import minimum_wage_for_period
 from .settlement_presets import settlement_defaults
 
@@ -243,6 +243,12 @@ def calculate(data, *, judicial_evidence_verified=False):
         max_days = "31" if pay_basis == "daily" else "30"
         days = number(data, "days_paid", "días remunerados", required=True, maximum=max_days)
         daily_rate = ZERO
+        if kind == "salary" and pay_basis == "daily" and str(data.get("ips_salary_reference") or "").strip():
+            raise CalculationError(
+                "La conciliación del salario real IPS se admite solo para mensualizados; "
+                "en jornaleros se respeta el jornal pactado.",
+                "ips_salary_reference",
+            )
         if pay_basis == "daily":
             daily_rate = (positive(data, "daily_rate", "jornal pactado")
                           if str(data.get("daily_rate") or "").strip()
@@ -257,7 +263,45 @@ def calculate(data, *, judicial_evidence_verified=False):
                     "Se cargaron más de 26 jornadas remuneradas a jornal. Verificá el registro de asistencia, descansos, feriados y pagos antes de aprobar."
                 )
         else:
-            add("Salario del período", salary / 30 * days, f"Gs. {gs(salary)} / 30 × {days} días", "Base mensual")
+            # El motor conserva el redondeo comercial por defecto. Para
+            # conciliar con el salario REAL de una planilla IPS verificada,
+            # solo se admite el importe truncado al guaraní (diferencia
+            # matemática de como máximo 1 Gs.) y únicamente en salario
+            # mensual. No se alteran otros haberes, egresos ni jornaleros.
+            raw_salary = salary / Decimal("30") * days
+            rounded_salary = amount(raw_salary)
+            salary_to_pay = rounded_salary
+            ips_reference = str(data.get("ips_salary_reference") or "").strip() if kind == "salary" else ""
+            if ips_reference:
+                ips_salary = int(number(data, "ips_salary_reference", "salario real declarado en IPS"))
+                truncated_salary = int(raw_salary.to_integral_value(rounding=ROUND_DOWN))
+                if ips_salary not in {rounded_salary, truncated_salary}:
+                    raise CalculationError(
+                        "El salario real de IPS no coincide con el redondeo comercial ni con el "
+                        "truncamiento del salario mensual. Revisá el salario, los días y el "
+                        "campo «Salario Real» (no «Salario a Pagar») de IPS.",
+                        "ips_salary_reference",
+                    )
+                salary_to_pay = ips_salary
+                fact("Salario real informado en IPS", f"Gs. {gs(ips_salary)}")
+                if ips_salary != rounded_salary:
+                    fact("Diferencia de redondeo conciliada con IPS", f"Gs. {ips_salary - rounded_salary:+d}")
+                    result["notes"].append(
+                        "Conciliación de redondeo del salario mensual con el importe real de IPS "
+                        f"informado por el usuario: Gs. {gs(rounded_salary)} (redondeo comercial) "
+                        f"→ Gs. {gs(ips_salary)} (truncamiento), "
+                        f"diferencia {ips_salary - rounded_salary:+d} Gs. "
+                        "Revisar la planilla IPS antes de aprobar."
+                    )
+                else:
+                    result["notes"].append(
+                        "El salario real de IPS informado por el usuario coincide con el "
+                        "cálculo salarial. Verificar el respaldo antes de aprobar."
+                    )
+            add("Salario del período", salary_to_pay,
+                f"Gs. {gs(salary)} / 30 × {days} días"
+                + (" · conciliado con salario real IPS" if ips_reference else ""),
+                "Base mensual")
             fact("Modalidad salarial", "Mensualizado · divisor 30")
         fact("Días remunerados", days)
         if kind == "settlement" and pay_basis == "daily" and days > 26:
