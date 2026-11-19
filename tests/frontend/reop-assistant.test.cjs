@@ -15,6 +15,19 @@ const portal = {
   url: 'https://regobpat.mtess.gov.py/liquidacion_salario_list.php',
   frameId: 0, documentId: 'portal-doc', tab: {id: 5, windowId: 2},
 };
+const ipsSender = {
+  url: 'https://digit-laboral-app.onrender.com/app/compliance/portal-reconciliation?period=2026-10',
+  frameId: 0, documentId: 'ips-source', tab: {id: 8, windowId: 1},
+};
+const ipsTab = {
+  id: 10, windowId: 2, status: 'complete', incognito: false,
+  url: 'https://servicios.ips.gov.py/newrei/rei/Gestion/ConsultaPlanillas',
+};
+const ipsSnapshot = {
+  source: 'IPS_REI', patronal: '0905-61-00498', period: '2026-10',
+  rows: [{document: '6686557', name: 'Alejandro QA', days_ips: 2,
+    salary_real_ips: 202933, salary_paid_ips: 202933, movement: 'ENTRADA'}],
+};
 const bytes = Buffer.from('PK\x03\x04 synthetic workbook');
 const stage = {
   type: 'stage', protocol: 1, batchId: '7', period: '2026-10', patronal: '000123', rows: '2',
@@ -39,8 +52,12 @@ function extension() {
     alarms: {clear: async () => true, create: async () => {}, onAlarm: event('alarm')},
     runtime: {onMessageExternal: event('external'), onMessage: event('internal')},
     action: {onClicked: event('click'), setBadgeText: async () => {}, setTitle: async () => {}},
-    scripting: {executeScript: async ({target}) => { injected.push(target.tabId); }},
+    scripting: {executeScript: async ({target}) => {
+      injected.push(target.tabId);
+      return target.allFrames ? [{result: ipsSnapshot}] : undefined;
+    }},
     tabs: {
+      query: async () => [ipsTab],
       get: async id => {
         if (!openTabs.has(id)) throw new Error('Tab closed');
         return openTabs.get(id);
@@ -237,4 +254,17 @@ test('conserva el lote si Chrome revocó el acceso y arranca al pulsar el ícono
   assert.equal((await bridge.internal({type: 'info'})).autoPrevalidate, true);
   bridge.navigate(portal.tab.id);
   assert.equal((await bridge.external({type: 'status', batchId: stage.batchId})).review, 'portal');
+});
+
+
+test('lectura IPS exige pantalla autorizada y no inicia cargas, clics ni envíos', async () => {
+  const bridge = extension();
+  assert.equal((await bridge.external({type:'read-ips-planilla',protocol:1})).ok, false);
+  assert.equal((await bridge.external({type:'stage',protocol:1}, ipsSender)).ok, false);
+  const result = await bridge.external({type:'read-ips-planilla',protocol:1}, ipsSender);
+  assert.equal(result.ok, true);
+  assert.equal(result.snapshot.source, 'IPS_REI');
+  assert.equal(result.snapshot.rows[0].salary_paid_ips, 202933);
+  assert.deepEqual(bridge.injected, [ipsTab.id]);
+  assert.deepEqual(bridge.tabActions, []);
 });
