@@ -86,6 +86,7 @@ function captureVisibleIpsPlanilla() {
 
 const IPS_CAPTURE = "digit-ips-capture";
 const IPS_CAPTURE_TTL = 5 * 60 * 1000;
+const IPS_EXPIRES = "digit-ips-capture-expiry";
 function isIpsSheetPage(url) {
   const parsed = parseUrl(url);
   return parsed?.origin === IPS_ORIGIN && parsed.pathname === IPS_SHEET_PATH;
@@ -109,6 +110,7 @@ async function captureIpsWithActiveTab(tab) {
     await chrome.storage.session.set({
       [IPS_CAPTURE]: {at: Date.now(), snapshot: candidates[0]},
     });
+    await chrome.alarms.create(IPS_EXPIRES, {when: Date.now() + IPS_CAPTURE_TTL});
     await chrome.action.setBadgeText({tabId: tab.id, text: "IPS"});
     await chrome.action.setTitle({tabId: tab.id, title: "Planilla IPS capturada. Regresá a Conciliación en Digit Laboral."});
   }).catch(error => {
@@ -121,9 +123,12 @@ async function readVisibleIpsSnapshot() {
   const captured = (await chrome.storage.session.get(IPS_CAPTURE))[IPS_CAPTURE];
   if (!captured || !Number.isSafeInteger(captured.at) ||
       Date.now() - captured.at > IPS_CAPTURE_TTL) {
+    await chrome.storage.session.remove(IPS_CAPTURE);
+    await chrome.alarms.clear(IPS_EXPIRES);
     throw new Error("Abrí la planilla IPS en Chrome y pulsá primero el ícono del asistente en esa pestaña.");
   }
   await chrome.storage.session.remove(IPS_CAPTURE);
+  await chrome.alarms.clear(IPS_EXPIRES);
   return captured.snapshot;
 }
 
@@ -411,6 +416,9 @@ chrome.runtime.onMessage.addListener(reply(async (message, sender) => {
 
 chrome.alarms.onAlarm.addListener(alarm => {
   if (alarm.name === EXPIRES) serialize(readPending).catch(() => {});
+  if (alarm.name === IPS_EXPIRES) {
+    serialize(() => chrome.storage.session.remove(IPS_CAPTURE)).catch(() => {});
+  }
 });
 
 function clearForTab(tabId, removed = false) {
