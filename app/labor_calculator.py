@@ -271,7 +271,28 @@ def calculate(data, *, judicial_evidence_verified=False):
             raw_salary = salary / Decimal("30") * days
             rounded_salary = amount(raw_salary)
             salary_to_pay = rounded_salary
-            ips_reference = str(data.get("ips_salary_reference") or "").strip() if kind == "salary" else ""
+            rounding_method = str(data.get("monthly_proration_rounding") or "commercial").strip()
+            if kind == "salary" and rounding_method not in {"commercial", "ips_truncate"}:
+                raise CalculationError(
+                    "Criterio de redondeo salarial desconocido. Revisá el cálculo.",
+                    "monthly_proration_rounding",
+                )
+            if kind == "salary" and rounding_method == "ips_truncate":
+                salary_to_pay = int(raw_salary.to_integral_value(rounding=ROUND_DOWN))
+                if salary_to_pay != rounded_salary:
+                    fact("Diferencia por truncamiento del salario mensual",
+                         f"Gs. {salary_to_pay - rounded_salary:+d}")
+                    result["notes"].append(
+                        "Salario mensual proporcional: importe calculado con divisor 30, "
+                        "sin redondeos intermedios y truncado al guaraní final para "
+                        "compatibilidad con la planilla IPS. "
+                        f"Diferencia frente al redondeo comercial: {salary_to_pay - rounded_salary:+d} Gs. "
+                        "El salario imponible IPS y sus mínimos se revisan por separado."
+                    )
+            # Compatibilidad de lectura para snapshots creados antes de retirar
+            # el campo manual: se reproducen al aprobar, sin cambiar su historia.
+            ips_reference = (str(data.get("ips_salary_reference") or "").strip()
+                             if kind == "salary" and rounding_method == "commercial" else "")
             if ips_reference:
                 ips_salary = int(number(data, "ips_salary_reference", "salario real declarado en IPS"))
                 truncated_salary = int(raw_salary.to_integral_value(rounding=ROUND_DOWN))
@@ -300,7 +321,9 @@ def calculate(data, *, judicial_evidence_verified=False):
                     )
             add("Salario del período", salary_to_pay,
                 f"Gs. {gs(salary)} / 30 × {days} días"
-                + (" · conciliado con salario real IPS" if ips_reference else ""),
+                + (" · criterio proporcional truncado al guaraní" if kind == "salary"
+                   and rounding_method == "ips_truncate" else
+                   " · conciliado con salario real IPS" if ips_reference else ""),
                 "Base mensual")
             fact("Modalidad salarial", "Mensualizado · divisor 30")
         fact("Días remunerados", days)
