@@ -62,6 +62,38 @@ def test_ips_salary_reference_does_not_apply_to_jornalero_or_settlement():
     assert error.value.field == "ips_salary_reference"
 
 
+def test_new_monthly_salary_auto_truncates_without_ips_real_reference():
+    result = calculate(salary(
+        salary="3044000", days_paid="25", days_worked="25", month="2026-10",
+        pay_basis="monthly", monthly_proration_rounding="ips_truncate",
+    ))
+    assert result["gross"] == 2_536_666
+    assert result["deductions"][0]["amount"] == 228_300
+    assert result["net"] == 2_308_366
+    assert {"label": "Días remunerados", "value": "25"} in result["facts"]
+    assert any("truncado al guaraní final" in note for note in result["notes"])
+
+
+@pytest.mark.parametrize("days,expected", [
+    ("2", 202_933), ("25", 2_536_666), ("29", 2_942_533), ("30", 3_044_000),
+])
+def test_auto_rounded_monthly_salary_matches_ips_examples(days, expected):
+    result = calculate(salary(
+        salary="3044000", days_paid=days,
+        monthly_proration_rounding="ips_truncate",
+    ))
+    assert result["earnings"][0]["amount"] == expected
+
+
+def test_new_salary_form_has_no_manual_ips_real_field(web_case):
+    client, db, _, company, employee, *_ = web_case
+    response = client.get(
+        f"/app/liquidaciones?tipo=salary&company_id={company.id}&employee_id={employee.id}"
+    )
+    assert response.status_code == 200
+    assert 'name="ips_salary_reference"' not in response.text
+
+
 def test_salary_daily_wage_alone_is_sufficient_for_18_paid_days():
     result = calculate(salary(
         salary="", pay_basis="daily", daily_rate="117077",
