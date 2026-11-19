@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Conciliación IPS / REOP | Digit Laboral{% endblock %}
+{% block page_name %}Conciliación IPS y REOP{% endblock %}
+{% block content %}
+<style>
+.portal-reconcile{max-width:1440px;margin:0 auto;display:grid;gap:18px}
+.portal-reconcile .panel{padding:20px}
+.portal-reconcile-header{display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:14px}
+.portal-reconcile-header h1{font-size:clamp(1.35rem,2.5vw,1.8rem);margin:5px 0 8px}
+.portal-reconcile-header p{max-width:76ch;line-height:1.6;margin:0}
+.portal-reconcile-form{display:grid;grid-template-columns:minmax(220px,2fr) minmax(170px,1fr) auto;gap:13px;align-items:end}
+.portal-reconcile-form label{display:grid;gap:7px;font-weight:700;font-size:.84rem}
+.portal-reconcile-form select,.portal-reconcile-form input{min-width:0;width:100%;box-sizing:border-box;padding:10px 12px;border-radius:9px;border:1px solid var(--border-color,#ced6e3);background:var(--input-bg,#fff);color:var(--text-primary,#1c3147);font:inherit}
+.portal-reconcile-actions{display:flex;gap:9px;flex-wrap:wrap;align-items:center}
+.portal-reconcile-info{border:1px solid rgba(53,114,184,.23);background:rgba(53,114,184,.065);border-radius:10px;padding:12px 14px;line-height:1.6;font-size:.84rem}
+.portal-reconcile-warning{border-color:rgba(188,129,32,.35);background:rgba(188,129,32,.065)}
+.portal-reconcile-summary{display:flex;gap:12px;flex-wrap:wrap;margin:10px 0}
+.portal-reconcile-summary span{display:grid;gap:5px;min-width:135px;border:1px solid var(--border-color,#dce4ee);border-radius:10px;padding:11px 14px}
+.portal-reconcile-summary b{font-size:1.32rem;font-variant-numeric:tabular-nums}
+.portal-reconcile-summary small{font-size:.78rem;color:var(--text-secondary,#64738a)}
+.portal-reconcile-table-scroll{overflow:auto;max-height:570px;border:1px solid var(--border-color,#dce4ee);border-radius:11px}
+.portal-reconcile-table{border-collapse:collapse;width:100%;font-size:.78rem}
+.portal-reconcile-table th{position:sticky;top:0;background:var(--surface,#eef3fa);z-index:1;text-align:left;white-space:nowrap;border-bottom:1px solid var(--border-color,#dae3ee);padding:11px 12px}
+.portal-reconcile-table td{padding:10px 12px;border-bottom:1px solid var(--border-color,#e4ebf3);vertical-align:top}
+.portal-reconcile-table td small{display:block;margin-top:5px;color:var(--text-secondary,#64738a);line-height:1.4}
+.portal-reconcile-table td[data-number]{white-space:nowrap;font-variant-numeric:tabular-nums;text-align:right}
+.portal-reconcile-table td a{white-space:nowrap}
+.portal-reconcile-table tr:hover{background:rgba(53,114,184,.04)}
+.portal-reconcile-status{font-weight:750;display:inline-block;border-radius:7px;padding:5px 7px;background:rgba(53,114,184,.09)}
+.portal-reconcile-form [aria-busy="true"]{opacity:.6}
+@media(max-width:810px){.portal-reconcile-form{grid-template-columns:1fr 1fr}.portal-reconcile-actions{grid-column:1/-1}}
+@media(max-width:500px){.portal-reconcile-form{grid-template-columns:1fr}}
+</style>
+<div class="portal-reconcile" data-portal-reconcile data-extension-id="{{ assistant_id }}">
+  <header class="portal-reconcile-header">
+    <div><span class="eyebrow">CONCILIACIÓN DE PLANILLAS · LECTURA</span><h1>Traer trabajadores de REOP e IPS</h1>
+      <p>Verificá por <b>cédula, empresa y patronal</b> quién figura en la planilla oficial y qué liquidación tiene guardada en Digit Laboral. Los antiguos empleadores conservan sus expedientes independientes.</p>
+    </div>
+    <a class="btn outline" href="/app/employees">Volver a funcionarios</a>
+  </header>
+  <section class="panel">
+    <form class="portal-reconcile-form" id="portalReconcileSelection" method="get" action="/app/compliance/portal-reconciliation">
+      <label>Empresa de trabajo
+        <select name="company_id" id="portalCompany" required>
+          <option value="">Elegí una empresa…</option>
+          {% for company in companies %}<option value="{{ company.id }}" {{ 'selected' if selected_company and selected_company.id == company.id }}>{{ company.company_code or 'Sin código' }} · {{ company.legal_name }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Mes a conciliar
+        <input type="month" name="period" id="portalPeriod" required value="{{ period }}">
+      </label>
+      <div class="portal-reconcile-actions"><button class="btn outline" type="submit">Seleccionar</button>
+        <button class="btn primary" type="button" id="portalFetchIPS" {% if not selected_company or not period %}disabled{% endif %}>Leer planilla IPS (REI)</button></div>
+    </form>
+    <div class="portal-reconcile-info" style="margin-top:14px"><b>Cómo funciona:</b> abrí la planilla del mes en <b>IPS → REI → Consulta Planillas</b> en otra pestaña del mismo Chrome y pulsá «Leer planilla IPS». La extensión 1.6.0 examina solamente la tabla visible, en modo lectura. No pulsa «Guardar», no modifica la planilla ni comunica datos al IPS o MTESS. <b>La captura desde REOP no está habilitada todavía</b> hasta verificar su estructura; REOP se puede consultar desde su importador habitual.</div>
+    {% if selected_company %}
+      <p style="margin:11px 0 0;font-size:.82rem">Empresa: <b>{{ selected_company.legal_name }}</b> · Patronal IPS configurada: <b>{{ selected_company.ips_employer_number or 'Falta configurar' }}</b> · Período: <b>{{ period or 'Sin seleccionar' }}</b></p>
+    {% endif %}
+    <div id="portalReconcileFeedback" role="status" aria-live="polite" style="margin-top:12px"></div>
+  </section>
+  <section class="panel" id="portalReconcileResult" hidden>
+    <div class="portal-reconcile-header"><div><span class="eyebrow">RESULTADO DEL MES</span><h2 style="margin:5px 0">Conciliación por trabajador</h2></div><span class="portal-reconcile-status">Lectura · Sin guardar</span></div>
+    <div class="portal-reconcile-summary" id="portalReconcileSummary"></div>
+    <p class="portal-reconcile-info portal-reconcile-warning" id="portalReconcileNotice"></p>
+    <div class="portal-reconcile-table-scroll" tabindex="0">
+      <table class="portal-reconcile-table">
+        <thead><tr><th>Trabajador / C.I.</th><th>Movimiento IPS</th><th>Días IPS</th><th>Salario a pagar IPS</th><th>Bruto guardado Digit</th><th>Estado Digit</th><th>Jornadas y horas efectivas</th><th>Pago / fecha</th><th>Acción</th></tr></thead>
+        <tbody id="portalReconcileBody"></tbody>
+      </table>
+    </div>
+    <p style="font-size:.78rem;margin:12px 0 0">Los días declarados al IPS no demuestran por sí solos la asistencia efectivamente trabajada. «Salario a pagar IPS» y «Bruto Digit» pueden ser conceptos diferentes y no se suman ni igualan automáticamente. La fecha de ingreso a la empresa nueva se verifica en el movimiento de alta correspondiente, no en la planilla mensual.</p>
+  </section>
+</div>
+<script src="{{ url_for('static', path='portal-reconciliation.js') }}?v={{ app_version }}" defer></script>
+{% endblock %}
