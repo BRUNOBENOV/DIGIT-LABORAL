@@ -6,7 +6,6 @@ No uploads, external writes, calculations or changes to stored salaries occur he
 from __future__ import annotations
 
 import re
-from decimal import Decimal, InvalidOperation
 
 PERIOD = re.compile(r"^20\d{2}-(?:0[1-9]|1[0-2])$")
 MAX_ROWS = 500
