@@ -85,6 +85,15 @@ def test_auto_rounded_monthly_salary_matches_ips_examples(days, expected):
     assert result["earnings"][0]["amount"] == expected
 
 
+def test_auto_truncation_never_loses_guarani_for_full_month_salary():
+    for monthly in ("4000000", "3044000", "3500000", "1000001"):
+        result = calculate(salary(
+            salary=monthly, days_paid="30",
+            monthly_proration_rounding="ips_truncate",
+        ))
+        assert result["earnings"][0]["amount"] == int(monthly)
+
+
 def test_new_salary_form_has_no_manual_ips_real_field(web_case):
     client, db, _, company, employee, *_ = web_case
     response = client.get(
