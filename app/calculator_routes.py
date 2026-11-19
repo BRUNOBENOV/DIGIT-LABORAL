@@ -68,6 +68,11 @@ async def form_values(request):
         for field in group["fields"]:
             if field["type"] == "checkbox":
                 data.setdefault(field["name"], "")
+    if data["kind"] == "salary":
+        # Nuevos cálculos: sin campo manual IPS y con regla reproducible.
+        # Los registros históricos no pasan por form_values al ser aprobados.
+        data["monthly_proration_rounding"] = "ips_truncate"
+        data.pop("ips_salary_reference", None)
     return settlement_defaults(data)
 
 
@@ -255,6 +260,10 @@ def page(request, kind, data=None, result=None, error=None, db=None, user=None, 
 
 def calculate_scoped(data, db, scoped):
     data.update(settlement_defaults(data))
+    if data.get("kind") == "salary":
+        # Se graba la versión de la regla en input_json para garantizar que la
+        # aprobación reproduzca el mismo resultado y respete snapshots antiguos.
+        data.setdefault("monthly_proration_rounding", "ips_truncate")
     novelties = None
     if data.get("kind") == "salary" and scoped.get("employee"):
         try:
