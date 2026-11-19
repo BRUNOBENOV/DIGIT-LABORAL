@@ -31,7 +31,7 @@
 @media(max-width:810px){.portal-reconcile-form{grid-template-columns:1fr 1fr}.portal-reconcile-actions{grid-column:1/-1}}
 @media(max-width:500px){.portal-reconcile-form{grid-template-columns:1fr}}
 </style>
-<div class="portal-reconcile" data-portal-reconcile data-extension-id="{{ assistant_id }}">
+<div class="portal-reconcile" data-portal-reconcile data-extension-id="{{ assistant_id }}" data-csrf="{{ csrf_token }}">
   <header class="portal-reconcile-header">
     <div><span class="eyebrow">CONCILIACIÓN DE PLANILLAS · LECTURA</span><h1>Traer trabajadores de REOP e IPS</h1>
       <p>Verificá por <b>cédula, empresa y patronal</b> quién figura en la planilla oficial y qué liquidación tiene guardada en Digit Laboral. Los antiguos empleadores conservan sus expedientes independientes.</p>
