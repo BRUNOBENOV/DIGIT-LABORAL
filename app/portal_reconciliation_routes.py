@@ -34,8 +34,8 @@ def _normalized_expr():
 
 @router.get(PATH, response_class=HTMLResponse)
 def portal_reconciliation_page(
-    request: Request, company_id: int | None = None, period: str = "",
-    user: Operator = None, db: Database = None,
+    request: Request, user: Operator, db: Database,
+    company_id: int | None = None, period: str = "",
 ):
     ids = core.company_ids_for_user(db, user)
     options = list(db.scalars(
@@ -56,7 +56,7 @@ def portal_reconciliation_page(
 
 @router.post(PATH + "/preview")
 async def portal_reconciliation_preview(
-    request: Request, user: Operator = None, db: Database = None,
+    request: Request, user: Operator, db: Database,
 ):
     try:
         payload = await request.json()
