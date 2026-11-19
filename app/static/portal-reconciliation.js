@@ -14,7 +14,6 @@
   const extensionId = root.dataset.extensionId;
   const money = value => Number.isSafeInteger(value) ? "₲ " + value.toLocaleString("es-PY") : "—";
   const displayed = value => value == null || String(value).trim() === "" ? "Pendiente" : String(value);
-  const textNode = value => document.createTextNode(String(value));
   function el(tag, content = "", cls = "") {
     const node = document.createElement(tag);
     if (cls) node.className = cls;
