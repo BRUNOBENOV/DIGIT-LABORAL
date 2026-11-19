@@ -13,6 +13,106 @@ const TTL = 10 * 60 * 1000;
 const TRACKING_TTL = 30 * 60 * 1000;
 const PROTOCOL = 1;
 
+const RECONCILIATION_PATH = "/app/compliance/portal-reconciliation";
+const IPS_ORIGIN = "https://servicios.ips.gov.py";
+const IPS_SHEET_PATH = "/newrei/rei/Gestion/ConsultaPlanillas";
+
+/* This function is injected into an already visible, authenticated IPS tab.
+   It only reads DOM cells; it never clicks, submits, navigates or writes. */
+function captureVisibleIpsPlanilla() {
+  const fold = value => String(value || "").normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+  const visible = element => element.getClientRects().length > 0 &&
+    getComputedStyle(element).visibility !== "hidden";
+  const tables = [...document.querySelectorAll("table")].filter(visible);
+  const matches = [];
+  for (const table of tables) {
+    const heads = [...(table.tHead?.rows?.[0]?.cells || table.rows?.[0]?.cells || [])]
+      .map(cell => fold(cell.innerText || cell.textContent));
+    const find = term => heads.findIndex(head => head.includes(term));
+    const col = {
+      document: find("cedula"),
+      name: find("apellido"),
+      days: find("dias trab"),
+      real: find("salario real"),
+      paid: find("salario a pagar"),
+      movement: find("movimiento"),
+    };
+    if (Object.values(col).some(index => index < 0)) continue;
+    const shell = table.closest('[role="dialog"],.modal,.modal-dialog,.modal-content') ||
+      table.parentElement?.parentElement?.parentElement || document.body;
+    // Require a visible planilla heading and patronal in the same logical sheet.
+    const context = shell.innerText || "";
+    const fallback = document.body.innerText || "";
+    const findMeta = pattern => context.match(pattern) || fallback.match(pattern);
+    const header = findMeta(/PLANILLA\s+(ENERO|FEBRERO|MARZO|ABRIL|MAYO|JUNIO|JULIO|AGOSTO|SEPTIEMBRE|OCTUBRE|NOVIEMBRE|DICIEMBRE)\s*\/\s*(20\d{2})/i);
+    const patronal = findMeta(/NRO\.?\s*PATRONAL\s*:?\s*([\d][\d.\-]{2,25})/i);
+    if (!header || !patronal) continue;
+    const months = {ENERO:1,FEBRERO:2,MARZO:3,ABRIL:4,MAYO:5,JUNIO:6,
+      JULIO:7,AGOSTO:8,SEPTIEMBRE:9,OCTUBRE:10,NOVIEMBRE:11,DICIEMBRE:12};
+    const month = months[header[1].toUpperCase()];
+    const rows = [];
+    const rawRows = [...(table.tBodies?.[0]?.rows || table.rows)].slice(table.tHead ? 0 : 1);
+    for (const tr of rawRows) {
+      if (!visible(tr)) continue;
+      const values = [...tr.cells].map(cell => String(cell.innerText || cell.textContent || "").trim());
+      const doc = values[col.document] || "";
+      if (!/\d{4,}/.test(doc)) continue;
+      const amount = value => {
+        const raw = String(value || "").replace(/\s|₲|Gs\.?/gi, "");
+        return /^[\d.,]+$/.test(raw) ? Number(raw.replace(/[.,]/g, "")) : NaN;
+      };
+      rows.push({
+        document: doc,
+        name: values[col.name] || "",
+        days_ips: amount(values[col.days]),
+        salary_real_ips: amount(values[col.real]),
+        salary_paid_ips: amount(values[col.paid]),
+        movement: values[col.movement] || "",
+      });
+      if (rows.length > 500) return {error: "La planilla visible supera el límite de 500 trabajadores."};
+    }
+    if (rows.length) matches.push({
+      source: "IPS_REI",
+      period: header[2] + "-" + String(month).padStart(2, "0"),
+      patronal: patronal[1],
+      rows,
+      captured_at: new Date().toISOString(),
+    });
+  }
+  if (matches.length > 1) return {error: "Hay varias planillas visibles. Dejá abierta solo la que quieras conciliar."};
+  return matches[0] || null;
+}
+
+async function readVisibleIpsSnapshot() {
+  const tabs = (await chrome.tabs.query({url: IPS_ORIGIN + "/*"})).filter(tab => {
+    const url = parseUrl(tab.url);
+    return !tab.incognito && tab.status === "complete" &&
+      url?.origin === IPS_ORIGIN && url.pathname === IPS_SHEET_PATH;
+  });
+  if (tabs.length !== 1) {
+    throw new Error(tabs.length
+      ? "Hay varias pestañas de Consulta Planillas IPS. Dejá abierta solamente una."
+      : "Abrí IPS REI → Consulta Planillas y mostr á la planilla del mes antes de continuar.".replace("mostr á", "mostrá"));
+  }
+  let frames;
+  try {
+    frames = await chrome.scripting.executeScript({
+      target: {tabId: tabs[0].id, allFrames: true},
+      func: captureVisibleIpsPlanilla,
+    });
+  } catch (_) {
+    throw new Error("Chrome no pudo leer la planilla IPS. Revisá el permiso de la extensión y actualizala.");
+  }
+  const candidates = frames.map(frame => frame.result).filter(Boolean);
+  const problem = candidates.find(value => value.error);
+  if (problem) throw new Error(problem.error);
+  if (candidates.length !== 1) {
+    throw new Error("No se identificó una única planilla IPS visible con cédulas, días y salarios. Abrí su detalle.");
+  }
+  return candidates[0];
+}
+
 let pendingOperation = Promise.resolve();
 function serialize(operation) {
   const result = pendingOperation.then(operation);
@@ -124,9 +224,15 @@ async function prepareWorkbook(message) {
 
 chrome.runtime.onMessageExternal.addListener(reply(async (message, sender) => {
   const source = parseUrl(sender.url);
-  if (source?.origin !== APP || source.pathname !== PATH || sender.frameId !== 0 ||
-      !Number.isInteger(sender.tab?.id) || sender.tab.incognito) {
-    throw new Error("Abrí la vista previa de Salarios de Digit Laboral.");
+  if (source?.origin !== APP || ![PATH, RECONCILIATION_PATH].includes(source.pathname) ||
+      sender.frameId !== 0 || !Number.isInteger(sender.tab?.id) || sender.tab.incognito) {
+    throw new Error("Abrí Digit Laboral en tu sesión autorizada.");
+  }
+  if (source.pathname === RECONCILIATION_PATH) {
+    if (message.type !== "read-ips-planilla" || message.protocol !== PROTOCOL) {
+      throw new Error("Esta pantalla solo permite lectura de la planilla IPS.");
+    }
+    return {snapshot: await readVisibleIpsSnapshot()};
   }
   const existing = await readPending();
   if (message.type === "ping") {
