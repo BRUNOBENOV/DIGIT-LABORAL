@@ -12519,6 +12519,10 @@ app.include_router(reop_salary_ingest_router)
 from .rei_movement_routes import router as rei_movement_router
 app.include_router(rei_movement_router)
 
+# Lectura de planillas IPS en el navegador del usuario; conciliación sin escritura.
+from .portal_reconciliation_routes import router as portal_reconciliation_router
+app.include_router(portal_reconciliation_router)
+
 # Importador salarial histórico MOV: se registra tras construir autenticación y dependencias.
 from .legacy_salary_mov_routes import register_routes as register_mov_routes
 register_mov_routes(

@@ -81,7 +81,7 @@
           <select name="destination_company_id" id="newEmploymentCompany" required>
             <option value="">Seleccioná la nueva empresa…</option>
             {% for company in companies %}
-              <option value="{{ company.id }}" {% if related_employers|selectattr('company_id','equalto',company.id)|list %}data-existing="true"{% endif %}>{{ company.company_code or 'Sin código' }} · {{ company.legal_name }}</option>
+              <option value="{{ company.id }}" {% if related_employers|selectattr('company_id','equalto',company.id)|list %}data-existing="true"{% endif %}{% if request.query_params.get("destination_company_id") == company.id|string %} selected{% endif %}>{{ company.company_code or 'Sin código' }} · {{ company.legal_name }}</option>
             {% endfor %}
           </select>
           <small>Si KAJI S.A. no está registrada, <a href="/app/companies">creá primero su ficha de empresa</a> y volvé aquí.</small>
@@ -170,7 +170,7 @@
           <select name="destination_company_id" required id="companyCorrectionDestination">
             <option value="">Seleccioná una empresa activa…</option>
             {% for company in companies %}
-              <option value="{{ company.id }}" {% if related_employers|selectattr('company_id','equalto',company.id)|list %}data-existing="true"{% endif %}>{{ company.company_code or 'Sin código' }} · {{ company.legal_name }}</option>
+              <option value="{{ company.id }}" {% if related_employers|selectattr('company_id','equalto',company.id)|list %}data-existing="true"{% endif %}{% if request.query_params.get("destination_company_id") == company.id|string %} selected{% endif %}>{{ company.company_code or 'Sin código' }} · {{ company.legal_name }}</option>
             {% endfor %}
           </select>
         </label>

@@ -46,6 +46,7 @@
   <div><span class="eyebrow">MANTENIMIENTOS</span><h1>Funcionarios</h1><p>Legajos personales, datos laborales e historial centralizado sin alterar los cálculos ya guardados.</p></div>
   <div class="header-actions">
     <a class="btn outline" href="/app/export/employees.csv">Exportar CSV</a>
+    <a class="btn outline" href="/app/compliance/portal-reconciliation{% if selected_company %}?company_id={{ selected_company }}{% endif %}">Traer trabajadores IPS / REOP</a>
     {% if user.role in ['administrador', 'contador', 'auxiliar'] %}
       <a class="btn outline" href="/app/import/legacy-employees">Importar base histórica</a>
       <button class="btn outline" type="button" data-modal-open="importEmployeesModal">Importar Excel</button>
