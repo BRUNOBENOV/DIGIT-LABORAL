@@ -8,13 +8,13 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from . import main as core
 from .models import CalculationRecord, Company, Employee, Payroll, PayrollLine, SalaryImportDetail, User
 from .portal_reconciliation import SnapshotError, digits, validate_snapshot
 from .reop_assistant import REOP_ASSISTANT_ID
-from .salary_data import APPROVED, object_json, salary_query, select_salary_versions
+from .salary_data import APPROVED, calculation_fingerprint, object_json, salary_query, select_salary_versions
 
 router = APIRouter()
 PATH = "/app/compliance/portal-reconciliation"
@@ -79,7 +79,7 @@ async def portal_reconciliation_preview(
     scoped = list(db.scalars(select(Employee).where(
         Employee.company_id.in_(core.company_ids_for_user(db, user)),
         _normalized_expr().in_(docs),
-    ).order_by(Employee.id)))
+    ).options(selectinload(Employee.company)).order_by(Employee.id)))
     related: dict[str, list[Employee]] = {}
     for employee in scoped:
         related.setdefault(digits(employee.document_number), []).append(employee)
@@ -107,7 +107,8 @@ async def portal_reconciliation_preview(
         record = latest.get(current.id) if current else None
         stored = object_json(record.result_json) if record else {}
         inputs = object_json(record.input_json) if record else {}
-        annex = annexes.get(record.id) if record else None
+        candidate_annex = annexes.get(record.id) if record else None
+        annex = candidate_annex if candidate_annex and record and candidate_annex.source_sha256 == calculation_fingerprint(record) else None
         payroll_line = payroll_lines.get(current.id) if current else None
         # A calculation's .amount is the net amount; never mislabel it as gross.
         gross = stored.get("gross")
