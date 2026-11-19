@@ -29,7 +29,7 @@ def test_monthly_salary_ips_rounding_reconciliation_does_not_change_paid_days():
     assert reconciled["gross"] == 2_536_666
     assert reconciled["deductions"][0]["amount"] == 228_300
     assert reconciled["net"] == 2_308_366
-    assert {"label": "Días remunerados", "value": 25} in reconciled["facts"]
+    assert {"label": "Días remunerados", "value": "25"} in reconciled["facts"]
     assert any("truncamiento" in note for note in reconciled["notes"])
     assert any(fact["label"] == "Diferencia de redondeo conciliada con IPS"
                for fact in reconciled["facts"])
