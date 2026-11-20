@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from .legacy_salary_mov_import import EVENT_TYPE as MOV_TYPE, event_data
 from .models import CalculationRecord, Company, Employee, EmployeeEvent, HistoricalMovReconciliation
+from .salary_display import saved_salary_gross
 
 
 def salary_report_unified(
@@ -177,6 +178,7 @@ def salary_report_unified(
                 origin="current", id=record.id, record=record, company=record.company,
                 employee=record.employee, reference_period=record.reference_period,
                 created_at=record.created_at, amount=record.amount,
+                display_amount=saved_salary_gross(record.result_json),
                 status=record.status, raw_values=None, source_row=None, source_filename=None,
             ))
         elif origin == "historical" and rid in previous:

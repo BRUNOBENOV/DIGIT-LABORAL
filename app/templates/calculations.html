@@ -49,7 +49,7 @@
           {% endif %}
         </td>
         <td>
-          {% if row.origin == 'current' %}Gs. {{ row.amount|gs }}
+          {% if row.origin == 'current' %}{% if row.display_amount is none %}—{% else %}Gs. {{ row.display_amount|gs }}{% if row.record.calculation_type in ['salary','suite_salary'] %}<small class="table-sub">Salario bruto</small>{% endif %}{% endif %}
           {% elif row.amount is not none %}Gs. {{ row.amount }} <small class="table-sub">Valor registrado</small>
           {% else %}—{% endif %}
         </td>

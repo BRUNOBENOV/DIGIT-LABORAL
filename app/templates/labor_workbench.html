@@ -273,7 +273,7 @@
     {% endif %}
     <div class="dl-table-wrap">
       <table class="dl-trace-table">
-        <thead><tr><th>Registrado</th><th>Funcionario y concepto</th><th>Período</th><th>Importe</th><th>Estado</th><th>Acciones</th></tr></thead>
+        <thead><tr><th>Registrado</th><th>Funcionario y concepto</th><th>Período</th><th>{{ 'Salario bruto' if kind == 'salary' else 'Importe' }}</th><th>Estado</th><th>Acciones</th></tr></thead>
         <tbody>
         {% for row in labor_history.rows %}
         {% set document_number = (row.employee.document_number or '')|trim if row.employee else '' %}
@@ -285,7 +285,7 @@
             {% if row.rectifies is defined and row.rectifies %} · Rectifica #{{ row.rectifies }}{% endif %}</small>
           </td>
           <td>{{ row.period }}{% if row.origin == 'imported' and row.detail and row.label != 'Salario' %}<small class="dl-trace-detail">{{ row.detail }}</small>{% endif %}</td>
-          <td class="dl-trace-amount">{% if row.amount is none %}—{% elif row.origin == 'current' %}Gs. {{ row.amount|gs }}{% elif row.label == 'Salario' %}Gs. {{ row.amount }}{% else %}{{ row.amount }}{% endif %}</td>
+          <td class="dl-trace-amount">{% if row.origin == 'current' %}{% if row.display_amount is none %}—{% else %}Gs. {{ row.display_amount|gs }}{% endif %}{% elif row.amount is none %}—{% elif row.label == 'Salario' %}Gs. {{ row.amount }}{% else %}{{ row.amount }}{% endif %}</td>
           <td><span class="dl-trace-status {{ 'is-void' if row.superseded else 'is-approved' if row.status in ['Aprobado','Validado'] else 'is-void' if row.status in ['Anulado','Borrado en origen'] else 'is-draft' }}">{{ row.display_status }}</span></td>
           <td><div class="dl-trace-actions">
           {% if row.origin == 'current' %}
