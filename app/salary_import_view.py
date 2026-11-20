@@ -29,11 +29,25 @@ def reviewed_workers(rows: list[list], employees: list, errors: list[str], autho
         employee = by_document.get(document)
         name = employee.full_name if employee else document
         warnings = [error for error in errors if error.startswith(name + " (")]
+        salary = row[9] if authority == "REOP" else row[10]
+        # Vista previa REOP: el salario básico es solo una de las 15 columnas
+        # de ingresos (índices 9..23). Mostrar el total bruto que realmente
+        # resulta del Excel, sin cambiar las columnas del archivo oficial.
+        total_income = None
+        if authority == "REOP" and len(row) >= 24:
+            amounts = row[9:24]
+            if all(type(value) is int and value >= 0 for value in amounts):
+                total_income = sum(amounts)
         workers.append({
             "name": name, "document": document,
             "code": employee.employee_code if employee else None,
             "employee_id": employee.id if employee else None,
-            "salary": row[9] if authority == "REOP" else row[10],
+            "salary": salary,
+            "total_income": total_income,
+            "additional_income": (
+                total_income - salary
+                if total_income is not None and type(salary) is int else None
+            ),
             "days": row[5] if authority == "REOP" else row[6],
             "hours": row[7] if authority == "REOP" else None,
             "payment": REOP_PAYMENT_LABELS.get(str(row[4]), "Pendiente") if authority == "REOP" else "",
