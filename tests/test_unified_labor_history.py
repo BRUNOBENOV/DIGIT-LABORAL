@@ -112,6 +112,41 @@ def test_calculations_include_notices_without_creating_calculation_records():
 
 
 
+def test_salary_history_projects_saved_gross_without_mutating_net_or_other_calculations():
+    db, engine = setup_records()
+    try:
+        db.add_all([
+            CalculationRecord(
+                id=103, company_id=11, employee_id=21,
+                calculation_type="suite_salary", reference_period="2026-10",
+                result_json=json.dumps({"gross": 2638133, "net": 2400701}),
+                amount=2400701, status="Aprobado", source="Centro laboral",
+                created_at=datetime(2026, 10, 31),
+            ),
+            CalculationRecord(
+                id=104, company_id=11, employee_id=21,
+                calculation_type="suite_salary", reference_period="2026-11",
+                result_json=json.dumps({"net": 2000000}),
+                amount=2000000, status="Borrador", source="Centro laboral",
+                created_at=datetime(2026, 11, 5),
+            ),
+        ])
+        db.commit()
+        history = calculation_history_page(
+            db, {11}, tipo="suite_salary", include_center_calculations=True,
+        )
+        rows = {row["id"]: row for row in history["rows"]}
+        assert rows[103]["amount"] == 2400701
+        assert rows[103]["display_amount"] == 2638133
+        assert rows[104]["amount"] == 2000000
+        assert rows[104]["display_amount"] is None  # No inventar bruto con neto.
+        assert calculation_history_page(db, {11}, tipo="notice")["rows"][0]["display_amount"] == 330000
+        assert db.get(CalculationRecord, 103).amount == 2400701
+    finally:
+        db.close()
+        engine.dispose()
+
+
 def test_salary_ver_link_opens_salary_report_not_work_certificate_for_both_sources():
     db, engine = setup_records()
     try:
