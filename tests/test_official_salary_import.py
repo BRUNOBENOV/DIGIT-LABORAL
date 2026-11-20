@@ -98,6 +98,57 @@ def test_reop_automatic_payment_preserves_each_workers_recorded_method(monkeypat
     assert any("falta una forma de pago reconocida" in error for error in errors)
 
 
+def test_reop_preview_uses_total_income_without_changing_basic_salary():
+    """Aníbal: el resumen visual no debe confundir básico con ingreso total."""
+    from app.salary_import_view import reviewed_workers
+    row = [0] * 32
+    row[1] = "3595031"
+    row[4] = 1
+    row[5] = 25
+    row[7] = 184
+    row[9] = 2_536_666  # Salario Básico, se conserva para el Excel oficial.
+    row[21] = 101_467  # Complemento Salarial, columna oficial REOP.
+    employee = SimpleNamespace(
+        id=6977, document_number="3595031", full_name="ANIBAL DUARTE",
+        employee_code="2226015",
+    )
+    [worker] = reviewed_workers([row], [employee], [], "REOP")
+    assert worker["salary"] == 2_536_666
+    assert worker["total_income"] == 2_638_133
+    assert worker["additional_income"] == 101_467
+    assert worker["days"] == 25
+    assert worker["hours"] == 184
+    assert worker["payment"] == "Efectivo"
+    assert row[9] == 2_536_666 and row[21] == 101_467
+
+    # Sin otros haberes, el total visual coincide con el básico.
+    row[21] = 0
+    [worker] = reviewed_workers([row], [employee], [], "REOP")
+    assert worker["total_income"] == 2_536_666
+    assert worker["additional_income"] == 0
+
+    # Valor inválido: no se muestra un falso ingreso total.
+    row[21] = "incorrecto"
+    [worker] = reviewed_workers([row], [employee], [], "REOP")
+    assert worker["total_income"] is None
+
+
+def test_rei_preview_still_shows_salary_real_not_reop_gross():
+    from app.salary_import_view import reviewed_workers
+    row = [0] * 11
+    row[2] = "3595031"
+    row[6] = 25
+    row[10] = 2_536_666
+    employee = SimpleNamespace(
+        id=6977, document_number="3595031", full_name="ANIBAL DUARTE",
+        employee_code="2226015",
+    )
+    [worker] = reviewed_workers([row], [employee], [], "REI")
+    assert worker["salary"] == 2_536_666
+    assert worker["total_income"] is None
+    assert worker["days"] == 25
+
+
 def test_patronal_observations_are_grouped_with_the_affected_workers():
     from app.salary_import_view import group_import_errors
     grouped = group_import_errors([

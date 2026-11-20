@@ -220,12 +220,21 @@
       <p class="import-salary-info" data-import-worker-count aria-live="polite">{{ worker_rows|length }} trabajadores</p>
       <div class="import-worker-table-wrap" tabindex="0" aria-label="Planilla de trabajadores">
         <table class="import-worker-table">
-          <thead><tr><th>Cédula</th><th>Funcionario / legajo</th><th>{{ 'Salario básico' if authority == 'REOP' else 'Salario real' }}</th><th>Días</th>{% if authority == 'REOP' %}<th>Horas</th><th>Pago</th>{% endif %}<th>Revisión</th></tr></thead>
+          <thead><tr><th>Cédula</th><th>Funcionario / legajo</th><th>{{ 'Total de ingresos' if authority == 'REOP' else 'Salario real' }}</th><th>Días</th>{% if authority == 'REOP' %}<th>Horas</th><th>Pago</th>{% endif %}<th>Revisión</th></tr></thead>
           <tbody>{% for worker in worker_rows %}
             <tr data-import-worker-row>
               <td class="import-worker-ci">{{ worker.document }}</td>
               <td>{{ worker.name }}{% if worker.code %}<small>Legajo {{ worker.code }}</small>{% endif %}</td>
-              <td class="import-worker-number">{{ ('Gs. ' ~ (worker.salary|gs)) if worker.salary is not none else 'Pendiente' }}</td>
+              <td class="import-worker-number">
+                {% if authority == 'REOP' %}
+                  {{ ('Gs. ' ~ (worker.total_income|gs)) if worker.total_income is not none else 'Pendiente' }}
+                  {% if worker.additional_income is not none and worker.additional_income > 0 %}
+                    <small>Salario básico: Gs. {{ worker.salary|gs }} + otros ingresos: Gs. {{ worker.additional_income|gs }}</small>
+                  {% endif %}
+                {% else %}
+                  {{ ('Gs. ' ~ (worker.salary|gs)) if worker.salary is not none else 'Pendiente' }}
+                {% endif %}
+              </td>
               <td>{{ worker.days if worker.days is not none else '—' }}</td>
               {% if authority == 'REOP' %}<td>{{ worker.hours if worker.hours is not none else '—' }}</td><td>{{ worker.payment }}</td>{% endif %}
               <td>{% if worker.warnings %}<details><summary>{{ worker.warnings|length }} observaciones</summary><ul>{% for warning in worker.warnings %}<li>{{ warning }}</li>{% endfor %}</ul><a href="#observaciones-exportacion">Ver correcciones</a></details>{% else %}Datos presentes{% endif %}</td>
