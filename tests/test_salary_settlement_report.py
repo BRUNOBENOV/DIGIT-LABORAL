@@ -170,7 +170,9 @@ def test_salary_liquidation_report_shows_saved_records_and_filters():
         assert response.status_code == 200, response.text[:300]
         assert f"/app/reports/liquidaciones-salarios/{record_id}" in response.text
         assert "Liquidación de Salarios" in response.text
-        assert "Gs. 2.457.000" in response.text
+        assert "Salario bruto registrado" in response.text
+        assert "Gs. 2.700.000" in response.text
+        assert "Gs. 2.457.000" not in response.text
         assert "origen: módulo cálculo" in response.text.lower()
 
 
