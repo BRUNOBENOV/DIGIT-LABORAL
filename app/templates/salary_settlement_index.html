@@ -79,7 +79,7 @@
 </form>
 <div class="salary-report-summary"><span><strong>{{ total }}</strong> movimientos de remuneración {{ 'incluidas las versiones anteriores' if show_superseded else 'vigentes y borradores' }} · página {{ page }} de {{ pages }}</span><span>Registros operativos e históricos ya incluidos, sin duplicar la emisión</span></div>
 <section class="salary-report-table-shell"><div class="salary-report-scroll"><table class="salary-report-table" id="salaryReportTable" data-server-paginated data-sort-selector="salaryReportSort">
-<thead><tr><th data-sort-key="date">Registro / fecha</th><th data-sort-key="company">Empresa</th><th data-sort-key="employee">Funcionario</th><th data-sort-key="period">Período</th><th data-sort-key="status">Estado</th><th data-sort-key="amount">Importe registrado</th><th>Acciones</th></tr></thead>
+<thead><tr><th data-sort-key="date">Registro / fecha</th><th data-sort-key="company">Empresa</th><th data-sort-key="employee">Funcionario</th><th data-sort-key="period">Período</th><th data-sort-key="status">Estado</th><th data-sort-key="amount">Salario bruto registrado</th><th>Acciones</th></tr></thead>
 <tbody>
 {% for item in items %}
 <tr>
@@ -100,7 +100,7 @@
 
   </td>
   <td class="salary-report-money">
-    {% if item.origin == 'current' %}Gs. {{ item.amount|gs }}
+    {% if item.origin == 'current' %}{% if item.display_amount is none %}— <span class="salary-report-sub">Bruto no registrado</span>{% else %}Gs. {{ item.display_amount|gs }}{% endif %}
     {% elif item.raw_values and item.raw_values.get('SALARI') %}Gs. {{ item.raw_values.get('SALARI') }}
     {% else %}—{% endif %}
     {% if item.origin == 'historical' %}<span class="salary-report-sub">SALARI original (no neto validado)</span>{% endif %}
