@@ -19,6 +19,7 @@ from .legacy_vacation_import import EVENT_TYPE as VACATION_EVENT_TYPE, event_leg
 from .legacy_salary_mov_import import EVENT_TYPE as MOV_EVENT_TYPE, event_data as mov_event_data
 from .legacy_liq_import import EVENT_TYPE as LIQ_EVENT_TYPE, liq_event_data
 from .models import CalculationRecord, Employee, EmployeeEvent, Vacation, HistoricalMovReconciliation
+from .salary_display import saved_salary_gross
 
 DEFAULT_PAGE_SIZE = 40
 MAX_PAGE_SIZE = 100
@@ -103,7 +104,13 @@ def _live_calculation(record: CalculationRecord) -> dict:
         label={"notice": "Preaviso", "vacation": "Vacaciones"}.get(
             record.calculation_type, record.calculation_type),
         period=record.reference_period or "—",
-        amount=record.amount, status=record.status,
+        # amount permanece neto en el registro. La proyección visual toma
+        # el bruto guardado de la liquidación, sin recalcular ni escribir datos.
+        amount=record.amount,
+        display_amount=(saved_salary_gross(record.result_json)
+                        if record.calculation_type in {"salary", "suite_salary"}
+                        else record.amount),
+        status=record.status,
         detail="", source=None, days=None, used_days=None, balance=None,
         url=(f"/app/reports/liquidaciones-salarios/{record.id}"
              if record.calculation_type in {"salary", "suite_salary"}
