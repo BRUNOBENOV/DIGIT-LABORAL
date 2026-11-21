@@ -361,6 +361,7 @@
       {% if selected_batch %}<input type="hidden" name="settings_batch_id" value="{{ selected_batch.id }}">{% endif %}
       {% if authority == 'REOP' %}
       <input type="hidden" name="only_missing" value="{{ 'true' if only_missing else 'false' }}">
+      {% if only_missing and missing_patronal %}<input type="hidden" name="missing_patronal" value="{{ missing_patronal }}">{% endif %}
       <input type="hidden" name="ledger_digest" value="{{ ledger_snapshots.get(reop_assistant_patronal, {}).get('digest', '') }}">
       {% endif %}
       {% if reop_assistant_patronal %}<input type="hidden" name="reop_review" value="{{ reop_assistant_review }}">{% endif %}

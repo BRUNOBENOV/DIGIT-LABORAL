@@ -10849,6 +10849,7 @@ def salary_import_page(
     source_type: str = "auto",
     employee_id: OptionalQueryId = None,
     only_missing: bool = False,
+    missing_patronal: str = "",
     batch_id: OptionalQueryId = None,
     user: User = Depends(require_user),
     db: Session = Depends(get_db),
@@ -10862,7 +10863,7 @@ def salary_import_page(
     from .reop_assistant import REOP_ASSISTANT_ID, reop_assistant_patronal, reop_assistant_review
     from .salary_import_view import group_import_errors, reviewed_workers
     from .reop_ledger import compare_ledger, doc_key
-    from .reop_month import read_month, payment_settings
+    from .reop_month import read_month, payment_settings, submitted_documents
 
     ids = company_ids_for_user(db, user)
     companies = seed_choices(
@@ -10882,6 +10883,8 @@ def salary_import_page(
         stored = json_dict(selected_batch.payload_json)
         if "only_missing" not in request.query_params:
             only_missing = bool(stored.get("only_missing"))
+        if only_missing and "missing_patronal" not in request.query_params:
+            missing_patronal = stored.get("missing_patronal") or ""
         source_type = stored.get("source_type") or "auto"
         other_category = stored.get("other_category") or ""
         employee_id = stored.get("employee_scope_id")
@@ -10963,10 +10966,12 @@ def salary_import_page(
     snapshots = month.snapshots if month else {}
     patronales = sorted({str(row[0]) for row in rows if row[0] and str(row[0]).isdigit()}) if authority == "REOP" else []
     if authority == "REOP" and preview:
-        ledger = compare_ledger(rows, {k:v for k,v in snapshots.items() if k in patronales}, include_extras=employee_id is None)
+        submitted = submitted_documents(db, company.id, period, storage) if snapshots else set()
+        ledger = compare_ledger(rows, {k:v for k,v in snapshots.items() if k in patronales},
+                                include_extras=employee_id is None, submitted=submitted)
         if only_missing:
             keys = {(r["patronal"], r["document"]) for r in ledger["rows"] if r["state"] == "missing"}
-            rows = [r for r in rows if (str(r[0]), doc_key(r[1])) in keys]
+            rows = [r for r in rows if (str(r[0]), doc_key(r[1])) in keys and (not missing_patronal or str(r[0]) == missing_patronal)]
             if not rows:
                 errors.append("No hay faltantes verificados para preparar.")
     if authority == "REOP":
@@ -11004,6 +11009,7 @@ def salary_import_page(
         for batch in recent:
             payload = json_dict(batch.payload_json)
             if (payload.get("employee_scope_id") == employee_id and bool(payload.get("only_missing")) == only_missing
+                    and (not only_missing or (payload.get("missing_patronal") or "") == missing_patronal)
                     and (selected_batch is None or batch.id == selected_batch.id)):
                 saved_batch = {
                     "id": batch.id, "status": batch.status, "rows": batch.item_count,
@@ -11033,7 +11039,7 @@ def salary_import_page(
         vacation_links=vacation_links,
         worker_rows=worker_rows, error_groups=group_import_errors(errors, company.id) if company else [],
         saved_batch=saved_batch, selected_batch=selected_batch, payments=payments, ledger=ledger,
-        ledger_snapshots=snapshots, ledger_patronales=patronales, only_missing=only_missing,
+        ledger_snapshots=snapshots, ledger_patronales=patronales, only_missing=only_missing, missing_patronal=missing_patronal,
     )
 
 
@@ -11401,6 +11407,7 @@ def salary_import_export(
     settings_batch_id: Annotated[int | None, Form()] = None,
     ledger_digest: Annotated[str, Form()] = "",
     only_missing: Annotated[bool, Form()] = False,
+    missing_patronal: Annotated[str, Form()] = "",
     user: User = Depends(require_roles("administrador", "contador")),
     db: Session = Depends(get_db),
 ):
@@ -11411,7 +11418,7 @@ def salary_import_export(
     )
     from .reop_assistant import REOP_ASSISTANT_MAX_BYTES, reop_assistant_patronal, reop_assistant_review
     from .reop_ledger import select_delivery
-    from .reop_month import read_month, payment_settings
+    from .reop_month import read_month, payment_settings, submitted_documents
 
     if delivery not in {"download", "reop-browser"} or (delivery == "reop-browser" and authority != "REOP"):
         raise HTTPException(422, "Modo de entrega no válido para este organismo.")
@@ -11453,7 +11460,8 @@ def salary_import_export(
         if authority != "REOP":
             raise HTTPException(422, "El control de comunicaciones corresponde a REOP.")
         try:
-            rows = select_delivery(rows, month.snapshots if month else {}, only_missing, ledger_digest)
+            rows = select_delivery(rows, month.snapshots if month else {}, only_missing, ledger_digest,
+                                   submitted=submitted_documents(db, company.id, period, storage), missing_patronal=missing_patronal)
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from exc
     from .approved_salary_import import choose_salary_source, salary_excluded_records
@@ -11531,6 +11539,8 @@ def salary_import_export(
         "payment_overrides": overrides or {},
         "apply_group": apply_group,
         "only_missing": only_missing,
+        "missing_patronal": missing_patronal if only_missing else "",
+        "reop_documents": [[str(row[0]), str(row[1])] for row in rows] if authority == "REOP" else [],
         "other_category": other_category if authority == "REOP" else None,
         "name_order": name_order if authority == "REI" else None,
         "rei_category": rei_category if authority == "REI" else None,

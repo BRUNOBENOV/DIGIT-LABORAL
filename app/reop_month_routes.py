@@ -14,7 +14,7 @@ from .approved_salary_import import choose_salary_source, salary_excluded_record
 from .models import CalculationRecord, Company, Employee, IntegrationBatch, Payroll, ReopSalaryMonth, User
 from .official_salary_import import REOP_PAYMENT_LABELS, SalaryImportError, prepare_import
 from .reop_ledger import MONTH, PATRONAL, STAGES, checked_snapshot, compare_ledger
-from .reop_month import lock_month, payment_settings
+from .reop_month import lock_month, payment_settings, submitted_documents
 from .salary_data import APPROVED, SALARY_TYPES, object_json
 
 router = APIRouter()
@@ -96,7 +96,8 @@ async def observe_list(company_id: int, period: str, request: Request, user: Ope
                      f"{period} · patronal {patronal} · {len(snapshot['records'])} comunicaciones")
     db.commit()
     selected = [row for row in rows if str(row[0]) == patronal]
-    review = compare_ledger(selected, {patronal: snapshot}, include_extras=False)
+    review = compare_ledger(selected, {patronal: snapshot}, include_extras=False,
+                            submitted=submitted_documents(db, company_id, period, core.storage))
     return {"digest": snapshot["digest"], "checked_rows": len(selected), "missing": review["counts"]["missing"],
             "confirmed": review["counts"]["confirmed"]}
 
@@ -132,7 +133,7 @@ def monthly_view(request: Request, user: Operator, db: Database, period: str = "
         month = months.get(company.id)
         history = histories.get(company.id, [])
         imported = any((p.get("assistant_progress") or {}).get("phase") == "imported" or s in {"Presentado", "Aceptado"}
-                       for p,s in history)
+                       for p,s in history if s != "Rechazado")
         stage = "imported" if imported else "prepare"
         count = confirmed = 0
         if company.id in active or month:

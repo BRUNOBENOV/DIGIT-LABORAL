@@ -52,8 +52,12 @@ function extension() {
     alarms: {clear: async () => true, create: async () => {}, onAlarm: event('alarm')},
     runtime: {onMessageExternal: event('external'), onMessage: event('internal')},
     action: {onClicked: event('click'), setBadgeText: async () => {}, setTitle: async () => {}},
-    scripting: {executeScript: async ({target}) => {
+    scripting: {executeScript: async ({target, args}) => {
       injected.push(target.tabId);
+      if (args?.length === 2) {
+        const [patronal, period] = args;
+        return [{result: {snapshot: {source:'REOP', patronal, period, total:0, inspected:0, complete:true, records:[]}}}];
+      }
       return target.allFrames ? [{result: ipsSnapshot}] : undefined;
     }},
     tabs: {
@@ -87,6 +91,22 @@ function extension() {
     tabActions,
   };
 }
+
+test('consulta el listado desde Digit solo en la pestaña habilitada y conserva la cola', async () => {
+  const bridge = extension();
+  const read = {type:'read-salary-list', protocol:1, patronal:'123456', period:'2026-10'};
+  assert.equal((await bridge.external({type:'ping'})).salaryList, true);
+  assert.equal((await bridge.external(read)).ok, false);
+  await bridge.click();
+  assert.equal((await bridge.external(read, ipsSender)).ok, false);
+  assert.equal((await bridge.external(read, {...source, frameId:1})).ok, false);
+  assert.equal((await bridge.external({...read, period:'2026-13'})).ok, false);
+  const seen = await bridge.external(read);
+  assert.equal(seen.ok, true);
+  assert.equal(seen.snapshot.patronal, read.patronal);
+  assert.deepEqual(bridge.tabActions, []);
+  assert.equal((await bridge.external({type:'ping'})).busy, false);
+});
 
 test('la planilla sale a la pestaña REOP activada, incluso en otra ventana, con la patronal correcta', async () => {
   const bridge = extension();

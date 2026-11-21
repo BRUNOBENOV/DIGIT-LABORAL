@@ -59,6 +59,16 @@ def test_difference_pending_duplicates_extra_and_incomplete_are_never_confirmed(
         select_delivery(rows, snapshots, True, snapshots[PATRONAL]["digest"])
 
 
+def test_same_identity_in_two_patronales_keeps_separate_workbooks():
+    first = row(1)
+    other = ["000777", *first[1:]]
+    known = checked_snapshot(observed([communication(1)]), PATRONAL, PERIOD)
+    empty = checked_snapshot({**observed([]), "patronal": other[0]}, other[0], PERIOD)
+    snapshots = {PATRONAL: known, other[0]: empty}
+    assert compare_ledger([first, other], snapshots)["missing_by_patronal"] == {other[0]: 1}
+    assert select_delivery([first, other], snapshots, True, empty["digest"], missing_patronal=other[0]) == [other]
+
+
 @pytest.mark.parametrize("change", [
     {"complete": False}, {"inspected": 19}, {"patronal": "000001"}, {"period": "2026-09"},
     {"records": [communication(1), communication(2, number="401")]},

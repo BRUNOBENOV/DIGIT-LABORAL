@@ -300,6 +300,20 @@ def test_month_deduplicates_exports_missing_and_reconciles_the_result(download_c
     wb.close()
     assert company.legal_name in companies_in("imported")
     assert company.legal_name not in companies_in("confirmed")
+    batch_id = response.headers["X-Integration-Batch-Id"]
+    assert client.post(f"{page}/batches/{batch_id}/progress", headers={"X-CSRF-Token": token(client)},
+        json={"phase": "imported", "valid": 1, "errors": 0, "imported": 1}).status_code == 200
+    waiting = BeautifulSoup(client.get(page, params=filters).text, "html.parser").select_one("#control-reop")
+    assert "Importada, falta verificar en el listado" in waiting.text
+    assert not waiting.find(string="Preparar solo los faltantes (1)")
+    assert client.post(export, data={**payload, "ledger_digest": digest, "reop_review": review, "only_missing": "true"}).status_code == 409
+    # Old lots can be identified from the original workbook as well.
+    archived = db.get(IntegrationBatch, int(batch_id))
+    metadata = json.loads(archived.payload_json)
+    del metadata["reop_documents"]
+    archived.payload_json = json.dumps(metadata)
+    db.commit()
+    assert client.post(export, data={**payload, "ledger_digest": digest, "reop_review": review, "only_missing": "true"}).status_code == 409
     revised = [{**record, "status": "Confirmado", "receipt": "EOF/001"},
                {**record, "status": "Confirmado", "number": "101", "document": second.document_number}]
     newest = observe_salary_list(download_case, revised, previous=digest)

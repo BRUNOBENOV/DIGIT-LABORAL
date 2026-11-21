@@ -95,12 +95,27 @@
     }
     async function persistProgress(batchId, progress) {
       try {
-        await fetch('/app/compliance/salary-import/batches/' + batchId + '/progress', {
+        const response = await fetch('/app/compliance/salary-import/batches/' + batchId + '/progress', {
           method: 'POST', credentials: 'same-origin',
           headers: {'Content-Type': 'application/json', 'X-CSRF-Token': form.elements.csrf_token.value},
           body: JSON.stringify(progress),
         });
-      } catch (_) { /* Live status remains available from the extension. */ }
+        return response.ok && !response.redirected;
+      } catch (_) { return false; }
+    }
+    async function reconcileImported(batchId, progress, persisted) {
+      if (bridgeButton) bridgeButton.disabled = true;
+      if (!persisted) {
+        notify(progressText(batchId, progress) + ' Falta guardar este resultado en Digit. Retomá el seguimiento para reintentar.', 'loading');
+        if (resumeButton) resumeButton.hidden = false;
+        return;
+      }
+      try {
+        await window.DigitReopLedger.refresh(bridgeButton.dataset.patronal);
+        window.DigitReopLedger.showReview();
+      } catch (error) {
+        notify(progressText(batchId, progress) + ' Conciliación pendiente. ' + error.message, 'loading');
+      }
     }
     const filename = (header, fallback) => {
       const utf8 = /filename\*=UTF-8''([^;]+)/i.exec(header);
@@ -159,17 +174,11 @@
               const style = progress.phase === 'corrections' ? 'error'
                 : ['prevalidated', 'imported'].includes(progress.phase) ? 'success' : 'loading';
               notify(progressText(batchId, progress), style);
-              await persistProgress(batchId, progress);
-            }
-            if (progress.phase === 'imported') {
-              if (bridgeButton) bridgeButton.disabled = true;
-              try {
-                await window.DigitReopLedger.refresh(bridgeButton.dataset.patronal);
-                window.DigitReopLedger.showReview();
-              } catch (error) {
-                notify(progressText(batchId, progress) + ' Conciliación pendiente. ' + error.message, 'loading');
+              const persisted = await persistProgress(batchId, progress);
+              if (progress.phase === 'imported') {
+                await reconcileImported(batchId, progress, persisted);
+                return;
               }
-              return;
             }
           } else if (Object.hasOwn(reviewMessages, state.review) && state.review !== previous) {
             previous = state.review;
@@ -207,7 +216,11 @@
         if (resumeButton) resumeButton.hidden = true;
         if (state.progress) {
           notify(progressText(linkedBatch, state.progress), state.progress.phase === 'corrections' ? 'error' : 'success');
-          await persistProgress(linkedBatch, state.progress);
+          const persisted = await persistProgress(linkedBatch, state.progress);
+          if (state.progress.phase === 'imported' && (explicit || savedBatch.progress?.phase !== 'imported')) {
+            await reconcileImported(linkedBatch, state.progress, persisted);
+            return;
+          }
         }
         showReopAction(!['corrections', 'imported'].includes(state.progress?.phase), state.progress?.phase === 'prevalidated');
         if (state.progress?.phase !== 'imported') follow(linkedBatch);

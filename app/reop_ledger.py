@@ -9,7 +9,7 @@ from datetime import UTC, datetime, timedelta
 
 MONTH = re.compile(r"20\d{2}-(?:0[1-9]|1[0-2])")
 PATRONAL = re.compile(r"[0-9]{1,20}")
-LABELS = {"multiple": "Revisar duplicados", "different": "Importe diferente", "missing": "Falta cargar",
+LABELS = {"multiple": "Revisar duplicados", "different": "Importe diferente", "awaiting": "Importada, falta verificar en el listado", "missing": "Falta cargar",
           "extra": "Solo en REOP", "unchecked": "Sin verificar", "same": "Ya coincide"}
 STAGES = {"prepare": "Falta preparar", "ready": "Lista para importar",
           "imported": "Importada, falta verificar", "confirmed": "Confirmada en REOP"}
@@ -56,7 +56,7 @@ def checked_snapshot(value, patronal, period):
     return {"records": result, "digest": fingerprint, "checked_at": datetime.now(UTC).isoformat(), "total": total}
 
 
-def compare_ledger(rows, snapshots, *, include_extras=True):
+def compare_ledger(rows, snapshots, *, include_extras=True, submitted=()):
     local, remote = defaultdict(list), defaultdict(list)
     for row in rows:
         local[str(row[0] or ""), doc_key(row[1])].append(gross_income(row))
@@ -75,6 +75,8 @@ def compare_ledger(rows, snapshots, *, include_extras=True):
             state = "extra"
         elif patronal not in snapshots or digit is None:
             state = "unchecked"
+        elif not records and ((patronal, document) in submitted or ("*", document) in submitted or ("*", "*") in submitted):
+            state = "awaiting"
         elif not records:
             state = "missing"
         else:
@@ -86,10 +88,16 @@ def compare_ledger(rows, snapshots, *, include_extras=True):
                            difference=official - digit if digit is not None and official is not None else None,
                            state=state, label=LABELS[state], confirmed=confirmed))
     output.sort(key=lambda r: (list(LABELS).index(r["state"]), r["confirmed"], r["document"]))
-    return {"rows": output, "counts": counts, "all_confirmed": bool(output) and len(output) == counts["confirmed"]}
+    by_patronal = Counter(r["patronal"] for r in output if r["state"] == "missing")
+    return {"rows": output, "counts": counts, "missing_by_patronal": by_patronal,
+            "all_confirmed": bool(output) and len(output) == counts["confirmed"]}
 
 
-def select_delivery(rows, snapshots, only_missing, digest):
+def select_delivery(rows, snapshots, only_missing, digest, *, submitted=(), missing_patronal=""):
+    if missing_patronal:
+        if not only_missing:
+            raise ValueError("Elegí el lote de faltantes para preparar esta patronal.")
+        rows = [row for row in rows if str(row[0]) == missing_patronal]
     patrons = {str(row[0]) for row in rows}
     snapshot = snapshots.get(next(iter(patrons))) if len(patrons) == 1 else None
     if not snapshot or digest != snapshot["digest"]:
@@ -97,7 +105,7 @@ def select_delivery(rows, snapshots, only_missing, digest):
     age = datetime.now(UTC) - datetime.fromisoformat(snapshot["checked_at"])
     if not timedelta(0) <= age <= timedelta(minutes=10):
         raise ValueError("El control de duplicados venció. Volvé a consultar REOP.")
-    comparison = compare_ledger(rows, snapshots, include_extras=False)
+    comparison = compare_ledger(rows, snapshots, include_extras=False, submitted=submitted)
     missing = {r["document"] for r in comparison["rows"] if r["state"] == "missing"}
     if not missing:
         raise ValueError("No hay filas faltantes para enviar. Revisá la conciliación.")

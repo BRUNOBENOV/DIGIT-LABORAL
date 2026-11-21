@@ -44,6 +44,7 @@
   {% set counts = ledger.counts %}
   {% if ledger_patronales|select('in', ledger_snapshots)|list %}
   <p class="import-salary-info"><strong>{{ counts['same'] }} coinciden · {{ counts['missing'] }} faltan · {{ counts['confirmed'] }} confirmadas en REOP</strong></p>
+  {% if counts['awaiting'] %}<p class="import-salary-info">Hay {{ counts['awaiting'] }} ya importada(s) a la espera de aparecer en el listado. Podés volver a consultar REOP para verificar su estado.</p>{% endif %}
   <div class="import-worker-table-wrap"><table class="import-worker-table">
     <thead><tr><th>Cédula</th><th>Total Digit (₲)</th><th>Total REOP (₲)</th><th>Diferencia (REOP − Digit)</th><th>Control</th><th>Comunicación en REOP</th></tr></thead>
     <tbody>{% for row in ledger.rows %}<tr>
@@ -55,7 +56,7 @@
     </tr>{% endfor %}</tbody>
   </table></div>
   {% if only_missing %}<p><a href="{{ request.url.include_query_params(only_missing=0) }}#control-reop">Volver a la planilla completa</a></p>
-  {% elif counts['missing'] and ledger_patronales|length == 1 %}<p><a class="btn primary" href="{{ request.url.include_query_params(only_missing=1) }}#control-reop">Preparar solo los faltantes ({{ counts['missing'] }})</a></p>{% endif %}
+  {% else %}{% for patronal, quantity in ledger.missing_by_patronal|dictsort %}<p><a class="btn primary" href="{{ request.url.include_query_params(only_missing=1, missing_patronal=patronal) }}#control-reop">Preparar solo los faltantes ({{ quantity }}){% if ledger_patronales|length > 1 %} · Patronal {{ patronal }}{% endif %}</a></p>{% endfor %}{% endif %}
   {% else %}<p class="import-salary-info">Habilitá la pestaña «Liquidación Salario» con el ícono de la extensión y consultá el listado para verificar las cédulas de este mes.</p>{% endif %}
   {% elif not ledger_patronales %}<p class="import-salary-info">El control requiere una planilla con una patronal identificada.</p>{% endif %}
 </section>
