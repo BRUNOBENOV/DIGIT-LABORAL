@@ -207,6 +207,16 @@ def reop_review_from_preview(case):
     return form.select_one('[name="reop_review"]')["value"], form["data-reop-assistant-id"]
 
 
+def observe_salary_list(case, records=(), *, previous="", patronal="123456"):
+    client, _, _, company, *_ = case
+    snapshot = {"source": "REOP", "complete": True, "patronal": patronal, "period": "2026-10",
+                "total": len(records), "inspected": len(records), "records": list(records)}
+    response = client.post(f"/app/compliance/salary-import/{company.id}/2026-10/ledger",
+        headers={"X-CSRF-Token": token(client)}, json={"patronal": patronal, "previous": previous, "snapshot": snapshot})
+    assert response.status_code == 200, response.text
+    return response.json()["digest"]
+
+
 def test_reop_assistant_uses_same_reviewed_workbook_and_audited_batch(download_case):
     client, db, *_ = download_case
     review, extension_id = reop_review_from_preview(download_case)
@@ -215,6 +225,7 @@ def test_reop_assistant_uses_same_reviewed_workbook_and_audited_batch(download_c
     with zipfile.ZipFile(io.BytesIO(download.content)) as archive:
         assert set(archive.namelist()) == {
             "digit-laboral-reop/manifest.json", "digit-laboral-reop/worker.js", "digit-laboral-reop/portal.js",
+            "digit-laboral-reop/salary-list.js",
         }
         manifest = json.loads(archive.read("digit-laboral-reop/manifest.json"))
     assert set(manifest["permissions"]) == {"activeTab", "scripting", "storage", "alarms"}
@@ -222,7 +233,7 @@ def test_reop_assistant_uses_same_reviewed_workbook_and_audited_batch(download_c
     assert len(extension_id) == 32
 
     response = client.post("/app/compliance/salary-import/export", data=data(
-        download_case, delivery="reop-browser", reop_review=review,
+        download_case, delivery="reop-browser", reop_review=review, ledger_digest=observe_salary_list(download_case),
     ))
     assert response.status_code == 200, response.text[:400]
     assert response.headers["X-REOP-Patronal"] == "123456"
@@ -240,8 +251,104 @@ def test_reop_assistant_rejects_changed_patronal_or_other_authority_without_crea
     review, _ = reop_review_from_preview(download_case)
     company.mtess_employer_number = "654321"
     db.commit()
-    payload = data(download_case, delivery="reop-browser", reop_review=review)
+    payload = data(download_case, delivery="reop-browser", reop_review=review,
+                   ledger_digest=observe_salary_list(download_case, patronal="654321"))
     stale = client.post("/app/compliance/salary-import/export", data=payload, headers={"Accept": "application/json"})
     assert stale.status_code == 409 and "Verificar archivo" in stale.json()["detail"]
     assert client.post("/app/compliance/salary-import/export", data=dict(payload, authority="REI")).status_code == 422
     assert db.scalar(select(func.count(IntegrationBatch.id))) == 0
+
+
+def test_month_deduplicates_exports_missing_and_reconciles_the_result(download_case):
+    client, db, _, company, worker, _, source = download_case
+    second = Employee(company_id=company.id, full_name="Segundo trabajador de prueba", document_number="1000022",
+                      ips_contributor=True, admission_date=worker.admission_date, employee_code=702)
+    db.add(second)
+    db.flush()
+    db.add(CalculationRecord(company_id=company.id, employee_id=second.id, calculation_type=source.calculation_type,
+                             reference_period=source.reference_period, status=source.status, input_json=source.input_json,
+                             result_json=source.result_json, amount=source.amount))
+    db.commit()
+    period = "2026-10"
+    dashboard = "/app/compliance/reop-month"
+    filters = {"company_id": company.id, "period": period, "authority": "REOP"}
+    page = "/app/compliance/salary-import"
+    export = page + "/export"
+    def companies_in(state):
+        html = BeautifulSoup(client.get(dashboard, params={"period": period, "status": state}).text, "html.parser")
+        return html.select_one("tbody").get_text(" ", strip=True)
+    assert company.legal_name in companies_in("ready")
+    assert "Empresa ajena" not in companies_in("prepare")
+    payload = data(download_case, delivery="reop-browser")
+    del payload["employee_id"]
+    assert client.post(export, data=payload).status_code == 409
+    record = {"document": worker.document_number, "income": 3500000, "status": "Pendiente", "number": "100",
+              "period": period, "patronal": "123456", "receipt": ""}
+    digest = observe_salary_list(download_case, [record])
+    full = BeautifulSoup(client.get(page, params=filters).text, "html.parser")
+    assert full.select_one("#control-reop").find(string="Preparar solo los faltantes (1)")
+    review = full.select_one('input[name="reop_review"]')["value"]
+    assert client.post(export, data={**payload, "ledger_digest": digest, "reop_review": review}).status_code == 409
+    partial = BeautifulSoup(client.get(page, params={**filters, "only_missing": 1}).text, "html.parser")
+    form = partial.select_one("[data-download-form]")
+    review = form.select_one('[name="reop_review"]')["value"]
+    assert form.select_one('[name="ledger_digest"]')["value"] == digest
+    response = client.post(export, data={**payload, "ledger_digest": digest, "reop_review": review, "only_missing": "true"})
+    assert response.status_code == 200, response.text[:200]
+    wb = load_workbook(io.BytesIO(response.content))
+    assert [str(r[1]) for r in list(wb.active.values)[1:]] == [second.document_number]
+    wb.close()
+    assert company.legal_name in companies_in("imported")
+    assert company.legal_name not in companies_in("confirmed")
+    batch_id = response.headers["X-Integration-Batch-Id"]
+    assert client.post(f"{page}/batches/{batch_id}/progress", headers={"X-CSRF-Token": token(client)},
+        json={"phase": "imported", "valid": 1, "errors": 0, "imported": 1}).status_code == 200
+    waiting = BeautifulSoup(client.get(page, params=filters).text, "html.parser").select_one("#control-reop")
+    assert "Importada, falta verificar en el listado" in waiting.text
+    assert not waiting.find(string="Preparar solo los faltantes (1)")
+    assert client.post(export, data={**payload, "ledger_digest": digest, "reop_review": review, "only_missing": "true"}).status_code == 409
+    # Old lots can be identified from the original workbook as well.
+    archived = db.get(IntegrationBatch, int(batch_id))
+    metadata = json.loads(archived.payload_json)
+    del metadata["reop_documents"]
+    archived.payload_json = json.dumps(metadata)
+    db.commit()
+    assert client.post(export, data={**payload, "ledger_digest": digest, "reop_review": review, "only_missing": "true"}).status_code == 409
+    revised = [{**record, "status": "Confirmado", "receipt": "EOF/001"},
+               {**record, "status": "Confirmado", "number": "101", "document": second.document_number}]
+    newest = observe_salary_list(download_case, revised, previous=digest)
+    assert newest != digest and company.legal_name in companies_in("confirmed")
+    html = BeautifulSoup(client.get(page, params=filters).text, "html.parser")
+    assert "Constancia EOF/001" in html.select_one("#control-reop").get_text(" ", strip=True)
+    assert client.post(export, data={**payload, "ledger_digest": newest, "reop_review": review, "only_missing": "true"}).status_code == 409
+    assert db.scalar(select(func.count(IntegrationBatch.id))) == 1
+
+
+def test_group_and_exception_reopen_by_month_and_by_original_batch(download_case):
+    client, db, _, company, worker, foreign, source = download_case
+    config = f"/app/compliance/salary-import/{company.id}/2026-10/payments"
+    preview = "/app/compliance/salary-import"
+    original = source.input_json, source.result_json
+    form = {"csrf_token": token(client), "default": "1", "revision": ""}
+    assert client.post(config, data={**form, f"pay_{foreign.id}": "2"}, follow_redirects=False).status_code == 404
+    assert client.post(config, data=form, follow_redirects=False).status_code == 303
+    params = {"company_id": company.id, "period": "2026-10"}
+    html = BeautifulSoup(client.get(preview, params=params).text, "html.parser")
+    assert html.select_one('#pagos-reop [name="default"] option[selected]')["value"] == "1"
+    assert html.select_one("[data-import-worker-row]").find(string="Efectivo")
+    saved = client.post(preview + "/export", data=data(download_case))
+    assert saved.status_code == 200
+    wb = load_workbook(io.BytesIO(saved.content))
+    assert wb.active.cell(2, 5).value == 1
+    wb.close()
+    assert client.post(config, data=form, follow_redirects=False).status_code == 409
+    rev = html.select_one('[name="revision"]')["value"]
+    assert client.post(config, data={**form, "revision": rev, f"pay_{worker.id}": "2"}, follow_redirects=False).status_code == 303
+    html = BeautifulSoup(client.get(preview, params=params).text, "html.parser")
+    assert html.select_one("[data-import-worker-row]").find(string="Cheque")
+    batch = BeautifulSoup(client.get(preview, params={**params, "batch_id": saved.headers["X-Integration-Batch-Id"]}).text, "html.parser")
+    assert batch.select_one("[data-import-worker-row]").find(string="Efectivo")
+    another_month = BeautifulSoup(client.get(preview, params={**params, "period": "2026-09"}).text, "html.parser")
+    assert another_month.select_one('select[name="payment_code"] option[selected]')["value"] == "auto"
+    db.refresh(source)
+    assert (source.input_json, source.result_json) == original

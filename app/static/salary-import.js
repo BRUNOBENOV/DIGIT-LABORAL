@@ -5,6 +5,7 @@
   if (form) {
     const status = form.querySelector('[data-import-validation-status]');
     let timer;
+    let restorePayment = false;
     function invalidate() {
       for (const exportForm of document.querySelectorAll('[data-download-form]')) {
         exportForm.dataset.reviewStale = 'true';
@@ -20,10 +21,13 @@
       }
       const url = new URL(form.action, window.location.href);
       url.search = new URLSearchParams(new FormData(form)).toString();
+      if (restorePayment) url.searchParams.delete('payment_code');
       window.location.assign(url.href);
     }
     form.addEventListener('change', event => {
       window.clearTimeout(timer);
+      if (['company_id', 'period'].includes(event.target.name)) restorePayment = true;
+      if (event.target.name === 'payment_code') restorePayment = false;
       if (event.target.name === 'company_id') {
         const employee = form.elements.employee_id;
         if (window.DigitEntitySelect) window.DigitEntitySelect.setValue(employee, '');
@@ -32,7 +36,10 @@
       invalidate();
       timer = window.setTimeout(verify, 450);
     });
-    form.addEventListener('submit', () => window.clearTimeout(timer));
+    form.addEventListener('submit', event => {
+      window.clearTimeout(timer);
+      if (restorePayment) { event.preventDefault(); verify(); }
+    });
     const current = new URL(window.location.href);
     if (!current.searchParams.has('period') && form.elements.company_id.value && form.elements.period.value) {
       timer = window.setTimeout(verify, 450);
@@ -67,6 +74,12 @@
   for (const link of document.querySelectorAll('[data-open-attendance]')) {
     link.addEventListener('click', () => {
       const panel = document.getElementById('asistencia-exportacion');
+      if (panel) panel.open = true;
+    });
+  }
+  for (const link of document.querySelectorAll('a[href="#pagos-reop"]')) {
+    link.addEventListener('click', () => {
+      const panel = document.getElementById('pagos-reop');
       if (panel) panel.open = true;
     });
   }

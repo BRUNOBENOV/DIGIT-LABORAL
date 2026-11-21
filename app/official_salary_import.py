@@ -120,7 +120,8 @@ def _source(db: Session, company, period: str):
 def prepare_import(db: Session, company, period: str, authority: str, *,
                    payment_code: str = "", other_category: str = "",
                    rei_category: str = "", name_order: str = "",
-                   source_type: str = "payroll", employee_id: int | None = None) -> tuple[list[list], list[str]]:
+                   source_type: str = "payroll", employee_id: int | None = None,
+                   payment_overrides: dict | None = None, apply_group: bool = False) -> tuple[list[list], list[str]]:
     """Preflight integral: devuelve filas y TODOS los errores; el archivo se bloquea ante cualquier error."""
     if authority not in {"REOP", "REI"}:
         raise SalaryImportError(["Sistema de destino inválido."])
@@ -136,6 +137,7 @@ def prepare_import(db: Session, company, period: str, authority: str, *,
         records, source_errors, _details = approved_salary_records(
             db, company, period, authority=authority, employee_id=employee_id,
             payment_code=payment_code if authority == "REOP" else "",
+            **({"payment_overrides": payment_overrides} if payment_overrides is not None else {}),
         )
     else:
         _payroll, records = _source(db, company, period)
@@ -161,9 +163,9 @@ def prepare_import(db: Session, company, period: str, authority: str, *,
                    if d is not None and _text(d.payment_method)}
         numeric_methods = {_text(d.payment_method) for _, _, d in records
                            if d is not None and _text(d.payment_method).isdigit()}
-        if payment_code != "auto" and len(methods) > 1:
+        if payment_overrides is None and payment_code != "auto" and len(methods) > 1:
             errors.append("REOP: la nómina contiene distintas formas de pago. No se puede usar un único código para todos; revisá cada detalle.")
-        elif payment_code != "auto" and numeric_methods and numeric_methods != {payment_code}:
+        elif payment_overrides is None and payment_code != "auto" and numeric_methods and numeric_methods != {payment_code}:
             errors.append("REOP: el código de forma de pago elegido difiere del registrado en la nómina.")
     else:
         if name_order not in {"apellido_primero", "nombre_primero"}:
@@ -174,9 +176,13 @@ def prepare_import(db: Session, company, period: str, authority: str, *,
         context = f"{employee.full_name} (legajo {employee.employee_code or employee.id})"
         err: list[str] = []
         row_payment = payment_code
-        if authority == "REOP" and payment_code == "auto":
-            row_payment = reop_payment_code(detail.payment_method if detail else "")
-            if not row_payment:
+        if authority == "REOP" and (payment_code == "auto" or payment_overrides is not None):
+            saved_method = detail.payment_method if detail else ""
+            group_method = payment_code if apply_group and payment_code in REOP_PAYMENT_LABELS else ""
+            row_payment = (payment_overrides or {}).get(str(employee.id)) or group_method or reop_payment_code(saved_method)
+            if not row_payment and not saved_method and payment_code in REOP_PAYMENT_LABELS:
+                row_payment = payment_code
+            if not row_payment and (effective_source != "approved" or saved_method):
                 err.append("falta una forma de pago reconocida en el salario guardado")
         registered_patronal = _patronal(db, company, employee, authority)
         patronal = registered_patronal.replace(".", "") if authority == "REOP" else registered_patronal

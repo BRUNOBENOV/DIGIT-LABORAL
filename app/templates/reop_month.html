@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Empresas del mes en REOP | Digit Laboral{% endblock %}
+{% block content %}
+<section class="compliance-center">
+  <header class="compliance-hero"><div><h1>Empresas del mes en REOP</h1><p>Seguimiento de las liquidaciones de salario por empresa.</p></div></header>
+  <p><a class="btn ghost" href="/app/compliance">Volver a Cumplimiento</a></p>
+  <form method="get" class="compliance-fields">
+    <label>Mes<input type="month" name="period" required value="{{ period }}"></label>
+    <label>Empresa<input type="search" name="q" value="{{ q }}" placeholder="Nombre, código, RUC o patronal"></label>
+    <label>Estado<select name="status"><option value="">Todos los estados</option>
+      {% for key, label in stages.items() %}<option value="{{ key }}" {{ 'selected' if key == status }}>{{ label }}</option>{% endfor %}
+    </select></label>
+    <button class="btn primary" type="submit">Filtrar</button>
+  </form>
+  <nav class="integration-actions" aria-label="Filtros por estado mensual">
+    {% for key, label in stages.items() %}<a class="btn {{ 'primary' if key == status else 'ghost' }}" href="{{ request.url.include_query_params(period=period, status=key, page=1) }}">{{ label }} ({{ counts[key] }})</a>{% endfor %}
+  </nav>
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th>Empresa</th><th>Estado</th><th>Trabajadores en Digit</th><th>Confirmados en REOP</th><th></th></tr></thead>
+    <tbody>{% for item in items %}<tr><td>{{ item.company.legal_name }} <small>{{ item.company.legacy_code or item.company.company_code or '' }}</small></td>
+      <td>{{ stages[item.stage] }}</td><td>{{ item.count }}</td><td>{{ item.confirmed if item.observed else 'Sin verificar' }}</td>
+      <td><a href="/app/compliance/salary-import?company_id={{ item.company.id }}&amp;period={{ period }}&amp;authority=REOP#control-reop">Abrir planilla</a></td>
+    </tr>{% else %}<tr><td colspan="5">Ninguna empresa coincide con estos filtros.</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% if pages > 1 %}<nav class="integration-actions" aria-label="Páginas de empresas">
+    {% if page > 1 %}<a href="{{ request.url.include_query_params(page=page-1) }}">Anterior</a>{% endif %}
+    <span>Página {{ page }} de {{ pages }}</span>{% if page < pages %}<a href="{{ request.url.include_query_params(page=page+1) }}">Siguiente</a>{% endif %}
+  </nav>{% endif %}
+</section>
+{% endblock %}

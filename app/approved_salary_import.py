@@ -333,7 +333,8 @@ def salary_excluded_records(db: Session, company_id: int, period: str, *, author
 
 
 def approved_salary_records(db: Session, company, period: str, *, authority: str = "REOP",
-                            employee_id: int | None = None, payment_code: str = "") -> tuple[list[tuple], list[str], list[dict]]:
+                            employee_id: int | None = None, payment_code: str = "",
+                            payment_overrides: dict | None = None) -> tuple[list[tuple], list[str], list[dict]]:
     """Selecciona la aprobación vigente por legajo, sin resucitar anulaciones."""
     query = select(CalculationRecord).where(
         CalculationRecord.company_id == company.id,
@@ -429,7 +430,10 @@ def approved_salary_records(db: Session, company, period: str, *, authority: str
         payment_from_export = (authority == "REOP"
                                and not str(supplementary.get("payment_method") or "").strip()
                                and payment_code in REOP_PAYMENT_METHODS)
-        if payment_from_export:
+        override = (payment_overrides or {}).get(str(id_)) if authority == "REOP" else None
+        if override in REOP_PAYMENT_METHODS:
+            supplementary["payment_method"] = REOP_PAYMENT_METHODS[override]
+        elif payment_from_export:
             supplementary["payment_method"] = REOP_PAYMENT_METHODS[payment_code]
         if authority == "REOP" and not supplementary.get("payment_method"):
             item_errors.append("seleccioná la forma de pago real para este trabajador")

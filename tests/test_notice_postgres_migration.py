@@ -28,7 +28,7 @@ def test_postgres_notice_migration_fresh_upgrade_and_read_only_rls():
 
     def verify():
         with engine.connect() as connection:
-            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0027_aguinaldo_optional_total"
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0028_reop_salary_months"
             assert connection.scalar(text("""
                 SELECT is_nullable FROM information_schema.columns
                 WHERE table_schema='public' AND table_name='aguinaldos' AND column_name='total_remunerations'

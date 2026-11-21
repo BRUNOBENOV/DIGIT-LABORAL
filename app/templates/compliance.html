@@ -26,6 +26,7 @@
     </form>
     {% endif %}
   </header>
+  {% if can_manage %}<p><a class="btn ghost" href="/app/compliance/reop-month">Ver empresas del mes en REOP</a></p>{% endif %}
 
   {% if selected_company %}
   {% set center = '/app/compliance?company_id=' ~ selected_company.id %}
@@ -371,6 +372,7 @@
           {% endif %}
           <div class="integration-actions">
             <a class="btn primary" href="/app/compliance/batches/{{ batch.id }}/download">Descargar archivo</a>
+            {% if can_manage and batch.authority == 'REOP' and batch.batch_type == 'Importación de salarios' %}<a class="btn ghost" href="/app/compliance/salary-import?company_id={{ batch.company_id }}&amp;period={{ batch.period }}&amp;authority=REOP&amp;batch_id={{ batch.id }}#control-reop">Reabrir lote y conciliar</a>{% endif %}
             {% if batch.id in batch_receipts %}<a class="btn ghost" href="/app/compliance/batches/{{ batch.id }}/receipt">Descargar comprobante</a>{% endif %}
             {% if not internal_report and batch.authority in official_portals %}
             <a class="btn ghost" href="{{ official_portals[batch.authority] }}" target="_blank" rel="noopener noreferrer">Abrir {{ batch.authority }} oficial ↗</a>

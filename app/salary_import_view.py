@@ -4,6 +4,7 @@ from __future__ import annotations
 import re
 
 from .official_salary_import import REOP_PAYMENT_LABELS
+from .reop_ledger import gross_income
 
 
 def group_import_errors(errors: list[str], company_id: int) -> list[dict]:
@@ -11,12 +12,17 @@ def group_import_errors(errors: list[str], company_id: int) -> list[dict]:
     for error in errors:
         match = re.match(r"(.+?) \((?:legajo [^)]+|cálculo #\d+)\): (.+)", error)
         reason = match[2] if match else error
+        if reason.rstrip(".") in {"seleccioná la forma de pago real para este trabajador",
+                                  "falta una forma de pago reconocida en el salario guardado"}:
+            reason = "Falta indicar la forma de pago."
         group = groups.setdefault(reason, {"message": reason, "workers": [], "action": "", "url": ""})
         if match and match[1] not in group["workers"]:
             group["workers"].append(match[1])
         if "patronal" in reason.casefold():
             group.update(action="Completar patronal", url=f"/app/companies/{company_id}?open=editCompanyModal")
-        elif any(word in reason.casefold() for word in ("horas", "jornadas", "forma de pago", "fechas del período")):
+        elif "forma de pago" in reason.casefold():
+            group.update(action="Revisar formas de pago", url="#pagos-reop")
+        elif any(word in reason.casefold() for word in ("horas", "jornadas", "fechas del período")):
             group.update(action="Revisar asistencia", url="#asistencia-exportacion")
     return list(groups.values())
 
@@ -33,11 +39,7 @@ def reviewed_workers(rows: list[list], employees: list, errors: list[str], autho
         # Vista previa REOP: el salario básico es solo una de las 15 columnas
         # de ingresos (índices 9..23). Mostrar el total bruto que realmente
         # resulta del Excel, sin cambiar las columnas del archivo oficial.
-        total_income = None
-        if authority == "REOP" and len(row) >= 24:
-            amounts = row[9:24]
-            if all(type(value) is int and value >= 0 for value in amounts):
-                total_income = sum(amounts)
+        total_income = gross_income(row) if authority == "REOP" else None
         workers.append({
             "name": name, "document": document,
             "code": employee.employee_code if employee else None,

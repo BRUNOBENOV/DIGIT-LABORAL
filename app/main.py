@@ -10842,12 +10842,15 @@ def salary_import_page(
     company_id: OptionalQueryId = None,
     period: str = "",
     authority: str = "REOP",
-    payment_code: str = "auto",
+    payment_code: str | None = None,
     other_category: str = "",
     rei_category: str = "",
     name_order: str = "",
     source_type: str = "auto",
     employee_id: OptionalQueryId = None,
+    only_missing: bool = False,
+    missing_patronal: str = "",
+    batch_id: OptionalQueryId = None,
     user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ):
@@ -10859,6 +10862,8 @@ def salary_import_page(
     )
     from .reop_assistant import REOP_ASSISTANT_ID, reop_assistant_patronal, reop_assistant_review
     from .salary_import_view import group_import_errors, reviewed_workers
+    from .reop_ledger import compare_ledger, doc_key
+    from .reop_month import read_month, payment_settings, submitted_documents
 
     ids = company_ids_for_user(db, user)
     companies = seed_choices(
@@ -10866,6 +10871,23 @@ def salary_import_page(
         Company, request=request
     ) if ids else []
     company = company_allowed(db, user, company_id) if company_id else None
+    selected_batch = None
+    if batch_id is not None:
+        if company is None:
+            raise HTTPException(404, "Seleccioná la empresa del lote.")
+        selected_batch = db.scalar(select(IntegrationBatch).options(defer(IntegrationBatch.file_bytes)).where(
+            IntegrationBatch.company_id == company.id, IntegrationBatch.id == batch_id,
+            IntegrationBatch.authority == "REOP", IntegrationBatch.batch_type == "Importación de salarios"))
+        if not selected_batch or selected_batch.period != period or authority != "REOP":
+            raise HTTPException(404, "El lote no corresponde a esta empresa y período.")
+        stored = json_dict(selected_batch.payload_json)
+        if "only_missing" not in request.query_params:
+            only_missing = bool(stored.get("only_missing"))
+        if only_missing and "missing_patronal" not in request.query_params:
+            missing_patronal = stored.get("missing_patronal") or ""
+        source_type = stored.get("source_type") or "auto"
+        other_category = stored.get("other_category") or ""
+        employee_id = stored.get("employee_scope_id")
     selected_employee = db.get(Employee, employee_id) if employee_id is not None else None
     if employee_id is not None and (
         selected_employee is None or company is None or selected_employee.company_id != company.id
@@ -10873,6 +10895,13 @@ def salary_import_page(
         raise HTTPException(404, "El funcionario no pertenece a la empresa seleccionada.")
     period = period or current_paraguay_date().strftime("%Y-%m")
     authority = authority if authority in {"REOP", "REI"} else "REOP"
+    month = read_month(db, company.id, period) if company and authority == "REOP" else None
+    payments = payment_settings(db, company.id, period, month, employee_id) if company and authority == "REOP" else {"default":"auto", "overrides":{}}
+    if selected_batch:
+        payments = {**payments, "default": stored.get("payment_code") or "auto", "overrides": stored.get("payment_overrides") or {},
+                    "apply_group": bool(stored.get("apply_group"))}
+    if payment_code is None:
+        payment_code = payments["default"]
     if selected_employee and not salary_export_employee_eligible(selected_employee, authority):
         raise HTTPException(422, "Este funcionario no es elegible para la exportación: verificá IPS Sí en Mantenimientos → Funcionarios.")
     preview = bool(company and request.query_params.get("period"))
@@ -10918,6 +10947,7 @@ def salary_import_page(
         _source_rows, _source_errors, diagnostics = approved_salary_records(
             db, company, period, authority=authority, employee_id=employee_id,
             payment_code=payment_code if authority == "REOP" else "",
+            **({"payment_overrides": payments["overrides"]} if authority == "REOP" else {}),
         )
     errors: list[str] = []
     rows: list[list] = []
@@ -10927,9 +10957,23 @@ def salary_import_page(
                 db, company, period, authority, payment_code=payment_code,
                 other_category=other_category, rei_category=rei_category,
                 name_order=name_order, source_type=source_type, employee_id=employee_id,
+                payment_overrides=payments["overrides"] if authority == "REOP" else None,
+                apply_group=bool(payments.get("apply_group") and payments["default"] == payment_code),
             )
         except SalaryImportError as exc:
             errors = exc.errors
+    ledger = None
+    snapshots = month.snapshots if month else {}
+    patronales = sorted({str(row[0]) for row in rows if row[0] and str(row[0]).isdigit()}) if authority == "REOP" else []
+    if authority == "REOP" and preview:
+        submitted = submitted_documents(db, company.id, period, storage) if snapshots else set()
+        ledger = compare_ledger(rows, {k:v for k,v in snapshots.items() if k in patronales},
+                                include_extras=employee_id is None, submitted=submitted)
+        if only_missing:
+            keys = {(r["patronal"], r["document"]) for r in ledger["rows"] if r["state"] == "missing"}
+            rows = [r for r in rows if (str(r[0]), doc_key(r[1])) in keys and (not missing_patronal or str(r[0]) == missing_patronal)]
+            if not rows:
+                errors.append("No hay faltantes verificados para preparar.")
     if authority == "REOP":
         preview_headers = ["N.º patronal", "Documento", "Desde", "Hasta", "Jornadas", "Horas ordinarias", "Sueldo básico", "IPS"]
         preview_rows = [
@@ -10957,19 +11001,21 @@ def salary_import_page(
     worker_rows = reviewed_workers(rows, approved_choices, errors, authority)
     saved_batch = None
     if company and preview and user.role in {"administrador", "contador"}:
-        recent = db.scalars(select(IntegrationBatch).where(
+        recent = [selected_batch] if selected_batch else db.scalars(select(IntegrationBatch).options(defer(IntegrationBatch.file_bytes)).where(
             IntegrationBatch.company_id == company.id, IntegrationBatch.authority == authority,
             IntegrationBatch.period == period, IntegrationBatch.batch_type == "Importación de salarios",
             IntegrationBatch.created_by == user.email,
         ).order_by(IntegrationBatch.id.desc()).limit(20))
         for batch in recent:
             payload = json_dict(batch.payload_json)
-            if payload.get("employee_scope_id") == employee_id:
+            if (payload.get("employee_scope_id") == employee_id and bool(payload.get("only_missing")) == only_missing
+                    and (not only_missing or (payload.get("missing_patronal") or "") == missing_patronal)
+                    and (selected_batch is None or batch.id == selected_batch.id)):
                 saved_batch = {
                     "id": batch.id, "status": batch.status, "rows": batch.item_count,
                     "resumeKey": payload.get("assistant_resume_key", ""),
                     "progress": payload.get("assistant_progress"),
-                    "matches": bool(review_hash and payload.get("review_hash") == review_hash),
+                    "matches": bool(review_hash and payload.get("review_hash") == review_hash and batch.created_by == user.email),
                     "reusable": batch.status == "Generado" and not batch.receipt_file_name
                         and (payload.get("assistant_progress") or {}).get("phase") != "imported",
                 }
@@ -10992,7 +11038,8 @@ def salary_import_page(
         reop_assistant_review=review_hash if assistant_patronal else "",
         vacation_links=vacation_links,
         worker_rows=worker_rows, error_groups=group_import_errors(errors, company.id) if company else [],
-        saved_batch=saved_batch,
+        saved_batch=saved_batch, selected_batch=selected_batch, payments=payments, ledger=ledger,
+        ledger_snapshots=snapshots, ledger_patronales=patronales, only_missing=only_missing, missing_patronal=missing_patronal,
     )
 
 
@@ -11357,6 +11404,10 @@ def salary_import_export(
     delivery: Annotated[str, Form()] = "download",
     reop_review: Annotated[str, Form()] = "",
     reuse_batch_id: Annotated[int | None, Form()] = None,
+    settings_batch_id: Annotated[int | None, Form()] = None,
+    ledger_digest: Annotated[str, Form()] = "",
+    only_missing: Annotated[bool, Form()] = False,
+    missing_patronal: Annotated[str, Form()] = "",
     user: User = Depends(require_roles("administrador", "contador")),
     db: Session = Depends(get_db),
 ):
@@ -11366,12 +11417,27 @@ def salary_import_export(
         build_reop_xlsx, prepare_import,
     )
     from .reop_assistant import REOP_ASSISTANT_MAX_BYTES, reop_assistant_patronal, reop_assistant_review
+    from .reop_ledger import select_delivery
+    from .reop_month import read_month, payment_settings, submitted_documents
 
     if delivery not in {"download", "reop-browser"} or (delivery == "reop-browser" and authority != "REOP"):
         raise HTTPException(422, "Modo de entrega no válido para este organismo.")
     if confirmed != "si":
         raise HTTPException(400, "Confirmá la revisión antes de generar la planilla.")
     company = company_allowed(db, user, company_id)
+    month = read_month(db, company.id, period) if authority == "REOP" else None
+    payments = payment_settings(db, company.id, period, month, employee_id) if authority == "REOP" else {}
+    if settings_batch_id is not None:
+        saved = db.scalar(select(IntegrationBatch).where(IntegrationBatch.id == settings_batch_id,
+            IntegrationBatch.company_id == company.id, IntegrationBatch.period == period,
+            IntegrationBatch.authority == "REOP", IntegrationBatch.batch_type == "Importación de salarios"))
+        if not saved or authority != "REOP":
+            raise HTTPException(404, "Lote salarial no encontrado.")
+        stored = json_dict(saved.payload_json)
+        payments = {"default": stored.get("payment_code"), "overrides": stored.get("payment_overrides") or {},
+                    "apply_group": bool(stored.get("apply_group"))}
+    overrides = payments.get("overrides")
+    apply_group = bool(payments.get("apply_group") and payments.get("default") == payment_code)
     if employee_id is not None:
         chosen = db.get(Employee, employee_id)
         if chosen is None or chosen.company_id != company.id:
@@ -11384,12 +11450,20 @@ def salary_import_export(
         rows, errors = prepare_import(
             db, company, period, authority, payment_code=payment_code,
             other_category=other_category, rei_category=rei_category,
-            name_order=name_order, source_type=source_type, employee_id=employee_id,
+            name_order=name_order, source_type=source_type, employee_id=employee_id, payment_overrides=overrides, apply_group=apply_group,
         )
     except SalaryImportError as exc:
         raise HTTPException(409, detail=" | ".join(exc.errors[:12])) from exc
     if errors:
         raise HTTPException(409, detail="Hay datos pendientes: " + " | ".join(errors[:12]))
+    if only_missing or delivery == "reop-browser":
+        if authority != "REOP":
+            raise HTTPException(422, "El control de comunicaciones corresponde a REOP.")
+        try:
+            rows = select_delivery(rows, month.snapshots if month else {}, only_missing, ledger_digest,
+                                   submitted=submitted_documents(db, company.id, period, storage), missing_patronal=missing_patronal)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
     from .approved_salary_import import choose_salary_source, salary_excluded_records
     effective_source = choose_salary_source(
         db, company.id, period, source_type, employee_id=employee_id, authority=authority
@@ -11407,19 +11481,22 @@ def salary_import_export(
     if authority == "REI" and name_order not in {"apellido_primero", "nombre_primero"}:
         raise HTTPException(409, "Se requiere confirmar el orden de nombres del REI.")
     patronal = ""
-    if delivery == "reop-browser":
+    if only_missing or delivery == "reop-browser":
         patronal = reop_assistant_patronal(rows)
         if not patronal:
             raise HTTPException(409, "La carga con Chrome requiere una sola patronal por lote.")
         if reop_review != reop_assistant_review(rows, exclusions, effective_source):
             raise HTTPException(409, "Los datos pueden haber cambiado. Volvé a pulsar «Verificar archivo» y revisá la planilla.")
+        if delivery != "reop-browser":
+            patronal = ""
     review_hash = reop_assistant_review(rows, exclusions, effective_source)
     reused = reuse_batch_id is not None
     if reused:
         batch = _salary_export_batch(db, user, reuse_batch_id, lock=True)
         payload = json_dict(batch.payload_json)
         if (batch.company_id != company.id or batch.authority != authority or batch.period != period
-            or payload.get("employee_scope_id") != employee_id or payload.get("review_hash") != review_hash):
+            or payload.get("employee_scope_id") != employee_id or payload.get("review_hash") != review_hash
+            or bool(payload.get("only_missing")) != only_missing):
             raise HTTPException(409, "El lote guardado corresponde a otros datos. Volvé a verificar la planilla.")
         if delivery == "reop-browser" and (
             batch.status != "Generado" or batch.receipt_file_name
@@ -11442,7 +11519,8 @@ def salary_import_export(
     extension = "xlsx" if authority == "REOP" else "txt"
     safe_ruc = re.sub(r"[^A-Za-z0-9_-]+", "-", company.ruc or str(company.id))
     scope = f"_legajo-{employee_id}" if employee_id is not None else ""
-    file_name = f"{authority.lower()}_salarios_{safe_ruc}_{period}{scope}.{extension}"
+    suffix = "_faltantes" if only_missing else ""
+    file_name = f"{authority.lower()}_salarios_{safe_ruc}_{period}{scope}{suffix}.{extension}"
     if not reused:
         batch = register_batch(
             db, company=company, authority=authority, batch_type="Importación de salarios",
@@ -11458,6 +11536,11 @@ def salary_import_export(
         "format": "REOP-32-col-2025" if authority == "REOP" else "REI-txt-referencia-2016",
         "delivery": delivery,
         "payment_code": payment_code if authority == "REOP" else None,
+        "payment_overrides": overrides or {},
+        "apply_group": apply_group,
+        "only_missing": only_missing,
+        "missing_patronal": missing_patronal if only_missing else "",
+        "reop_documents": [[str(row[0]), str(row[1])] for row in rows] if authority == "REOP" else [],
         "other_category": other_category if authority == "REOP" else None,
         "name_order": name_order if authority == "REI" else None,
         "rei_category": rei_category if authority == "REI" else None,
@@ -12522,6 +12605,8 @@ app.include_router(rei_movement_router)
 # Lectura de planillas IPS en el navegador del usuario; conciliación sin escritura.
 from .portal_reconciliation_routes import router as portal_reconciliation_router
 app.include_router(portal_reconciliation_router)
+from .reop_month_routes import router as reop_month_router
+app.include_router(reop_month_router)
 
 # Importador salarial histórico MOV: se registra tras construir autenticación y dependencias.
 from .legacy_salary_mov_routes import register_routes as register_mov_routes

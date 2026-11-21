@@ -43,6 +43,7 @@
     <a href="{{ official_portal }}" class="btn ghost" target="_blank" rel="noopener noreferrer">Abrir {{ authority }} oficial ↗</a>
     <a href="/app/liquidaciones/conciliar-planilla" class="btn ghost">Conciliar planilla contable antes de exportar</a>
     <a href="/app/liquidaciones/salarios/importar-reop" class="btn ghost">Importar salarios desde REOP</a>
+    {% if user.role in ['administrador','contador'] %}<a href="/app/compliance/reop-month?period={{ period }}" class="btn ghost">Ver empresas del mes en REOP</a>{% endif %}
   </div>
   {% if reop_assistant_id %}
   <details class="import-salary-card import-salary-setup" id="asistente-reop">
@@ -50,7 +51,7 @@
     <p class="import-salary-info">Instalación por única vez en Chrome de escritorio. Descargá y descomprimí el ZIP, abrí <code>chrome://extensions</code>, activá «Modo de desarrollador» y elegí «Cargar descomprimida». Seleccioná la carpeta <code>digit-laboral-reop</code>.</p>
     <a class="btn ghost" href="/app/compliance/reop-assistant.zip">Descargar asistente REOP</a>
     <p class="import-salary-info">Si ya instalaste el asistente, reemplazá los archivos de su carpeta por los del ZIP y pulsá «Volver a cargar» en <code>chrome://extensions</code>.</p>
-    <p class="import-salary-info">Abrí «Liquidación Salario» en REOP y pulsá el ícono de la extensión una vez para habilitar esa pestaña. En Digit Laboral, verificá la planilla, marcá la confirmación y pulsá «Preparar y prevalidar en REOP». Dejá ambas pestañas abiertas para seguir la cola y ver el resultado con el asistente 1.5.1. Revisá, importá y confirmá las comunicaciones en REOP.</p>
+    <p class="import-salary-info">Abrí «Liquidación Salario» en REOP y pulsá el ícono de la extensión para habilitar esa pestaña. El asistente 1.7.0 lee el listado antes de prevalidar. Dejá las dos pestañas abiertas para conciliar el resultado al terminar la importación.</p>
   </details>
   {% endif %}
   <details class="import-salary-options"><summary>Criterios de días y horas</summary>
@@ -179,8 +180,9 @@
   </section>
   {% endif %}
   <section class="import-salary-card">
-    <h2>{{ item_count }} trabajador(es) para {{ authority }}{% if errors %} · {{ errors|length }} dato(s) pendiente(s){% elif reop_assistant_patronal %} · Planilla verificada{% else %} · Listo para descargar{% endif %}</h2>
+    <h2>{{ item_count }} trabajador(es) para {{ authority }}{% if only_missing %} · Solo faltantes{% endif %}{% if errors %} · {{ error_groups|length }} {{ 'observación' if error_groups|length == 1 else 'observaciones' }}{% elif reop_assistant_patronal %} · Planilla verificada{% else %} · Listo para descargar{% endif %}</h2>
     <p class="import-salary-info">{{ selected_company.legal_name }} · {{ period }}{% if excluded_salary %} · {{ excluded_salary|length }} sin aprobación no se incluirán{% endif %}</p>
+    {% if reop_assistant_id %}{% include "reop_month_review.html" %}{% endif %}
     {% if authority == 'REOP' and vacation_links %}
     <section class="import-salary-card" aria-label="Conciliación de vacaciones" style="margin:12px 0;background:#f7faff">
       <h3>Vacaciones vinculadas al período ({{ vacation_links|length }})</h3>
@@ -356,6 +358,12 @@
       <input type="hidden" name="name_order" value="{{ name_order }}">
       <input type="hidden" name="source_type" value="{{ source_type }}">
       {% if saved_batch and saved_batch.matches %}<input type="hidden" name="reuse_batch_id" value="{{ saved_batch.id }}">{% endif %}
+      {% if selected_batch %}<input type="hidden" name="settings_batch_id" value="{{ selected_batch.id }}">{% endif %}
+      {% if authority == 'REOP' %}
+      <input type="hidden" name="only_missing" value="{{ 'true' if only_missing else 'false' }}">
+      {% if only_missing and missing_patronal %}<input type="hidden" name="missing_patronal" value="{{ missing_patronal }}">{% endif %}
+      <input type="hidden" name="ledger_digest" value="{{ ledger_snapshots.get(reop_assistant_patronal, {}).get('digest', '') }}">
+      {% endif %}
       {% if reop_assistant_patronal %}<input type="hidden" name="reop_review" value="{{ reop_assistant_review }}">{% endif %}
       {% if selected_employee %}<input type="hidden" name="employee_id" value="{{ selected_employee.id }}">{% endif %}
       {% if excluded_salary %}
@@ -372,7 +380,7 @@
         <button class="btn {{ 'ghost' if reop_assistant_patronal else 'primary' }}" type="submit" data-download-file>Descargar {{ 'Excel REOP (.xlsx)' if authority == 'REOP' else 'TXT REI (.txt)' }}</button>
         {% if reop_assistant_patronal %}
         <a class="btn ghost" data-reop-file hidden>Descargar Excel del lote</a>
-        <button class="btn primary" type="submit" data-reop-browser hidden>Preparar y prevalidar en REOP</button>
+        <button class="btn primary" type="submit" data-reop-browser data-patronal="{{ reop_assistant_patronal }}" hidden>Preparar y prevalidar en REOP</button>
         <a class="btn ghost" href="{{ official_portal }}liquidacion_salario_list.php" data-reop-open target="_blank" rel="noopener noreferrer" hidden>Abrir REOP ↗</a>
         {% endif %}
       </div>
@@ -381,6 +389,7 @@
       <a class="btn ghost" data-download-batch href="/app/compliance?company_id={{ selected_company.id }}&amp;tab=batches&amp;authority={{ authority }}" hidden>Ir al lote y registrar el comprobante</a>
     </form>
     {% endif %}
+    {% if reop_assistant_id %}<script src="{{ url_for('static', path='reop-ledger.js') }}?v={{ app_version }}" defer></script>{% endif %}
     <script src="{{ url_for('static', path='download-form.js') }}?v={{ app_version }}" defer></script>
   </section>
   {% endif %}
