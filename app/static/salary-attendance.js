@@ -7,6 +7,47 @@
   const names = ['days_worked','hours_worked','payment_method','period_start','period_end'];
   const status = panel.querySelector('[data-attendance-status]');
   const manual = field('attendance_override'), month = field('month');
+  const mtessHoursGuide = panel.querySelector('[data-mtess-hours-guide]');
+  // Referencia de calendario: nunca reemplaza marcaciones de entrada/salida.
+  function renderMtessHoursGuide() {
+    if (!mtessHoursGuide) return;
+    const startText = String(field('period_start')?.value || '');
+    const endText = String(field('period_end')?.value || '');
+    const parse = value => {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+      const day = new Date(value + 'T00:00:00Z');
+      return Number.isFinite(day.getTime()) && day.toISOString().slice(0, 10) === value ? day : null;
+    };
+    const start = parse(startText), end = parse(endText);
+    const selectedMonth = String(month?.value || '');
+    if (!start || !end || start > end || startText.slice(0, 7) !== selectedMonth ||
+        endText.slice(0, 7) !== selectedMonth) {
+      mtessHoursGuide.textContent = 'Indicá fechas válidas del mes para consultar la referencia de calendario. Las horas REOP se obtienen de la asistencia real, no del salario ni de los días remunerados.';
+      return;
+    }
+    let weekdays = 0, saturdays = 0, sundays = 0;
+    for (let timestamp = start.getTime(); timestamp <= end.getTime(); timestamp += 86400000) {
+      const weekday = new Date(timestamp).getUTCDay();
+      if (weekday === 0) sundays += 1;
+      else if (weekday === 6) saturdays += 1;
+      else weekdays += 1;
+    }
+    const monFri = weekdays * 8;
+    const satHalf = monFri + saturdays * 4;
+    const satFull = monFri + saturdays * 8;
+    mtessHoursGuide.textContent =
+      'Referencia del calendario (no asistencia verificada): ' + weekdays + ' días de lunes a viernes, ' +
+      saturdays + ' sábados y ' + sundays + ' domingos. Ejemplos sin ausencias: ' +
+      monFri + ' h (lunes a viernes, 8 h), ' + satHalf +
+      ' h (lunes a viernes, 8 h + sábado, 4 h) o ' + satFull +
+      ' h (lunes a sábado, 8 h). Para el MTESS declarás SOLO las jornadas y horas efectivamente trabajadas, ' +
+      'según marcaciones, feriados y horario pactado. No se completan automáticamente.';
+  }
+  for (const name of ['period_start', 'period_end']) {
+    field(name)?.addEventListener('change', renderMtessHoursGuide);
+    field(name)?.addEventListener('input', renderMtessHoursGuide);
+  }
+
   let inherited = Object.fromEntries(names.map(name => [name, field(name)?.value || '']));
   let sequence = 0, controller, pending = false;
   function suggestFullMonthDates() {
@@ -60,7 +101,7 @@
     syncBrowserPeriod();
     suggestFullMonthDates();
     if (!month.value || !field('company_id')?.value || !field('employee_id')?.value) {
-      pending = false; locks(); status.textContent = 'Seleccioná empresa, funcionario y mes para cargar la asistencia.'; return;
+      pending = false; locks(); renderMtessHoursGuide(); status.textContent = 'Seleccioná empresa, funcionario y mes para cargar la asistencia.'; return;
     }
     pending = true; locks(); status.textContent = 'Buscando la asistencia aprobada del mes…';
     let timeout;
@@ -89,7 +130,7 @@
         : 'No se pudo cargar la asistencia. Se propone el período del mes seleccionado; confirmá las fechas reales y los días trabajados.';
     } finally {
       if (timeout) window.clearTimeout(timeout);
-      if (request === sequence) { pending = false; locks(); form.dispatchEvent(new Event('input', {bubbles:true})); }
+      if (request === sequence) { pending = false; locks(); renderMtessHoursGuide(); form.dispatchEvent(new Event('input', {bubbles:true})); }
     }
   }
   month.addEventListener('change', refresh);
@@ -97,6 +138,7 @@
   locks();
   // Los formularios restaurados por el navegador también deben reflejar su mes real.
   syncBrowserPeriod();
+  renderMtessHoursGuide();
 })();
 
 (() => {

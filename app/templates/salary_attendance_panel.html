@@ -17,6 +17,7 @@
       </div>
       <label class="dl-check"><input type="checkbox" name="attendance_override" value="on" {% if values.get('attendance_override') == 'on' %}checked{% endif %}> Editar asistencia cargada</label>
       <p class="dl-caption" data-attendance-status role="status" aria-live="polite">{% if values.get('attendance_source_id') %}Asistencia del cálculo aprobado #{{ values.attendance_source_id }}.{% else %}Sin asistencia aprobada para este mes; indicá los días reales.{% endif %}</p>
+      <p class="dl-caption" data-mtess-hours-guide role="note">Referencia de calendario: elegí las fechas reales de asistencia. Los días remunerados no equivalen necesariamente a jornadas u horas efectivamente trabajadas; estas últimas se declaran con respaldo de marcaciones, conforme a la guía MTESS.</p>
     </details>
   </div>
   <section class="dl-salary-novelties" data-salary-novelties aria-labelledby="salary-novelties-heading">

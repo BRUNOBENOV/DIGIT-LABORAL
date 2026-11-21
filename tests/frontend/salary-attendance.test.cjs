@@ -23,8 +23,11 @@ test('un timeout de asistencia libera el formulario y permite carga manual', asy
   values.get('company_id').value = '10';
   values.get('employee_id').value = '20';
   const status = {textContent: ''};
+  const guide = {textContent: ''};
   const panel = {querySelector(selector) {
-    return selector === '[data-attendance-status]' ? status : null;
+    if (selector === '[data-attendance-status]') return status;
+    if (selector === '[data-mtess-hours-guide]') return guide;
+    return null;
   }};
   const form = {
     elements: {namedItem(name) { return values.get(name) || null; }},
@@ -79,4 +82,21 @@ test('un timeout de asistencia libera el formulario y permite carga manual', asy
   assert.match(status.textContent, /carga manual/);
   listeners['form:submit']({preventDefault() { prevented += 1; }});
   assert.equal(prevented, 1, 'el guardado vuelve a permitirse al vencer la consulta');
+  // El calendario es una orientación, no modifica horas ni días declarados.
+  values.get('period_start').value = '2026-10-12';
+  values.get('days_worked').value = '19';
+  values.get('hours_worked').value = '144';
+  listeners['period_start:change']();
+  assert.match(guide.textContent, /15 días de lunes a viernes, 3 sábados y 2 domingos/);
+  assert.match(guide.textContent, /120 h/);
+  assert.match(guide.textContent, /132 h/);
+  assert.match(guide.textContent, /144 h/);
+  assert.match(guide.textContent, /no asistencia verificada/);
+  assert.equal(values.get('days_worked').value, '19');
+  assert.equal(values.get('hours_worked').value, '144');
+
+  values.get('period_start').value = '2026-11-12';
+  listeners['period_start:change']();
+  assert.match(guide.textContent, /Indicá fechas válidas del mes/);
+
 });
