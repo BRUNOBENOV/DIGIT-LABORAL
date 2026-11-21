@@ -253,9 +253,27 @@ chrome.runtime.onMessageExternal.addListener(reply(async (message, sender) => {
     }
     return {snapshot: await readVisibleIpsSnapshot()};
   }
+  if (message.type === "read-salary-list" && message.protocol === PROTOCOL) {
+    const {period, patronal} = message;
+    if (!/^20\d{2}-(0[1-9]|1[0-2])$/.test(period) || !/^\d{1,20}$/.test(patronal)) {
+      throw new Error("Seleccioná una patronal y un período válidos.");
+    }
+    const tab = await readPortalTab((await chrome.storage.session.get(PORTAL_TAB))[PORTAL_TAB]);
+    if (!tab || !isSalaryPage(tab.url)) throw new Error("Abrí Liquidación Salario y pulsá el ícono del asistente en esa pestaña.");
+    await chrome.scripting.executeScript({target: {tabId: tab.id}, files: ["salary-list.js"]});
+    const [frame] = await chrome.scripting.executeScript({
+      target: {tabId: tab.id}, args: [patronal, period],
+      func: async (employer, month) => {
+        try { return {snapshot: await globalThis.DigitSalaryList.read(employer, month)}; }
+        catch (error) { return {error: error.message}; }
+      },
+    });
+    if (!frame?.result?.snapshot) throw new Error(frame?.result?.error || "No se pudo leer el listado de REOP.");
+    return frame.result;
+  }
   const existing = await readPending();
   if (message.type === "ping") {
-    return {protocol: PROTOCOL, busy: Boolean(existing), separateWindows: true, tracking: true, directPrevalidation: true, startFromDigit: true, resume: true};
+    return {protocol: PROTOCOL, busy: Boolean(existing), separateWindows: true, tracking: true, directPrevalidation: true, startFromDigit: true, resume: true, salaryList: true};
   }
   if (message.type === "resume") {
     if (!/^[A-Za-z0-9_-]{32,100}$/.test(message.resumeKey || "")) {

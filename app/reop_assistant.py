@@ -36,6 +36,6 @@ def reop_assistant_review(rows: list[list], exclusions: list[dict], source_type:
 def build_reop_assistant_zip() -> bytes:
     output = io.BytesIO()
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        for name in ("manifest.json", "worker.js", "portal.js"):
+        for name in ("manifest.json", "worker.js", "portal.js", "salary-list.js"):
             archive.write(EXTENSION_DIR / name, f"digit-laboral-reop/{name}")
     return output.getvalue()

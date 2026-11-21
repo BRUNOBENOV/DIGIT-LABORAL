@@ -1,0 +1,61 @@
+{% set methods = [('1','Efectivo'), ('2','Cheque'), ('3','Banco'), ('4','Giro')] %}
+<details class="import-salary-options" id="pagos-reop">
+  <summary>Revisar y guardar formas de pago</summary>
+  <form method="post" action="/app/compliance/salary-import/{{ selected_company.id }}/{{ period }}/payments" class="import-salary-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="revision" value="{{ payments.get('revision','') }}">
+    <input type="hidden" name="source_type" value="{{ source_type }}">
+    <input type="hidden" name="other_category" value="{{ other_category }}">
+    {% if selected_employee %}<input type="hidden" name="employee_id" value="{{ selected_employee.id }}">{% endif %}
+    <label>Forma de pago para todo el grupo
+      <select name="default"><option value="auto">Usar el dato de cada salario</option>
+        {% for value, label in methods %}<option value="{{ value }}" {{ 'selected' if value == payment_code }}>{{ label }}</option>{% endfor %}
+      </select>
+    </label>
+    {% if approved_choices %}
+    <details class="import-salary-options"><summary>Excepciones por trabajador</summary>
+      <div class="import-salary-grid">
+        {% for worker in approved_choices if not selected_employee or worker.id == selected_employee.id %}
+        <label>{{ worker.full_name }} · {{ worker.document_number }}
+          <select name="pay_{{ worker.id }}"><option value="auto">Usar la selección del grupo</option>
+            {% for value, label in methods %}<option value="{{ value }}" {{ 'selected' if payments.overrides.get(worker.id|string) == value }}>{{ label }}</option>{% endfor %}
+          </select>
+        </label>
+        {% endfor %}
+      </div>
+    </details>
+    {% endif %}
+    <button type="submit" class="btn ghost">Guardar formas de pago del mes</button>
+  </form>
+</details>
+<section class="import-worker-review" id="control-reop" aria-labelledby="titulo-control-reop"
+  data-company="{{ selected_company.id }}" data-period="{{ period }}" data-source="{{ source_type }}"
+  data-worker="{{ employee_id or '' }}" data-category="{{ other_category }}" data-extension="{{ reop_assistant_id }}" data-csrf="{{ csrf_token }}">
+  <h2 id="titulo-control-reop">Control de duplicados y conciliación REOP</h2>
+  {% for patronal in ledger_patronales %}
+  {% set snapshot = ledger_snapshots.get(patronal) %}
+  <div class="import-salary-actions">
+    <button type="button" class="btn ghost" data-read-ledger data-patronal="{{ patronal }}" data-digest="{{ snapshot.digest if snapshot else '' }}">Consultar REOP · Patronal {{ patronal }}</button>
+    {% if snapshot %}<small>Última lectura <time datetime="{{ snapshot.checked_at }}">{{ snapshot.checked_at[:16]|replace('T',' ') }} UTC</time></small>{% endif %}
+  </div>
+  {% endfor %}
+  <p data-ledger-status class="import-salary-info" role="status" aria-live="polite"></p>
+  {% if ledger and ledger.rows %}
+  {% set counts = ledger.counts %}
+  {% if ledger_patronales|select('in', ledger_snapshots)|list %}
+  <p class="import-salary-info"><strong>{{ counts['same'] }} coinciden · {{ counts['missing'] }} faltan · {{ counts['confirmed'] }} confirmadas en REOP</strong></p>
+  <div class="import-worker-table-wrap"><table class="import-worker-table">
+    <thead><tr><th>Cédula</th><th>Total Digit (₲)</th><th>Total REOP (₲)</th><th>Diferencia (REOP − Digit)</th><th>Control</th><th>Comunicación en REOP</th></tr></thead>
+    <tbody>{% for row in ledger.rows %}<tr>
+      <td class="import-worker-ci">{{ row.document }}{% if ledger_patronales|length > 1 %}<small>Patronal {{ row.patronal }}</small>{% endif %}</td>
+      <td>{{ row.digit|gs if row.digit is not none else '—' }}</td>
+      <td>{% for rec in row.records %}<div>{{ rec.income|gs }}</div>{% else %}—{% endfor %}</td>
+      <td>{{ row.difference|gs if row.difference is not none else '—' }}</td><td>{{ row.label }}</td>
+      <td>{% for rec in row.records %}<div>{{ rec.status }} · N.º {{ rec.number }}{% if rec.receipt %} · Constancia {{ rec.receipt }}{% endif %}</div>{% else %}—{% endfor %}</td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  {% if only_missing %}<p><a href="{{ request.url.include_query_params(only_missing=0) }}#control-reop">Volver a la planilla completa</a></p>
+  {% elif counts['missing'] and ledger_patronales|length == 1 %}<p><a class="btn primary" href="{{ request.url.include_query_params(only_missing=1) }}#control-reop">Preparar solo los faltantes ({{ counts['missing'] }})</a></p>{% endif %}
+  {% else %}<p class="import-salary-info">Habilitá la pestaña «Liquidación Salario» con el ícono de la extensión y consultá el listado para verificar las cédulas de este mes.</p>{% endif %}
+  {% elif not ledger_patronales %}<p class="import-salary-info">El control requiere una planilla con una patronal identificada.</p>{% endif %}
+</section>

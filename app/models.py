@@ -1013,6 +1013,14 @@ class ComplianceEvent(Base):
     branch: Mapped[Optional[Branch]] = relationship()
 
 
+class ReopSalaryMonth(Base):
+    __tablename__ = "reop_salary_months"
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), primary_key=True)
+    period: Mapped[str] = mapped_column(String(7), primary_key=True)
+    payments: Mapped[dict] = mapped_column(JSON, default=dict)
+    snapshots: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
 class IntegrationBatch(Base):
     __tablename__ = "integration_batches"
 

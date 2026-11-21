@@ -161,7 +161,16 @@
               notify(progressText(batchId, progress), style);
               await persistProgress(batchId, progress);
             }
-            if (progress.phase === 'imported') return;
+            if (progress.phase === 'imported') {
+              if (bridgeButton) bridgeButton.disabled = true;
+              try {
+                await window.DigitReopLedger.refresh(bridgeButton.dataset.patronal);
+                window.DigitReopLedger.showReview();
+              } catch (error) {
+                notify(progressText(batchId, progress) + ' Conciliación pendiente. ' + error.message, 'loading');
+              }
+              return;
+            }
           } else if (Object.hasOwn(reviewMessages, state.review) && state.review !== previous) {
             previous = state.review;
             notify(`Lote #${batchId} · ${reviewMessages[state.review]}`, 'loading');
@@ -233,7 +242,7 @@
       if (batchLink) batchLink.hidden = true;
       notify('Generando el archivo. Conservamos los datos y las confirmaciones de esta pantalla.', 'loading');
       const controller = new AbortController();
-      const timer = window.setTimeout(() => controller.abort(), 30000);
+      let timer;
       let objectUrl;
       let separateWindows = false;
       let tracking = false;
@@ -255,7 +264,21 @@
         const action = new URL(form.action, window.location.href);
         if (action.origin !== window.location.origin) throw new Error('Destino de descarga inválido. Recargá la pantalla.');
         const body = new FormData(form);
-        if (bridge) body.set('delivery', 'reop-browser');
+        if (bridge) {
+          notify('Consultando duplicados en REOP antes de preparar el Excel…', 'loading');
+          const ledger = window.DigitReopLedger;
+          if (!ledger) throw new Error('Recargá la página para activar el control de duplicados.');
+          const result = await ledger.refresh(bridgeButton.dataset.patronal);
+          const partial = body.get('only_missing') === 'true';
+          if (!result.missing || (!partial && result.missing !== result.checked_rows) ||
+              (partial && result.digest !== body.get('ledger_digest'))) {
+            ledger.showReview();
+            return;
+          }
+          body.set('ledger_digest', result.digest);
+          body.set('delivery', 'reop-browser');
+        }
+        timer = window.setTimeout(() => controller.abort(), 30000);
         const response = await fetch(action.href, {
           method: 'POST', body, credentials: 'same-origin',
           headers: {'Accept': 'application/json'}, signal: controller.signal,

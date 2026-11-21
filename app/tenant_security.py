@@ -43,6 +43,7 @@ COMPANY_POLICIES = {
     "company_requests": "company_id IN (SELECT id FROM companies WHERE studio_id = digit_current_studio_id())",
     "payrolls": "company_id IN (SELECT id FROM companies WHERE studio_id = digit_current_studio_id())",
     "salary_import_details": "company_id IN (SELECT id FROM companies WHERE studio_id = digit_current_studio_id())",
+    "reop_salary_months": "company_id IN (SELECT id FROM companies WHERE studio_id = digit_current_studio_id())",
     "historical_mov_reconciliations": "company_id IN (SELECT id FROM companies WHERE studio_id = digit_current_studio_id())",
     "historical_mov_export_details": "company_id IN (SELECT id FROM companies WHERE studio_id = digit_current_studio_id())",
     "documents": "company_id IN (SELECT id FROM companies WHERE studio_id = digit_current_studio_id())",
