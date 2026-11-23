@@ -75,9 +75,10 @@
       panel.querySelector("[data-average-amount]").textContent = data.is_available ? money(data.average_salary,2) : "No disponible";
       panel.querySelector("[data-average-methodology]").textContent = data.methodology + " " + data.review_note;
       showRows(data);
-      status.textContent = data.is_available
-        ? `Intervalo: ${data.window_start} a ${data.window_end}. Revisá los conceptos antes de usar la propuesta.`
-        : data.blockers.join(" ");
+      const displayDate = iso => iso.split("-").reverse().join("/");
+      const interval = `Del ${displayDate(data.window_start)} al ${displayDate(data.window_end)}. `;
+      status.textContent = interval + (data.is_available
+        ? "Revisá los conceptos antes de usar la propuesta." : data.blockers.join(" "));
       if (origin.value === "payroll") {
         status.textContent += fingerprint.value === data.fingerprint
           ? " El promedio aplicado conserva estas fuentes."
@@ -119,7 +120,12 @@
     clearTimeout(timer);
     ++sequence;
     controller?.abort();
+    const hadPayrollAverage = origin.value === "payroll";
     makeManual();
+    if (hadPayrollAverage) {
+      amount.value = "";
+      amount.dispatchEvent(new Event("input", {bubbles:true}));
+    }
     proposal = null;
     sync();
     panel.setAttribute("aria-busy","false");

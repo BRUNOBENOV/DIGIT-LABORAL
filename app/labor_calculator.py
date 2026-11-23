@@ -7,7 +7,7 @@ from decimal import Decimal, InvalidOperation, ROUND_DOWN, ROUND_HALF_UP
 from .labor_wage_rules import minimum_wage_for_period
 from .settlement_presets import settlement_defaults
 
-VERSION = "2026.11.14"
+VERSION = "2026.11.23"
 SOURCE = "Centro laboral"
 TITLES = {"salary": "Liquidación de salario", "settlement": "Liquidación de haberes",
           "aguinaldo": "Aguinaldo", "vacation": "Vacaciones", "hours": "Horas y recargos"}
@@ -689,12 +689,17 @@ def calculate(data, *, judicial_evidence_verified=False):
                     "Subtotal parcial: incluye una referencia ordinaria del artículo 91. Con diez años o más debe revisarse "
                     "la estabilidad laboral de los artículos 94–99; esta referencia no determina la indemnización definitiva ni permite aprobar el caso."
                 )
-            if checked(data, "average_from_salary") and average == salary:
-                fact("Origen del promedio", "Salario mensual usado como sugerencia; promedio no verificado")
-                result["warnings"].append(
-                    "El promedio se sugirió a partir del salario mensual. Revisá las remuneraciones computables de los últimos seis meses "
-                    "o menor tiempo de servicio (art. 92); el salario actual no acredita ese promedio."
-                )
+            if not settlement_daily and checked(data, "average_from_salary") and average == salary:
+                if checked(data, "average_salary_reviewed"):
+                    fact("Origen del promedio", "El liquidador cotejó el promedio con las remuneraciones del período y confirmó que coincide con el salario mensual.")
+                else:
+                    result["partial"] = True
+                    fact("Origen del promedio", "Salario mensual usado como sugerencia; promedio no verificado")
+                    result["warnings"].append(
+                        "Para aprobar, cotejá el promedio sugerido con las remuneraciones de los últimos seis meses "
+                        "o del menor tiempo de servicio. Si coincide, confirmalo en Indemnización y preaviso. "
+                        "Si difiere, ingresá el promedio revisado."
+                    )
             units = projection["units"]
             severance = projection["severance"] or 0
             indemnity_daily_base = (positive(data, "indemnity_daily_base", "base diaria indemnizatoria", decimals=2)
@@ -785,6 +790,12 @@ def calculate(data, *, judicial_evidence_verified=False):
         simple = number(data, "pending_days", "vacaciones causadas pendientes", maximum="365", decimals=2)
         double = number(data, "double_days", "vacaciones pendientes dobles", maximum="365", decimals=2)
         proportional = number(data, "proportional_days", "vacaciones proporcionales", maximum="30", decimals=2)
+        if not any(str(data.get(key, "")).strip() for key in ("pending_days", "double_days", "proportional_days")):
+            result["partial"] = True
+            result["warnings"].append(
+                "Falta revisar el saldo de vacaciones. Ingresá los días que correspondan en Vacaciones y aguinaldo. "
+                "Si el saldo revisado es cero, ingresá 0 en vacaciones causadas pendientes."
+            )
         if proportional and reason not in {"dismissal", "worker_justified"}:
             raise CalculationError(
                 "El art. 221 no concede automáticamente vacaciones proporcionales por esta causal. "

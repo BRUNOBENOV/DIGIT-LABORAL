@@ -9,7 +9,7 @@ from app import main as core
 from app.labor_calculator import SOURCE, calculate
 from app.models import CalculationRecord
 from tests.test_labor_suite import token, web_case
-from tests.test_settlement_legal_cases import stability_data
+from tests.test_settlement_legal_cases import settlement_data, stability_data
 
 
 def test_private_and_public_forms_expose_stability_resolution_and_default_zero(web_case):
@@ -112,3 +112,60 @@ def test_unresolved_subtotal_cannot_be_approved_as_complete_settlement(web_case)
         core._revalidate_calculation_before_approval(record, db)
     assert error.value.status_code == 409
     assert "subtotal parcial" in error.value.detail
+
+
+@pytest.mark.parametrize("pending", ["promedio", "vacaciones"])
+def test_monthly_draft_requires_review_before_approval_and_matches_its_receipt(web_case, pending):
+    client, db, _box, company, employee, _ = web_case
+    csrf = token(client)
+    headers = {"X-CSRF-Token": csrf}
+    reviewed = settlement_data(
+        settlement_preset_version="2", pay_basis="monthly", company_id=str(company.id),
+        employee_id=str(employee.id), csrf_token=csrf, start_date="2023-01-13",
+        end_date="2026-11-21", issued_date="2026-11-21", salary="3044000",
+        average_salary="2950407.80", annual_remuneration="15353468", proportional_days="10",
+    )
+    incomplete = (dict(reviewed, average_salary="3044000", average_from_salary="on")
+                  if pending == "promedio" else dict(reviewed, pending_days="", double_days="", proportional_days=""))
+    preview = client.post("/app/liquidaciones/calcular", data=incomplete, headers={"Accept": "application/json"})
+    assert preview.status_code == 200 and preview.json()["partial"]
+    assert any(pending in message.lower() for message in preview.json()["warnings"])
+    saved = client.post("/app/liquidaciones/guardar", data=incomplete, follow_redirects=False)
+    assert saved.status_code == 303
+    record = db.query(CalculationRecord).filter_by(employee_id=employee.id).one()
+    endpoint = f"/api/calculations/{record.id}"
+    approval = client.patch(endpoint, json={"status": "Aprobado"}, headers=headers)
+    assert approval.status_code == 409 and "subtotal parcial" in approval.json()["detail"]
+    db.refresh(record)
+    assert record.status == "Borrador"
+    draft = client.get(f"/app/liquidaciones/{record.id}/exportar/csv")
+    assert draft.status_code == 200 and "Subtotal parcial" in draft.text
+
+    updated = client.put(endpoint, json=reviewed, headers=headers)
+    assert updated.status_code == 200
+    result = updated.json()["result"]
+    assert not result["partial"]
+    projection = result["settlement_projection"]
+    assert (projection["days"], projection["notice_payable"]) == (60, 45)
+    assert {row["label"]: row["amount"] for row in result["earnings"]} == {
+        "Indemnización ordinaria por antigüedad": 5_900_816,
+        "Indemnización por preaviso no cumplido": 4_425_612,
+        "Vacaciones proporcionales": 1_014_667,
+        "Aguinaldo devengado": 1_279_456,
+    }
+    approved = client.patch(endpoint, json={"status": "Aprobado"}, headers=headers)
+    assert approved.status_code == 200 and approved.json()["status"] == "Aprobado"
+    assert approved.json()["amount"] == 12_620_551
+    pdf = client.get(f"/app/liquidaciones/{record.id}/exportar/pdf")
+    assert pdf.status_code == 200
+    pages = PdfReader(io.BytesIO(pdf.content)).pages
+    assert "Neto a percibir: Gs. 12.620.551" in "\n".join(page.extract_text() for page in pages)
+
+
+def test_reviewed_zero_and_manually_confirmed_identical_salary_are_accepted():
+    data = settlement_data(settlement_preset_version="2", average_from_salary="on",
+                           average_salary_reviewed="on", pending_days="0", double_days="", proportional_days="")
+    result = calculate(data)
+    assert not result["partial"]
+    assert any("cotejó el promedio" in fact["value"] for fact in result["facts"])
+    assert calculate(dict(data, average_salary=""))["partial"]

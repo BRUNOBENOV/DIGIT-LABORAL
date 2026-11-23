@@ -36,7 +36,7 @@ def test_default_ordinary_reference_computes_420_days_without_confirming_stabili
 
 
 def test_ordinary_dismissal_without_stability_needs_no_double_indemnity_fields():
-    result = calculate(preset_data(start_date="2019-01-01",end_date="2025-07-02"))
+    result = calculate(preset_data(start_date="2019-01-01", end_date="2025-07-02", average_salary="3044000"))
     assert not result["partial"]
     assert result["settlement_projection"]["status"] == "ordinary"
     assert result["settlement_projection"]["days"] == 105
@@ -93,6 +93,8 @@ def test_selected_employee_prefills_salary_suggestion_and_ordinary_without_legal
     soup=BeautifulSoup(response.text,"html.parser")
     assert soup.select_one('[name="average_salary"]')["value"] == "3044000"
     assert soup.select_one('[name="average_from_salary"]')["value"] == "on"
+    assert not soup.select_one('[data-average-review]').has_attr("hidden")
+    assert not soup.select_one('[name="average_salary_reviewed"]').has_attr("checked")
     assert soup.select_one('[name="severance_regime"] option[selected]')["value"] == "ordinary"
     assert not soup.select_one('[name="stability_confirmed"]').has_attr("checked")
     assert "Sugerido del legajo. Modificar si es necesario" in soup.select_one("[data-average-salary-hint]").text

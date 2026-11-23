@@ -17,7 +17,12 @@
 {% else %}<input id="f-{{ name }}" name="{{ name }}" type="{{ field.type }}" value="{{ value }}" {% if field.required %}required{% endif %} {% if field.help %}aria-describedby="help-{{ name }}"{% endif %} {% if error_field == field.name %}aria-invalid="true"{% endif %} {% for key,val in field.attrs.items() %}{{ key }}="{{ val }}"{% endfor %} {% if locked %}readonly{% endif %}>{% endif %}
 {% endif %}
 {% if field.help and not compact %}<small id="help-{{ name }}">{{ field.help }}</small>{% endif %}
-{% if compact and field.name == 'average_salary' %}<small class="dl-salary-suggestion" data-average-salary-hint data-label="{{ suggestion_label }}" {% if values.get('average_from_salary') != 'on' %}hidden{% endif %}>{{ suggestion_label }}</small>{% endif %}
+{% if compact and field.name == 'average_salary' %}
+<div data-average-review {% if values.get('average_from_salary') != 'on' or values.get('pay_basis') == 'daily' %}hidden{% endif %}>
+  <small class="dl-salary-suggestion" data-average-salary-hint>{{ suggestion_label }}</small>
+  <div class="dl-check"><label><input type="checkbox" name="average_salary_reviewed" value="on" {% if values.get('average_salary_reviewed') in ['on','true','1',True] %}checked{% endif %}>Cotejé este promedio con las remuneraciones del período y coincide.</label></div>
+</div>
+{% endif %}
 </div>
 {% endmacro %}
 

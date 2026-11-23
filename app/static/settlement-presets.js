@@ -9,6 +9,7 @@
   const stabilityNote = form.querySelector("[data-stability-detected]"), judicialPanel = form.querySelector("[data-judicial-review]");
   const judicial = field("judicial_confirmed"), judicialFiles = form.querySelector("[data-judicial-files]");
   const step = form.querySelector('[data-quick-step="2"]'), hint = form.querySelector("[data-average-salary-hint]");
+  const review = field("average_salary_reviewed"), reviewGroup = form.querySelector("[data-average-review]");
   if (!reason || !regime || !average || !salary || !suggested) return;
   const initial = {suggested:suggested.value, hint:hint?.textContent || ""};
   let previousReason = reason.value, manuallyEdited = Boolean(average.value && suggested.value !== "on");
@@ -61,7 +62,11 @@
       input.closest(".dl-field").hidden = !judicialNeeded;
     }
     if (judicialFiles) judicialFiles.hidden = !judicialNeeded;
-    if (hint) hint.hidden = suggested.value !== "on" || field("average_origin")?.value === "payroll";
+    if (review && reviewGroup) {
+      review.disabled = average.disabled || suggested.value !== "on" || field("average_origin")?.value === "payroll";
+      reviewGroup.hidden = review.disabled;
+      if (review.disabled) review.checked = false;
+    }
     for (const name of ["protection_basis","protection_evidence"]) {
       const input = field(name);
       if (input) { input.disabled = !field("protected")?.checked; input.closest(".dl-field").hidden = input.disabled; }
@@ -93,6 +98,9 @@
     sync();
   };
   const changed = event => {
+    if (review && ["salary","average_salary","start_date","end_date","pay_basis","reason"].includes(event.target.name)) {
+      review.checked = false;
+    }
     if (event.target === average && !event.detail?.salarySuggestion) {
       suggested.value = "";
       manuallyEdited = true;
