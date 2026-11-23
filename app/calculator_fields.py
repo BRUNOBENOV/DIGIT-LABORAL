@@ -82,7 +82,7 @@ IPS = group("Aportes y descuentos", [
     field("advances", "Anticipos · Gs."), field("other_discount", "Otros descuentos · Gs."),
     field("discount_reason", "Motivo y respaldo de descuentos", "text", maxlength="300")])
 ANNUAL = group("Aguinaldo", [
-    field("annual_remuneration", "Remuneraciones computables del año · Gs.", required=True,
+    field("annual_remuneration", "Remuneraciones computables del año · Gs.", required=True, step="0.01",
           help="Incluí lo devengado hasta el egreso, antes de descuentos. No ingreses solo el último sueldo."),
     field("aguinaldo_paid", "Aguinaldo ya abonado · Gs.")])
 RECEIPT_REVIEW = group("Revisar un recibo", [

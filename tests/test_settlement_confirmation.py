@@ -123,7 +123,7 @@ def test_monthly_draft_requires_review_before_approval_and_matches_its_receipt(w
         settlement_preset_version="2", pay_basis="monthly", company_id=str(company.id),
         employee_id=str(employee.id), csrf_token=csrf, start_date="2023-01-13",
         end_date="2026-11-21", issued_date="2026-11-21", salary="3044000",
-        average_salary="2950407.80", annual_remuneration="15353468", proportional_days="10",
+        average_salary="2950407.80", annual_remuneration="15353468.29", proportional_days="10",
     )
     incomplete = (dict(reviewed, average_salary="3044000", average_from_salary="on")
                   if pending == "promedio" else dict(reviewed, pending_days="", double_days="", proportional_days=""))
@@ -153,6 +153,7 @@ def test_monthly_draft_requires_review_before_approval_and_matches_its_receipt(w
         "Vacaciones proporcionales": 1_014_667,
         "Aguinaldo devengado": 1_279_456,
     }
+    assert next(row["formula"] for row in result["earnings"] if row["label"] == "Aguinaldo devengado") == "Gs. 15.353.468,29 / 12"
     approved = client.patch(endpoint, json={"status": "Aprobado"}, headers=headers)
     assert approved.status_code == 200 and approved.json()["status"] == "Aprobado"
     assert approved.json()["amount"] == 12_620_551
@@ -171,3 +172,12 @@ def test_reviewed_zero_and_manually_confirmed_identical_salary_are_accepted():
     assert calculate(dict(data, average_salary=""))["partial"]
     assert calculate(dict(data, proportional_days=""))["partial"]
     assert not calculate(dict(data, reason="resignation", proportional_days=""))["partial"]
+
+
+def test_aguinaldo_preview_keeps_fractional_annual_basis_until_final_rounding(web_case):
+    client, *_ = web_case
+    data = settlement_data(annual_remuneration="15000005.51", csrf_token=token(client))
+    preview = client.post("/herramientas/aguinaldo/previsualizar", data=data)
+    assert preview.status_code == 200 and preview.json()["aguinaldo_accrued"] == 1_250_000
+    row = next(row for row in calculate(data)["earnings"] if row["label"] == "Aguinaldo devengado")
+    assert row["amount"] == preview.json()["aguinaldo_accrued"] and "15.000.005,51" in row["formula"]

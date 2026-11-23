@@ -49,6 +49,12 @@ def gs(value):
     return f"{amount(value):,}".replace(",", ".")
 
 
+def gs_basis(value: Decimal) -> str:
+    if value == value.to_integral_value():
+        return gs(value)
+    return f"{value:,.2f}".translate(str.maketrans(",.", ".,"))
+
+
 def clean(value, limit=300):
     return "".join(c for c in str(value or "") if c.isprintable()).strip()[:limit]
 
@@ -709,8 +715,7 @@ def calculate(data, *, judicial_evidence_verified=False):
                     "Documentá las remuneraciones y el jornal indemnizatorio promedio real (art. 92).",
                     "indemnity_daily_evidence",
                 )
-            average_label = (gs(average) if average == average.to_integral_value() else
-                             f"{average:,.2f}".translate(str.maketrans(",.", ".,")))
+            average_label = gs_basis(average)
             severance_legal = ("Arts. 91, 92 y 94–99; procedencia pendiente de revisión" if double_pending else "Arts. 91, 92 y 94–99; fundamento declarado y confirmado" if double_confirmed
                                else "Arts. 85, 91 y 92" if reason == "worker_justified" else "Arts. 91 y 92")
             indemnity_formula_base = (
@@ -854,14 +859,14 @@ def calculate(data, *, judicial_evidence_verified=False):
             "El historial de períodos y pagos debe conciliarse; no se deducen saldos automáticamente de eventos sin revisar."
         )
     if kind in {"settlement", "aguinaldo"}:
-        annual = number(data, "annual_remuneration", "remuneraciones computables del año", required=True)
+        annual = number(data, "annual_remuneration", "remuneraciones computables del año", required=True, decimals=2)
         if kind == "settlement" and annual < proposed_ips_base:
             raise CalculationError("La base anual debe incluir los haberes remunerativos de este egreso.", "annual_remuneration")
         accrued = aguinaldo_accrual(annual)
         paid = number(data, "aguinaldo_paid", "aguinaldo ya abonado")
         if paid > accrued:
             raise CalculationError("El aguinaldo ya abonado supera el devengado.", "aguinaldo_paid")
-        add("Aguinaldo devengado", accrued, f"Gs. {gs(annual)} / 12", "Arts. 243 y 244")
+        add("Aguinaldo devengado", accrued, f"Gs. {gs_basis(annual)} / 12", "Arts. 243 y 244")
         add("Aguinaldo ya abonado", paid, "Pago previo informado", deduction=True)
         protected += accrued - int(paid)
         if kind == "aguinaldo":

@@ -358,7 +358,7 @@ async def annual_accrual_preview(request: Request):
     from .labor_calculator import aguinaldo_accrual, number
     data = await form_values(request)
     try:
-        annual = number(data, "annual_remuneration", "remuneración anual", required=True)
+        annual = number(data, "annual_remuneration", "remuneración anual", required=True, decimals=2)
         return JSONResponse({"aguinaldo_accrued": aguinaldo_accrual(annual)}, headers=HEADERS)
     except CalculationError as exc:
         return JSONResponse({"error": str(exc), "field": exc.field}, status_code=422, headers=HEADERS)
