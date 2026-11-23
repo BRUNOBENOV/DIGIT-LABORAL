@@ -93,7 +93,7 @@ def build_liquidation_pdf(result):
         canvas.saveState()
         canvas.setFont("DigitSans", 7)
         canvas.setFillColor(colors.HexColor("#52645b"))
-        canvas.drawString(17*mm, 10*mm, f"Digit Laboral · Motor {result['engine_version']} · Borrador para revisión")
+        canvas.drawString(17*mm, 10*mm, f"Digit Laboral · Motor {result['engine_version']} · {result['status']}")
         canvas.drawRightString(193*mm, 10*mm, f"Página {document.page}")
         canvas.restoreState()
     doc.build(flow, onFirstPage=footer, onLaterPages=footer)

@@ -159,8 +159,9 @@ def test_monthly_draft_requires_review_before_approval_and_matches_its_receipt(w
     assert approved.json()["amount"] == 12_620_551
     pdf = client.get(f"/app/liquidaciones/{record.id}/exportar/pdf")
     assert pdf.status_code == 200
-    pages = PdfReader(io.BytesIO(pdf.content)).pages
-    assert "Neto a percibir: Gs. 12.620.551" in "\n".join(page.extract_text() for page in pages)
+    pages = [page.extract_text() for page in PdfReader(io.BytesIO(pdf.content)).pages]
+    assert "Neto a percibir: Gs. 12.620.551" in "\n".join(pages)
+    assert all(f"Registro #{record.id} · Aprobado" in page and "Borrador para revisión" not in page for page in pages)
 
 
 def test_reviewed_zero_and_manually_confirmed_identical_salary_are_accepted():
