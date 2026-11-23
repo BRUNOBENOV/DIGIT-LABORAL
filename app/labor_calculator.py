@@ -790,11 +790,15 @@ def calculate(data, *, judicial_evidence_verified=False):
         simple = number(data, "pending_days", "vacaciones causadas pendientes", maximum="365", decimals=2)
         double = number(data, "double_days", "vacaciones pendientes dobles", maximum="365", decimals=2)
         proportional = number(data, "proportional_days", "vacaciones proporcionales", maximum="30", decimals=2)
-        if not any(str(data.get(key, "")).strip() for key in ("pending_days", "double_days", "proportional_days")):
+        vacation_balances = {"pending_days": "causadas simples", "double_days": "causadas dobles"}
+        if reason in {"dismissal", "worker_justified"}:
+            vacation_balances["proportional_days"] = "proporcionales"
+        missing_balances = [label for key, label in vacation_balances.items() if not str(data.get(key, "")).strip()]
+        if missing_balances:
             result["partial"] = True
             result["warnings"].append(
-                "Falta revisar el saldo de vacaciones. Ingresá los días que correspondan en Vacaciones y aguinaldo. "
-                "Si el saldo revisado es cero, ingresá 0 en vacaciones causadas pendientes."
+                "Falta indicar el saldo de vacaciones " + ", ".join(missing_balances) + ". "
+                "Ingresá los días en Vacaciones y aguinaldo. Completá con 0 los saldos que revisaste sin días pendientes."
             )
         if proportional and reason not in {"dismissal", "worker_justified"}:
             raise CalculationError(

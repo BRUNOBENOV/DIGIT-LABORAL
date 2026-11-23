@@ -38,7 +38,10 @@
       }
     }
     if (hasKnown) {
-      panel.querySelector("[data-summary-label]").textContent = "Subtotal de haberes conocidos";
+      const suggestedAverage = data && form.elements.namedItem("pay_basis")?.value !== "daily"
+        && form.elements.namedItem("average_from_salary")?.value === "on"
+        && !form.elements.namedItem("average_salary_reviewed")?.checked;
+      panel.querySelector("[data-summary-label]").textContent = suggestedAverage ? "Subtotal estimado" : "Subtotal de haberes conocidos";
       panel.querySelector('[data-summary-value="net"]').textContent = money(subtotal);
       total.classList.add("is-partial");
       panel.querySelector("[data-summary-known]").hidden = false;

@@ -1437,7 +1437,7 @@ def test_final_settlement_payment_is_independent_and_keeps_evidence(web_case):
     assert registered.status_code == 303
     exit_record = db.query(EmployeeExit).filter_by(employee_id=employee.id).one()
     financial = db.query(FinalSettlement).filter_by(employee_exit_id=exit_record.id).one()
-    data = settlement()
+    data = settlement(pending_days="0", double_days="0", proportional_days="0")
     data.update(
         start_date=employee.admission_date.isoformat(),
         end_date=today.isoformat(),

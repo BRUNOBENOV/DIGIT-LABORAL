@@ -24,6 +24,14 @@
     reviewed.checked = false;
     sync();
   };
+  const discardPayrollSelection = () => {
+    const hadPayrollAverage = origin.value === "payroll";
+    makeManual();
+    if (hadPayrollAverage) {
+      amount.value = "";
+      amount.dispatchEvent(new Event("input", {bubbles:true}));
+    }
+  };
   const showRows = data => {
     body.replaceChildren();
     for (const row of data.periods) {
@@ -110,7 +118,7 @@
   });
   reviewed.addEventListener("change", sync);
   form.addEventListener("settlement:preset", event => {
-    if (["resignation","justified"].includes(event.detail?.reason)) makeManual();
+    if (["resignation","justified"].includes(event.detail?.reason)) discardPayrollSelection();
   });
   form.addEventListener("input", event => {
     if (event.target === amount && !applying) makeManual();
@@ -120,12 +128,7 @@
     clearTimeout(timer);
     ++sequence;
     controller?.abort();
-    const hadPayrollAverage = origin.value === "payroll";
-    makeManual();
-    if (hadPayrollAverage) {
-      amount.value = "";
-      amount.dispatchEvent(new Event("input", {bubbles:true}));
-    }
+    discardPayrollSelection();
     proposal = null;
     sync();
     panel.setAttribute("aria-busy","false");

@@ -10,6 +10,9 @@
   const judicial = field("judicial_confirmed"), judicialFiles = form.querySelector("[data-judicial-files]");
   const step = form.querySelector('[data-quick-step="2"]'), hint = form.querySelector("[data-average-salary-hint]");
   const review = field("average_salary_reviewed"), reviewGroup = form.querySelector("[data-average-review]");
+  const zeroBalances = form.querySelector("[data-zero-vacation-balances]");
+  const blankBalances = () => ["pending_days", "double_days", "proportional_days"].map(field)
+    .filter(input => input && !input.disabled && input.value.trim() === "");
   if (!reason || !regime || !average || !salary || !suggested) return;
   const initial = {suggested:suggested.value, hint:hint?.textContent || ""};
   let previousReason = reason.value, manuallyEdited = Boolean(average.value && suggested.value !== "on");
@@ -67,6 +70,7 @@
       reviewGroup.hidden = review.disabled;
       if (review.disabled) review.checked = false;
     }
+    if (zeroBalances) zeroBalances.hidden = blankBalances().length === 0;
     for (const name of ["protection_basis","protection_evidence"]) {
       const input = field(name);
       if (input) { input.disabled = !field("protected")?.checked; input.closest(".dl-field").hidden = input.disabled; }
@@ -125,6 +129,11 @@
   };
   form.addEventListener("input", changed);
   form.addEventListener("change", changed);
+  zeroBalances?.addEventListener("click", () => {
+    const balances = blankBalances();
+    for (const input of balances) input.value = "0";
+    balances[0]?.dispatchEvent(new Event("input", {bubbles:true}));
+  });
   form.addEventListener("reset", () => setTimeout(() => {
     suggested.value = initial.suggested;
     if (hint) hint.textContent = initial.hint;

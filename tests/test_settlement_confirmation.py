@@ -135,7 +135,7 @@ def test_monthly_draft_requires_review_before_approval_and_matches_its_receipt(w
     record = db.query(CalculationRecord).filter_by(employee_id=employee.id).one()
     endpoint = f"/api/calculations/{record.id}"
     approval = client.patch(endpoint, json={"status": "Aprobado"}, headers=headers)
-    assert approval.status_code == 409 and "subtotal parcial" in approval.json()["detail"]
+    assert approval.status_code == 409 and "subtotal parcial" in approval.text.lower()
     db.refresh(record)
     assert record.status == "Borrador"
     draft = client.get(f"/app/liquidaciones/{record.id}/exportar/csv")
@@ -164,8 +164,10 @@ def test_monthly_draft_requires_review_before_approval_and_matches_its_receipt(w
 
 def test_reviewed_zero_and_manually_confirmed_identical_salary_are_accepted():
     data = settlement_data(settlement_preset_version="2", average_from_salary="on",
-                           average_salary_reviewed="on", pending_days="0", double_days="", proportional_days="")
+                           average_salary_reviewed="on", pending_days="0", double_days="0", proportional_days="0")
     result = calculate(data)
     assert not result["partial"]
     assert any("cotejó el promedio" in fact["value"] for fact in result["facts"])
     assert calculate(dict(data, average_salary=""))["partial"]
+    assert calculate(dict(data, proportional_days=""))["partial"]
+    assert not calculate(dict(data, reason="resignation", proportional_days=""))["partial"]
