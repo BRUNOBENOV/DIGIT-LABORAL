@@ -379,7 +379,10 @@ def test_source_endpoint_enforces_company_employee_scope_and_dates(annual_case):
     assert proposal(annual_case, end_date="2025-02-30").status_code == 422
 
 
-@pytest.mark.parametrize("value, expected", [("19037824",1_586_485),("6",1),("0",0),("-1",None),("NaN",None),("1.5",None)])
+@pytest.mark.parametrize("value, expected", [
+    ("19037824", 1_586_485), ("6", 1), ("0", 0), ("1.5", 0), ("5.99", 0),
+    ("-1", None), ("NaN", None), ("1.555", None),
+])
 def test_manual_accrual_preview_uses_engine_rounding_and_validation(web_case, value, expected):
     client, *_ = web_case
     payload = dict(kind="settlement", annual_remuneration=value, csrf_token=token(client))

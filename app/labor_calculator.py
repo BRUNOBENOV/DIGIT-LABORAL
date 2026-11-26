@@ -7,7 +7,7 @@ from decimal import Decimal, InvalidOperation, ROUND_DOWN, ROUND_HALF_UP
 from .labor_wage_rules import minimum_wage_for_period
 from .settlement_presets import settlement_defaults
 
-VERSION = "2026.11.14"
+VERSION = "2026.11.23"
 SOURCE = "Centro laboral"
 TITLES = {"salary": "Liquidación de salario", "settlement": "Liquidación de haberes",
           "aguinaldo": "Aguinaldo", "vacation": "Vacaciones", "hours": "Horas y recargos"}
@@ -47,6 +47,12 @@ def aguinaldo_accrual(annual):
 
 def gs(value):
     return f"{amount(value):,}".replace(",", ".")
+
+
+def gs_basis(value: Decimal) -> str:
+    if value == value.to_integral_value():
+        return gs(value)
+    return f"{value:,.2f}".translate(str.maketrans(",.", ".,"))
 
 
 def clean(value, limit=300):
@@ -689,12 +695,17 @@ def calculate(data, *, judicial_evidence_verified=False):
                     "Subtotal parcial: incluye una referencia ordinaria del artículo 91. Con diez años o más debe revisarse "
                     "la estabilidad laboral de los artículos 94–99; esta referencia no determina la indemnización definitiva ni permite aprobar el caso."
                 )
-            if checked(data, "average_from_salary") and average == salary:
-                fact("Origen del promedio", "Salario mensual usado como sugerencia; promedio no verificado")
-                result["warnings"].append(
-                    "El promedio se sugirió a partir del salario mensual. Revisá las remuneraciones computables de los últimos seis meses "
-                    "o menor tiempo de servicio (art. 92); el salario actual no acredita ese promedio."
-                )
+            if not settlement_daily and checked(data, "average_from_salary") and average == salary:
+                if checked(data, "average_salary_reviewed"):
+                    fact("Origen del promedio", "El liquidador cotejó el promedio con las remuneraciones del período y confirmó que coincide con el salario mensual.")
+                else:
+                    result["partial"] = True
+                    fact("Origen del promedio", "Salario mensual usado como sugerencia; promedio no verificado")
+                    result["warnings"].append(
+                        "Para aprobar, cotejá el promedio sugerido con las remuneraciones de los últimos seis meses "
+                        "o del menor tiempo de servicio. Si coincide, confirmalo en Indemnización y preaviso. "
+                        "Si difiere, ingresá el promedio revisado."
+                    )
             units = projection["units"]
             severance = projection["severance"] or 0
             indemnity_daily_base = (positive(data, "indemnity_daily_base", "base diaria indemnizatoria", decimals=2)
@@ -704,8 +715,7 @@ def calculate(data, *, judicial_evidence_verified=False):
                     "Documentá las remuneraciones y el jornal indemnizatorio promedio real (art. 92).",
                     "indemnity_daily_evidence",
                 )
-            average_label = (gs(average) if average == average.to_integral_value() else
-                             f"{average:,.2f}".translate(str.maketrans(",.", ".,")))
+            average_label = gs_basis(average)
             severance_legal = ("Arts. 91, 92 y 94–99; procedencia pendiente de revisión" if double_pending else "Arts. 91, 92 y 94–99; fundamento declarado y confirmado" if double_confirmed
                                else "Arts. 85, 91 y 92" if reason == "worker_justified" else "Arts. 91 y 92")
             indemnity_formula_base = (
@@ -785,6 +795,16 @@ def calculate(data, *, judicial_evidence_verified=False):
         simple = number(data, "pending_days", "vacaciones causadas pendientes", maximum="365", decimals=2)
         double = number(data, "double_days", "vacaciones pendientes dobles", maximum="365", decimals=2)
         proportional = number(data, "proportional_days", "vacaciones proporcionales", maximum="30", decimals=2)
+        vacation_balances = {"pending_days": "causadas simples", "double_days": "causadas dobles"}
+        if reason in {"dismissal", "worker_justified"}:
+            vacation_balances["proportional_days"] = "proporcionales"
+        missing_balances = [label for key, label in vacation_balances.items() if not str(data.get(key, "")).strip()]
+        if missing_balances:
+            result["partial"] = True
+            result["warnings"].append(
+                "Falta indicar el saldo de vacaciones " + ", ".join(missing_balances) + ". "
+                "Ingresá los días en Vacaciones y aguinaldo. Completá con 0 los saldos que revisaste sin días pendientes."
+            )
         if proportional and reason not in {"dismissal", "worker_justified"}:
             raise CalculationError(
                 "El art. 221 no concede automáticamente vacaciones proporcionales por esta causal. "
@@ -839,14 +859,14 @@ def calculate(data, *, judicial_evidence_verified=False):
             "El historial de períodos y pagos debe conciliarse; no se deducen saldos automáticamente de eventos sin revisar."
         )
     if kind in {"settlement", "aguinaldo"}:
-        annual = number(data, "annual_remuneration", "remuneraciones computables del año", required=True)
+        annual = number(data, "annual_remuneration", "remuneraciones computables del año", required=True, decimals=2)
         if kind == "settlement" and annual < proposed_ips_base:
             raise CalculationError("La base anual debe incluir los haberes remunerativos de este egreso.", "annual_remuneration")
         accrued = aguinaldo_accrual(annual)
         paid = number(data, "aguinaldo_paid", "aguinaldo ya abonado")
         if paid > accrued:
             raise CalculationError("El aguinaldo ya abonado supera el devengado.", "aguinaldo_paid")
-        add("Aguinaldo devengado", accrued, f"Gs. {gs(annual)} / 12", "Arts. 243 y 244")
+        add("Aguinaldo devengado", accrued, f"Gs. {gs_basis(annual)} / 12", "Arts. 243 y 244")
         add("Aguinaldo ya abonado", paid, "Pago previo informado", deduction=True)
         protected += accrued - int(paid)
         if kind == "aguinaldo":

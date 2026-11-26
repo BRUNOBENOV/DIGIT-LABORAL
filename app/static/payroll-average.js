@@ -24,6 +24,14 @@
     reviewed.checked = false;
     sync();
   };
+  const discardPayrollSelection = () => {
+    const hadPayrollAverage = origin.value === "payroll";
+    makeManual();
+    if (hadPayrollAverage) {
+      amount.value = "";
+      amount.dispatchEvent(new Event("input", {bubbles:true}));
+    }
+  };
   const showRows = data => {
     body.replaceChildren();
     for (const row of data.periods) {
@@ -75,9 +83,10 @@
       panel.querySelector("[data-average-amount]").textContent = data.is_available ? money(data.average_salary,2) : "No disponible";
       panel.querySelector("[data-average-methodology]").textContent = data.methodology + " " + data.review_note;
       showRows(data);
-      status.textContent = data.is_available
-        ? `Intervalo: ${data.window_start} a ${data.window_end}. Revisá los conceptos antes de usar la propuesta.`
-        : data.blockers.join(" ");
+      const displayDate = iso => iso.split("-").reverse().join("/");
+      const interval = `Del ${displayDate(data.window_start)} al ${displayDate(data.window_end)}. `;
+      status.textContent = interval + (data.is_available
+        ? "Revisá los conceptos antes de usar la propuesta." : data.blockers.join(" "));
       if (origin.value === "payroll") {
         status.textContent += fingerprint.value === data.fingerprint
           ? " El promedio aplicado conserva estas fuentes."
@@ -109,7 +118,7 @@
   });
   reviewed.addEventListener("change", sync);
   form.addEventListener("settlement:preset", event => {
-    if (["resignation","justified"].includes(event.detail?.reason)) makeManual();
+    if (["resignation","justified"].includes(event.detail?.reason)) discardPayrollSelection();
   });
   form.addEventListener("input", event => {
     if (event.target === amount && !applying) makeManual();
@@ -119,7 +128,7 @@
     clearTimeout(timer);
     ++sequence;
     controller?.abort();
-    makeManual();
+    discardPayrollSelection();
     proposal = null;
     sync();
     panel.setAttribute("aria-busy","false");

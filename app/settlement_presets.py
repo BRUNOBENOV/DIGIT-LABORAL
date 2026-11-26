@@ -49,6 +49,7 @@ def settlement_defaults(values):
           and str(data.get("salary", "")).strip()):
         data["average_salary"] = str(data["salary"]).strip()
         data["average_from_salary"] = "on"
+        data.pop("average_salary_reviewed", None)
     if data.get("average_from_salary") == "on":
         try:
             matches = Decimal(str(data.get("average_salary", ""))) == Decimal(str(data.get("salary", "")))
@@ -56,6 +57,8 @@ def settlement_defaults(values):
             matches = False
         if not matches or data.get("average_origin") == "payroll":
             data["average_from_salary"] = ""
+    if data.get("average_from_salary") != "on" or data.get("pay_basis") == "daily":
+        data.pop("average_salary_reviewed", None)
     if data["severance_regime"] != "stability_double":
         for key in ("stability_basis", "stability_evidence", "stability_confirmed"):
             data[key] = ""
