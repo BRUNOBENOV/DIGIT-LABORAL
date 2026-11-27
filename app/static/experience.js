@@ -100,7 +100,7 @@
   document.querySelectorAll("form").forEach(form => {
     form.addEventListener("submit", event => {
       if (event.defaultPrevented) return;
-      if (form.hasAttribute("data-download-form")) return;
+      if (form.hasAttribute("data-download-form") || form.hasAttribute("data-inline-company-edit")) return;
       const submitter = event.submitter || form.querySelector('button[type="submit"],input[type="submit"]');
       const label = (submitter?.innerText || submitter?.value || "") + " " + (form.getAttribute("action") || "");
       const destructive = /\b(eliminar|borrar|anular|revocar|desactivar)\b|logout-all/i.test(label);

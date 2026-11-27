@@ -202,12 +202,12 @@
 
 {% if user.role in ['administrador','contador'] %}
 <div class="modal" id="editCompanyModal" aria-hidden="true"><div class="modal-backdrop" data-modal-close></div><section class="modal-card"><button class="modal-x" type="button" data-modal-close aria-label="Cerrar formulario">×</button><span class="eyebrow">EDITAR EMPRESA</span><h2>Ficha principal</h2>
-<form method="post" action="/app/companies/{{ company.id }}/edit" class="form-grid">
+<form method="post" action="/app/companies/{{ company.id }}/edit" class="form-grid" id="editCompanyForm" data-inline-company-edit data-api-url="/api/companies/{{ company.id }}" data-success-url="/app/companies/{{ company.id }}?company_saved=1">
 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 <label>Código Empresa<input name="company_code" type="number" min="1" max="2147483647" step="1" value="{{ company.company_code or '' }}" required></label>
 <label>Nombre Empresa<input name="legal_name" value="{{ company.legal_name }}" maxlength="200" required></label>
 <label>Nombre comercial<input name="trade_name" value="{{ company.trade_name or '' }}" maxlength="160"></label>
-<label>N.º RUC<input name="ruc" value="{{ company.ruc }}" inputmode="numeric" pattern="[0-9.\- ]{4,14}" maxlength="14" placeholder="Ej.: 80000519-8"></label>
+<label>N.º RUC<input name="ruc" value="{{ company.ruc }}" inputmode="numeric" pattern="[0-9.\- ]{4,14}" maxlength="14" placeholder="Ej.: 80000519-8" aria-describedby="editCompanyRucError"><small id="editCompanyRucError" role="alert" style="color:#b42318;font-weight:600" hidden></small></label>
 <div class="span-2"><span class="company-form-section">RESPONSABLES Y CONTACTO</span></div>
 <label>Propietario<input name="owner_name" value="{{ company.owner_name or '' }}" maxlength="180"></label>
 <label>Representante Legal<input name="legal_representative" value="{{ company.legal_representative or '' }}" maxlength="180"></label>
@@ -227,6 +227,7 @@
 <label>N.º Patronal MJT<input name="mtess_employer_number" value="{{ company.mtess_employer_number or '' }}" inputmode="numeric" maxlength="80"></label>
 <label class="span-2">Responsable interno del estudio<input name="responsible_name" value="{{ company.responsible_name or '' }}" maxlength="160"></label>
 <label class="span-2">Observaciones<textarea name="notes" rows="3">{{ company.notes or '' }}</textarea></label>
+<div id="editCompanyFormError" class="alert danger span-2" role="alert" hidden></div>
 <div class="form-actions span-2"><button class="btn ghost" type="button" data-modal-close>Cancelar</button><button class="btn primary" type="submit">Guardar cambios</button></div>
 </form>
 <hr class="modal-separator">
@@ -234,6 +235,67 @@
 </section></div>
 <script>
 (function () {
+  const form = document.getElementById("editCompanyForm");
+  if (form) {
+    const ruc = form.elements.namedItem("ruc");
+    const rucError = document.getElementById("editCompanyRucError");
+    const formError = document.getElementById("editCompanyFormError");
+    const submit = form.querySelector('button[type="submit"]');
+    const clearRucError = () => {
+      rucError.hidden = true;
+      rucError.textContent = "";
+      ruc.removeAttribute("aria-invalid");
+      ruc.style.removeProperty("border-color");
+    };
+    ruc.addEventListener("input", clearRucError);
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (submit.disabled) return;
+      clearRucError();
+      formError.hidden = true;
+      formError.textContent = "";
+      const payload = Object.fromEntries(new FormData(form).entries());
+      const token = payload.csrf_token;
+      delete payload.csrf_token;
+      const originalLabel = submit.textContent;
+      submit.disabled = true;
+      submit.setAttribute("aria-busy", "true");
+      submit.textContent = "Guardando cambios…";
+      const showError = (message) => {
+        if (/\bRUC\b/i.test(message) && !/código empresa o el RUC/i.test(message)) {
+          rucError.textContent = message;
+          rucError.hidden = false;
+          ruc.setAttribute("aria-invalid", "true");
+          ruc.style.borderColor = "#b42318";
+          ruc.focus();
+        } else {
+          formError.textContent = message;
+          formError.hidden = false;
+        }
+      };
+      try {
+        const response = await fetch(form.dataset.apiUrl, {
+          method: "PUT", credentials: "same-origin",
+          headers: {"Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": token},
+          body: JSON.stringify(payload)
+        });
+        const result = await response.json().catch(() => null);
+        if (response.status === 401 || response.redirected) {
+          showError("Tu sesión venció. Volvé a ingresar antes de guardar.");
+        } else if (!response.ok || !result || !result.id) {
+          showError(typeof result?.detail === "string" ? result.detail : "No se pudieron guardar los cambios. Revisá los datos e intentá nuevamente.");
+        } else {
+          window.location.assign(form.dataset.successUrl);
+        }
+      } catch (error) {
+        showError("No se confirmó el guardado. Verificá tu conexión e intentá nuevamente.");
+      } finally {
+        submit.disabled = false;
+        submit.removeAttribute("aria-busy");
+        submit.textContent = originalLabel;
+      }
+    });
+  }
   const department = document.getElementById("editCompanyDepartment");
   const city = document.getElementById("editCompanyCity");
   if (!department || !city) return;

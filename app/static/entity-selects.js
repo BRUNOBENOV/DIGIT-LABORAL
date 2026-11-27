@@ -6,7 +6,7 @@
   let nextId = 0, openPicker = null;
   const selector = 'select[data-searchable-entity],select[name="company_id"],select[name="employee_id"],select#sectionCompany,select#sectionEditorCompany';
   const definitions = {
-    company: {endpoint:"companies", label:"Empresa", placeholder:"Código o nombre de empresa", plural:"empresas"},
+    company: {endpoint:"companies", label:"Empresa", placeholder:"Código, nombre o RUC", plural:"empresas"},
     employee: {endpoint:"employees", label:"Funcionario", placeholder:"Legajo, nombre o cédula", plural:"funcionarios"},
   };
 

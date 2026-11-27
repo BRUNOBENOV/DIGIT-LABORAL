@@ -102,13 +102,26 @@ def entity_options(
             query = query.where(Company.status != "Archivada")
         if selected_id is not None:
             query = query.where(Company.id == selected_id)
-        elif term:
-            query = query.where(or_(
+        ruc_digits = re.sub(r"\D", "", term)
+        numeric_ruc = bool(ruc_digits and re.fullmatch(r"[\d.\-\s]+", term))
+        def clean_ruc(column):
+            return func.replace(func.replace(func.replace(func.coalesce(column, ""), ".", ""), "-", ""), " ", "")
+        ruc = clean_ruc(Company.ruc)
+        legacy_ruc = clean_ruc(Company.legacy_ruc)
+        exact_matches = [func.cast(Company.company_code, String) == code_term, Company.legacy_code == code_term]
+        if numeric_ruc:
+            exact_matches.extend([ruc == ruc_digits, legacy_ruc == ruc_digits])
+        if selected_id is None and term:
+            conditions = [
                 _search_text(Company.legal_name, db).contains(folded, autoescape=True),
+                _search_text(Company.trade_name, db).contains(folded, autoescape=True),
                 func.cast(Company.company_code, String).contains(code_term, autoescape=True),
                 Company.legacy_code.contains(code_term, autoescape=True),
-            ))
-        priority = case((or_(func.cast(Company.company_code, String) == code_term, Company.legacy_code == code_term), 0), else_=1)
+            ]
+            if numeric_ruc:
+                conditions.extend([ruc.contains(ruc_digits, autoescape=True), legacy_ruc.contains(ruc_digits, autoescape=True)])
+            query = query.where(or_(*conditions))
+        priority = case((or_(*exact_matches), 0), else_=1)
         rows = db.execute(query.order_by(priority, func.lower(Company.legal_name), Company.id).limit(limit+1)).all()
         items = [{"id": row.id, "label": _company_label(row), "name": row.legal_name,
                   "code": row.legacy_code or row.company_code, "description": f"RUC {row.ruc or 'sin registrar'} · {row.status}"} for row in rows[:limit]]

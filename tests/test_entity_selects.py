@@ -42,6 +42,9 @@ def entity_directory():
             companies = [Company(studio_id=studio.id, company_code=10000+i, legal_name=f"AA {marker} Company {i:04}", ruc=f"QA-{marker}-{i}", status="Activa") for i in range(949)]
             companies[0].company_code = 1207; companies[0].legal_name = f"ZZ {marker} AEROMAR"
             companies[0].legal_representative = "Representante principal"
+            companies[0].ruc = "80000519-8"
+            companies[0].trade_name = "Fitness Center QA"
+            companies[1].legacy_ruc = "80000520"
             companies[1].company_code = 1359; companies[1].legal_name = f"ZZ {marker} CHU"
             companies[2].status = "Archivada"
             foreign = Company(studio_id=foreign_studio.id, company_code=1207, legal_name=marker+" AEROMAR Foreign", ruc=marker+"-Foreign")
@@ -117,6 +120,17 @@ def test_company_code_and_name_search_are_bounded_and_tenant_scoped(entity_direc
     assert len(lookup(client,"companies")["items"])==10
     assert not lookup(client,"companies",q="%_")["items"]
     assert data["foreign_company"] not in {item["id"] for item in lookup(client,"companies",q="AEROMAR")["items"]}
+
+
+@pytest.mark.parametrize("query", ["80000519", "80000519-8", "80.000.519 8", "800005198", "Fitness Center QA"])
+def test_company_search_matches_ruc_and_trade_name(entity_directory, query):
+    client, data = entity_directory
+    assert lookup(client, "companies", q=query)["items"][0]["id"] == data["company"]
+
+
+def test_company_search_matches_legacy_ruc(entity_directory):
+    client, data = entity_directory
+    assert lookup(client, "companies", q="80000520")["items"][0]["id"] == data["second"]
 
 
 @pytest.mark.parametrize("query",["207001","Bruno Benitez","brúno BENÍTEZ","4332400","4.332.400"])
