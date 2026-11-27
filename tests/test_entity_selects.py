@@ -45,6 +45,7 @@ def entity_directory():
             companies[0].ruc = "80000519-8"
             companies[0].trade_name = "Fitness Center QA"
             companies[1].legacy_ruc = "80000520"
+            companies[1].trade_name = "J.L.Z. S.R.L."
             companies[1].company_code = 1359; companies[1].legal_name = f"ZZ {marker} CHU"
             companies[2].status = "Archivada"
             foreign = Company(studio_id=foreign_studio.id, company_code=1207, legal_name=marker+" AEROMAR Foreign", ruc=marker+"-Foreign")
@@ -126,6 +127,12 @@ def test_company_code_and_name_search_are_bounded_and_tenant_scoped(entity_direc
 def test_company_search_matches_ruc_and_trade_name(entity_directory, query):
     client, data = entity_directory
     assert lookup(client, "companies", q=query)["items"][0]["id"] == data["company"]
+
+
+@pytest.mark.parametrize("query", ["jlz", "J.L.Z.", "JLZ SRL", "j l z s r l"])
+def test_company_search_ignores_punctuation_in_trade_name(entity_directory, query):
+    client, data = entity_directory
+    assert lookup(client, "companies", q=query)["items"][0]["id"] == data["second"]
 
 
 def test_company_search_matches_legacy_ruc(entity_directory):

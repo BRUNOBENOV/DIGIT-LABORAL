@@ -31,6 +31,13 @@ def _search_text(column, db):
     return result
 
 
+def _compact_company_name(column, db):
+    result = _search_text(func.coalesce(column, ""), db)
+    for character in (".", "-", " ", "/", "'", ",", "(", ")", "\u00a0"):
+        result = func.replace(result, character, "")
+    return result
+
+
 def _company_label(company):
     code = company.legacy_code or company.company_code or "Sin código"
     return f"{code} - {company.legal_name}"
@@ -111,6 +118,11 @@ def entity_options(
         exact_matches = [func.cast(Company.company_code, String) == code_term, Company.legacy_code == code_term]
         if numeric_ruc:
             exact_matches.extend([ruc == ruc_digits, legacy_ruc == ruc_digits])
+        compact_term = re.sub(r"[.\- /',()\u00a0]", "", folded)
+        compact_legal = _compact_company_name(Company.legal_name, db)
+        compact_trade = _compact_company_name(Company.trade_name, db)
+        if compact_term:
+            exact_matches.extend([compact_legal == compact_term, compact_trade == compact_term])
         if selected_id is None and term:
             conditions = [
                 _search_text(Company.legal_name, db).contains(folded, autoescape=True),
@@ -118,6 +130,8 @@ def entity_options(
                 func.cast(Company.company_code, String).contains(code_term, autoescape=True),
                 Company.legacy_code.contains(code_term, autoescape=True),
             ]
+            if compact_term:
+                conditions.extend([compact_legal.contains(compact_term, autoescape=True), compact_trade.contains(compact_term, autoescape=True)])
             if numeric_ruc:
                 conditions.extend([ruc.contains(ruc_digits, autoescape=True), legacy_ruc.contains(ruc_digits, autoescape=True)])
             query = query.where(or_(*conditions))
