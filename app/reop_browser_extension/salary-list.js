@@ -7,7 +7,7 @@
   const fold = s => plain(s).toLowerCase();
   const account = /usuario\b.{0,65}?\bcon\s+(?:nro\.?|n[°º]|numero)\s*patronal\s*:?\s*(\d{1,20})\b/;
   const num = s => Number(s.replaceAll(".",""));
-  function parsePage(text, patronal) {
+  function parsePage(text, patronal, targetPeriod) {
     const raw = plain(text), t = raw.toLowerCase();
     if (t.match(account)?.[1] !== patronal) throw new Error("La patronal abierta en REOP no coincide.");
     const range = t.match(/mostrando\s+([\d.]+)\s*[-–a]\s*([\d.]+)\s+de\s+([\d.]+)/);
@@ -29,9 +29,20 @@
       const year = card.match(/\bano\s*:\s*(20\d{2})\b/)?.[1];
       const income = card.match(/monto total ingresos\s*:\s*(?:gs\.?\s*|₲\s*)?(\d{1,3}(?:\.\d{3})+|\d+)(?=\s|$)/)?.[1];
       const status = card.match(/\bestado\s*:\s*(.+?)(?=\s+(?:ano|usuario gestion|origen dato|fecha insertado|cantidad|monto |horas |constancia|periodo )\s*:?|$)/)?.[1];
-      if (!document || !month || !year || income === undefined || !status || status.length > 80 || employer !== patronal) {
-        throw new Error("REOP no mostró todos los datos de cada liquidación. La consulta quedó sin verificar.");
+      const recordPeriod = month && year ? year+"-"+String(month).padStart(2,"0") : "";
+      const missing = [];
+      if (employer !== patronal) missing.push("patronal ausente o distinta");
+      if (!recordPeriod) missing.push("mes o año");
+      if (missing.length) throw new Error("REOP: liquidación "+start[1]+" — "+missing.join(", ")+". Consulta sin verificar.");
+      // Historical rows still count toward full pagination coverage. Only the
+      // selected period requires employee, gross and status for reconciliation.
+      if (targetPeriod && recordPeriod !== targetPeriod) {
+        return {number:start[1], patronal, period:recordPeriod};
       }
+      if (!document) missing.push("documento");
+      if (income === undefined) missing.push("total de ingresos");
+      if (!status || status.length > 80) missing.push("estado");
+      if (missing.length) throw new Error("REOP: liquidación "+start[1]+" ("+recordPeriod+") — "+missing.join(", ")+". Consulta sin verificar.");
       const rawCard = raw.slice(start.index + start[0].length, starts[i+1]?.index);
       const receipt = rawCard.match(/\bconstancia\s*:\s*((?=[a-z0-9/-]*\d)[a-z0-9][a-z0-9/-]{0,99})(?=\s|$)/i)?.[1] || "";
       return {number:start[1], document:document.toUpperCase(), patronal, period:year+"-"+String(month).padStart(2,"0"),
@@ -83,7 +94,7 @@
         !el.closest('[hidden],.rnr-hidden,.r-hidden,[style*="display: none"],[style*="display:none"]') &&
         /mostrar todo|quitar filtro|limpiar busqueda/.test(fold(el.textContent)));
       if (reset || doc.querySelector('input[id^="ctlSearchFor"]')?.value.trim()) throw new Error("Quitá los filtros del listado en REOP.");
-      const data = parsePage(listingText(doc),patronal);
+      const data = parsePage(listingText(doc),patronal,period);
       const next = [...doc.querySelectorAll("a[href]")].map(a => {
         try { return new URL(a.getAttribute("href"),url); } catch (_) { return null; }
       }).find(l => l?.origin === origin && l.pathname === path && [...l.searchParams.keys()].every(k=>k==="goto")
