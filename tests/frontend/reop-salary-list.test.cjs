@@ -33,3 +33,16 @@ test('un listado vacío requiere evidencia y una página perdida o repetida bloq
   const second = page('Mostrando 2 - 2 de 2',[card('401')]);
   await assert.rejects(collect(async i => ({...(i===1?first:second),hasNext:i===1}),employer,period),/repitió/);
 });
+
+test('historical rows count without requiring unrelated fields; selected rows fail closed', async () => {
+  const old = card('400','Septiembre').replace('Monto Total Ingresos:', 'Salario básico:');
+  const current = card('401');
+  const text = [account,'Mostrando 1 - 2 de 2',old,current].join(' ');
+  const data = parsePage(text,employer,period);
+  const result = await collect(async () => ({...data,hasNext:false}),employer,period);
+  assert.equal(result.inspected,2);
+  assert.deepEqual(result.records.map(r=>r.number),['401']);
+  assert.throws(() => parsePage(text,employer,'2026-09'), /400.*total de ingresos/);
+  assert.throws(() => parsePage(text.replace('Período Liquidación: Septiembre','Período Liquidación: desconocido'),employer,period), /400.*mes o año/);
+  assert.throws(() => parsePage(text.replace('Número Patronal: 123456','Número Patronal: 999'),employer,period), /400.*patronal/);
+});
